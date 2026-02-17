@@ -1,0 +1,31 @@
+import { Model } from 'mongoose';
+import { Order, OrderDocument, OrderStatus } from './schemas/order.schema';
+import { CartService } from '../cart/cart.service';
+import { ProductsService } from '../products/products.service';
+import { UsersService } from '../users/users.service';
+import { CouponsService } from '../coupons/coupons.service';
+import { CreateOrderDto, UpdateOrderStatusDto, UpdatePaymentStatusDto, CancelOrderDto, AddOrderNoteDto, UpdateShippingDto, OrderQueryDto, ReorderDto } from './dto/order.dto';
+import { PaginatedResult } from '@/common/types/pagination.types';
+export declare class OrdersService {
+    private orderModel;
+    private cartService;
+    private productsService;
+    private usersService;
+    private couponsService;
+    constructor(orderModel: Model<OrderDocument>, cartService: CartService, productsService: ProductsService, usersService: UsersService, couponsService: CouponsService);
+    create(userId: string, dto: CreateOrderDto): Promise<Order>;
+    findAll(query: OrderQueryDto): Promise<PaginatedResult<Order>>;
+    findById(id: string): Promise<Order>;
+    findByOrderNumber(orderNumber: string): Promise<Order>;
+    findUserOrders(userId: string, limit?: number): Promise<Order[]>;
+    updateStatus(id: string, dto: UpdateOrderStatusDto): Promise<Order>;
+    updatePaymentStatus(id: string, dto: UpdatePaymentStatusDto): Promise<Order>;
+    cancelOrder(id: string, dto: CancelOrderDto, cancelledBy?: string): Promise<Order>;
+    addNote(id: string, dto: AddOrderNoteDto): Promise<Order>;
+    updateShipping(id: string, dto: UpdateShippingDto): Promise<Order>;
+    setPriorityTags(id: string, tags: string[]): Promise<Order>;
+    reorder(userId: string, dto: ReorderDto): Promise<Order>;
+    getOrderStats(startDate?: Date, endDate?: Date): Promise<Record<string, unknown>>;
+    getOrdersByStatus(): Promise<Record<OrderStatus, number>>;
+    private generateOrderNumber;
+}
