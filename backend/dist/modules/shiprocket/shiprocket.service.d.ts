@@ -32,5 +32,11 @@ export declare class ShiprocketService {
     getTrackingInfo(awbNumber: string): Promise<Record<string, unknown> | null>;
     handleWebhook(payload: ShiprocketWebhookPayload): Promise<void>;
     cancelShipment(shipmentId: string): Promise<boolean>;
+    getShippingRates(pickupPincode: string, deliveryPincode: string, weight: number, cod?: boolean): Promise<Array<{
+        id: string;
+        courier: string;
+        rate: number;
+        estimatedDays: number;
+    }>>;
 }
 export {};

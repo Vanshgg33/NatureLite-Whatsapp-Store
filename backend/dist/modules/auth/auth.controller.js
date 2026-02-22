@@ -14,6 +14,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthController = void 0;
 const common_1 = require("@nestjs/common");
+const config_1 = require("@nestjs/config");
 const auth_service_1 = require("./auth.service");
 const auth_dto_1 = require("./dto/auth.dto");
 const jwt_auth_guard_1 = require("../../common/guards/jwt-auth.guard");
@@ -22,17 +23,57 @@ const current_user_decorator_1 = require("../../common/decorators/current-user.d
 const roles_decorator_1 = require("../../common/decorators/roles.decorator");
 const public_decorator_1 = require("../../common/decorators/public.decorator");
 let AuthController = class AuthController {
-    constructor(authService) {
+    constructor(authService, configService) {
         this.authService = authService;
+        this.configService = configService;
     }
-    async adminLogin(dto) {
-        return this.authService.adminLogin(dto);
+    setAuthCookie(res, token) {
+        const isProduction = this.configService.get('app.nodeEnv') === 'production';
+        res.cookie('access_token', token, {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? 'strict' : 'lax',
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+            path: '/',
+        });
     }
-    async adminRegister(dto) {
-        return this.authService.adminRegister(dto);
+    clearAuthCookie(res) {
+        res.clearCookie('access_token', {
+            httpOnly: true,
+            path: '/',
+        });
     }
-    async customerLogin(dto) {
-        return this.authService.customerLogin(dto);
+    async adminLogin(dto, res) {
+        const result = await this.authService.adminLogin(dto);
+        this.setAuthCookie(res, result.accessToken);
+        return result;
+    }
+    async adminRegister(dto, res) {
+        const result = await this.authService.adminRegister(dto);
+        this.setAuthCookie(res, result.accessToken);
+        return result;
+    }
+    async customerLogin(dto, res) {
+        const result = await this.authService.customerLogin(dto);
+        this.setAuthCookie(res, result.accessToken);
+        return result;
+    }
+    async customerRegister(dto, res) {
+        const result = await this.authService.customerRegister(dto);
+        this.setAuthCookie(res, result.accessToken);
+        return result;
+    }
+    async customerEmailLogin(dto, res) {
+        const result = await this.authService.customerEmailLogin(dto);
+        this.setAuthCookie(res, result.accessToken);
+        return result;
+    }
+    async sendOtp(dto) {
+        return this.authService.sendOtp(dto.phone);
+    }
+    async logout(res) {
+        this.clearAuthCookie(res);
+        return { message: 'Logged out successfully' };
     }
     async changePassword(userId, dto) {
         await this.authService.changePassword(userId, dto);
@@ -48,16 +89,18 @@ __decorate([
     (0, common_1.Post)('admin/login'),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Res)({ passthrough: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [auth_dto_1.AdminLoginDto]),
+    __metadata("design:paramtypes", [auth_dto_1.AdminLoginDto, Object]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "adminLogin", null);
 __decorate([
     (0, public_decorator_1.Public)(),
     (0, common_1.Post)('admin/register'),
     __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Res)({ passthrough: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [auth_dto_1.AdminRegisterDto]),
+    __metadata("design:paramtypes", [auth_dto_1.AdminRegisterDto, Object]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "adminRegister", null);
 __decorate([
@@ -65,10 +108,48 @@ __decorate([
     (0, common_1.Post)('customer/login'),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Res)({ passthrough: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [auth_dto_1.CustomerLoginDto]),
+    __metadata("design:paramtypes", [auth_dto_1.CustomerLoginDto, Object]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "customerLogin", null);
+__decorate([
+    (0, public_decorator_1.Public)(),
+    (0, common_1.Post)('customer/register'),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Res)({ passthrough: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [auth_dto_1.CustomerRegisterDto, Object]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "customerRegister", null);
+__decorate([
+    (0, public_decorator_1.Public)(),
+    (0, common_1.Post)('customer/email-login'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Res)({ passthrough: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [auth_dto_1.CustomerEmailLoginDto, Object]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "customerEmailLogin", null);
+__decorate([
+    (0, public_decorator_1.Public)(),
+    (0, common_1.Post)('customer/send-otp'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [auth_dto_1.SendOtpDto]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "sendOtp", null);
+__decorate([
+    (0, public_decorator_1.Public)(),
+    (0, common_1.Post)('logout'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    __param(0, (0, common_1.Res)({ passthrough: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "logout", null);
 __decorate([
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
     (0, roles_decorator_1.Roles)('admin', 'superadmin'),
@@ -90,6 +171,7 @@ __decorate([
 ], AuthController.prototype, "getProfile", null);
 exports.AuthController = AuthController = __decorate([
     (0, common_1.Controller)('auth'),
-    __metadata("design:paramtypes", [auth_service_1.AuthService])
+    __metadata("design:paramtypes", [auth_service_1.AuthService,
+        config_1.ConfigService])
 ], AuthController);
 //# sourceMappingURL=auth.controller.js.map

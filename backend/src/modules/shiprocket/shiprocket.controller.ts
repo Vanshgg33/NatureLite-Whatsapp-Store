@@ -1,6 +1,7 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
   Param,
   UseGuards,
@@ -60,5 +61,24 @@ export class ShiprocketController {
   async cancelShipment(@Param('shipmentId') shipmentId: string): Promise<{ success: boolean }> {
     const success = await this.shiprocketService.cancelShipment(shipmentId);
     return { success };
+  }
+
+  @Get('track/:awbNumber')
+  @UseGuards(JwtAuthGuard)
+  async trackShipment(@Param('awbNumber') awbNumber: string): Promise<Record<string, unknown> | null> {
+    return this.shiprocketService.getTrackingInfo(awbNumber);
+  }
+
+  @Post('rates')
+  @UseGuards(JwtAuthGuard)
+  async getShippingRates(
+    @Body() body: { pickupPincode: string; deliveryPincode: string; weight: number; cod?: boolean },
+  ): Promise<unknown[]> {
+    return this.shiprocketService.getShippingRates(
+      body.pickupPincode,
+      body.deliveryPincode,
+      body.weight,
+      body.cod || false,
+    );
   }
 }

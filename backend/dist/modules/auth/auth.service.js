@@ -103,7 +103,7 @@ let AuthService = AuthService_1 = class AuthService {
         }
         const payload = {
             sub: user._id.toString(),
-            phone: user.phone,
+            phone: user.phone || '',
             role: 'customer',
         };
         const accessToken = this.jwtService.sign(payload);
@@ -115,6 +115,85 @@ let AuthService = AuthService_1 = class AuthService {
                 name: user.name,
                 role: 'customer',
             },
+        };
+    }
+    async customerRegister(dto) {
+        const existingUser = await this.userModel.findOne({
+            email: dto.email.toLowerCase(),
+        });
+        if (existingUser) {
+            throw new common_1.ConflictException('Email already registered');
+        }
+        if (dto.phone) {
+            const phoneExists = await this.userModel.findOne({ phone: dto.phone });
+            if (phoneExists) {
+                throw new common_1.ConflictException('Phone number already registered');
+            }
+        }
+        const hashedPassword = await bcrypt.hash(dto.password, 10);
+        const user = new this.userModel({
+            name: dto.name,
+            email: dto.email.toLowerCase(),
+            password: hashedPassword,
+            phone: dto.phone,
+        });
+        await user.save();
+        const payload = {
+            sub: user._id.toString(),
+            phone: user.phone || '',
+            role: 'customer',
+        };
+        const accessToken = this.jwtService.sign(payload);
+        return {
+            accessToken,
+            user: {
+                id: user._id.toString(),
+                email: user.email,
+                phone: user.phone,
+                name: user.name,
+                role: 'customer',
+            },
+        };
+    }
+    async customerEmailLogin(dto) {
+        const user = await this.userModel.findOne({
+            email: dto.email.toLowerCase(),
+        });
+        if (!user) {
+            throw new common_1.UnauthorizedException('Invalid credentials');
+        }
+        if (!user.password) {
+            throw new common_1.UnauthorizedException('Please login with phone/OTP or reset your password');
+        }
+        const isPasswordValid = await bcrypt.compare(dto.password, user.password);
+        if (!isPasswordValid) {
+            throw new common_1.UnauthorizedException('Invalid credentials');
+        }
+        if (user.isBlocked) {
+            throw new common_1.UnauthorizedException('Account is blocked');
+        }
+        const payload = {
+            sub: user._id.toString(),
+            phone: user.phone || '',
+            role: 'customer',
+        };
+        const accessToken = this.jwtService.sign(payload);
+        return {
+            accessToken,
+            user: {
+                id: user._id.toString(),
+                email: user.email,
+                phone: user.phone,
+                name: user.name,
+                role: 'customer',
+            },
+        };
+    }
+    async sendOtp(phone) {
+        this.logger.log(`Sending OTP to ${phone}`);
+        return {
+            success: true,
+            message: 'OTP sent successfully',
         };
     }
     async changePassword(adminId, dto) {

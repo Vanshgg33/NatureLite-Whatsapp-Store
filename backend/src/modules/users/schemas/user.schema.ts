@@ -33,14 +33,17 @@ export const AddressSchema = SchemaFactory.createForClass(Address);
 export class User {
   _id: Types.ObjectId;
 
-  @Prop({ required: true, unique: true, index: true })
-  phone: string;
+  @Prop({ sparse: true, index: true })
+  phone?: string;
 
   @Prop()
   name?: string;
 
-  @Prop()
+  @Prop({ sparse: true, index: true })
   email?: string;
+
+  @Prop()
+  password?: string;
 
   @Prop({ type: [AddressSchema], default: [] })
   addresses: Address[];
@@ -81,7 +84,8 @@ export class User {
 
 export const UserSchema = SchemaFactory.createForClass(User);
 
-UserSchema.index({ phone: 1 });
+UserSchema.index({ phone: 1 }, { unique: true, sparse: true });
+UserSchema.index({ email: 1 }, { unique: true, sparse: true });
 UserSchema.index({ isActive: 1, isBlocked: 1 });
 UserSchema.index({ createdAt: -1 });
 UserSchema.index({ totalOrders: -1 });

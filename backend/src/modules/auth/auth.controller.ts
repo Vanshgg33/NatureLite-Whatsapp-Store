@@ -3,15 +3,21 @@ import {
   Post,
   Body,
   Get,
+  Res,
   UseGuards,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { Response } from 'express';
+import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import {
   AdminLoginDto,
   AdminRegisterDto,
   CustomerLoginDto,
+  CustomerRegisterDto,
+  CustomerEmailLoginDto,
+  SendOtpDto,
   ChangePasswordDto,
   AuthResponse,
 } from './dto/auth.dto';
@@ -23,26 +29,105 @@ import { Public } from '@/common/decorators/public.decorator';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  private setAuthCookie(res: Response, token: string): void {
+    const isProduction = this.configService.get<string>('app.nodeEnv') === 'production';
+
+    res.cookie('access_token', token, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'strict' : 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: '/',
+    });
+  }
+
+  private clearAuthCookie(res: Response): void {
+    res.clearCookie('access_token', {
+      httpOnly: true,
+      path: '/',
+    });
+  }
 
   @Public()
   @Post('admin/login')
   @HttpCode(HttpStatus.OK)
-  async adminLogin(@Body() dto: AdminLoginDto): Promise<AuthResponse> {
-    return this.authService.adminLogin(dto);
+  async adminLogin(
+    @Body() dto: AdminLoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthResponse> {
+    const result = await this.authService.adminLogin(dto);
+    this.setAuthCookie(res, result.accessToken);
+    return result;
   }
 
   @Public()
   @Post('admin/register')
-  async adminRegister(@Body() dto: AdminRegisterDto): Promise<AuthResponse> {
-    return this.authService.adminRegister(dto);
+  async adminRegister(
+    @Body() dto: AdminRegisterDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthResponse> {
+    const result = await this.authService.adminRegister(dto);
+    this.setAuthCookie(res, result.accessToken);
+    return result;
   }
 
   @Public()
   @Post('customer/login')
   @HttpCode(HttpStatus.OK)
-  async customerLogin(@Body() dto: CustomerLoginDto): Promise<AuthResponse> {
-    return this.authService.customerLogin(dto);
+  async customerLogin(
+    @Body() dto: CustomerLoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthResponse> {
+    const result = await this.authService.customerLogin(dto);
+    this.setAuthCookie(res, result.accessToken);
+    return result;
+  }
+
+  @Public()
+  @Post('customer/register')
+  async customerRegister(
+    @Body() dto: CustomerRegisterDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthResponse> {
+    const result = await this.authService.customerRegister(dto);
+    this.setAuthCookie(res, result.accessToken);
+    return result;
+  }
+
+  @Public()
+  @Post('customer/email-login')
+  @HttpCode(HttpStatus.OK)
+  async customerEmailLogin(
+    @Body() dto: CustomerEmailLoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthResponse> {
+    const result = await this.authService.customerEmailLogin(dto);
+    this.setAuthCookie(res, result.accessToken);
+    return result;
+  }
+
+  @Public()
+  @Post('customer/send-otp')
+  @HttpCode(HttpStatus.OK)
+  async sendOtp(
+    @Body() dto: SendOtpDto,
+  ): Promise<{ success: boolean; message: string }> {
+    return this.authService.sendOtp(dto.phone);
+  }
+
+  @Public()
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  async logout(
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ message: string }> {
+    this.clearAuthCookie(res);
+    return { message: 'Logged out successfully' };
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

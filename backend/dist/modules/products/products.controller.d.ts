@@ -11,9 +11,9 @@ export declare class ProductsController {
     getLowStockProducts(): Promise<Product[]>;
     searchProducts(searchTerm: string, limit?: string): Promise<Product[]>;
     findByCategory(categoryId: string): Promise<Product[]>;
-    findOne(id: string): Promise<Product>;
     findBySlug(slug: string): Promise<Product>;
     findBySku(sku: string): Promise<Product>;
+    findOne(id: string): Promise<Product>;
     update(id: string, dto: UpdateProductDto): Promise<Product>;
     updateStock(id: string, dto: UpdateStockDto): Promise<Product>;
     delete(id: string): Promise<{

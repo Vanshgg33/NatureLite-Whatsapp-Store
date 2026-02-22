@@ -6,11 +6,6 @@ export interface AppConfig {
 export interface DatabaseConfig {
     uri: string;
 }
-export interface RedisConfig {
-    host: string;
-    port: number;
-    password: string;
-}
 export interface JwtConfig {
     secret: string;
     expiresIn: string;
@@ -40,7 +35,6 @@ export interface ThrottleConfig {
 export interface Configuration {
     app: AppConfig;
     database: DatabaseConfig;
-    redis: RedisConfig;
     jwt: JwtConfig;
     whatsapp: WhatsAppConfig;
     cloudinary: CloudinaryConfig;

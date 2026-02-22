@@ -48,6 +48,12 @@ let ShiprocketController = class ShiprocketController {
         const success = await this.shiprocketService.cancelShipment(shipmentId);
         return { success };
     }
+    async trackShipment(awbNumber) {
+        return this.shiprocketService.getTrackingInfo(awbNumber);
+    }
+    async getShippingRates(body) {
+        return this.shiprocketService.getShippingRates(body.pickupPincode, body.deliveryPincode, body.weight, body.cod || false);
+    }
 };
 exports.ShiprocketController = ShiprocketController;
 __decorate([
@@ -86,6 +92,22 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], ShiprocketController.prototype, "cancelShipment", null);
+__decorate([
+    (0, common_1.Get)('track/:awbNumber'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    __param(0, (0, common_1.Param)('awbNumber')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], ShiprocketController.prototype, "trackShipment", null);
+__decorate([
+    (0, common_1.Post)('rates'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], ShiprocketController.prototype, "getShippingRates", null);
 exports.ShiprocketController = ShiprocketController = __decorate([
     (0, common_1.Controller)('shiprocket'),
     __metadata("design:paramtypes", [shiprocket_service_1.ShiprocketService,

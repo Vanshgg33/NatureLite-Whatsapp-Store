@@ -20,9 +20,10 @@ export declare const AddressSchema: import("mongoose").Schema<Address, import("m
 }>;
 export declare class User {
     _id: Types.ObjectId;
-    phone: string;
+    phone?: string;
     name?: string;
     email?: string;
+    password?: string;
     addresses: Address[];
     isActive: boolean;
     isBlocked: boolean;

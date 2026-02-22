@@ -9,8 +9,8 @@ export declare class CouponsController {
     findAll(query: CouponQueryDto): Promise<PaginatedResult<Coupon>>;
     getActiveCoupons(): Promise<Coupon[]>;
     validateCoupon(dto: ValidateCouponDto): Promise<CouponValidationResult>;
-    findOne(id: string): Promise<Coupon>;
     findByCode(code: string): Promise<Coupon>;
+    findOne(id: string): Promise<Coupon>;
     update(id: string, dto: UpdateCouponDto): Promise<Coupon>;
     delete(id: string): Promise<{
         message: string;

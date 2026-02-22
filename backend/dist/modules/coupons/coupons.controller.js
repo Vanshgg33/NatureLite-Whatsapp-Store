@@ -35,11 +35,11 @@ let CouponsController = class CouponsController {
     async validateCoupon(dto) {
         return this.couponsService.validateCoupon(dto);
     }
-    async findOne(id) {
-        return this.couponsService.findById(id);
-    }
     async findByCode(code) {
         return this.couponsService.findByCode(code);
+    }
+    async findOne(id) {
+        return this.couponsService.findById(id);
     }
     async update(id, dto) {
         return this.couponsService.update(id, dto);
@@ -81,14 +81,6 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], CouponsController.prototype, "validateCoupon", null);
 __decorate([
-    (0, common_1.Get)(':id'),
-    (0, roles_decorator_1.Roles)('admin', 'superadmin'),
-    __param(0, (0, common_1.Param)('id')),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
-    __metadata("design:returntype", Promise)
-], CouponsController.prototype, "findOne", null);
-__decorate([
     (0, common_1.Get)('code/:code'),
     (0, roles_decorator_1.Roles)('admin', 'superadmin'),
     __param(0, (0, common_1.Param)('code')),
@@ -96,6 +88,14 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], CouponsController.prototype, "findByCode", null);
+__decorate([
+    (0, common_1.Get)(':id'),
+    (0, roles_decorator_1.Roles)('admin', 'superadmin'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], CouponsController.prototype, "findOne", null);
 __decorate([
     (0, common_1.Put)(':id'),
     (0, roles_decorator_1.Roles)('admin', 'superadmin'),

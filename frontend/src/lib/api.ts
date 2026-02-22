@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosInstance, AxiosError } from 'axios';
 import {
   ApiResponse,
   AuthResponse,
@@ -17,6 +17,25 @@ import {
   UpdateShippingDto,
   OrderStatus,
   PaymentStatus,
+  RevenueDataPoint,
+  OrderAnalytics,
+  CustomerAnalytics,
+  ProductAnalytics,
+  CouponValidationResult,
+  StoreSettings,
+  WhatsAppSettings,
+  ShippingRate,
+  ShipmentResponse,
+  TrackingInfo,
+  MessageLog,
+  OrderStats,
+  OrdersByStatus,
+  CartResponse,
+  CreateOrderDto,
+  ReorderDto,
+  AddAddressDto,
+  UpdateAddressDto,
+  Address,
 } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
@@ -30,50 +49,40 @@ class ApiClient {
       headers: {
         'Content-Type': 'application/json',
       },
+      withCredentials: true, // Send cookies with every request
     });
 
+    // Request interceptor to add customer token
     this.client.interceptors.request.use(
-      (config: InternalAxiosRequestConfig) => {
-        const token = this.getToken();
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
+      (config) => {
+        if (typeof window !== 'undefined') {
+          const customerToken = localStorage.getItem('customer-token');
+          if (customerToken && !config.headers.Authorization) {
+            config.headers.Authorization = `Bearer ${customerToken}`;
+          }
         }
         return config;
       },
       (error) => Promise.reject(error)
     );
 
+    // Response interceptor for error handling
     this.client.interceptors.response.use(
       (response) => response,
       (error: AxiosError) => {
         if (error.response?.status === 401) {
-          this.clearToken();
           if (typeof window !== 'undefined') {
-            window.location.href = '/login';
+            // Check if we're on a customer page or admin page
+            const isAdminPage = window.location.pathname.startsWith('/admin');
+            if (isAdminPage) {
+              window.location.href = '/admin-login';
+            }
+            // For customer pages, just reject - let the page handle it
           }
         }
         return Promise.reject(error);
       }
     );
-  }
-
-  private getToken(): string | null {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('token');
-    }
-    return null;
-  }
-
-  private setToken(token: string): void {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('token', token);
-    }
-  }
-
-  private clearToken(): void {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('token');
-    }
   }
 
   // ==================== AUTH ====================
@@ -82,9 +91,8 @@ class ApiClient {
       email,
       password,
     });
-    const data = response.data.data;
-    this.setToken(data.accessToken);
-    return data;
+    // Cookie is set by the backend in the response
+    return response.data.data;
   }
 
   async register(name: string, email: string, password: string, phone?: string): Promise<AuthResponse> {
@@ -94,13 +102,13 @@ class ApiClient {
       password,
       phone,
     });
-    const data = response.data.data;
-    this.setToken(data.accessToken);
-    return data;
+    // Cookie is set by the backend in the response
+    return response.data.data;
   }
 
-  logout(): void {
-    this.clearToken();
+  async logout(): Promise<void> {
+    // Call backend to clear the httpOnly cookie
+    await this.client.post('/auth/logout');
   }
 
   async getProfile(): Promise<User> {
@@ -112,35 +120,147 @@ class ApiClient {
     await this.client.post('/auth/change-password', { currentPassword, newPassword });
   }
 
+  // ==================== CUSTOMER AUTH ====================
+  async sendOtp(phone: string): Promise<{ success: boolean; message: string }> {
+    const response = await this.client.post<ApiResponse<{ success: boolean; message: string }>>('/auth/customer/send-otp', {
+      phone,
+    });
+    return response.data.data;
+  }
+
+  async customerLogin(phone: string, otp: string): Promise<AuthResponse> {
+    const response = await this.client.post<ApiResponse<AuthResponse>>('/auth/customer/login', {
+      phone,
+      otp,
+    });
+    return response.data.data;
+  }
+
+  async customerEmailLogin(email: string, password: string): Promise<AuthResponse> {
+    const response = await this.client.post<ApiResponse<AuthResponse>>('/auth/customer/email-login', {
+      email,
+      password,
+    });
+    return response.data.data;
+  }
+
+  async customerRegister(data: { name?: string; email?: string; phone?: string; password?: string }): Promise<AuthResponse> {
+    const response = await this.client.post<ApiResponse<AuthResponse>>('/auth/customer/register', data);
+    return response.data.data;
+  }
+
+  // ==================== CART ====================
+  async getCart(): Promise<CartResponse> {
+    const response = await this.client.get<ApiResponse<CartResponse>>('/cart');
+    return response.data.data;
+  }
+
+  async addToCart(productId: string, quantity: number = 1, variantSku?: string): Promise<CartResponse> {
+    const response = await this.client.post<ApiResponse<CartResponse>>('/cart/items', {
+      productId,
+      quantity,
+      variantSku,
+    });
+    return response.data.data;
+  }
+
+  async updateCartItem(productId: string, quantity: number, variantSku?: string): Promise<CartResponse> {
+    const url = variantSku ? `/cart/items/${productId}?variantSku=${variantSku}` : `/cart/items/${productId}`;
+    const response = await this.client.put<ApiResponse<CartResponse>>(url, { quantity });
+    return response.data.data;
+  }
+
+  async removeFromCart(productId: string, variantSku?: string): Promise<CartResponse> {
+    const url = variantSku ? `/cart/items/${productId}?variantSku=${variantSku}` : `/cart/items/${productId}`;
+    const response = await this.client.delete<ApiResponse<CartResponse>>(url);
+    return response.data.data;
+  }
+
+  async clearCart(): Promise<void> {
+    await this.client.delete('/cart');
+  }
+
+  async applyCartCoupon(couponCode: string): Promise<CartResponse> {
+    const response = await this.client.post<ApiResponse<CartResponse>>('/cart/coupon', { couponCode });
+    return response.data.data;
+  }
+
+  async removeCartCoupon(): Promise<CartResponse> {
+    const response = await this.client.delete<ApiResponse<CartResponse>>('/cart/coupon');
+    return response.data.data;
+  }
+
+  // ==================== CUSTOMER ORDERS ====================
+  async createOrder(data: CreateOrderDto): Promise<Order> {
+    const response = await this.client.post<ApiResponse<Order>>('/orders', data);
+    return response.data.data;
+  }
+
+  async getMyOrders(limit: number = 10): Promise<Order[]> {
+    const response = await this.client.get<ApiResponse<Order[]>>(`/orders/my-orders?limit=${limit}`);
+    return response.data.data;
+  }
+
+  async reorder(data: ReorderDto): Promise<Order> {
+    const response = await this.client.post<ApiResponse<Order>>('/orders/reorder', data);
+    return response.data.data;
+  }
+
+  // ==================== CUSTOMER PROFILE ====================
+  async getMyProfile(): Promise<User> {
+    const response = await this.client.get<ApiResponse<User>>('/users/me');
+    return response.data.data;
+  }
+
+  async updateMyProfile(data: { name?: string; email?: string }): Promise<User> {
+    const response = await this.client.put<ApiResponse<User>>('/users/me', data);
+    return response.data.data;
+  }
+
+  async addAddress(address: AddAddressDto): Promise<User> {
+    const response = await this.client.post<ApiResponse<User>>('/users/me/addresses', address);
+    return response.data.data;
+  }
+
+  async updateAddress(index: number, address: UpdateAddressDto): Promise<User> {
+    const response = await this.client.put<ApiResponse<User>>(`/users/me/addresses/${index}`, address);
+    return response.data.data;
+  }
+
+  async deleteAddress(index: number): Promise<User> {
+    const response = await this.client.delete<ApiResponse<User>>(`/users/me/addresses/${index}`);
+    return response.data.data;
+  }
+
   // ==================== ANALYTICS ====================
   async getDashboardStats(): Promise<DashboardStats> {
     const response = await this.client.get<ApiResponse<DashboardStats>>('/analytics/dashboard');
     return response.data.data;
   }
 
-  async getRevenueByDay(days: number = 30): Promise<Array<{ date: string; revenue: number; orders: number }>> {
-    const response = await this.client.get<ApiResponse<Array<{ date: string; revenue: number; orders: number }>>>(
+  async getRevenueByDay(days: number = 30): Promise<RevenueDataPoint[]> {
+    const response = await this.client.get<ApiResponse<RevenueDataPoint[]>>(
       `/analytics/revenue?days=${days}`
     );
     return response.data.data;
   }
 
-  async getOrderAnalytics(startDate: string, endDate: string): Promise<Record<string, unknown>> {
-    const response = await this.client.get<ApiResponse<Record<string, unknown>>>(
+  async getOrderAnalytics(startDate: string, endDate: string): Promise<OrderAnalytics> {
+    const response = await this.client.get<ApiResponse<OrderAnalytics>>(
       `/analytics/orders?startDate=${startDate}&endDate=${endDate}`
     );
     return response.data.data;
   }
 
-  async getCustomerAnalytics(startDate: string, endDate: string): Promise<Record<string, unknown>> {
-    const response = await this.client.get<ApiResponse<Record<string, unknown>>>(
+  async getCustomerAnalytics(startDate: string, endDate: string): Promise<CustomerAnalytics> {
+    const response = await this.client.get<ApiResponse<CustomerAnalytics>>(
       `/analytics/customers?startDate=${startDate}&endDate=${endDate}`
     );
     return response.data.data;
   }
 
-  async getProductAnalytics(startDate: string, endDate: string): Promise<Record<string, unknown>> {
-    const response = await this.client.get<ApiResponse<Record<string, unknown>>>(
+  async getProductAnalytics(startDate: string, endDate: string): Promise<ProductAnalytics> {
+    const response = await this.client.get<ApiResponse<ProductAnalytics>>(
       `/analytics/products?startDate=${startDate}&endDate=${endDate}`
     );
     return response.data.data;
@@ -260,6 +380,7 @@ class ApiClient {
     endDate?: string;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
+    customerId?: string;
   }): Promise<PaginatedResponse<Order>> {
     const response = await this.client.get<ApiResponse<PaginatedResponse<Order>>>('/orders', { params });
     return response.data.data;
@@ -275,16 +396,16 @@ class ApiClient {
     return response.data.data;
   }
 
-  async getOrderStats(startDate?: string, endDate?: string): Promise<Record<string, unknown>> {
+  async getOrderStats(startDate?: string, endDate?: string): Promise<OrderStats> {
     const params = new URLSearchParams();
     if (startDate) params.append('startDate', startDate);
     if (endDate) params.append('endDate', endDate);
-    const response = await this.client.get<ApiResponse<Record<string, unknown>>>(`/orders/stats?${params}`);
+    const response = await this.client.get<ApiResponse<OrderStats>>(`/orders/stats?${params}`);
     return response.data.data;
   }
 
-  async getOrdersByStatus(): Promise<Record<string, number>> {
-    const response = await this.client.get<ApiResponse<Record<string, number>>>('/orders/by-status');
+  async getOrdersByStatus(): Promise<OrdersByStatus> {
+    const response = await this.client.get<ApiResponse<OrdersByStatus>>('/orders/by-status');
     return response.data.data;
   }
 
@@ -402,11 +523,11 @@ class ApiClient {
   async validateCoupon(
     code: string,
     orderAmount: number,
-    userId: string,
+    userId?: string,
     productIds?: string[],
     categoryIds?: string[]
-  ): Promise<{ valid: boolean; discount?: number; message?: string }> {
-    const response = await this.client.post<ApiResponse<{ valid: boolean; discount?: number; message?: string }>>(
+  ): Promise<CouponValidationResult> {
+    const response = await this.client.post<ApiResponse<CouponValidationResult>>(
       '/coupons/validate',
       { code, orderAmount, userId, productIds, categoryIds }
     );
@@ -414,23 +535,27 @@ class ApiClient {
   }
 
   // ==================== SETTINGS ====================
-  async getSettings(): Promise<Record<string, Record<string, unknown>>> {
-    const response = await this.client.get<ApiResponse<Record<string, Record<string, unknown>>>>('/settings');
+  async getSettings(): Promise<{ store?: StoreSettings; whatsapp?: WhatsAppSettings }> {
+    const response = await this.client.get<ApiResponse<{ store?: StoreSettings; whatsapp?: WhatsAppSettings }>>('/settings');
     return response.data.data;
   }
 
-  async getPublicSettings(): Promise<Record<string, Record<string, unknown>>> {
-    const response = await this.client.get<ApiResponse<Record<string, Record<string, unknown>>>>('/settings/public');
+  async getPublicSettings(): Promise<{ store?: StoreSettings }> {
+    const response = await this.client.get<ApiResponse<{ store?: StoreSettings }>>('/settings/public');
     return response.data.data;
   }
 
-  async getSetting(key: string): Promise<Record<string, unknown> | null> {
-    const response = await this.client.get<ApiResponse<Record<string, unknown> | null>>(`/settings/${key}`);
+  async getSetting(key: 'store'): Promise<StoreSettings | null>;
+  async getSetting(key: 'whatsapp'): Promise<WhatsAppSettings | null>;
+  async getSetting(key: string): Promise<StoreSettings | WhatsAppSettings | null> {
+    const response = await this.client.get<ApiResponse<StoreSettings | WhatsAppSettings | null>>(`/settings/${key}`);
     return response.data.data;
   }
 
-  async updateSettings(key: string, updates: Record<string, unknown>): Promise<unknown> {
-    const response = await this.client.put<ApiResponse<unknown>>(`/settings/${key}/update`, updates);
+  async updateSettings(key: 'store', updates: Partial<StoreSettings>): Promise<StoreSettings>;
+  async updateSettings(key: 'whatsapp', updates: Partial<WhatsAppSettings>): Promise<WhatsAppSettings>;
+  async updateSettings(key: string, updates: Partial<StoreSettings> | Partial<WhatsAppSettings>): Promise<StoreSettings | WhatsAppSettings> {
+    const response = await this.client.put<ApiResponse<StoreSettings | WhatsAppSettings>>(`/settings/${key}/update`, updates);
     return response.data.data;
   }
 
@@ -572,8 +697,8 @@ class ApiClient {
     return response.data.data;
   }
 
-  async getWhatsAppMessages(phone: string, limit: number = 50): Promise<unknown[]> {
-    const response = await this.client.get<ApiResponse<unknown[]>>(`/whatsapp/messages/${phone}?limit=${limit}`);
+  async getWhatsAppMessages(phone: string, limit: number = 50): Promise<MessageLog[]> {
+    const response = await this.client.get<ApiResponse<MessageLog[]>>(`/whatsapp/messages/${phone}?limit=${limit}`);
     return response.data.data;
   }
 
@@ -592,15 +717,15 @@ class ApiClient {
   }
 
   // ==================== SHIPROCKET ====================
-  async createShipment(orderId: string): Promise<{ success: boolean; data?: unknown }> {
-    const response = await this.client.post<ApiResponse<{ success: boolean; data?: unknown }>>(
+  async createShipment(orderId: string): Promise<ShipmentResponse> {
+    const response = await this.client.post<ApiResponse<ShipmentResponse>>(
       `/shiprocket/orders/${orderId}/ship`
     );
     return response.data.data;
   }
 
-  async trackShipment(awbNumber: string): Promise<unknown> {
-    const response = await this.client.get<ApiResponse<unknown>>(`/shiprocket/track/${awbNumber}`);
+  async trackShipment(awbNumber: string): Promise<TrackingInfo> {
+    const response = await this.client.get<ApiResponse<TrackingInfo>>(`/shiprocket/track/${awbNumber}`);
     return response.data.data;
   }
 
@@ -609,8 +734,8 @@ class ApiClient {
     deliveryPincode: string,
     weight: number,
     cod: boolean = false
-  ): Promise<unknown[]> {
-    const response = await this.client.post<ApiResponse<unknown[]>>('/shiprocket/rates', {
+  ): Promise<ShippingRate[]> {
+    const response = await this.client.post<ApiResponse<ShippingRate[]>>('/shiprocket/rates', {
       pickupPincode,
       deliveryPincode,
       weight,

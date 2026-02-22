@@ -50,7 +50,7 @@ let User = class User {
 };
 exports.User = User;
 __decorate([
-    (0, mongoose_1.Prop)({ required: true, unique: true, index: true }),
+    (0, mongoose_1.Prop)({ sparse: true, index: true }),
     __metadata("design:type", String)
 ], User.prototype, "phone", void 0);
 __decorate([
@@ -58,9 +58,13 @@ __decorate([
     __metadata("design:type", String)
 ], User.prototype, "name", void 0);
 __decorate([
-    (0, mongoose_1.Prop)(),
+    (0, mongoose_1.Prop)({ sparse: true, index: true }),
     __metadata("design:type", String)
 ], User.prototype, "email", void 0);
+__decorate([
+    (0, mongoose_1.Prop)(),
+    __metadata("design:type", String)
+], User.prototype, "password", void 0);
 __decorate([
     (0, mongoose_1.Prop)({ type: [exports.AddressSchema], default: [] }),
     __metadata("design:type", Array)
@@ -109,7 +113,8 @@ exports.User = User = __decorate([
     (0, mongoose_1.Schema)({ timestamps: true })
 ], User);
 exports.UserSchema = mongoose_1.SchemaFactory.createForClass(User);
-exports.UserSchema.index({ phone: 1 });
+exports.UserSchema.index({ phone: 1 }, { unique: true, sparse: true });
+exports.UserSchema.index({ email: 1 }, { unique: true, sparse: true });
 exports.UserSchema.index({ isActive: 1, isBlocked: 1 });
 exports.UserSchema.index({ createdAt: -1 });
 exports.UserSchema.index({ totalOrders: -1 });

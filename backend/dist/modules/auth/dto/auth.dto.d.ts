@@ -13,6 +13,16 @@ export declare class CustomerLoginDto {
     phone: string;
     otp: string;
 }
+export declare class CustomerRegisterDto {
+    name?: string;
+    email: string;
+    password: string;
+    phone?: string;
+}
+export declare class CustomerEmailLoginDto {
+    email: string;
+    password: string;
+}
 export declare class SendOtpDto {
     phone: string;
 }

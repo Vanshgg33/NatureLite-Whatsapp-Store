@@ -44,6 +44,35 @@ export class CustomerLoginDto {
   otp: string;
 }
 
+export class CustomerRegisterDto {
+  @IsString()
+  @IsOptional()
+  name?: string;
+
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(6)
+  password: string;
+
+  @IsString()
+  @IsOptional()
+  phone?: string;
+}
+
+export class CustomerEmailLoginDto {
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+
+  @IsString()
+  @IsNotEmpty()
+  password: string;
+}
+
 export class SendOtpDto {
   @IsString()
   @IsNotEmpty()

@@ -1,12 +1,26 @@
+import { Response } from 'express';
+import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
-import { AdminLoginDto, AdminRegisterDto, CustomerLoginDto, ChangePasswordDto, AuthResponse } from './dto/auth.dto';
+import { AdminLoginDto, AdminRegisterDto, CustomerLoginDto, CustomerRegisterDto, CustomerEmailLoginDto, SendOtpDto, ChangePasswordDto, AuthResponse } from './dto/auth.dto';
 import { JwtPayload } from '@/common/decorators/current-user.decorator';
 export declare class AuthController {
     private readonly authService;
-    constructor(authService: AuthService);
-    adminLogin(dto: AdminLoginDto): Promise<AuthResponse>;
-    adminRegister(dto: AdminRegisterDto): Promise<AuthResponse>;
-    customerLogin(dto: CustomerLoginDto): Promise<AuthResponse>;
+    private readonly configService;
+    constructor(authService: AuthService, configService: ConfigService);
+    private setAuthCookie;
+    private clearAuthCookie;
+    adminLogin(dto: AdminLoginDto, res: Response): Promise<AuthResponse>;
+    adminRegister(dto: AdminRegisterDto, res: Response): Promise<AuthResponse>;
+    customerLogin(dto: CustomerLoginDto, res: Response): Promise<AuthResponse>;
+    customerRegister(dto: CustomerRegisterDto, res: Response): Promise<AuthResponse>;
+    customerEmailLogin(dto: CustomerEmailLoginDto, res: Response): Promise<AuthResponse>;
+    sendOtp(dto: SendOtpDto): Promise<{
+        success: boolean;
+        message: string;
+    }>;
+    logout(res: Response): Promise<{
+        message: string;
+    }>;
     changePassword(userId: string, dto: ChangePasswordDto): Promise<{
         message: string;
     }>;

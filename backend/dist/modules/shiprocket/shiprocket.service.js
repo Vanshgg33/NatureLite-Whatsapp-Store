@@ -197,6 +197,30 @@ let ShiprocketService = ShiprocketService_1 = class ShiprocketService {
             return false;
         }
     }
+    async getShippingRates(pickupPincode, deliveryPincode, weight, cod = false) {
+        try {
+            await this.ensureAuthenticated();
+            const response = await this.httpClient.get('/courier/serviceability/', {
+                params: {
+                    pickup_postcode: pickupPincode,
+                    delivery_postcode: deliveryPincode,
+                    weight,
+                    cod: cod ? 1 : 0,
+                },
+            });
+            const couriers = response.data.data?.available_courier_companies || [];
+            return couriers.map((courier) => ({
+                id: courier.courier_company_id.toString(),
+                courier: courier.courier_name,
+                rate: courier.rate,
+                estimatedDays: courier.estimated_delivery_days,
+            }));
+        }
+        catch (error) {
+            this.logger.error('Failed to get shipping rates', error);
+            return [];
+        }
+    }
 };
 exports.ShiprocketService = ShiprocketService;
 exports.ShiprocketService = ShiprocketService = ShiprocketService_1 = __decorate([

@@ -25,7 +25,6 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { MediaModule } from './modules/media/media.module';
-// import { QueuesModule } from './modules/queues/queues.module'; // Requires Redis - uncomment when Redis is available
 
 @Module({
   imports: [
@@ -67,7 +66,6 @@ import { MediaModule } from './modules/media/media.module';
     AdminModule,
     SettingsModule,
     MediaModule,
-    // QueuesModule, // Requires Redis - uncomment when Redis is available
   ],
   providers: [
     {

@@ -50,16 +50,16 @@ export class CouponsController {
     return this.couponsService.validateCoupon(dto);
   }
 
-  @Get(':id')
-  @Roles('admin', 'superadmin')
-  async findOne(@Param('id') id: string): Promise<Coupon> {
-    return this.couponsService.findById(id);
-  }
-
   @Get('code/:code')
   @Roles('admin', 'superadmin')
   async findByCode(@Param('code') code: string): Promise<Coupon> {
     return this.couponsService.findByCode(code);
+  }
+
+  @Get(':id')
+  @Roles('admin', 'superadmin')
+  async findOne(@Param('id') id: string): Promise<Coupon> {
+    return this.couponsService.findById(id);
   }
 
   @Put(':id')

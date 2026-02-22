@@ -39,15 +39,15 @@ let OrdersController = class OrdersController {
     async getOrdersByStatus() {
         return this.ordersService.getOrdersByStatus();
     }
-    async findOne(id, user) {
-        const order = await this.ordersService.findById(id);
+    async findByOrderNumber(orderNumber, user) {
+        const order = await this.ordersService.findByOrderNumber(orderNumber);
         if (user.role === 'customer' && order.user.toString() !== user.sub) {
             throw new Error('Unauthorized');
         }
         return order;
     }
-    async findByOrderNumber(orderNumber, user) {
-        const order = await this.ordersService.findByOrderNumber(orderNumber);
+    async findOne(id, user) {
+        const order = await this.ordersService.findById(id);
         if (user.role === 'customer' && order.user.toString() !== user.sub) {
             throw new Error('Unauthorized');
         }
@@ -127,14 +127,6 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], OrdersController.prototype, "getOrdersByStatus", null);
 __decorate([
-    (0, common_1.Get)(':id'),
-    __param(0, (0, common_1.Param)('id')),
-    __param(1, (0, current_user_decorator_1.CurrentUser)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Object]),
-    __metadata("design:returntype", Promise)
-], OrdersController.prototype, "findOne", null);
-__decorate([
     (0, common_1.Get)('number/:orderNumber'),
     __param(0, (0, common_1.Param)('orderNumber')),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
@@ -142,6 +134,14 @@ __decorate([
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], OrdersController.prototype, "findByOrderNumber", null);
+__decorate([
+    (0, common_1.Get)(':id'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], OrdersController.prototype, "findOne", null);
 __decorate([
     (0, common_1.Put)(':id/status'),
     (0, common_1.UseGuards)(roles_guard_1.RolesGuard),

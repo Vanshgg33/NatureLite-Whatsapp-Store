@@ -18,4 +18,11 @@ export declare class ShiprocketController {
     cancelShipment(shipmentId: string): Promise<{
         success: boolean;
     }>;
+    trackShipment(awbNumber: string): Promise<Record<string, unknown> | null>;
+    getShippingRates(body: {
+        pickupPincode: string;
+        deliveryPincode: string;
+        weight: number;
+        cod?: boolean;
+    }): Promise<unknown[]>;
 }

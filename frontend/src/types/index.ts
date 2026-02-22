@@ -1,3 +1,4 @@
+// ==================== USER TYPES ====================
 export interface User {
   _id: string;
   phone: string;
@@ -26,6 +27,7 @@ export interface Address {
   isDefault: boolean;
 }
 
+// ==================== CATEGORY TYPES ====================
 export interface Category {
   _id: string;
   name: string;
@@ -39,13 +41,22 @@ export interface Category {
   updatedAt: string;
 }
 
+// ==================== PRODUCT TYPES ====================
+export interface ProductVariantAttributes {
+  size?: string;
+  color?: string;
+  weight?: string;
+  volume?: string;
+  [key: string]: string | undefined;
+}
+
 export interface ProductVariant {
   name: string;
   sku: string;
   price: number;
   compareAtPrice?: number;
   stock: number;
-  attributes: Record<string, string>;
+  attributes: ProductVariantAttributes;
   isActive: boolean;
 }
 
@@ -72,6 +83,7 @@ export interface Product {
   variants: ProductVariant[];
   isActive: boolean;
   isFeatured: boolean;
+  isNew?: boolean;
   tags: string[];
   weight?: number;
   dimensions?: ProductDimensions;
@@ -83,6 +95,7 @@ export interface Product {
   updatedAt: string;
 }
 
+// ==================== ORDER TYPES ====================
 export interface OrderItem {
   product: Product | string;
   name: string;
@@ -156,6 +169,7 @@ export interface Order {
   updatedAt: string;
 }
 
+// ==================== COUPON TYPES ====================
 export interface Coupon {
   _id: string;
   code: string;
@@ -178,6 +192,7 @@ export interface Coupon {
   updatedAt: string;
 }
 
+// ==================== ANALYTICS TYPES ====================
 export interface DashboardStats {
   todayOrders: number;
   todayRevenue: number;
@@ -188,6 +203,124 @@ export interface DashboardStats {
   recentOrders: Order[];
 }
 
+export interface RevenueDataPoint {
+  date: string;
+  revenue: number;
+  orders: number;
+}
+
+export interface OrderAnalytics {
+  totalOrders: number;
+  totalRevenue: number;
+  averageOrderValue: number;
+  ordersByStatus: { status: OrderStatus; count: number }[];
+  ordersByPaymentMethod: { method: PaymentMethod; count: number }[];
+}
+
+export interface CustomerAnalytics {
+  totalCustomers: number;
+  newCustomers: number;
+  returningCustomers: number;
+  topCustomers: { customer: User; totalSpent: number; orderCount: number }[];
+}
+
+export interface ProductAnalytics {
+  totalProducts: number;
+  topSelling: { product: Product; sold: number; revenue: number }[];
+  lowStock: Product[];
+  outOfStock: Product[];
+}
+
+export interface AnalyticsSnapshot {
+  _id: string;
+  period: 'hourly' | 'daily' | 'weekly' | 'monthly';
+  date: string;
+  metrics: {
+    orders: number;
+    revenue: number;
+    newCustomers: number;
+    messages: number;
+  };
+  createdAt: string;
+}
+
+// ==================== CHAT/WHATSAPP TYPES ====================
+export interface ChatSessionContext {
+  cartItems?: string[];
+  selectedProduct?: string;
+  searchQuery?: string;
+  currentCategory?: string;
+  step?: string;
+  [key: string]: string | string[] | undefined;
+}
+
+export interface ChatSession {
+  _id: string;
+  sessionId: string;
+  phone: string;
+  user?: string;
+  currentState: string;
+  previousState?: string;
+  context: ChatSessionContext;
+  lastActivity: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MessageContent {
+  type: 'text' | 'image' | 'button' | 'list' | 'template';
+  text?: string;
+  imageUrl?: string;
+  buttons?: { id: string; title: string }[];
+  templateName?: string;
+  [key: string]: string | { id: string; title: string }[] | undefined;
+}
+
+export interface MessageLog {
+  _id: string;
+  messageId: string;
+  phone: string;
+  direction: 'incoming' | 'outgoing';
+  type: string;
+  content: MessageContent;
+  status: 'sent' | 'delivered' | 'read' | 'failed';
+  errorMessage?: string;
+  timestamp: string;
+  createdAt: string;
+}
+
+// ==================== SETTINGS TYPES ====================
+export interface StoreSettings {
+  name: string;
+  currency: string;
+  description: string;
+  minOrderAmount: number;
+  freeShippingThreshold: number;
+  defaultShippingCharge: number;
+}
+
+export interface WhatsAppSettings {
+  welcomeMessage: string;
+  abandonedCartReminderEnabled: boolean;
+  abandonedCartReminderDelayMinutes: number;
+}
+
+export interface SettingsValue {
+  store?: StoreSettings;
+  whatsapp?: WhatsAppSettings;
+  [key: string]: StoreSettings | WhatsAppSettings | undefined;
+}
+
+export interface Settings {
+  _id: string;
+  key: string;
+  value: StoreSettings | WhatsAppSettings;
+  isPublic: boolean;
+  updatedAt: string;
+}
+
+// ==================== API RESPONSE TYPES ====================
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;
@@ -207,13 +340,15 @@ export interface ApiResponse<T> {
 export interface AuthResponse {
   accessToken: string;
   refreshToken?: string;
-  user: {
-    id: string;
-    email?: string;
-    phone?: string;
-    name?: string;
-    role: string;
-  };
+  user: AuthUser;
+}
+
+export interface AuthUser {
+  id: string;
+  email?: string;
+  phone?: string;
+  name?: string;
+  role: 'admin' | 'superadmin' | 'customer';
 }
 
 export interface UploadResult {
@@ -226,55 +361,46 @@ export interface UploadResult {
   bytes: number;
 }
 
-export interface ChatSession {
-  _id: string;
-  sessionId: string;
-  phone: string;
-  user?: string;
-  currentState: string;
-  previousState?: string;
-  context: Record<string, unknown>;
-  lastActivity: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
+// ==================== SHIPPING TYPES ====================
+export interface ShippingRate {
+  courierId: number;
+  courierName: string;
+  rate: number;
+  estimatedDays: number;
+  cod: boolean;
 }
 
-export interface MessageLog {
-  _id: string;
-  messageId: string;
-  phone: string;
-  direction: 'incoming' | 'outgoing';
-  type: string;
-  content: Record<string, unknown>;
-  status: 'sent' | 'delivered' | 'read' | 'failed';
-  errorMessage?: string;
-  timestamp: string;
-  createdAt: string;
+export interface ShipmentResponse {
+  success: boolean;
+  orderId?: string;
+  shipmentId?: string;
+  awbNumber?: string;
+  courierName?: string;
+  label?: string;
+  error?: string;
 }
 
-export interface AnalyticsSnapshot {
-  _id: string;
-  period: 'hourly' | 'daily' | 'weekly' | 'monthly';
-  date: string;
-  metrics: {
-    orders: number;
-    revenue: number;
-    newCustomers: number;
-    messages: number;
-  };
-  createdAt: string;
+export interface TrackingInfo {
+  awbNumber: string;
+  status: string;
+  currentLocation?: string;
+  estimatedDelivery?: string;
+  activities: {
+    date: string;
+    activity: string;
+    location?: string;
+  }[];
 }
 
-export interface Settings {
-  _id: string;
-  key: string;
-  value: Record<string, unknown>;
-  isPublic: boolean;
-  updatedAt: string;
+// ==================== COUPON VALIDATION ====================
+export interface CouponValidationResult {
+  valid: boolean;
+  discount?: number;
+  discountType?: 'percentage' | 'fixed';
+  message?: string;
 }
 
-// DTO types for creating/updating
+// ==================== DTO TYPES ====================
 export interface CreateProductDto {
   name: string;
   slug?: string;
@@ -337,4 +463,107 @@ export interface UpdateShippingDto {
   courierName?: string;
   trackingUrl?: string;
   expectedDeliveryDate?: string;
+}
+
+// ==================== ORDER STATS ====================
+export interface OrderStats {
+  totalOrders: number;
+  totalRevenue: number;
+  pendingOrders: number;
+  processingOrders: number;
+  shippedOrders: number;
+  deliveredOrders: number;
+  cancelledOrders: number;
+}
+
+export interface OrdersByStatus {
+  pending: number;
+  confirmed: number;
+  processing: number;
+  shipped: number;
+  out_for_delivery: number;
+  delivered: number;
+  cancelled: number;
+  returned: number;
+  refunded: number;
+}
+
+// ==================== CART TYPES ====================
+export interface CartItem {
+  product: Product | string;
+  variantSku?: string;
+  quantity: number;
+  price: number;
+  name: string;
+  image?: string;
+  addedAt: string;
+}
+
+export interface Cart {
+  _id: string;
+  user: string;
+  items: CartItem[];
+  couponCode?: string;
+  discount: number;
+  subtotal: number;
+  total: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CartResponse {
+  id: string;
+  items: CartItem[];
+  couponCode?: string;
+  subtotal: number;
+  discount: number;
+  total: number;
+  itemCount: number;
+}
+
+// ==================== ORDER CREATION DTO ====================
+export interface CreateOrderDto {
+  items?: { productId: string; variantSku?: string; quantity: number }[];
+  cartId?: string;
+  shippingAddress: ShippingAddress;
+  paymentMethod: PaymentMethod;
+  couponCode?: string;
+  notes?: string;
+}
+
+export interface ReorderDto {
+  orderId: string;
+  shippingAddress?: ShippingAddress;
+}
+
+// ==================== ADDRESS DTO ====================
+export interface AddAddressDto {
+  label: string;
+  street: string;
+  city: string;
+  state: string;
+  pincode: string;
+  landmark?: string;
+  isDefault?: boolean;
+}
+
+export interface UpdateAddressDto {
+  label?: string;
+  street?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  landmark?: string;
+  isDefault?: boolean;
+}
+
+// ==================== CUSTOMER AUTH ====================
+export interface CustomerLoginDto {
+  phone: string;
+  otp: string;
+}
+
+export interface SendOtpResponse {
+  success: boolean;
+  message: string;
 }

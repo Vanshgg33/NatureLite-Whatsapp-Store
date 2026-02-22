@@ -9,8 +9,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.NotificationsModule = void 0;
 const common_1 = require("@nestjs/common");
 const mongoose_1 = require("@nestjs/mongoose");
-const bullmq_1 = require("@nestjs/bullmq");
 const notifications_service_1 = require("./notifications.service");
+const notifications_controller_1 = require("./notifications.controller");
 const message_log_schema_1 = require("../whatsapp/schemas/message-log.schema");
 const whatsapp_module_1 = require("../whatsapp/whatsapp.module");
 let NotificationsModule = class NotificationsModule {
@@ -20,9 +20,9 @@ exports.NotificationsModule = NotificationsModule = __decorate([
     (0, common_1.Module)({
         imports: [
             mongoose_1.MongooseModule.forFeature([{ name: message_log_schema_1.MessageLog.name, schema: message_log_schema_1.MessageLogSchema }]),
-            bullmq_1.BullModule.registerQueue({ name: 'notifications' }),
             whatsapp_module_1.WhatsAppModule,
         ],
+        controllers: [notifications_controller_1.NotificationsController],
         providers: [notifications_service_1.NotificationsService],
         exports: [notifications_service_1.NotificationsService],
     })

@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ChangePasswordDto = exports.RefreshTokenDto = exports.SendOtpDto = exports.CustomerLoginDto = exports.AdminRegisterDto = exports.AdminLoginDto = void 0;
+exports.ChangePasswordDto = exports.RefreshTokenDto = exports.SendOtpDto = exports.CustomerEmailLoginDto = exports.CustomerRegisterDto = exports.CustomerLoginDto = exports.AdminRegisterDto = exports.AdminLoginDto = void 0;
 const class_validator_1 = require("class-validator");
 class AdminLoginDto {
 }
@@ -67,6 +67,43 @@ __decorate([
     (0, class_validator_1.IsNotEmpty)(),
     __metadata("design:type", String)
 ], CustomerLoginDto.prototype, "otp", void 0);
+class CustomerRegisterDto {
+}
+exports.CustomerRegisterDto = CustomerRegisterDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], CustomerRegisterDto.prototype, "name", void 0);
+__decorate([
+    (0, class_validator_1.IsEmail)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    __metadata("design:type", String)
+], CustomerRegisterDto.prototype, "email", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    (0, class_validator_1.MinLength)(6),
+    __metadata("design:type", String)
+], CustomerRegisterDto.prototype, "password", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], CustomerRegisterDto.prototype, "phone", void 0);
+class CustomerEmailLoginDto {
+}
+exports.CustomerEmailLoginDto = CustomerEmailLoginDto;
+__decorate([
+    (0, class_validator_1.IsEmail)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    __metadata("design:type", String)
+], CustomerEmailLoginDto.prototype, "email", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    __metadata("design:type", String)
+], CustomerEmailLoginDto.prototype, "password", void 0);
 class SendOtpDto {
 }
 exports.SendOtpDto = SendOtpDto;

@@ -9,6 +9,8 @@ import {
   AdminLoginDto,
   AdminRegisterDto,
   CustomerLoginDto,
+  CustomerRegisterDto,
+  CustomerEmailLoginDto,
   AuthResponse,
   ChangePasswordDto,
 } from './dto/auth.dto';
@@ -125,7 +127,7 @@ export class AuthService {
 
     const payload: JwtPayload = {
       sub: user._id.toString(),
-      phone: user.phone,
+      phone: user.phone || '',
       role: 'customer',
     };
 
@@ -139,6 +141,108 @@ export class AuthService {
         name: user.name,
         role: 'customer',
       },
+    };
+  }
+
+  async customerRegister(dto: CustomerRegisterDto): Promise<AuthResponse> {
+    const existingUser = await this.userModel.findOne({
+      email: dto.email.toLowerCase(),
+    });
+
+    if (existingUser) {
+      throw new ConflictException('Email already registered');
+    }
+
+    if (dto.phone) {
+      const phoneExists = await this.userModel.findOne({ phone: dto.phone });
+      if (phoneExists) {
+        throw new ConflictException('Phone number already registered');
+      }
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+
+    const user = new this.userModel({
+      name: dto.name,
+      email: dto.email.toLowerCase(),
+      password: hashedPassword,
+      phone: dto.phone,
+    });
+
+    await user.save();
+
+    const payload: JwtPayload = {
+      sub: user._id.toString(),
+      phone: user.phone || '',
+      role: 'customer',
+    };
+
+    const accessToken = this.jwtService.sign(payload);
+
+    return {
+      accessToken,
+      user: {
+        id: user._id.toString(),
+        email: user.email,
+        phone: user.phone,
+        name: user.name,
+        role: 'customer',
+      },
+    };
+  }
+
+  async customerEmailLogin(dto: CustomerEmailLoginDto): Promise<AuthResponse> {
+    const user = await this.userModel.findOne({
+      email: dto.email.toLowerCase(),
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (!user.password) {
+      throw new UnauthorizedException('Please login with phone/OTP or reset your password');
+    }
+
+    const isPasswordValid = await bcrypt.compare(dto.password, user.password);
+
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (user.isBlocked) {
+      throw new UnauthorizedException('Account is blocked');
+    }
+
+    const payload: JwtPayload = {
+      sub: user._id.toString(),
+      phone: user.phone || '',
+      role: 'customer',
+    };
+
+    const accessToken = this.jwtService.sign(payload);
+
+    return {
+      accessToken,
+      user: {
+        id: user._id.toString(),
+        email: user.email,
+        phone: user.phone,
+        name: user.name,
+        role: 'customer',
+      },
+    };
+  }
+
+  async sendOtp(phone: string): Promise<{ success: boolean; message: string }> {
+    // In production, integrate with your SMS provider (Twilio, MSG91, etc.)
+    // For now, we'll just log and return success
+    this.logger.log(`Sending OTP to ${phone}`);
+
+    // In development, the OTP is always '123456'
+    return {
+      success: true,
+      message: 'OTP sent successfully',
     };
   }
 

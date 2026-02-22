@@ -36,14 +36,14 @@ let CategoriesController = class CategoriesController {
     async findActiveCategories() {
         return this.categoriesService.findActiveCategories();
     }
-    async findOne(id) {
-        return this.categoriesService.findById(id);
-    }
     async findBySlug(slug) {
         return this.categoriesService.findBySlug(slug);
     }
     async findSubcategories(id) {
         return this.categoriesService.findSubcategories(id);
+    }
+    async findOne(id) {
+        return this.categoriesService.findById(id);
     }
     async update(id, dto) {
         return this.categoriesService.update(id, dto);
@@ -87,14 +87,6 @@ __decorate([
 ], CategoriesController.prototype, "findActiveCategories", null);
 __decorate([
     (0, public_decorator_1.Public)(),
-    (0, common_1.Get)(':id'),
-    __param(0, (0, common_1.Param)('id')),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
-    __metadata("design:returntype", Promise)
-], CategoriesController.prototype, "findOne", null);
-__decorate([
-    (0, public_decorator_1.Public)(),
     (0, common_1.Get)('slug/:slug'),
     __param(0, (0, common_1.Param)('slug')),
     __metadata("design:type", Function),
@@ -109,6 +101,14 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], CategoriesController.prototype, "findSubcategories", null);
+__decorate([
+    (0, public_decorator_1.Public)(),
+    (0, common_1.Get)(':id'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], CategoriesController.prototype, "findOne", null);
 __decorate([
     (0, common_1.Put)(':id'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),

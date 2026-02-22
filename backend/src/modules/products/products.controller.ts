@@ -72,13 +72,6 @@ export class ProductsController {
   }
 
   @Public()
-  @Get(':id')
-  async findOne(@Param('id') id: string): Promise<Product> {
-    await this.productsService.incrementViewCount(id);
-    return this.productsService.findById(id);
-  }
-
-  @Public()
   @Get('slug/:slug')
   async findBySlug(@Param('slug') slug: string): Promise<Product> {
     return this.productsService.findBySlug(slug);
@@ -88,6 +81,13 @@ export class ProductsController {
   @Get('sku/:sku')
   async findBySku(@Param('sku') sku: string): Promise<Product> {
     return this.productsService.findBySku(sku);
+  }
+
+  @Public()
+  @Get(':id')
+  async findOne(@Param('id') id: string): Promise<Product> {
+    await this.productsService.incrementViewCount(id);
+    return this.productsService.findById(id);
   }
 
   @Put(':id')

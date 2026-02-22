@@ -17,15 +17,12 @@ exports.NotificationsService = void 0;
 const common_1 = require("@nestjs/common");
 const mongoose_1 = require("@nestjs/mongoose");
 const mongoose_2 = require("mongoose");
-const bullmq_1 = require("@nestjs/bullmq");
-const bullmq_2 = require("bullmq");
 const whatsapp_service_1 = require("../whatsapp/whatsapp.service");
 const message_log_schema_1 = require("../whatsapp/schemas/message-log.schema");
 let NotificationsService = NotificationsService_1 = class NotificationsService {
-    constructor(messageLogModel, whatsappService, notificationQueue) {
+    constructor(messageLogModel, whatsappService) {
         this.messageLogModel = messageLogModel;
         this.whatsappService = whatsappService;
-        this.notificationQueue = notificationQueue;
         this.logger = new common_1.Logger(NotificationsService_1.name);
         this.sentNotifications = new Set();
     }
@@ -34,7 +31,7 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
         if (await this.isDuplicate(idempotencyKey)) {
             return;
         }
-        await this.queueNotification({
+        await this.sendNotification({
             phone,
             templateName: 'order_confirmation',
             params: [
@@ -51,7 +48,7 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
         if (await this.isDuplicate(idempotencyKey)) {
             return;
         }
-        await this.queueNotification({
+        await this.sendNotification({
             phone,
             templateName: 'shipping_update',
             params: [order.orderNumber, courierName, awbNumber],
@@ -64,7 +61,7 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
         if (await this.isDuplicate(idempotencyKey)) {
             return;
         }
-        await this.queueNotification({
+        await this.sendNotification({
             phone,
             templateName: 'out_for_delivery',
             params: [order.orderNumber],
@@ -77,7 +74,7 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
         if (await this.isDuplicate(idempotencyKey)) {
             return;
         }
-        await this.queueNotification({
+        await this.sendNotification({
             phone,
             templateName: 'delivery_confirmation',
             params: [order.orderNumber],
@@ -91,7 +88,7 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
         if (await this.isDuplicate(idempotencyKey)) {
             return;
         }
-        await this.queueNotification({
+        await this.sendNotification({
             phone,
             templateName: 'abandoned_cart',
             params: [itemCount.toString(), cartTotal.toString()],
@@ -103,7 +100,7 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
         if (await this.isDuplicate(idempotencyKey)) {
             return;
         }
-        await this.queueNotification({
+        await this.sendNotification({
             phone,
             templateName: 'order_cancelled',
             params: [order.orderNumber, reason],
@@ -117,7 +114,7 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
         for (const phone of phones) {
             const idempotencyKey = `broadcast_${templateName}_${phone}_${Date.now()}`;
             try {
-                await this.queueNotification({
+                await this.sendNotification({
                     phone,
                     templateName,
                     params,
@@ -131,18 +128,7 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
         }
         return { queued, skipped };
     }
-    async queueNotification(payload) {
-        await this.notificationQueue.add('send', payload, {
-            attempts: 3,
-            backoff: {
-                type: 'exponential',
-                delay: 1000,
-            },
-            removeOnComplete: true,
-            removeOnFail: 100,
-        });
-    }
-    async processNotification(payload) {
+    async sendNotification(payload) {
         try {
             if (payload.idempotencyKey) {
                 if (await this.isDuplicate(payload.idempotencyKey)) {
@@ -158,8 +144,8 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             return !!messageId;
         }
         catch (error) {
-            this.logger.error('Failed to process notification', error);
-            throw error;
+            this.logger.error('Failed to send notification', error);
+            return false;
         }
     }
     async isDuplicate(key) {
@@ -182,9 +168,7 @@ exports.NotificationsService = NotificationsService;
 exports.NotificationsService = NotificationsService = NotificationsService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, mongoose_1.InjectModel)(message_log_schema_1.MessageLog.name)),
-    __param(2, (0, bullmq_1.InjectQueue)('notifications')),
     __metadata("design:paramtypes", [mongoose_2.Model,
-        whatsapp_service_1.WhatsAppService,
-        bullmq_2.Queue])
+        whatsapp_service_1.WhatsAppService])
 ], NotificationsService);
 //# sourceMappingURL=notifications.service.js.map

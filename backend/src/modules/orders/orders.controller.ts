@@ -77,12 +77,12 @@ export class OrdersController {
     return this.ordersService.getOrdersByStatus();
   }
 
-  @Get(':id')
-  async findOne(
-    @Param('id') id: string,
+  @Get('number/:orderNumber')
+  async findByOrderNumber(
+    @Param('orderNumber') orderNumber: string,
     @CurrentUser() user: JwtPayload,
   ): Promise<Order> {
-    const order = await this.ordersService.findById(id);
+    const order = await this.ordersService.findByOrderNumber(orderNumber);
 
     if (user.role === 'customer' && order.user.toString() !== user.sub) {
       throw new Error('Unauthorized');
@@ -91,12 +91,12 @@ export class OrdersController {
     return order;
   }
 
-  @Get('number/:orderNumber')
-  async findByOrderNumber(
-    @Param('orderNumber') orderNumber: string,
+  @Get(':id')
+  async findOne(
+    @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
   ): Promise<Order> {
-    const order = await this.ordersService.findByOrderNumber(orderNumber);
+    const order = await this.ordersService.findById(id);
 
     if (user.role === 'customer' && order.user.toString() !== user.sub) {
       throw new Error('Unauthorized');

@@ -1,0 +1,135 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { motion } from 'framer-motion';
+import { ShoppingBag, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { CartItem } from '@/components/ecommerce/cart-item';
+import { CartSummary } from '@/components/ecommerce/cart-summary';
+import { useCartStore } from '@/lib/cart-store';
+
+export default function CartPage() {
+  const { items, getItemCount } = useCartStore();
+  const [mounted, setMounted] = useState(false);
+
+  // Handle hydration mismatch with Zustand persist
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return (
+      <div className="min-h-screen pt-20 bg-brand-cream">
+        <div className="brand-container py-12">
+          <div className="animate-pulse">
+            <div className="h-8 bg-brand-sand rounded w-48 mb-8" />
+            <div className="grid lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2 space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-32 bg-brand-sand rounded-xl" />
+                ))}
+              </div>
+              <div className="h-96 bg-brand-sand rounded-xl" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const itemCount = getItemCount();
+
+  if (items.length === 0) {
+    return (
+      <div className="min-h-screen pt-20 bg-brand-cream">
+        <div className="brand-container py-24">
+          <motion.div
+            className="max-w-md mx-auto text-center"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-brand-sand flex items-center justify-center">
+              <ShoppingBag className="w-10 h-10 text-brand-muted" />
+            </div>
+            <h1 className="font-display text-2xl font-bold text-brand-charcoal mb-3">
+              Your cart is empty
+            </h1>
+            <p className="font-body text-brand-muted mb-8">
+              Looks like you haven&apos;t added anything to your cart yet.
+              Explore our collection of pure, traditional products.
+            </p>
+            <Link href="/products">
+              <Button className="bg-brand-mustard hover:bg-brand-mustard-dark text-white rounded-full px-8">
+                Start Shopping
+                <ArrowRight className="ml-2 w-4 h-4" />
+              </Button>
+            </Link>
+          </motion.div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen pt-20 bg-brand-cream">
+      <div className="brand-container py-12">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <Link
+              href="/products"
+              className="inline-flex items-center gap-2 font-body text-sm text-brand-muted hover:text-brand-charcoal mb-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Continue Shopping
+            </Link>
+            <h1 className="font-display text-3xl font-bold text-brand-charcoal">
+              Shopping Cart
+            </h1>
+            <p className="font-body text-brand-muted mt-1">
+              {itemCount} {itemCount === 1 ? 'item' : 'items'}
+            </p>
+          </div>
+        </div>
+
+        {/* Cart Content */}
+        <div className="grid lg:grid-cols-3 gap-8">
+          {/* Cart Items */}
+          <div className="lg:col-span-2">
+            <motion.div
+              className="bg-white rounded-2xl p-6 shadow-brand-sm"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+            >
+              {items.map((item, index) => (
+                <motion.div
+                  key={`${item.productId}-${item.variantSku || ''}`}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.3, delay: index * 0.05 }}
+                >
+                  <CartItem item={item} />
+                </motion.div>
+              ))}
+            </motion.div>
+          </div>
+
+          {/* Order Summary */}
+          <div className="lg:col-span-1">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.1 }}
+              className="sticky top-28"
+            >
+              <CartSummary />
+            </motion.div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

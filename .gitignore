@@ -1,10 +1,8 @@
 # Dependencies
 node_modules/
 
-# Environment files
-.env
-.env.local
-.env.*.local
+# Environment files (keep .env.example tracked)
+# .env files are tracked in this project
 
 # Build outputs
 .next/
@@ -23,6 +21,7 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+.claude/
 
 # TypeScript cache
 *.tsbuildinfo

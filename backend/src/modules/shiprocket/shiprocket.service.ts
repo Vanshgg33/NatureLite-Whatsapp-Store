@@ -256,4 +256,45 @@ export class ShiprocketService {
       return false;
     }
   }
+
+  async getShippingRates(
+    pickupPincode: string,
+    deliveryPincode: string,
+    weight: number,
+    cod: boolean = false,
+  ): Promise<Array<{ id: string; courier: string; rate: number; estimatedDays: number }>> {
+    try {
+      await this.ensureAuthenticated();
+
+      const response = await this.httpClient.get<{
+        data: {
+          available_courier_companies: Array<{
+            courier_company_id: number;
+            courier_name: string;
+            rate: number;
+            estimated_delivery_days: number;
+          }>;
+        };
+      }>('/courier/serviceability/', {
+        params: {
+          pickup_postcode: pickupPincode,
+          delivery_postcode: deliveryPincode,
+          weight,
+          cod: cod ? 1 : 0,
+        },
+      });
+
+      const couriers = response.data.data?.available_courier_companies || [];
+
+      return couriers.map((courier) => ({
+        id: courier.courier_company_id.toString(),
+        courier: courier.courier_name,
+        rate: courier.rate,
+        estimatedDays: courier.estimated_delivery_days,
+      }));
+    } catch (error) {
+      this.logger.error('Failed to get shipping rates', error);
+      return [];
+    }
+  }
 }

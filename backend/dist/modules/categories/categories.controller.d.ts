@@ -9,9 +9,9 @@ export declare class CategoriesController {
     findAll(query: CategoryQueryDto): Promise<PaginatedResult<Category>>;
     getCategoryTree(): Promise<Category[]>;
     findActiveCategories(): Promise<Category[]>;
-    findOne(id: string): Promise<Category>;
     findBySlug(slug: string): Promise<Category>;
     findSubcategories(id: string): Promise<Category[]>;
+    findOne(id: string): Promise<Category>;
     update(id: string, dto: UpdateCategoryDto): Promise<Category>;
     delete(id: string): Promise<{
         message: string;

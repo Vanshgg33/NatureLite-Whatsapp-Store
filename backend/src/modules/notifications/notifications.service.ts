@@ -1,8 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
+import { Model } from 'mongoose';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { Order } from '../orders/schemas/order.schema';
 import { MessageLog, MessageLogDocument } from '../whatsapp/schemas/message-log.schema';
@@ -23,7 +21,6 @@ export class NotificationsService {
   constructor(
     @InjectModel(MessageLog.name) private messageLogModel: Model<MessageLogDocument>,
     private whatsappService: WhatsAppService,
-    @InjectQueue('notifications') private notificationQueue: Queue,
   ) {}
 
   async sendOrderConfirmation(order: Order, phone: string): Promise<void> {
@@ -33,7 +30,7 @@ export class NotificationsService {
       return;
     }
 
-    await this.queueNotification({
+    await this.sendNotification({
       phone,
       templateName: 'order_confirmation',
       params: [
@@ -58,7 +55,7 @@ export class NotificationsService {
       return;
     }
 
-    await this.queueNotification({
+    await this.sendNotification({
       phone,
       templateName: 'shipping_update',
       params: [order.orderNumber, courierName, awbNumber],
@@ -74,7 +71,7 @@ export class NotificationsService {
       return;
     }
 
-    await this.queueNotification({
+    await this.sendNotification({
       phone,
       templateName: 'out_for_delivery',
       params: [order.orderNumber],
@@ -90,7 +87,7 @@ export class NotificationsService {
       return;
     }
 
-    await this.queueNotification({
+    await this.sendNotification({
       phone,
       templateName: 'delivery_confirmation',
       params: [order.orderNumber],
@@ -111,7 +108,7 @@ export class NotificationsService {
       return;
     }
 
-    await this.queueNotification({
+    await this.sendNotification({
       phone,
       templateName: 'abandoned_cart',
       params: [itemCount.toString(), cartTotal.toString()],
@@ -126,7 +123,7 @@ export class NotificationsService {
       return;
     }
 
-    await this.queueNotification({
+    await this.sendNotification({
       phone,
       templateName: 'order_cancelled',
       params: [order.orderNumber, reason],
@@ -147,7 +144,7 @@ export class NotificationsService {
       const idempotencyKey = `broadcast_${templateName}_${phone}_${Date.now()}`;
 
       try {
-        await this.queueNotification({
+        await this.sendNotification({
           phone,
           templateName,
           params,
@@ -162,19 +159,7 @@ export class NotificationsService {
     return { queued, skipped };
   }
 
-  private async queueNotification(payload: NotificationPayload): Promise<void> {
-    await this.notificationQueue.add('send', payload, {
-      attempts: 3,
-      backoff: {
-        type: 'exponential',
-        delay: 1000,
-      },
-      removeOnComplete: true,
-      removeOnFail: 100,
-    });
-  }
-
-  async processNotification(payload: NotificationPayload): Promise<boolean> {
+  private async sendNotification(payload: NotificationPayload): Promise<boolean> {
     try {
       if (payload.idempotencyKey) {
         if (await this.isDuplicate(payload.idempotencyKey)) {
@@ -191,8 +176,9 @@ export class NotificationsService {
 
       return !!messageId;
     } catch (error) {
-      this.logger.error('Failed to process notification', error);
-      throw error;
+      this.logger.error('Failed to send notification', error);
+      // Don't throw - just log and continue
+      return false;
     }
   }
 

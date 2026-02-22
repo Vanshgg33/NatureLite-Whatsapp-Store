@@ -48,12 +48,6 @@ export class CategoriesController {
   }
 
   @Public()
-  @Get(':id')
-  async findOne(@Param('id') id: string): Promise<Category> {
-    return this.categoriesService.findById(id);
-  }
-
-  @Public()
   @Get('slug/:slug')
   async findBySlug(@Param('slug') slug: string): Promise<Category> {
     return this.categoriesService.findBySlug(slug);
@@ -63,6 +57,12 @@ export class CategoriesController {
   @Get(':id/subcategories')
   async findSubcategories(@Param('id') id: string): Promise<Category[]> {
     return this.categoriesService.findSubcategories(id);
+  }
+
+  @Public()
+  @Get(':id')
+  async findOne(@Param('id') id: string): Promise<Category> {
+    return this.categoriesService.findById(id);
   }
 
   @Put(':id')

@@ -11,8 +11,8 @@ export declare class OrdersController {
     getMyOrders(userId: string, limit?: string): Promise<Order[]>;
     getOrderStats(startDate?: string, endDate?: string): Promise<Record<string, unknown>>;
     getOrdersByStatus(): Promise<Record<string, number>>;
-    findOne(id: string, user: JwtPayload): Promise<Order>;
     findByOrderNumber(orderNumber: string, user: JwtPayload): Promise<Order>;
+    findOne(id: string, user: JwtPayload): Promise<Order>;
     updateStatus(id: string, dto: UpdateOrderStatusDto, adminId: string): Promise<Order>;
     updatePaymentStatus(id: string, dto: UpdatePaymentStatusDto): Promise<Order>;
     cancelOrder(id: string, dto: CancelOrderDto, user: JwtPayload): Promise<Order>;

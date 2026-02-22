@@ -4,48 +4,154 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* ================================================
+       ADMIN DESIGN SYSTEM (Teal SaaS Theme)
+       Keep for existing admin component references
+       ================================================ */
+    --background: 220 18% 98%;
+    --foreground: 222 25% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 222 25% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 142.1 76.2% 36.3%;
-    --primary-foreground: 355.7 100% 97.3%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 142.1 76.2% 36.3%;
-    --radius: 0.5rem;
+    --popover-foreground: 222 25% 12%;
+    --primary: 160 84% 39%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 222 25% 12%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 10% 46%;
+    --accent: 220 14% 94%;
+    --accent-foreground: 222 25% 12%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 160 84% 39%;
+    --radius: 0.625rem;
+
+    /* Design system spacing tokens */
+    --ds-space-1: 0.25rem;
+    --ds-space-2: 0.5rem;
+    --ds-space-3: 0.75rem;
+    --ds-space-4: 1rem;
+    --ds-space-5: 1.25rem;
+    --ds-space-6: 1.5rem;
+    --ds-space-8: 2rem;
+    --ds-space-10: 2.5rem;
+    --ds-space-12: 3rem;
+    --ds-radius-sm: 0.375rem;
+    --ds-radius-md: 0.625rem;
+    --ds-radius-lg: 0.875rem;
+    --ds-radius-xl: 1.125rem;
+    --ds-shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.03);
+    --ds-shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.05);
+    --ds-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+    --ds-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.05), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+    --ds-shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.05), 0 8px 10px -6px rgb(0 0 0 / 0.05);
+    --ds-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --ds-duration-fast: 150ms;
+    --ds-duration-normal: 250ms;
+    --ds-duration-slow: 350ms;
+    --ds-surface: 0 0% 100%;
+    --ds-surface-elevated: 0 0% 100%;
+    --ds-surface-overlay: 0 0% 100%;
+    --ds-border-subtle: 220 13% 91%;
+    --ds-success: 142 71% 45%;
+    --ds-warning: 38 92% 50%;
+    --ds-error: 0 72% 51%;
+    --ds-info: 199 89% 48%;
+
+    /* ================================================
+       BRAND DESIGN SYSTEM (Earthy Premium Theme)
+       For public storefront - warm, organic, cinematic
+       ================================================ */
+
+    /* Primary Colors */
+    --brand-mustard: 42 87% 55%;
+    --brand-mustard-dark: 38 80% 45%;
+    --brand-brown: 25 45% 35%;
+    --brand-brown-light: 28 35% 45%;
+    --brand-green: 145 35% 30%;
+    --brand-green-light: 145 30% 40%;
+    --brand-terracotta: 18 60% 50%;
+
+    /* Background & Surfaces */
+    --brand-cream: 45 40% 96%;
+    --brand-cream-dark: 40 30% 92%;
+    --brand-sand: 38 30% 90%;
+    --brand-sand-dark: 35 25% 85%;
+
+    /* Text Colors */
+    --brand-charcoal: 30 10% 15%;
+    --brand-text: 30 8% 25%;
+    --brand-muted: 30 8% 50%;
+    --brand-muted-light: 30 6% 65%;
+
+    /* Accent & UI */
+    --brand-border: 35 15% 85%;
+    --brand-border-dark: 35 12% 75%;
+    --brand-highlight: 45 100% 95%;
+
+    /* Semantic Colors */
+    --brand-success: 145 50% 40%;
+    --brand-warning: 38 85% 50%;
+    --brand-error: 0 65% 50%;
+
+    /* Animation Easings */
+    --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-slow: cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Cinematic Timing */
+    --duration-instant: 100ms;
+    --duration-fast: 200ms;
+    --duration-normal: 400ms;
+    --duration-slow: 600ms;
+    --duration-slower: 800ms;
+    --duration-cinematic: 1200ms;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 142.1 70.6% 45.3%;
-    --primary-foreground: 144.9 80.4% 10%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 142.4 71.8% 29.2%;
+    /* Admin Dark Theme */
+    --background: 222 25% 8%;
+    --foreground: 210 20% 98%;
+    --card: 222 20% 11%;
+    --card-foreground: 210 20% 98%;
+    --popover: 222 20% 11%;
+    --popover-foreground: 210 20% 98%;
+    --primary: 160 70% 45%;
+    --primary-foreground: 222 25% 8%;
+    --secondary: 217 20% 18%;
+    --secondary-foreground: 210 20% 98%;
+    --muted: 217 20% 18%;
+    --muted-foreground: 215 16% 57%;
+    --accent: 217 20% 18%;
+    --accent-foreground: 210 20% 98%;
+    --destructive: 0 62% 42%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 217 20% 22%;
+    --input: 217 20% 22%;
+    --ring: 160 70% 45%;
+    --ds-surface: 222 20% 11%;
+    --ds-surface-elevated: 222 18% 14%;
+    --ds-surface-overlay: 222 18% 14%;
+    --ds-border-subtle: 217 20% 22%;
+
+    /* Brand Dark Theme */
+    --brand-cream: 25 25% 8%;
+    --brand-cream-dark: 25 20% 6%;
+    --brand-sand: 25 20% 12%;
+    --brand-sand-dark: 25 18% 10%;
+    --brand-charcoal: 35 15% 90%;
+    --brand-text: 35 12% 85%;
+    --brand-muted: 30 8% 55%;
+    --brand-muted-light: 30 6% 45%;
+    --brand-border: 30 12% 20%;
+    --brand-border-dark: 30 10% 15%;
+    --brand-highlight: 38 40% 15%;
+    --brand-mustard: 42 80% 50%;
+    --brand-brown: 28 40% 55%;
+    --brand-green: 145 30% 45%;
   }
 }
 
@@ -54,6 +160,501 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
   }
+}
+
+/* ================================================
+   TYPOGRAPHY UTILITIES
+   ================================================ */
+
+.font-display {
+  font-family: var(--font-playfair), Georgia, serif;
+}
+
+.font-body {
+  font-family: var(--font-source-sans), system-ui, sans-serif;
+}
+
+/* ================================================
+   BRAND LAYOUT UTILITIES
+   ================================================ */
+
+.brand-container {
+  @apply mx-auto px-4 sm:px-6 lg:px-8;
+  max-width: 1440px;
+}
+
+.brand-section {
+  @apply py-16 sm:py-24 lg:py-32;
+}
+
+.brand-section-tight {
+  @apply py-12 sm:py-16 lg:py-20;
+}
+
+/* ================================================
+   STORYTELLING SECTIONS
+   ================================================ */
+
+.story-section {
+  min-height: 100vh;
+  min-height: 100dvh;
+  position: relative;
+}
+
+.story-section-half {
+  min-height: 50vh;
+  min-height: 50dvh;
+}
+
+.story-content {
+  position: relative;
+  z-index: 10;
+}
+
+/* ================================================
+   ANIMATION UTILITIES
+   ================================================ */
+
+@media (prefers-reduced-motion: no-preference) {
+  .animate-fade-up {
+    animation: fadeUp var(--duration-normal) var(--ease-smooth) forwards;
+    opacity: 0;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn var(--duration-normal) var(--ease-smooth) forwards;
+    opacity: 0;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn var(--duration-normal) var(--ease-smooth) forwards;
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  .animate-slide-left {
+    animation: slideLeft var(--duration-normal) var(--ease-smooth) forwards;
+    opacity: 0;
+  }
+
+  .animate-slide-right {
+    animation: slideRight var(--duration-normal) var(--ease-smooth) forwards;
+    opacity: 0;
+  }
+
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  .animate-pulse-soft {
+    animation: pulseSoft 3s ease-in-out infinite;
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slideLeft {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideRight {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes pulseSoft {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* Stagger animation delays */
+.stagger-1 { animation-delay: 0.1s; }
+.stagger-2 { animation-delay: 0.2s; }
+.stagger-3 { animation-delay: 0.3s; }
+.stagger-4 { animation-delay: 0.4s; }
+.stagger-5 { animation-delay: 0.5s; }
+.stagger-6 { animation-delay: 0.6s; }
+
+/* ================================================
+   SCROLL-BASED UTILITIES
+   ================================================ */
+
+.scroll-indicator {
+  animation: bounce 2s infinite;
+}
+
+@keyframes bounce {
+  0%, 20%, 50%, 80%, 100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-10px);
+  }
+  60% {
+    transform: translateY(-5px);
+  }
+}
+
+/* ================================================
+   GRAIN/TEXTURE OVERLAY
+   ================================================ */
+
+.grain-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url('/images/textures/grain.png');
+  background-repeat: repeat;
+  opacity: 0.03;
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* ================================================
+   SMOOTH SCROLLING
+   ================================================ */
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ================================================
+   PRODUCT CARD EFFECTS
+   ================================================ */
+
+.product-card {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  will-change: transform;
+}
+
+.product-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px -6px rgb(0 0 0 / 0.1);
+}
+
+/* ================================================
+   PERFORMANCE OPTIMIZATIONS
+   ================================================ */
+
+/* Hardware acceleration for animations */
+.gpu-accelerated {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ================================================
+   LEGACY ADMIN ANIMATIONS (keep for compatibility)
+   ================================================ */
+
+@keyframes accordion-down {
+  from { height: 0; }
+  to { height: var(--radix-accordion-content-height); }
+}
+
+@keyframes accordion-up {
+  from { height: var(--radix-accordion-content-height); }
+  to { height: 0; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes count-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+
+/* ================================================
+   PREMIUM GLASS EFFECTS
+   ================================================ */
+
+.glass {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.glass-dark {
+  background: rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-brand {
+  background: rgba(212, 165, 116, 0.1);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(212, 165, 116, 0.2);
+}
+
+/* ================================================
+   TEXT GRADIENT EFFECTS
+   ================================================ */
+
+.text-gradient-gold {
+  background: linear-gradient(135deg, #d4a574 0%, #f5dfc5 50%, #d4a574 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-nature {
+  background: linear-gradient(135deg, #2a5a3a 0%, #4a8a5a 50%, #2a5a3a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-premium {
+  background: linear-gradient(135deg, #3d2e1f 0%, #8b5a2b 50%, #3d2e1f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ================================================
+   CINEMATIC IMAGE EFFECTS
+   ================================================ */
+
+.image-parallax {
+  transition: transform 0.1s linear;
+  will-change: transform;
+}
+
+.image-zoom {
+  transition: transform var(--duration-slow) var(--ease-smooth);
+}
+
+.image-zoom:hover {
+  transform: scale(1.08);
+}
+
+/* Image shine effect - disabled for performance */
+.image-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+/* ================================================
+   3D TRANSFORM UTILITIES
+   ================================================ */
+
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.perspective-1500 {
+  perspective: 1500px;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+/* ================================================
+   MARQUEE ANIMATIONS
+   ================================================ */
+
+@keyframes marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes marquee-reverse {
+  0% {
+    transform: translateX(-50%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.animate-marquee {
+  animation: marquee 30s linear infinite;
+}
+
+.animate-marquee-reverse {
+  animation: marquee-reverse 30s linear infinite;
+}
+
+/* ================================================
+   SCROLL SNAP (for horizontal sections)
+   ================================================ */
+
+.snap-x {
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.snap-center {
+  scroll-snap-align: center;
+}
+
+.snap-start {
+  scroll-snap-align: start;
+}
+
+/* ================================================
+   LOADING SKELETON
+   ================================================ */
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(
+    90deg,
+    hsl(var(--brand-cream)) 0%,
+    hsl(var(--brand-sand)) 50%,
+    hsl(var(--brand-cream)) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ================================================
+   SELECTION STYLING
+   ================================================ */
+
+::selection {
+  background-color: hsl(var(--brand-mustard) / 0.3);
+  color: hsl(var(--brand-charcoal));
+}
+
+::-moz-selection {
+  background-color: hsl(var(--brand-mustard) / 0.3);
+  color: hsl(var(--brand-charcoal));
+}
+
+/* ================================================
+   FOCUS VISIBLE
+   ================================================ */
+
+:focus-visible {
+  outline: 2px solid hsl(var(--brand-mustard));
+  outline-offset: 2px;
+}
+
+/* ================================================
+   SCROLLBAR STYLING
+   ================================================ */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--brand-cream));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--brand-border-dark));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--brand-muted));
 }
