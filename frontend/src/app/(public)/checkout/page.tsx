@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ArrowLeft, CreditCard, Banknote, Smartphone, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, CreditCard, Banknote, Smartphone, ShieldCheck, Check, ShoppingBag, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CartItem } from '@/components/ecommerce/cart-item';
@@ -114,13 +114,76 @@ export default function CheckoutPage() {
           pincode: data.pincode,
           landmark: data.landmark,
         },
-        paymentMethod: selectedPayment,
+        paymentMethod: selectedPayment === 'cod' ? 'cod' : 'razorpay',
         couponCode: useCartStore.getState().couponCode || undefined,
       };
 
       // Create order via API
       const order = await api.createOrder(orderData);
 
+      // If not COD, initiate Razorpay payment
+      if (selectedPayment !== 'cod') {
+        try {
+          const paymentData = await api.createPaymentOrder(order._id);
+
+          const options = {
+            key: paymentData.keyId,
+            amount: paymentData.amount,
+            currency: paymentData.currency,
+            name: 'Naturelite Store',
+            description: `Order #${order.orderNumber}`,
+            order_id: paymentData.razorpayOrderId,
+            handler: async (response: any) => {
+              try {
+                await api.verifyPayment({
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                });
+                clearCart();
+                toast({ title: 'Payment successful! Order confirmed.' });
+                router.push(`/account/orders/${order._id}`);
+              } catch {
+                toast({
+                  title: 'Payment verification failed',
+                  description: 'Please contact support if amount was deducted.',
+                  variant: 'destructive',
+                });
+              }
+            },
+            prefill: {
+              name: data.name,
+              email: data.email,
+              contact: data.phone,
+            },
+            theme: { color: '#D4A574' },
+            modal: {
+              ondismiss: () => {
+                toast({
+                  title: 'Payment cancelled',
+                  description: 'Your order has been created. You can pay later from order details.',
+                });
+                setIsSubmitting(false);
+                router.push(`/account/orders/${order._id}`);
+              },
+            },
+          };
+
+          const rzp = new (window as any).Razorpay(options);
+          rzp.open();
+          return; // Don't clear cart yet - wait for payment handler
+        } catch {
+          toast({
+            title: 'Payment gateway error',
+            description: 'Order created but payment could not be initiated. Please try again from order details.',
+            variant: 'destructive',
+          });
+          router.push(`/account/orders/${order._id}`);
+          return;
+        }
+      }
+
+      // COD flow
       toast({
         title: 'Order placed successfully!',
         description: `Order #${order.orderNumber} has been created. You will receive a confirmation shortly.`,
@@ -170,7 +233,20 @@ export default function CheckoutPage() {
   const subtotal = getSubtotal();
   const gst = getGstTotal();
   const discount = getDiscountAmount();
-  const shipping = subtotal >= 999 ? 0 : 50;
+
+  const [shippingSettings, setShippingSettings] = useState({ freeShippingThreshold: 999, defaultShippingCharge: 50 });
+  useEffect(() => {
+    api.getPublicSettings().then((settings: any) => {
+      if (settings?.store) {
+        setShippingSettings({
+          freeShippingThreshold: settings.store.freeShippingThreshold ?? 999,
+          defaultShippingCharge: settings.store.defaultShippingCharge ?? 50,
+        });
+      }
+    }).catch(() => {});
+  }, []);
+
+  const shipping = subtotal >= shippingSettings.freeShippingThreshold ? 0 : shippingSettings.defaultShippingCharge;
   const total = getTotal() + shipping;
 
   return (
@@ -183,6 +259,51 @@ export default function CheckoutPage() {
           <ArrowLeft className="w-4 h-4" />
           Back to Cart
         </Link>
+
+        {/* Checkout Progress Bar */}
+        <div className="flex items-center justify-center gap-0 mb-10">
+          {[
+            { label: 'Cart', icon: ShoppingBag, completed: true, active: false },
+            { label: 'Shipping', icon: MapPin, completed: false, active: true },
+            { label: 'Payment', icon: CreditCard, completed: false, active: false },
+          ].map((step, index) => (
+            <div key={step.label} className="flex items-center">
+              {index > 0 && (
+                <div className={cn(
+                  "h-0.5 w-12 sm:w-20",
+                  step.completed || step.active ? 'bg-brand-green' : 'bg-brand-border'
+                )} />
+              )}
+              <div className="flex flex-col items-center gap-1.5">
+                <motion.div
+                  className={cn(
+                    "w-10 h-10 rounded-full flex items-center justify-center border-2",
+                    step.completed
+                      ? 'bg-brand-green border-brand-green text-white'
+                      : step.active
+                      ? 'bg-brand-mustard border-brand-mustard text-white'
+                      : 'bg-white border-brand-border text-brand-muted'
+                  )}
+                  initial={{ scale: 0.8 }}
+                  animate={{ scale: 1 }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  {step.completed ? (
+                    <Check className="w-5 h-5" />
+                  ) : (
+                    <step.icon className="w-5 h-5" />
+                  )}
+                </motion.div>
+                <span className={cn(
+                  "text-xs font-medium",
+                  step.completed ? 'text-brand-green' : step.active ? 'text-brand-mustard' : 'text-brand-muted'
+                )}>
+                  {step.label}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
 
         <h1 className="font-display text-3xl font-bold text-brand-charcoal mb-8">
           Checkout

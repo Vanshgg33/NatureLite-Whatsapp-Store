@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingBag, User, Menu, X } from 'lucide-react';
+import { ShoppingBag, User, Menu, X, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCartStore } from '@/lib/cart-store';
 import { useCustomerStore } from '@/lib/customer-store';
@@ -22,6 +22,9 @@ export function PublicHeader() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const itemCount = useCartStore((state) => state.getItemCount());
   const { isAuthenticated, customer } = useCustomerStore();
+
+  // Standard light header — no dark theme needed
+  const useDarkTheme = false;
 
   useEffect(() => {
     const handleScroll = () => {
@@ -50,7 +53,7 @@ export function PublicHeader() {
           <nav className="flex items-center justify-between h-20">
             {/* Logo */}
             <Link href="/" className="flex items-center gap-3 group">
-              <div className="w-9 h-9 rounded-full bg-[#d4a574] flex items-center justify-center">
+              <div className="w-9 h-9 rounded-full bg-brand-green flex items-center justify-center">
                 <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
                 </svg>
@@ -58,7 +61,7 @@ export function PublicHeader() {
               <span
                 className={cn(
                   'font-serif text-xl font-semibold transition-colors duration-300',
-                  isScrolled ? 'text-[#3d2e1f]' : 'text-[#3d2e1f]'
+                  useDarkTheme ? 'text-white' : 'text-brand-charcoal'
                 )}
               >
                 Naturelite
@@ -75,16 +78,16 @@ export function PublicHeader() {
                     href={item.href}
                     className={cn(
                       'relative text-sm font-medium transition-colors duration-300',
-                      isActive
-                        ? 'text-[#8b7355]'
-                        : 'text-[#6b5c4c] hover:text-[#3d2e1f]'
+                      useDarkTheme
+                        ? (isActive ? 'text-white' : 'text-white/70 hover:text-white')
+                        : (isActive ? 'text-brand-brown' : 'text-brand-brown-light hover:text-brand-charcoal')
                     )}
                   >
                     {item.name}
                     {isActive && (
                       <motion.div
                         layoutId="activeNav"
-                        className="absolute -bottom-1 left-0 right-0 h-0.5 bg-[#d4a574] rounded-full"
+                        className="absolute -bottom-1 left-0 right-0 h-0.5 bg-brand-mustard rounded-full"
                       />
                     )}
                   </Link>
@@ -94,17 +97,43 @@ export function PublicHeader() {
 
             {/* Actions */}
             <div className="flex items-center gap-3">
+              {/* Search */}
+              <Link
+                href="/products"
+                className={cn(
+                  'p-2.5 rounded-full transition-colors duration-300',
+                  useDarkTheme
+                    ? 'text-white/70 hover:text-white hover:bg-white/10'
+                    : 'text-brand-brown-light hover:text-brand-charcoal hover:bg-brand-cream'
+                )}
+                aria-label="Search products"
+              >
+                <Search className="w-5 h-5" />
+              </Link>
+
               {/* Cart */}
               <Link
+                id="cart-icon"
                 href="/cart"
-                className="relative p-2.5 rounded-full text-[#6b5c4c] hover:text-[#3d2e1f] hover:bg-[#f5f0e8] transition-colors duration-300"
+                className={cn(
+                  'relative p-2.5 rounded-full transition-colors duration-300',
+                  useDarkTheme
+                    ? 'text-white/70 hover:text-white hover:bg-white/10'
+                    : 'text-brand-brown-light hover:text-brand-charcoal hover:bg-brand-cream'
+                )}
                 aria-label="Cart"
               >
                 <ShoppingBag className="w-5 h-5" />
                 {itemCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-[#d4a574] text-white text-xs font-medium rounded-full flex items-center justify-center">
+                  <motion.span
+                    key={itemCount}
+                    className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-brand-mustard text-white text-xs font-medium rounded-full flex items-center justify-center"
+                    initial={{ scale: 1.5 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 15 }}
+                  >
                     {itemCount > 9 ? '9+' : itemCount}
-                  </span>
+                  </motion.span>
                 )}
               </Link>
 
@@ -112,22 +141,37 @@ export function PublicHeader() {
               {isAuthenticated ? (
                 <Link
                   href="/account"
-                  className="flex items-center gap-2 p-2.5 rounded-full text-[#6b5c4c] hover:text-[#3d2e1f] hover:bg-[#f5f0e8] transition-colors duration-300"
+                  className={cn(
+                    'flex items-center gap-2 p-2.5 rounded-full transition-colors duration-300',
+                    useDarkTheme
+                      ? 'text-white/70 hover:text-white hover:bg-white/10'
+                      : 'text-brand-brown-light hover:text-brand-charcoal hover:bg-brand-cream'
+                  )}
                 >
                   <User className="w-5 h-5" />
                 </Link>
               ) : (
                 <Link
                   href="/login"
-                  className="hidden sm:flex items-center px-6 py-2.5 bg-[#3d2e1f] text-white rounded-full text-sm font-medium hover:bg-[#2a1f15] transition-colors duration-300"
+                  className={cn(
+                    'hidden sm:flex items-center px-6 py-2.5 rounded-full text-sm font-medium transition-colors duration-300',
+                    useDarkTheme
+                      ? 'bg-white/15 text-white backdrop-blur-sm border border-white/20 hover:bg-white/25'
+                      : 'bg-brand-charcoal text-white hover:bg-brand-charcoal-dark'
+                  )}
                 >
-                  Shop
+                  Sign In
                 </Link>
               )}
 
               {/* Mobile Menu Toggle */}
               <button
-                className="md:hidden p-2.5 rounded-full text-[#6b5c4c] hover:bg-[#f5f0e8] transition-colors duration-300"
+                className={cn(
+                  'md:hidden p-2.5 rounded-full transition-colors duration-300',
+                  useDarkTheme
+                    ? 'text-white/70 hover:bg-white/10'
+                    : 'text-brand-brown-light hover:bg-brand-cream'
+                )}
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                 aria-label="Toggle menu"
               >
@@ -175,8 +219,8 @@ export function PublicHeader() {
                           className={cn(
                             'px-4 py-3 rounded-xl text-base transition-colors',
                             isActive
-                              ? 'bg-[#f5f0e8] text-[#8b7355] font-medium'
-                              : 'text-[#6b5c4c] hover:bg-[#f5f0e8]'
+                              ? 'bg-brand-cream text-brand-brown font-medium'
+                              : 'text-brand-brown-light hover:bg-brand-cream'
                           )}
                         >
                           {item.name}
@@ -184,18 +228,18 @@ export function PublicHeader() {
                       );
                     })}
                   </div>
-                  <div className="mt-4 pt-4 border-t border-[#f5f0e8]">
+                  <div className="mt-4 pt-4 border-t border-brand-cream">
                     {!isAuthenticated ? (
                       <Link
                         href="/login"
-                        className="block w-full px-4 py-3 bg-[#3d2e1f] text-white rounded-xl text-center font-medium"
+                        className="block w-full px-4 py-3 bg-brand-charcoal text-white rounded-xl text-center font-medium"
                       >
                         Sign In
                       </Link>
                     ) : (
                       <Link
                         href="/account"
-                        className="flex items-center gap-3 px-4 py-3 text-[#6b5c4c] hover:bg-[#f5f0e8] rounded-xl"
+                        className="flex items-center gap-3 px-4 py-3 text-brand-brown-light hover:bg-brand-cream rounded-xl"
                       >
                         <User className="w-5 h-5" />
                         <span>My Account</span>

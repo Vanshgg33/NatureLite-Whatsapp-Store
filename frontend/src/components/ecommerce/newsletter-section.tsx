@@ -2,7 +2,9 @@
 
 import { useRef, useState } from 'react';
 import { motion, useInView, AnimatePresence } from 'framer-motion';
-import { Mail, ArrowRight, Check, Leaf, Sparkles } from 'lucide-react';
+import { Mail, ArrowRight, Check, Leaf, Sparkles, Gift } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 
 interface NewsletterSectionProps {
   title?: string;
@@ -14,10 +16,10 @@ interface NewsletterSectionProps {
 }
 
 export function NewsletterSection({
-  title = "Join Our Community",
-  subtitle = "Subscribe for exclusive offers, organic recipes, and wellness tips delivered to your inbox.",
+  title = "Get 10% Off Your First Order",
+  subtitle = "Plus exclusive organic recipes & wellness tips delivered weekly. No spam, ever.",
   placeholder = "Enter your email",
-  buttonText = "Subscribe",
+  buttonText = "Claim My 10% Off",
   variant = 'default',
   onSubmit,
 }: NewsletterSectionProps) {
@@ -66,7 +68,7 @@ export function NewsletterSection({
           >
             <div className="flex-1 relative">
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-brand-muted" />
-              <input
+              <Input
                 type="email"
                 value={email}
                 onChange={(e) => {
@@ -74,14 +76,15 @@ export function NewsletterSection({
                   setStatus('idle');
                 }}
                 placeholder={placeholder}
-                className="w-full pl-12 pr-4 py-3 rounded-full border border-brand-border bg-white focus:outline-none focus:border-brand-charcoal transition-colors"
+                className="w-full pl-12 pr-4 py-3 rounded-full border-brand-border"
                 disabled={status === 'loading' || status === 'success'}
               />
             </div>
-            <button
+            <Button
               type="submit"
               disabled={status === 'loading' || status === 'success'}
-              className="px-6 py-3 bg-brand-charcoal text-white rounded-full font-medium hover:bg-brand-green transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              variant="brand-dark"
+              className="px-6 py-3 hover:bg-brand-green"
             >
               {status === 'loading' ? (
                 <motion.div
@@ -97,7 +100,7 @@ export function NewsletterSection({
               ) : (
                 buttonText
               )}
-            </button>
+            </Button>
           </motion.form>
         </div>
       </section>
@@ -152,7 +155,7 @@ export function NewsletterSection({
 
             <form onSubmit={handleSubmit} className="max-w-md mx-auto">
               <div className="relative">
-                <input
+                <Input
                   type="email"
                   value={email}
                   onChange={(e) => {
@@ -160,13 +163,13 @@ export function NewsletterSection({
                     setStatus('idle');
                   }}
                   placeholder={placeholder}
-                  className="w-full px-6 py-4 pr-36 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-white placeholder:text-white/50 focus:outline-none focus:border-brand-mustard transition-colors"
+                  className="w-full px-6 py-4 pr-36 rounded-full bg-white/10 backdrop-blur-sm border-white/20 text-white placeholder:text-white/50 focus:border-brand-mustard"
                   disabled={status === 'loading' || status === 'success'}
                 />
-                <button
+                <Button
                   type="submit"
                   disabled={status === 'loading' || status === 'success'}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 px-6 py-2.5 bg-brand-mustard text-brand-charcoal rounded-full font-medium hover:bg-white transition-colors disabled:opacity-50 flex items-center gap-2"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 px-6 py-2.5 bg-brand-mustard text-brand-charcoal rounded-full font-medium hover:bg-white"
                 >
                   {status === 'loading' ? (
                     <motion.div
@@ -182,7 +185,7 @@ export function NewsletterSection({
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
-                </button>
+                </Button>
               </div>
 
               <AnimatePresence>
@@ -198,7 +201,7 @@ export function NewsletterSection({
                 )}
                 {status === 'error' && (
                   <motion.p
-                    className="text-red-400 mt-4"
+                    className="text-brand-error mt-4"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
@@ -256,10 +259,10 @@ export function NewsletterSection({
             {/* Benefits */}
             <div className="space-y-4">
               {[
-                'Exclusive member-only discounts',
+                'Instant 10% discount code on sign-up',
                 'Early access to new products',
                 'Seasonal organic recipes',
-                'Health & wellness tips',
+                'Health & wellness tips from experts',
               ].map((benefit, index) => (
                 <motion.div
                   key={index}
@@ -285,11 +288,11 @@ export function NewsletterSection({
             transition={{ duration: 0.6, delay: 0.2 }}
           >
             <div className="text-center mb-8">
-              <div className="w-16 h-16 rounded-full bg-brand-cream flex items-center justify-center mx-auto mb-4">
-                <Mail className="w-7 h-7 text-brand-charcoal" />
+              <div className="w-16 h-16 rounded-full bg-brand-mustard/10 flex items-center justify-center mx-auto mb-4">
+                <Gift className="w-7 h-7 text-brand-mustard" />
               </div>
               <h3 className="font-display text-xl font-semibold text-brand-charcoal">
-                Subscribe to Our Newsletter
+                Your 10% Welcome Gift Awaits
               </h3>
             </div>
 
@@ -301,7 +304,7 @@ export function NewsletterSection({
                 >
                   Email Address
                 </label>
-                <input
+                <Input
                   id="newsletter-email"
                   type="email"
                   value={email}
@@ -310,7 +313,7 @@ export function NewsletterSection({
                     setStatus('idle');
                   }}
                   placeholder={placeholder}
-                  className="w-full px-5 py-4 rounded-2xl border border-brand-border bg-brand-cream/50 focus:outline-none focus:border-brand-charcoal focus:bg-white transition-all"
+                  className="w-full px-5 py-4 rounded-2xl border-brand-border bg-brand-cream/50 focus:border-brand-charcoal focus:bg-white"
                   disabled={status === 'loading' || status === 'success'}
                 />
               </div>
@@ -344,7 +347,7 @@ export function NewsletterSection({
               <AnimatePresence>
                 {status === 'error' && (
                   <motion.p
-                    className="text-red-500 text-sm text-center"
+                    className="text-brand-error text-sm text-center"
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}

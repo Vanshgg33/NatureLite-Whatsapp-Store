@@ -1,11 +1,13 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { InjectModel, InjectConnection } from '@nestjs/mongoose';
+import { Model, Types, Connection } from 'mongoose';
 import { Order, OrderDocument, OrderItem, TimelineEntry, OrderStatus } from './schemas/order.schema';
 import { CartService } from '../cart/cart.service';
 import { ProductsService } from '../products/products.service';
 import { UsersService } from '../users/users.service';
 import { CouponsService } from '../coupons/coupons.service';
+import { EmailService } from '../email/email.service';
+import { SettingsService } from '../settings/settings.service';
 import {
   CreateOrderDto,
   UpdateOrderStatusDto,
@@ -20,134 +22,176 @@ import { PaginatedResult, paginate } from '@/common/types/pagination.types';
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     @InjectModel(Order.name) private orderModel: Model<OrderDocument>,
+    @InjectConnection() private connection: Connection,
     private cartService: CartService,
     private productsService: ProductsService,
     private usersService: UsersService,
     private couponsService: CouponsService,
+    private emailService: EmailService,
+    private settingsService: SettingsService,
   ) {}
 
   async create(userId: string, dto: CreateOrderDto): Promise<Order> {
-    let orderItems: OrderItem[] = [];
-    let subtotal = 0;
+    // Use transaction for atomic order creation
+    const session = await this.connection.startSession();
+    session.startTransaction();
 
-    if (dto.cartId) {
-      const cart = await this.cartService.getCart(userId);
+    try {
+      let orderItems: OrderItem[] = [];
+      let subtotal = 0;
 
-      if (cart.items.length === 0) {
-        throw new BadRequestException('Cart is empty');
-      }
+      if (dto.cartId) {
+        const cart = await this.cartService.getCart(userId);
 
-      for (const item of cart.items) {
-        const product = await this.productsService.findById(item.product.id);
-
-        const orderItem: OrderItem = {
-          product: new Types.ObjectId(item.product.id),
-          name: product.name,
-          variantSku: item.variantSku,
-          quantity: item.quantity,
-          price: item.price,
-          total: item.price * item.quantity,
-          image: product.images[0],
-          gstAmount: (item.price * item.quantity * product.gstPercentage) / 100,
-        };
-
-        orderItems.push(orderItem);
-        subtotal += orderItem.total;
-      }
-    } else if (dto.items && dto.items.length > 0) {
-      for (const item of dto.items) {
-        const product = await this.productsService.findById(item.productId);
-        let price = product.price;
-
-        if (item.variantSku) {
-          const variant = product.variants.find((v) => v.sku === item.variantSku);
-          if (variant) {
-            price = variant.price;
-          }
+        if (cart.items.length === 0) {
+          throw new BadRequestException('Cart is empty');
         }
 
-        const orderItem: OrderItem = {
-          product: new Types.ObjectId(item.productId),
-          name: product.name,
-          variantSku: item.variantSku,
-          variantName: item.variantSku
-            ? product.variants.find((v) => v.sku === item.variantSku)?.name
-            : undefined,
-          quantity: item.quantity,
-          price,
-          total: price * item.quantity,
-          image: product.images[0],
-          gstAmount: (price * item.quantity * product.gstPercentage) / 100,
-        };
+        for (const item of cart.items) {
+          const product = await this.productsService.findById(item.product.id);
 
-        orderItems.push(orderItem);
-        subtotal += orderItem.total;
+          const orderItem: OrderItem = {
+            product: new Types.ObjectId(item.product.id),
+            name: product.name,
+            variantSku: item.variantSku,
+            quantity: item.quantity,
+            price: item.price,
+            total: item.price * item.quantity,
+            image: product.images[0],
+            gstAmount: (item.price * item.quantity * product.gstPercentage) / 100,
+          };
+
+          orderItems.push(orderItem);
+          subtotal += orderItem.total;
+        }
+      } else if (dto.items && dto.items.length > 0) {
+        for (const item of dto.items) {
+          const product = await this.productsService.findById(item.productId);
+          let price = product.price;
+
+          if (item.variantSku) {
+            const variant = product.variants.find((v) => v.sku === item.variantSku);
+            if (variant) {
+              price = variant.price;
+            }
+          }
+
+          const orderItem: OrderItem = {
+            product: new Types.ObjectId(item.productId),
+            name: product.name,
+            variantSku: item.variantSku,
+            variantName: item.variantSku
+              ? product.variants.find((v) => v.sku === item.variantSku)?.name
+              : undefined,
+            quantity: item.quantity,
+            price,
+            total: price * item.quantity,
+            image: product.images[0],
+            gstAmount: (price * item.quantity * product.gstPercentage) / 100,
+          };
+
+          orderItems.push(orderItem);
+          subtotal += orderItem.total;
+        }
+      } else {
+        throw new BadRequestException('Either cartId or items must be provided');
       }
-    } else {
-      throw new BadRequestException('Either cartId or items must be provided');
-    }
 
-    let discount = 0;
-    if (dto.couponCode) {
-      const validation = await this.couponsService.validateCoupon({
-        code: dto.couponCode,
-        orderAmount: subtotal,
-        userId,
+      let discount = 0;
+      if (dto.couponCode) {
+        const validation = await this.couponsService.validateCoupon({
+          code: dto.couponCode,
+          orderAmount: subtotal,
+          userId,
+        });
+
+        if (validation.valid) {
+          discount = validation.discountAmount;
+          await this.couponsService.incrementUsageCount(dto.couponCode);
+        }
+      }
+
+      // Get shipping settings instead of hard-coded values
+      let freeShippingThreshold = 500;
+      let defaultShippingCharge = 50;
+      try {
+        const checkoutSettings = await this.settingsService.get('checkout');
+        if (checkoutSettings?.value) {
+          freeShippingThreshold = (checkoutSettings.value as any).freeShippingThreshold || 500;
+          defaultShippingCharge = (checkoutSettings.value as any).defaultShippingCharge || 50;
+        }
+      } catch {
+        // Use defaults if settings unavailable
+      }
+
+      const gstTotal = orderItems.reduce((sum, item) => sum + item.gstAmount, 0);
+      const shippingCharge = subtotal >= freeShippingThreshold ? 0 : defaultShippingCharge;
+      const total = subtotal - discount + shippingCharge;
+
+      const orderNumber = await this.generateOrderNumber();
+
+      const order = new this.orderModel({
+        orderNumber,
+        user: new Types.ObjectId(userId),
+        items: orderItems,
+        shippingAddress: dto.shippingAddress,
+        paymentMethod: dto.paymentMethod,
+        subtotal,
+        discount,
+        couponCode: dto.couponCode,
+        shippingCharge,
+        gstTotal,
+        total,
+        notes: dto.notes,
+        timeline: [
+          {
+            status: 'pending',
+            message: 'Order placed successfully',
+            timestamp: new Date(),
+          },
+        ],
       });
 
-      if (validation.valid) {
-        discount = validation.discountAmount;
-        await this.couponsService.incrementUsageCount(dto.couponCode);
+      const savedOrder = await order.save({ session });
+
+      // Decrement stock atomically
+      for (const item of orderItems) {
+        await this.productsService.decrementStock(
+          item.product.toString(),
+          item.quantity,
+          item.variantSku,
+        );
       }
+
+      if (dto.cartId) {
+        await this.cartService.clearCart(userId);
+      }
+
+      await this.usersService.updateOrderStats(userId, total);
+
+      await session.commitTransaction();
+
+      // Send order confirmation email (non-blocking, after transaction)
+      try {
+        const user = await this.usersService.findById(userId);
+        if (user?.email) {
+          this.emailService.sendOrderConfirmation(savedOrder.toObject(), user.email);
+        }
+      } catch (emailError) {
+        this.logger.warn(`Failed to send order confirmation email: ${emailError.message}`);
+      }
+
+      return savedOrder;
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
     }
-
-    const gstTotal = orderItems.reduce((sum, item) => sum + item.gstAmount, 0);
-    const shippingCharge = subtotal >= 500 ? 0 : 50;
-    const total = subtotal - discount + shippingCharge;
-
-    const orderNumber = await this.generateOrderNumber();
-
-    const order = new this.orderModel({
-      orderNumber,
-      user: new Types.ObjectId(userId),
-      items: orderItems,
-      shippingAddress: dto.shippingAddress,
-      paymentMethod: dto.paymentMethod,
-      subtotal,
-      discount,
-      couponCode: dto.couponCode,
-      shippingCharge,
-      gstTotal,
-      total,
-      notes: dto.notes,
-      timeline: [
-        {
-          status: 'pending',
-          message: 'Order placed successfully',
-          timestamp: new Date(),
-        },
-      ],
-    });
-
-    const savedOrder = await order.save();
-
-    for (const item of orderItems) {
-      await this.productsService.decrementStock(
-        item.product.toString(),
-        item.quantity,
-        item.variantSku,
-      );
-    }
-
-    if (dto.cartId) {
-      await this.cartService.clearCart(userId);
-    }
-
-    await this.usersService.updateOrderStats(userId, total);
-
-    return savedOrder;
   }
 
   async findAll(query: OrderQueryDto): Promise<PaginatedResult<Order>> {
@@ -268,7 +312,24 @@ export class OrdersService {
       order.deliveredAt = new Date();
     }
 
-    return order.save();
+    const savedOrder = await order.save();
+
+    // Send email notifications based on status change (non-blocking)
+    try {
+      const user = await this.usersService.findById(order.user.toString());
+      if (user?.email) {
+        const orderObj = savedOrder.toObject();
+        if (dto.status === 'shipped') {
+          this.emailService.sendShippingUpdate(orderObj, user.email);
+        } else if (dto.status === 'delivered') {
+          this.emailService.sendDeliveryConfirmation(orderObj, user.email);
+        }
+      }
+    } catch (emailError) {
+      this.logger.warn(`Failed to send status update email: ${emailError.message}`);
+    }
+
+    return savedOrder;
   }
 
   async updatePaymentStatus(id: string, dto: UpdatePaymentStatusDto): Promise<Order> {
@@ -315,7 +376,19 @@ export class OrdersService {
 
     order.timeline.push(timelineEntry);
 
-    return order.save();
+    const savedOrder = await order.save();
+
+    // Send cancellation email (non-blocking)
+    try {
+      const user = await this.usersService.findById(order.user.toString());
+      if (user?.email) {
+        this.emailService.sendOrderCancelled(savedOrder.toObject(), user.email);
+      }
+    } catch (emailError) {
+      this.logger.warn(`Failed to send cancellation email: ${emailError.message}`);
+    }
+
+    return savedOrder;
   }
 
   async addNote(id: string, dto: AddOrderNoteDto): Promise<Order> {

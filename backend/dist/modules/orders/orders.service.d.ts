@@ -1,18 +1,24 @@
-import { Model } from 'mongoose';
+import { Model, Connection } from 'mongoose';
 import { Order, OrderDocument, OrderStatus } from './schemas/order.schema';
 import { CartService } from '../cart/cart.service';
 import { ProductsService } from '../products/products.service';
 import { UsersService } from '../users/users.service';
 import { CouponsService } from '../coupons/coupons.service';
+import { EmailService } from '../email/email.service';
+import { SettingsService } from '../settings/settings.service';
 import { CreateOrderDto, UpdateOrderStatusDto, UpdatePaymentStatusDto, CancelOrderDto, AddOrderNoteDto, UpdateShippingDto, OrderQueryDto, ReorderDto } from './dto/order.dto';
 import { PaginatedResult } from '@/common/types/pagination.types';
 export declare class OrdersService {
     private orderModel;
+    private connection;
     private cartService;
     private productsService;
     private usersService;
     private couponsService;
-    constructor(orderModel: Model<OrderDocument>, cartService: CartService, productsService: ProductsService, usersService: UsersService, couponsService: CouponsService);
+    private emailService;
+    private settingsService;
+    private readonly logger;
+    constructor(orderModel: Model<OrderDocument>, connection: Connection, cartService: CartService, productsService: ProductsService, usersService: UsersService, couponsService: CouponsService, emailService: EmailService, settingsService: SettingsService);
     create(userId: string, dto: CreateOrderDto): Promise<Order>;
     findAll(query: OrderQueryDto): Promise<PaginatedResult<Order>>;
     findById(id: string): Promise<Order>;

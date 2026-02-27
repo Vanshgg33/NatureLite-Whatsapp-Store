@@ -62,6 +62,14 @@ __decorate([
     (0, mongoose_1.Prop)({ type: Object, default: {} }),
     __metadata("design:type", Object)
 ], AdminUser.prototype, "metadata", void 0);
+__decorate([
+    (0, mongoose_1.Prop)({ default: 0 }),
+    __metadata("design:type", Number)
+], AdminUser.prototype, "failedLoginAttempts", void 0);
+__decorate([
+    (0, mongoose_1.Prop)(),
+    __metadata("design:type", Date)
+], AdminUser.prototype, "lockoutUntil", void 0);
 exports.AdminUser = AdminUser = __decorate([
     (0, mongoose_1.Schema)({ timestamps: true })
 ], AdminUser);

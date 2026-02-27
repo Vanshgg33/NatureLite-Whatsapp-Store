@@ -24,7 +24,7 @@ export class SettingsService implements OnModuleInit {
           category,
           value: values,
           description: `${category} settings`,
-          isPublic: category === 'store',
+          isPublic: ['store', 'appearance', 'banners'].includes(category),
         });
         await settings.save();
       }

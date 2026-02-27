@@ -7,6 +7,7 @@ import { CartModule } from '../cart/cart.module';
 import { ProductsModule } from '../products/products.module';
 import { UsersModule } from '../users/users.module';
 import { CouponsModule } from '../coupons/coupons.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { CouponsModule } from '../coupons/coupons.module';
     ProductsModule,
     UsersModule,
     CouponsModule,
+    SettingsModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

@@ -24,11 +24,8 @@ export function Header({ title, description, action }: HeaderProps) {
           <Input type="search" placeholder="Search..." className="w-64 pl-9" />
         </div>
 
-        <Button variant="ghost" size="icon" className="relative">
+        <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
           <Bell className="h-5 w-5" />
-          <span className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-red-500 text-[10px] font-medium text-white flex items-center justify-center">
-            3
-          </span>
         </Button>
 
         {action}

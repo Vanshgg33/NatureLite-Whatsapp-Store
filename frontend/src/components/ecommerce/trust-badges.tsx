@@ -226,7 +226,7 @@ export function TrustBadges({
 
   // Default variant
   return (
-    <section ref={sectionRef} className="py-16 lg:py-24 bg-white">
+    <section ref={sectionRef} className="py-20 lg:py-28 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {title && (
           <motion.h2

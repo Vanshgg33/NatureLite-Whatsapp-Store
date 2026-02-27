@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ChatbotService } from './chatbot.service';
 import { ChatbotController } from './chatbot.controller';
 import { ChatSession, ChatSessionSchema } from './schemas/chat-session.schema';
@@ -12,6 +13,7 @@ import { OrdersModule } from '../orders/orders.module';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     MongooseModule.forFeature([{ name: ChatSession.name, schema: ChatSessionSchema }]),
     forwardRef(() => WhatsAppModule),
     UsersModule,

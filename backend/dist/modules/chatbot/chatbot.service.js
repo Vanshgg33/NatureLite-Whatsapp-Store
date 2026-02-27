@@ -16,6 +16,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ChatbotService = void 0;
 const common_1 = require("@nestjs/common");
 const mongoose_1 = require("@nestjs/mongoose");
+const schedule_1 = require("@nestjs/schedule");
 const mongoose_2 = require("mongoose");
 const chat_session_schema_1 = require("./schemas/chat-session.schema");
 const whatsapp_service_1 = require("../whatsapp/whatsapp.service");
@@ -693,8 +694,26 @@ let ChatbotService = ChatbotService_1 = class ChatbotService {
             },
         });
     }
+    async cleanupExpiredSessions() {
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const result = await this.chatSessionModel.updateMany({
+            isExpired: { $ne: true },
+            lastMessageAt: { $lt: twentyFourHoursAgo },
+        }, {
+            $set: { isExpired: true },
+        });
+        if (result.modifiedCount > 0) {
+            this.logger.log(`Expired ${result.modifiedCount} chat sessions`);
+        }
+    }
 };
 exports.ChatbotService = ChatbotService;
+__decorate([
+    (0, schedule_1.Cron)(schedule_1.CronExpression.EVERY_HOUR),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], ChatbotService.prototype, "cleanupExpiredSessions", null);
 exports.ChatbotService = ChatbotService = ChatbotService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, mongoose_1.InjectModel)(chat_session_schema_1.ChatSession.name)),

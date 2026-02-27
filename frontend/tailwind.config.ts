@@ -74,7 +74,10 @@ const config: Config = {
             DEFAULT: 'hsl(var(--brand-sand))',
             dark: 'hsl(var(--brand-sand-dark))',
           },
-          charcoal: 'hsl(var(--brand-charcoal))',
+          charcoal: {
+            DEFAULT: 'hsl(var(--brand-charcoal))',
+            dark: 'hsl(var(--brand-charcoal-dark))',
+          },
           text: 'hsl(var(--brand-text))',
           muted: {
             DEFAULT: 'hsl(var(--brand-muted))',
@@ -218,6 +221,22 @@ const config: Config = {
           from: { transform: 'rotate(0deg)' },
           to: { transform: 'rotate(360deg)' },
         },
+        'bounce-attention': {
+          '0%, 100%': { transform: 'scale(1)' },
+          '50%': { transform: 'scale(1.05)' },
+        },
+        'confetti-fall': {
+          '0%': { transform: 'translateY(0) rotate(0deg)', opacity: '1' },
+          '100%': { transform: 'translateY(100px) rotate(720deg)', opacity: '0' },
+        },
+        'slide-in-bottom': {
+          from: { opacity: '0', transform: 'translateY(20px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
+        'slide-out-bottom': {
+          from: { opacity: '1', transform: 'translateY(0)' },
+          to: { opacity: '0', transform: 'translateY(20px)' },
+        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
@@ -233,6 +252,10 @@ const config: Config = {
         'pulse-soft': 'pulse-soft 3s ease-in-out infinite',
         'shimmer': 'shimmer 2s linear infinite',
         'spin-slow': 'spin-slow 8s linear infinite',
+        'bounce-attention': 'bounce-attention 2s ease-in-out infinite',
+        'confetti-fall': 'confetti-fall 1s ease-out forwards',
+        'slide-in-bottom': 'slide-in-bottom 0.4s var(--ease-smooth) forwards',
+        'slide-out-bottom': 'slide-out-bottom 0.3s var(--ease-smooth) forwards',
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',

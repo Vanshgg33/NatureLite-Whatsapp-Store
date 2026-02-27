@@ -13,6 +13,10 @@ import {
   LogOut,
   FolderTree,
   Store,
+  MessageCircle,
+  Megaphone,
+  MessageSquare,
+  Palette,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAdminAuthStore } from '@/lib/admin-store';
@@ -26,7 +30,11 @@ const navigation = [
   { name: 'Orders', href: '/admin/orders', icon: ShoppingCart },
   { name: 'Customers', href: '/admin/customers', icon: Users },
   { name: 'Coupons', href: '/admin/coupons', icon: Tag },
+  { name: 'WhatsApp', href: '/admin/whatsapp', icon: MessageCircle },
+  { name: 'Campaigns', href: '/admin/campaigns', icon: Megaphone },
+  { name: 'Feedback', href: '/admin/feedback', icon: MessageSquare },
   { name: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
+  { name: 'Appearance', href: '/admin/appearance', icon: Palette },
   { name: 'Settings', href: '/admin/settings', icon: Settings },
 ];
 

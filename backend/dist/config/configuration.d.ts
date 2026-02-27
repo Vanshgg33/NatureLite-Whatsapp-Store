@@ -32,6 +32,19 @@ export interface ThrottleConfig {
     ttl: number;
     limit: number;
 }
+export interface RazorpayConfig {
+    keyId: string;
+    keySecret: string;
+    webhookSecret: string;
+}
+export interface SmtpConfig {
+    host: string;
+    port: number;
+    secure: boolean;
+    user: string;
+    pass: string;
+    from: string;
+}
 export interface Configuration {
     app: AppConfig;
     database: DatabaseConfig;
@@ -40,6 +53,8 @@ export interface Configuration {
     cloudinary: CloudinaryConfig;
     shiprocket: ShiprocketConfig;
     throttle: ThrottleConfig;
+    razorpay: RazorpayConfig;
+    smtp: SmtpConfig;
     frontendUrl: string;
 }
 declare const _default: () => Configuration;

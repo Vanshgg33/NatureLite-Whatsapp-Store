@@ -15,6 +15,8 @@ export declare class AdminUser {
     avatar?: string;
     preferences: Record<string, unknown>;
     metadata: Record<string, unknown>;
+    failedLoginAttempts: number;
+    lockoutUntil?: Date;
     createdAt: Date;
     updatedAt: Date;
 }

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Ban, CheckCircle, Eye } from 'lucide-react';
+import { Search, Ban, CheckCircle, Eye, Users } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -76,6 +76,16 @@ export default function CustomersPage() {
               <div className="flex items-center justify-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               </div>
+            ) : data?.items.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="rounded-full bg-muted/50 p-4 mb-4">
+                  <Users className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-sm font-medium">No customers found</h3>
+                <p className="text-sm text-muted-foreground max-w-sm">
+                  {search ? 'Try a different search term.' : 'Customers will appear here once they register.'}
+                </p>
+              </div>
             ) : (
               <>
                 <Table>
@@ -128,6 +138,7 @@ export default function CustomersPage() {
                               size="icon"
                               onClick={() => router.push(`/customers/${user._id}`)}
                               title="View Details"
+                              aria-label="View details"
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
@@ -137,6 +148,7 @@ export default function CustomersPage() {
                                 size="icon"
                                 onClick={() => handleUnblock(user)}
                                 title="Unblock"
+                                aria-label="Unblock user"
                               >
                                 <CheckCircle className="h-4 w-4 text-green-500" />
                               </Button>
@@ -146,6 +158,7 @@ export default function CustomersPage() {
                                 size="icon"
                                 onClick={() => handleBlock(user)}
                                 title="Block"
+                                aria-label="Block user"
                               >
                                 <Ban className="h-4 w-4 text-red-500" />
                               </Button>

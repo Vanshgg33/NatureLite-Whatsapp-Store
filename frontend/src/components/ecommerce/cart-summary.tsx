@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Tag, Truck, ShieldCheck, ArrowRight, X } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Tag, Truck, ShieldCheck, ArrowRight, X, PartyPopper } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCartStore } from '@/lib/cart-store';
@@ -48,9 +49,20 @@ export function CartSummary({
   const discountAmount = getDiscountAmount();
   const total = getTotal();
 
-  // Free shipping threshold
-  const freeShippingThreshold = 999;
-  const shippingCost = subtotal >= freeShippingThreshold ? 0 : 50;
+  const [shippingSettings, setShippingSettings] = useState({ freeShippingThreshold: 999, defaultShippingCharge: 50 });
+  useEffect(() => {
+    api.getPublicSettings().then((settings: any) => {
+      if (settings?.store) {
+        setShippingSettings({
+          freeShippingThreshold: settings.store.freeShippingThreshold ?? 999,
+          defaultShippingCharge: settings.store.defaultShippingCharge ?? 50,
+        });
+      }
+    }).catch(() => {});
+  }, []);
+
+  const freeShippingThreshold = shippingSettings.freeShippingThreshold;
+  const shippingCost = subtotal >= freeShippingThreshold ? 0 : shippingSettings.defaultShippingCharge;
   const amountToFreeShipping = freeShippingThreshold - subtotal;
 
   const handleApplyCoupon = async () => {
@@ -164,24 +176,43 @@ export function CartSummary({
       )}
 
       {/* Free Shipping Progress */}
-      {amountToFreeShipping > 0 && (
+      {amountToFreeShipping > 0 ? (
         <div className="mb-6 p-4 bg-brand-sand rounded-xl">
           <div className="flex items-center gap-2 mb-2">
-            <Truck className="w-4 h-4 text-brand-mustard" />
+            <Truck className="w-4 h-4 text-brand-green" />
             <span className="font-body text-sm text-brand-text">
-              Add {formatPrice(amountToFreeShipping)} more for free shipping!
+              Add <span className="font-semibold text-brand-green">{formatPrice(amountToFreeShipping)}</span> more for FREE shipping!
             </span>
           </div>
-          <div className="h-2 bg-brand-cream rounded-full overflow-hidden">
-            <div
-              className="h-full bg-brand-mustard rounded-full transition-all duration-500"
-              style={{
+          <div className="relative h-2.5 bg-brand-cream rounded-full overflow-hidden">
+            <motion.div
+              className="h-full bg-brand-green rounded-full"
+              initial={{ width: 0 }}
+              animate={{
                 width: `${Math.min((subtotal / freeShippingThreshold) * 100, 100)}%`,
               }}
+              transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
             />
           </div>
+          <p className="font-body text-xs text-brand-muted mt-1.5 text-right">
+            {Math.round((subtotal / freeShippingThreshold) * 100)}% there
+          </p>
         </div>
-      )}
+      ) : subtotal > 0 ? (
+        <motion.div
+          className="mb-6 p-4 bg-brand-green/10 rounded-xl border border-brand-green/20"
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+        >
+          <div className="flex items-center gap-2">
+            <PartyPopper className="w-5 h-5 text-brand-green" />
+            <span className="font-body text-sm font-semibold text-brand-green">
+              You&apos;ve unlocked FREE shipping!
+            </span>
+          </div>
+        </motion.div>
+      ) : null}
 
       {/* Price Breakdown */}
       <div className="space-y-3 mb-6">

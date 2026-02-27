@@ -60,4 +60,20 @@ export declare const DEFAULT_SETTINGS: {
         autoReplyOutsideHours: boolean;
         outsideHoursMessage: string;
     };
+    appearance: {
+        activeTheme: string;
+        logoUrl: string;
+        logoPublicId: string;
+    };
+    banners: {
+        heroBanners: any[];
+        announcementBar: {
+            enabled: boolean;
+            text: string;
+            linkText: string;
+            linkUrl: string;
+            backgroundColor: string;
+            textColor: string;
+        };
+    };
 };

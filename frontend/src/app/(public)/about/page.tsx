@@ -1,5 +1,4 @@
 import { Metadata } from 'next';
-import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowRight, Leaf, Heart, Users, Award } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,7 +8,7 @@ import { TimelineSection } from '@/components/story/timeline-section';
 export const metadata: Metadata = {
   title: 'Our Story',
   description:
-    'Learn about Purity Foods - our mission to bring traditional, pure food products to your kitchen.',
+    'Learn about Naturelite - our mission to bring traditional, pure food products to your kitchen.',
 };
 
 const values = [
@@ -55,7 +54,7 @@ export default function AboutPage() {
                 Bringing Tradition Back to Your Kitchen
               </h1>
               <p className="font-body text-xl text-brand-muted leading-relaxed">
-                We started Purity Foods with a simple belief: food should be as pure as
+                We started Naturelite with a simple belief: food should be as pure as
                 nature intended. No shortcuts, no compromises, just authentic taste.
               </p>
             </div>
@@ -68,9 +67,32 @@ export default function AboutPage() {
         <div className="brand-container">
           <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
             <FadeUp>
-              <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-brand-sand">
+              <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-gradient-to-br from-brand-sand via-brand-cream to-brand-sand">
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="font-display text-9xl text-brand-brown/10">P</span>
+                  <div className="text-center">
+                    <div className="flex items-center justify-center gap-6 mb-6">
+                      <div className="w-20 h-20 rounded-2xl bg-brand-green/10 flex items-center justify-center">
+                        <Leaf className="w-10 h-10 text-brand-green" />
+                      </div>
+                      <div className="w-20 h-20 rounded-2xl bg-brand-mustard/10 flex items-center justify-center">
+                        <Heart className="w-10 h-10 text-brand-mustard" />
+                      </div>
+                    </div>
+                    <h3 className="font-display text-3xl font-bold text-brand-charcoal mb-2">
+                      Naturelite
+                    </h3>
+                    <p className="font-body text-brand-muted text-lg">
+                      Pure by Nature, Crafted with Care
+                    </p>
+                    <div className="flex items-center justify-center gap-4 mt-6">
+                      <div className="px-4 py-2 bg-white/80 rounded-full shadow-sm">
+                        <span className="font-body text-sm text-brand-green font-medium">100% Organic</span>
+                      </div>
+                      <div className="px-4 py-2 bg-white/80 rounded-full shadow-sm">
+                        <span className="font-body text-sm text-brand-brown font-medium">Since 2020</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </FadeUp>
@@ -92,7 +114,7 @@ export default function AboutPage() {
                     from curd, not cream, just as it was done for centuries.
                   </p>
                   <p>
-                    When you choose Purity Foods, you&apos;re not just buying a product.
+                    When you choose Naturelite, you&apos;re not just buying a product.
                     You&apos;re supporting sustainable farming, preserving traditional
                     knowledge, and bringing genuine purity to your family&apos;s meals.
                   </p>

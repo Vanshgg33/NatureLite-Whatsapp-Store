@@ -168,7 +168,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen pt-20 bg-[#f5f0e8] flex items-center justify-center py-12 px-4">
+    <div className="min-h-screen pt-20 bg-brand-cream flex items-center justify-center py-12 px-4">
       <motion.div
         className="w-full max-w-md"
         initial={{ opacity: 0, y: 20 }}
@@ -179,20 +179,20 @@ export default function LoginPage() {
           {/* Header */}
           <div className="text-center mb-8">
             <Link href="/" className="inline-flex items-center gap-2 mb-6">
-              <div className="w-12 h-12 rounded-full bg-[#d4a574] flex items-center justify-center">
+              <div className="w-12 h-12 rounded-full bg-brand-mustard flex items-center justify-center">
                 <Leaf className="w-6 h-6 text-white" />
               </div>
             </Link>
-            <h1 className="text-2xl font-serif font-bold text-[#3d2e1f]">
+            <h1 className="text-2xl font-serif font-bold text-brand-charcoal">
               Welcome Back
             </h1>
-            <p className="text-[#8b7355] mt-2">
+            <p className="text-brand-brown mt-2">
               Sign in to your account
             </p>
           </div>
 
           {/* Login Method Toggle */}
-          <div className="flex bg-[#f5f0e8] rounded-xl p-1 mb-6">
+          <div className="flex bg-brand-cream rounded-xl p-1 mb-6">
             <button
               type="button"
               onClick={() => {
@@ -201,8 +201,8 @@ export default function LoginPage() {
               }}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all ${
                 loginMethod === 'email'
-                  ? 'bg-white text-[#3d2e1f] shadow-sm'
-                  : 'text-[#8b7355] hover:text-[#3d2e1f]'
+                  ? 'bg-white text-brand-charcoal shadow-sm'
+                  : 'text-brand-brown hover:text-brand-charcoal'
               }`}
             >
               <Mail className="w-4 h-4" />
@@ -218,8 +218,8 @@ export default function LoginPage() {
               }}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all ${
                 loginMethod === 'phone'
-                  ? 'bg-white text-[#3d2e1f] shadow-sm'
-                  : 'text-[#8b7355] hover:text-[#3d2e1f]'
+                  ? 'bg-white text-brand-charcoal shadow-sm'
+                  : 'text-brand-brown hover:text-brand-charcoal'
               }`}
             >
               <Phone className="w-4 h-4" />
@@ -254,7 +254,7 @@ export default function LoginPage() {
                 className="space-y-4"
               >
                 <div>
-                  <label className="text-sm text-[#3d2e1f] mb-1.5 block font-medium">
+                  <label className="text-sm text-brand-charcoal mb-1.5 block font-medium">
                     Email
                   </label>
                   <Input
@@ -263,12 +263,12 @@ export default function LoginPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com"
                     required
-                    className="rounded-xl border-[#e8dfd3] focus:border-[#d4a574] focus:ring-[#d4a574]"
+                    className="rounded-xl border-brand-border focus:border-brand-mustard focus:ring-brand-mustard"
                   />
                 </div>
 
                 <div>
-                  <label className="text-sm text-[#3d2e1f] mb-1.5 block font-medium">
+                  <label className="text-sm text-brand-charcoal mb-1.5 block font-medium">
                     Password
                   </label>
                   <div className="relative">
@@ -278,12 +278,12 @@ export default function LoginPage() {
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter your password"
                       required
-                      className="rounded-xl pr-10 border-[#e8dfd3] focus:border-[#d4a574] focus:ring-[#d4a574]"
+                      className="rounded-xl pr-10 border-brand-border focus:border-brand-mustard focus:ring-brand-mustard"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8b7355] hover:text-[#3d2e1f]"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-brown hover:text-brand-charcoal"
                     >
                       {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                     </button>
@@ -294,18 +294,18 @@ export default function LoginPage() {
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
-                      className="w-4 h-4 rounded border-[#e8dfd3] text-[#d4a574] focus:ring-[#d4a574]"
+                      className="w-4 h-4 rounded border-brand-border text-brand-mustard focus:ring-brand-mustard"
                     />
-                    <span className="text-sm text-[#8b7355]">Remember me</span>
+                    <span className="text-sm text-brand-brown">Remember me</span>
                   </label>
-                  <Link href="/forgot-password" className="text-sm text-[#d4a574] hover:underline">
+                  <Link href="/forgot-password" className="text-sm text-brand-mustard hover:underline">
                     Forgot password?
                   </Link>
                 </div>
 
                 <Button
                   type="submit"
-                  className="w-full bg-[#3d2e1f] hover:bg-[#2a1f15] text-white rounded-xl py-6"
+                  className="w-full bg-brand-charcoal hover:bg-brand-charcoal-dark text-white rounded-xl py-6"
                   disabled={loading}
                 >
                   {loading ? 'Signing in...' : 'Sign In'}
@@ -322,11 +322,11 @@ export default function LoginPage() {
                 className="space-y-4"
               >
                 <div>
-                  <label className="text-sm text-[#3d2e1f] mb-1.5 block font-medium">
+                  <label className="text-sm text-brand-charcoal mb-1.5 block font-medium">
                     Phone Number
                   </label>
                   <div className="flex gap-2">
-                    <div className="flex items-center px-3 bg-[#f5f0e8] rounded-xl border border-[#e8dfd3] text-[#8b7355] text-sm">
+                    <div className="flex items-center px-3 bg-brand-cream rounded-xl border border-brand-border text-brand-brown text-sm">
                       +91
                     </div>
                     <Input
@@ -341,7 +341,7 @@ export default function LoginPage() {
                       required
                       maxLength={10}
                       disabled={otpSent}
-                      className="rounded-xl border-[#e8dfd3] focus:border-[#d4a574] focus:ring-[#d4a574]"
+                      className="rounded-xl border-brand-border focus:border-brand-mustard focus:ring-brand-mustard"
                     />
                   </div>
                 </div>
@@ -353,7 +353,7 @@ export default function LoginPage() {
                       animate={{ opacity: 1, height: 'auto' }}
                       exit={{ opacity: 0, height: 0 }}
                     >
-                      <label className="text-sm text-[#3d2e1f] mb-1.5 block font-medium">
+                      <label className="text-sm text-brand-charcoal mb-1.5 block font-medium">
                         Enter OTP
                       </label>
                       <div className="flex gap-2">
@@ -364,22 +364,22 @@ export default function LoginPage() {
                           placeholder="Enter 6-digit OTP"
                           required
                           maxLength={6}
-                          className="rounded-xl border-[#e8dfd3] focus:border-[#d4a574] focus:ring-[#d4a574] text-center tracking-widest text-lg"
+                          className="rounded-xl border-brand-border focus:border-brand-mustard focus:ring-brand-mustard text-center tracking-widest text-lg"
                         />
                       </div>
                       <div className="flex justify-between items-center mt-2">
-                        <span className="text-xs text-[#8b7355]">
+                        <span className="text-xs text-brand-brown">
                           Didn&apos;t receive OTP?
                         </span>
                         {otpTimer > 0 ? (
-                          <span className="text-xs text-[#8b7355]">
+                          <span className="text-xs text-brand-brown">
                             Resend in {otpTimer}s
                           </span>
                         ) : (
                           <button
                             type="button"
                             onClick={handleSendOtp}
-                            className="text-xs text-[#d4a574] hover:underline font-medium"
+                            className="text-xs text-brand-mustard hover:underline font-medium"
                           >
                             Resend OTP
                           </button>
@@ -391,7 +391,7 @@ export default function LoginPage() {
 
                 <Button
                   type="submit"
-                  className="w-full bg-[#3d2e1f] hover:bg-[#2a1f15] text-white rounded-xl py-6 flex items-center justify-center gap-2"
+                  className="w-full bg-brand-charcoal hover:bg-brand-charcoal-dark text-white rounded-xl py-6 flex items-center justify-center gap-2"
                   disabled={loading || (otpSent && otp.length < 4)}
                 >
                   {loading ? (
@@ -413,7 +413,7 @@ export default function LoginPage() {
                       setOtp('');
                       setError('');
                     }}
-                    className="w-full text-sm text-[#8b7355] hover:text-[#3d2e1f]"
+                    className="w-full text-sm text-brand-brown hover:text-brand-charcoal"
                   >
                     Change phone number
                   </button>
@@ -424,19 +424,19 @@ export default function LoginPage() {
 
           {/* Register Link */}
           <div className="mt-6 text-center">
-            <p className="text-sm text-[#8b7355]">
+            <p className="text-sm text-brand-brown">
               Don&apos;t have an account?{' '}
-              <Link href="/register" className="text-[#d4a574] hover:underline font-medium">
+              <Link href="/register" className="text-brand-mustard hover:underline font-medium">
                 Create account
               </Link>
             </p>
           </div>
 
           {/* Admin Link */}
-          <div className="mt-8 pt-6 border-t border-[#e8dfd3]">
-            <p className="text-xs text-[#8b7355] text-center">
+          <div className="mt-8 pt-6 border-t border-brand-border">
+            <p className="text-xs text-brand-brown text-center">
               Admin access?{' '}
-              <Link href="/admin-login" className="text-[#3d2e1f] hover:underline">
+              <Link href="/admin-login" className="text-brand-charcoal hover:underline">
                 Admin Login
               </Link>
             </p>

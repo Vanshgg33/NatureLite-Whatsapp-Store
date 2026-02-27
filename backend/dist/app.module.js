@@ -31,6 +31,10 @@ const analytics_module_1 = require("./modules/analytics/analytics.module");
 const admin_module_1 = require("./modules/admin/admin.module");
 const settings_module_1 = require("./modules/settings/settings.module");
 const media_module_1 = require("./modules/media/media.module");
+const audit_module_1 = require("./modules/audit/audit.module");
+const payments_module_1 = require("./modules/payments/payments.module");
+const email_module_1 = require("./modules/email/email.module");
+const feedback_module_1 = require("./modules/feedback/feedback.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -72,6 +76,10 @@ exports.AppModule = AppModule = __decorate([
             admin_module_1.AdminModule,
             settings_module_1.SettingsModule,
             media_module_1.MediaModule,
+            audit_module_1.AuditModule,
+            payments_module_1.PaymentsModule,
+            email_module_1.EmailModule,
+            feedback_module_1.FeedbackModule,
         ],
         providers: [
             {

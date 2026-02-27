@@ -78,6 +78,12 @@ export class User {
   @Prop()
   notes?: string;
 
+  @Prop({ default: 0 })
+  failedLoginAttempts: number;
+
+  @Prop()
+  lockoutUntil?: Date;
+
   createdAt: Date;
   updatedAt: Date;
 }

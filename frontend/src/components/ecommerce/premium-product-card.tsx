@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, ShoppingBag, Star, Eye, Leaf } from 'lucide-react';
+import { Heart, ShoppingBag, Star, Eye, Leaf, Flame, TrendingUp, Award, Check } from 'lucide-react';
 import { useCartStore, CartItem } from '@/lib/cart-store';
 import { useToast } from '@/components/ui/use-toast';
+import { useAddToCartAnimation } from '@/components/ecommerce/add-to-cart-animation';
+import { cn } from '@/lib/utils';
 import { Product } from '@/types';
 
 interface PremiumProductCardProps {
@@ -24,9 +26,13 @@ export function PremiumProductCard({
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [isAddingToCart, setIsAddingToCart] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [heartBurst, setHeartBurst] = useState(false);
+  const addToCartBtnRef = useRef<HTMLButtonElement>(null);
 
   const { addItem } = useCartStore();
   const { toast } = useToast();
+  const flyAnimation = useAddToCartAnimation();
 
   const discount = product.compareAtPrice
     ? Math.round(((product.compareAtPrice - product.price) / product.compareAtPrice) * 100)
@@ -59,24 +65,34 @@ export function PremiumProductCard({
 
     try {
       await addItem(cartItem, 1);
+      setIsAddingToCart(false);
+      setShowSuccess(true);
+      // Trigger flying animation
+      if (flyAnimation && addToCartBtnRef.current) {
+        flyAnimation.triggerFlyAnimation(product.images[0] || '', addToCartBtnRef.current.getBoundingClientRect());
+      }
       toast({
         title: 'Added to cart',
         description: `${product.name} has been added to your cart.`,
       });
+      setTimeout(() => setShowSuccess(false), 1500);
     } catch {
+      setIsAddingToCart(false);
       toast({
         title: 'Error',
         description: 'Failed to add item to cart.',
         variant: 'destructive',
       });
-    } finally {
-      setIsAddingToCart(false);
     }
   };
 
   const handleWishlist = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!isWishlisted) {
+      setHeartBurst(true);
+      setTimeout(() => setHeartBurst(false), 700);
+    }
     setIsWishlisted(!isWishlisted);
     toast({
       title: isWishlisted ? 'Removed from wishlist' : 'Added to wishlist',
@@ -102,7 +118,10 @@ export function PremiumProductCard({
     >
       <Link href={`/products/${product.slug}`} className="block">
         {/* Card Container */}
-        <div className="relative bg-white rounded-3xl overflow-hidden transition-all duration-500 hover:shadow-brand-xl">
+        <div className={cn(
+          "relative bg-white rounded-3xl overflow-hidden transition-all duration-500 hover:shadow-brand-xl",
+          product.isFeatured && "ring-2 ring-brand-mustard/60 shadow-[0_0_20px_-5px_rgba(212,165,116,0.3)]"
+        )}>
           {/* Image Container */}
           <div className="relative aspect-square overflow-hidden bg-brand-cream">
             {/* Loading skeleton */}
@@ -146,68 +165,152 @@ export function PremiumProductCard({
               </motion.div>
             )}
 
-            {/* Badges */}
+            {/* Badges - max 3 visible, priority ordered */}
             <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
-              {isNew && (
-                <motion.span
-                  className="px-3 py-1 bg-brand-green text-white text-xs font-medium rounded-full flex items-center gap-1"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.2 }}
-                >
-                  <Leaf className="w-3 h-3" />
-                  New
-                </motion.span>
-              )}
-              {discount > 0 && (
-                <motion.span
-                  className="px-3 py-1 bg-brand-terracotta text-white text-xs font-medium rounded-full"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.3 }}
-                >
-                  -{discount}%
-                </motion.span>
-              )}
-              {product.stock <= (product.lowStockThreshold || 5) && product.stock > 0 && (
-                <motion.span
-                  className="px-3 py-1 bg-brand-mustard text-white text-xs font-medium rounded-full"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.4 }}
-                >
-                  Low Stock
-                </motion.span>
-              )}
+              {(() => {
+                const badges: React.ReactNode[] = [];
+                const isLowStock = product.stock <= (product.lowStockThreshold || 5) && product.stock > 0;
+                const isBestSeller = product.totalSold > 50;
+                const isTrending = product.viewCount > 100;
+
+                // Priority: Staff Pick > Low Stock > Best Seller > Trending > New > Discount
+                if (product.isFeatured && badges.length < 3) {
+                  badges.push(
+                    <motion.span
+                      key="staff-pick"
+                      className="px-3 py-1 bg-gradient-to-r from-brand-mustard to-brand-mustard-dark text-white text-xs font-semibold rounded-full flex items-center gap-1 shadow-sm"
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.15 }}
+                    >
+                      <Award className="w-3 h-3" />
+                      Staff Pick
+                    </motion.span>
+                  );
+                }
+                if (isLowStock && badges.length < 3) {
+                  badges.push(
+                    <motion.span
+                      key="low-stock"
+                      className="px-3 py-1 bg-brand-terracotta text-white text-xs font-medium rounded-full flex items-center gap-1 animate-pulse-soft"
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.2 }}
+                    >
+                      Only {product.stock} left!
+                    </motion.span>
+                  );
+                }
+                if (isBestSeller && badges.length < 3) {
+                  badges.push(
+                    <motion.span
+                      key="best-seller"
+                      className="px-3 py-1 bg-brand-charcoal text-white text-xs font-medium rounded-full flex items-center gap-1"
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.25 }}
+                    >
+                      <Flame className="w-3 h-3" />
+                      Best Seller
+                    </motion.span>
+                  );
+                }
+                if (isTrending && !isBestSeller && badges.length < 3) {
+                  badges.push(
+                    <motion.span
+                      key="trending"
+                      className="px-3 py-1 bg-brand-green/90 text-white text-xs font-medium rounded-full flex items-center gap-1"
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.3 }}
+                    >
+                      <TrendingUp className="w-3 h-3" />
+                      Trending
+                    </motion.span>
+                  );
+                }
+                if (isNew && badges.length < 3) {
+                  badges.push(
+                    <motion.span
+                      key="new"
+                      className="px-3 py-1 bg-brand-green text-white text-xs font-medium rounded-full flex items-center gap-1"
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.35 }}
+                    >
+                      <Leaf className="w-3 h-3" />
+                      New
+                    </motion.span>
+                  );
+                }
+                if (discount > 0 && badges.length < 3) {
+                  badges.push(
+                    <motion.span
+                      key="discount"
+                      className="px-3 py-1 bg-brand-terracotta text-white text-xs font-medium rounded-full"
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.4 }}
+                    >
+                      -{discount}%
+                    </motion.span>
+                  );
+                }
+                return badges;
+              })()}
             </div>
 
             {/* Action Buttons */}
             <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
-              {/* Wishlist Button */}
-              <motion.button
-                onClick={handleWishlist}
-                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${
-                  isWishlisted
-                    ? 'bg-brand-terracotta text-white'
-                    : 'bg-white/90 backdrop-blur-sm text-brand-charcoal hover:bg-brand-terracotta hover:text-white'
-                }`}
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.95 }}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.2 }}
-              >
-                <Heart
-                  className={`w-5 h-5 transition-all ${isWishlisted ? 'fill-current' : ''}`}
-                />
-              </motion.button>
+              {/* Wishlist Button with heart burst */}
+              <div className="relative">
+                <motion.button
+                  onClick={handleWishlist}
+                  className={`w-11 h-11 rounded-full flex items-center justify-center transition-all duration-300 ${
+                    isWishlisted
+                      ? 'bg-brand-terracotta text-white'
+                      : 'bg-white/90 backdrop-blur-sm text-brand-charcoal hover:bg-brand-terracotta hover:text-white'
+                  }`}
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.95 }}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.2 }}
+                >
+                  <Heart
+                    className={`w-5 h-5 transition-all ${isWishlisted ? 'fill-current' : ''}`}
+                  />
+                </motion.button>
+                {/* Heart burst particles */}
+                <AnimatePresence>
+                  {heartBurst && (
+                    <>
+                      {[...Array(6)].map((_, i) => (
+                        <motion.div
+                          key={i}
+                          className="absolute top-1/2 left-1/2 w-2 h-2 rounded-full bg-brand-terracotta"
+                          initial={{ x: 0, y: 0, scale: 1, opacity: 1 }}
+                          animate={{
+                            x: Math.cos((i * 60 * Math.PI) / 180) * 25,
+                            y: Math.sin((i * 60 * Math.PI) / 180) * 25,
+                            scale: 0,
+                            opacity: 0,
+                          }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.6, ease: 'easeOut' }}
+                        />
+                      ))}
+                    </>
+                  )}
+                </AnimatePresence>
+              </div>
 
               {/* Quick View Button */}
               <AnimatePresence>
                 {isHovered && onQuickView && (
                   <motion.button
                     onClick={handleQuickView}
-                    className="w-10 h-10 rounded-full bg-white/90 backdrop-blur-sm text-brand-charcoal flex items-center justify-center hover:bg-brand-charcoal hover:text-white transition-all duration-300"
+                    className="w-11 h-11 rounded-full bg-white/90 backdrop-blur-sm text-brand-charcoal flex items-center justify-center hover:bg-brand-charcoal hover:text-white transition-all duration-300"
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 20 }}
@@ -231,11 +334,17 @@ export function PremiumProductCard({
                   transition={{ duration: 0.3 }}
                 >
                   <motion.button
+                    ref={addToCartBtnRef}
                     onClick={handleAddToCart}
-                    disabled={isAddingToCart}
-                    className="w-full py-3 bg-brand-charcoal text-white rounded-2xl font-medium flex items-center justify-center gap-2 hover:bg-brand-green transition-colors disabled:opacity-50"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                    disabled={isAddingToCart || showSuccess}
+                    className={cn(
+                      "w-full py-3 rounded-2xl font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-90",
+                      showSuccess
+                        ? "bg-brand-green text-white"
+                        : "bg-brand-charcoal text-white hover:bg-brand-green"
+                    )}
+                    whileHover={!showSuccess ? { scale: 1.02 } : {}}
+                    whileTap={!showSuccess ? { scale: 0.98 } : {}}
                   >
                     {isAddingToCart ? (
                       <motion.div
@@ -243,6 +352,16 @@ export function PremiumProductCard({
                         animate={{ rotate: 360 }}
                         transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
                       />
+                    ) : showSuccess ? (
+                      <motion.span
+                        className="flex items-center gap-2"
+                        initial={{ scale: 0.8 }}
+                        animate={{ scale: 1 }}
+                        transition={{ type: 'spring', stiffness: 500, damping: 15 }}
+                      >
+                        <Check className="w-5 h-5" />
+                        Added!
+                      </motion.span>
                     ) : (
                       <>
                         <ShoppingBag className="w-5 h-5" />
@@ -405,7 +524,7 @@ export function PremiumProductCardCompact({
 
         <button
           onClick={handleAddToCart}
-          className="w-10 h-10 rounded-full bg-brand-cream flex items-center justify-center text-brand-charcoal hover:bg-brand-green hover:text-white transition-all duration-300"
+          className="w-11 h-11 rounded-full bg-brand-cream flex items-center justify-center text-brand-charcoal hover:bg-brand-green hover:text-white transition-all duration-300 flex-shrink-0"
         >
           <ShoppingBag className="w-5 h-5" />
         </button>

@@ -36,11 +36,21 @@ let AuthService = AuthService_1 = class AuthService {
         if (!admin.isActive) {
             throw new common_1.UnauthorizedException('Account is deactivated');
         }
+        if (admin.lockoutUntil && admin.lockoutUntil > new Date()) {
+            const minutesLeft = Math.ceil((admin.lockoutUntil.getTime() - Date.now()) / 60000);
+            throw new common_1.UnauthorizedException(`Account locked. Try again in ${minutesLeft} minutes.`);
+        }
         const isPasswordValid = await bcrypt.compare(dto.password, admin.password);
         if (!isPasswordValid) {
+            const attempts = (admin.failedLoginAttempts || 0) + 1;
+            const update = { failedLoginAttempts: attempts };
+            if (attempts >= 5) {
+                update.lockoutUntil = new Date(Date.now() + 15 * 60 * 1000);
+            }
+            await this.adminUserModel.updateOne({ _id: admin._id }, update);
             throw new common_1.UnauthorizedException('Invalid credentials');
         }
-        await this.adminUserModel.updateOne({ _id: admin._id }, { lastLoginAt: new Date() });
+        await this.adminUserModel.updateOne({ _id: admin._id }, { lastLoginAt: new Date(), failedLoginAttempts: 0, lockoutUntil: null });
         const payload = {
             sub: admin._id.toString(),
             phone: admin.phone || '',
@@ -165,13 +175,24 @@ let AuthService = AuthService_1 = class AuthService {
         if (!user.password) {
             throw new common_1.UnauthorizedException('Please login with phone/OTP or reset your password');
         }
-        const isPasswordValid = await bcrypt.compare(dto.password, user.password);
-        if (!isPasswordValid) {
-            throw new common_1.UnauthorizedException('Invalid credentials');
-        }
         if (user.isBlocked) {
             throw new common_1.UnauthorizedException('Account is blocked');
         }
+        if (user.lockoutUntil && user.lockoutUntil > new Date()) {
+            const minutesLeft = Math.ceil((user.lockoutUntil.getTime() - Date.now()) / 60000);
+            throw new common_1.UnauthorizedException(`Account locked. Try again in ${minutesLeft} minutes.`);
+        }
+        const isPasswordValid = await bcrypt.compare(dto.password, user.password);
+        if (!isPasswordValid) {
+            const attempts = (user.failedLoginAttempts || 0) + 1;
+            const update = { failedLoginAttempts: attempts };
+            if (attempts >= 5) {
+                update.lockoutUntil = new Date(Date.now() + 15 * 60 * 1000);
+            }
+            await this.userModel.updateOne({ _id: user._id }, update);
+            throw new common_1.UnauthorizedException('Invalid credentials');
+        }
+        await this.userModel.updateOne({ _id: user._id }, { failedLoginAttempts: 0, lockoutUntil: null });
         const payload = {
             sub: user._id.toString(),
             phone: user.phone || '',

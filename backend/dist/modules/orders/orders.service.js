@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
+var OrdersService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.OrdersService = void 0;
 const common_1 = require("@nestjs/common");
@@ -21,115 +22,153 @@ const cart_service_1 = require("../cart/cart.service");
 const products_service_1 = require("../products/products.service");
 const users_service_1 = require("../users/users.service");
 const coupons_service_1 = require("../coupons/coupons.service");
+const email_service_1 = require("../email/email.service");
+const settings_service_1 = require("../settings/settings.service");
 const pagination_types_1 = require("../../common/types/pagination.types");
-let OrdersService = class OrdersService {
-    constructor(orderModel, cartService, productsService, usersService, couponsService) {
+let OrdersService = OrdersService_1 = class OrdersService {
+    constructor(orderModel, connection, cartService, productsService, usersService, couponsService, emailService, settingsService) {
         this.orderModel = orderModel;
+        this.connection = connection;
         this.cartService = cartService;
         this.productsService = productsService;
         this.usersService = usersService;
         this.couponsService = couponsService;
+        this.emailService = emailService;
+        this.settingsService = settingsService;
+        this.logger = new common_1.Logger(OrdersService_1.name);
     }
     async create(userId, dto) {
-        let orderItems = [];
-        let subtotal = 0;
-        if (dto.cartId) {
-            const cart = await this.cartService.getCart(userId);
-            if (cart.items.length === 0) {
-                throw new common_1.BadRequestException('Cart is empty');
-            }
-            for (const item of cart.items) {
-                const product = await this.productsService.findById(item.product.id);
-                const orderItem = {
-                    product: new mongoose_2.Types.ObjectId(item.product.id),
-                    name: product.name,
-                    variantSku: item.variantSku,
-                    quantity: item.quantity,
-                    price: item.price,
-                    total: item.price * item.quantity,
-                    image: product.images[0],
-                    gstAmount: (item.price * item.quantity * product.gstPercentage) / 100,
-                };
-                orderItems.push(orderItem);
-                subtotal += orderItem.total;
-            }
-        }
-        else if (dto.items && dto.items.length > 0) {
-            for (const item of dto.items) {
-                const product = await this.productsService.findById(item.productId);
-                let price = product.price;
-                if (item.variantSku) {
-                    const variant = product.variants.find((v) => v.sku === item.variantSku);
-                    if (variant) {
-                        price = variant.price;
-                    }
+        const session = await this.connection.startSession();
+        session.startTransaction();
+        try {
+            let orderItems = [];
+            let subtotal = 0;
+            if (dto.cartId) {
+                const cart = await this.cartService.getCart(userId);
+                if (cart.items.length === 0) {
+                    throw new common_1.BadRequestException('Cart is empty');
                 }
-                const orderItem = {
-                    product: new mongoose_2.Types.ObjectId(item.productId),
-                    name: product.name,
-                    variantSku: item.variantSku,
-                    variantName: item.variantSku
-                        ? product.variants.find((v) => v.sku === item.variantSku)?.name
-                        : undefined,
-                    quantity: item.quantity,
-                    price,
-                    total: price * item.quantity,
-                    image: product.images[0],
-                    gstAmount: (price * item.quantity * product.gstPercentage) / 100,
-                };
-                orderItems.push(orderItem);
-                subtotal += orderItem.total;
+                for (const item of cart.items) {
+                    const product = await this.productsService.findById(item.product.id);
+                    const orderItem = {
+                        product: new mongoose_2.Types.ObjectId(item.product.id),
+                        name: product.name,
+                        variantSku: item.variantSku,
+                        quantity: item.quantity,
+                        price: item.price,
+                        total: item.price * item.quantity,
+                        image: product.images[0],
+                        gstAmount: (item.price * item.quantity * product.gstPercentage) / 100,
+                    };
+                    orderItems.push(orderItem);
+                    subtotal += orderItem.total;
+                }
             }
-        }
-        else {
-            throw new common_1.BadRequestException('Either cartId or items must be provided');
-        }
-        let discount = 0;
-        if (dto.couponCode) {
-            const validation = await this.couponsService.validateCoupon({
-                code: dto.couponCode,
-                orderAmount: subtotal,
-                userId,
+            else if (dto.items && dto.items.length > 0) {
+                for (const item of dto.items) {
+                    const product = await this.productsService.findById(item.productId);
+                    let price = product.price;
+                    if (item.variantSku) {
+                        const variant = product.variants.find((v) => v.sku === item.variantSku);
+                        if (variant) {
+                            price = variant.price;
+                        }
+                    }
+                    const orderItem = {
+                        product: new mongoose_2.Types.ObjectId(item.productId),
+                        name: product.name,
+                        variantSku: item.variantSku,
+                        variantName: item.variantSku
+                            ? product.variants.find((v) => v.sku === item.variantSku)?.name
+                            : undefined,
+                        quantity: item.quantity,
+                        price,
+                        total: price * item.quantity,
+                        image: product.images[0],
+                        gstAmount: (price * item.quantity * product.gstPercentage) / 100,
+                    };
+                    orderItems.push(orderItem);
+                    subtotal += orderItem.total;
+                }
+            }
+            else {
+                throw new common_1.BadRequestException('Either cartId or items must be provided');
+            }
+            let discount = 0;
+            if (dto.couponCode) {
+                const validation = await this.couponsService.validateCoupon({
+                    code: dto.couponCode,
+                    orderAmount: subtotal,
+                    userId,
+                });
+                if (validation.valid) {
+                    discount = validation.discountAmount;
+                    await this.couponsService.incrementUsageCount(dto.couponCode);
+                }
+            }
+            let freeShippingThreshold = 500;
+            let defaultShippingCharge = 50;
+            try {
+                const checkoutSettings = await this.settingsService.get('checkout');
+                if (checkoutSettings?.value) {
+                    freeShippingThreshold = checkoutSettings.value.freeShippingThreshold || 500;
+                    defaultShippingCharge = checkoutSettings.value.defaultShippingCharge || 50;
+                }
+            }
+            catch {
+            }
+            const gstTotal = orderItems.reduce((sum, item) => sum + item.gstAmount, 0);
+            const shippingCharge = subtotal >= freeShippingThreshold ? 0 : defaultShippingCharge;
+            const total = subtotal - discount + shippingCharge;
+            const orderNumber = await this.generateOrderNumber();
+            const order = new this.orderModel({
+                orderNumber,
+                user: new mongoose_2.Types.ObjectId(userId),
+                items: orderItems,
+                shippingAddress: dto.shippingAddress,
+                paymentMethod: dto.paymentMethod,
+                subtotal,
+                discount,
+                couponCode: dto.couponCode,
+                shippingCharge,
+                gstTotal,
+                total,
+                notes: dto.notes,
+                timeline: [
+                    {
+                        status: 'pending',
+                        message: 'Order placed successfully',
+                        timestamp: new Date(),
+                    },
+                ],
             });
-            if (validation.valid) {
-                discount = validation.discountAmount;
-                await this.couponsService.incrementUsageCount(dto.couponCode);
+            const savedOrder = await order.save({ session });
+            for (const item of orderItems) {
+                await this.productsService.decrementStock(item.product.toString(), item.quantity, item.variantSku);
             }
+            if (dto.cartId) {
+                await this.cartService.clearCart(userId);
+            }
+            await this.usersService.updateOrderStats(userId, total);
+            await session.commitTransaction();
+            try {
+                const user = await this.usersService.findById(userId);
+                if (user?.email) {
+                    this.emailService.sendOrderConfirmation(savedOrder.toObject(), user.email);
+                }
+            }
+            catch (emailError) {
+                this.logger.warn(`Failed to send order confirmation email: ${emailError.message}`);
+            }
+            return savedOrder;
         }
-        const gstTotal = orderItems.reduce((sum, item) => sum + item.gstAmount, 0);
-        const shippingCharge = subtotal >= 500 ? 0 : 50;
-        const total = subtotal - discount + shippingCharge;
-        const orderNumber = await this.generateOrderNumber();
-        const order = new this.orderModel({
-            orderNumber,
-            user: new mongoose_2.Types.ObjectId(userId),
-            items: orderItems,
-            shippingAddress: dto.shippingAddress,
-            paymentMethod: dto.paymentMethod,
-            subtotal,
-            discount,
-            couponCode: dto.couponCode,
-            shippingCharge,
-            gstTotal,
-            total,
-            notes: dto.notes,
-            timeline: [
-                {
-                    status: 'pending',
-                    message: 'Order placed successfully',
-                    timestamp: new Date(),
-                },
-            ],
-        });
-        const savedOrder = await order.save();
-        for (const item of orderItems) {
-            await this.productsService.decrementStock(item.product.toString(), item.quantity, item.variantSku);
+        catch (error) {
+            await session.abortTransaction();
+            throw error;
         }
-        if (dto.cartId) {
-            await this.cartService.clearCart(userId);
+        finally {
+            session.endSession();
         }
-        await this.usersService.updateOrderStats(userId, total);
-        return savedOrder;
     }
     async findAll(query) {
         const { page = 1, limit = 20, userId, status, paymentStatus, search, startDate, endDate, sortBy = 'createdAt', sortOrder = 'desc', } = query;
@@ -216,7 +255,23 @@ let OrdersService = class OrdersService {
         if (dto.status === 'delivered') {
             order.deliveredAt = new Date();
         }
-        return order.save();
+        const savedOrder = await order.save();
+        try {
+            const user = await this.usersService.findById(order.user.toString());
+            if (user?.email) {
+                const orderObj = savedOrder.toObject();
+                if (dto.status === 'shipped') {
+                    this.emailService.sendShippingUpdate(orderObj, user.email);
+                }
+                else if (dto.status === 'delivered') {
+                    this.emailService.sendDeliveryConfirmation(orderObj, user.email);
+                }
+            }
+        }
+        catch (emailError) {
+            this.logger.warn(`Failed to send status update email: ${emailError.message}`);
+        }
+        return savedOrder;
     }
     async updatePaymentStatus(id, dto) {
         const order = await this.orderModel.findById(id);
@@ -250,7 +305,17 @@ let OrdersService = class OrdersService {
             updatedBy: cancelledBy,
         };
         order.timeline.push(timelineEntry);
-        return order.save();
+        const savedOrder = await order.save();
+        try {
+            const user = await this.usersService.findById(order.user.toString());
+            if (user?.email) {
+                this.emailService.sendOrderCancelled(savedOrder.toObject(), user.email);
+            }
+        }
+        catch (emailError) {
+            this.logger.warn(`Failed to send cancellation email: ${emailError.message}`);
+        }
+        return savedOrder;
     }
     async addNote(id, dto) {
         const order = await this.orderModel.findById(id);
@@ -381,13 +446,17 @@ let OrdersService = class OrdersService {
     }
 };
 exports.OrdersService = OrdersService;
-exports.OrdersService = OrdersService = __decorate([
+exports.OrdersService = OrdersService = OrdersService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, mongoose_1.InjectModel)(order_schema_1.Order.name)),
+    __param(1, (0, mongoose_1.InjectConnection)()),
     __metadata("design:paramtypes", [mongoose_2.Model,
+        mongoose_2.Connection,
         cart_service_1.CartService,
         products_service_1.ProductsService,
         users_service_1.UsersService,
-        coupons_service_1.CouponsService])
+        coupons_service_1.CouponsService,
+        email_service_1.EmailService,
+        settings_service_1.SettingsService])
 ], OrdersService);
 //# sourceMappingURL=orders.service.js.map

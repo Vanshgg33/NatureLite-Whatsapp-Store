@@ -45,6 +45,12 @@ export class AdminUser {
   @Prop({ type: Object, default: {} })
   metadata: Record<string, unknown>;
 
+  @Prop({ default: 0 })
+  failedLoginAttempts: number;
+
+  @Prop()
+  lockoutUntil?: Date;
+
   createdAt: Date;
   updatedAt: Date;
 }

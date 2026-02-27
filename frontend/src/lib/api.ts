@@ -24,6 +24,8 @@ import {
   CouponValidationResult,
   StoreSettings,
   WhatsAppSettings,
+  AppearanceSettings,
+  BannerSettings,
   ShippingRate,
   ShipmentResponse,
   TrackingInfo,
@@ -535,27 +537,31 @@ class ApiClient {
   }
 
   // ==================== SETTINGS ====================
-  async getSettings(): Promise<{ store?: StoreSettings; whatsapp?: WhatsAppSettings }> {
-    const response = await this.client.get<ApiResponse<{ store?: StoreSettings; whatsapp?: WhatsAppSettings }>>('/settings');
+  async getSettings(): Promise<{ store?: StoreSettings; whatsapp?: WhatsAppSettings; appearance?: AppearanceSettings; banners?: BannerSettings }> {
+    const response = await this.client.get<ApiResponse<{ store?: StoreSettings; whatsapp?: WhatsAppSettings; appearance?: AppearanceSettings; banners?: BannerSettings }>>('/settings');
     return response.data.data;
   }
 
-  async getPublicSettings(): Promise<{ store?: StoreSettings }> {
-    const response = await this.client.get<ApiResponse<{ store?: StoreSettings }>>('/settings/public');
+  async getPublicSettings(): Promise<{ store?: StoreSettings; appearance?: AppearanceSettings; banners?: BannerSettings }> {
+    const response = await this.client.get<ApiResponse<{ store?: StoreSettings; appearance?: AppearanceSettings; banners?: BannerSettings }>>('/settings/public');
     return response.data.data;
   }
 
   async getSetting(key: 'store'): Promise<StoreSettings | null>;
   async getSetting(key: 'whatsapp'): Promise<WhatsAppSettings | null>;
-  async getSetting(key: string): Promise<StoreSettings | WhatsAppSettings | null> {
-    const response = await this.client.get<ApiResponse<StoreSettings | WhatsAppSettings | null>>(`/settings/${key}`);
+  async getSetting(key: 'appearance'): Promise<AppearanceSettings | null>;
+  async getSetting(key: 'banners'): Promise<BannerSettings | null>;
+  async getSetting(key: string): Promise<StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings | null> {
+    const response = await this.client.get<ApiResponse<StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings | null>>(`/settings/${key}`);
     return response.data.data;
   }
 
   async updateSettings(key: 'store', updates: Partial<StoreSettings>): Promise<StoreSettings>;
   async updateSettings(key: 'whatsapp', updates: Partial<WhatsAppSettings>): Promise<WhatsAppSettings>;
-  async updateSettings(key: string, updates: Partial<StoreSettings> | Partial<WhatsAppSettings>): Promise<StoreSettings | WhatsAppSettings> {
-    const response = await this.client.put<ApiResponse<StoreSettings | WhatsAppSettings>>(`/settings/${key}/update`, updates);
+  async updateSettings(key: 'appearance', updates: Partial<AppearanceSettings>): Promise<AppearanceSettings>;
+  async updateSettings(key: 'banners', updates: Partial<BannerSettings>): Promise<BannerSettings>;
+  async updateSettings(key: string, updates: Record<string, unknown>): Promise<StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings> {
+    const response = await this.client.put<ApiResponse<StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings>>(`/settings/${key}/update`, updates);
     return response.data.data;
   }
 
@@ -713,6 +719,74 @@ class ApiClient {
       templateName,
       params,
     });
+    return response.data.data;
+  }
+
+  // ==================== PAYMENTS ====================
+  async createPaymentOrder(orderId: string): Promise<{
+    razorpayOrderId: string;
+    amount: number;
+    currency: string;
+    keyId: string;
+  }> {
+    const response = await this.client.post<ApiResponse<{
+      razorpayOrderId: string;
+      amount: number;
+      currency: string;
+      keyId: string;
+    }>>('/payments/create-order', { orderId });
+    return response.data.data;
+  }
+
+  async verifyPayment(data: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+  }): Promise<void> {
+    await this.client.post('/payments/verify', data);
+  }
+
+  // ==================== FEEDBACK ====================
+  async createFeedback(data: {
+    type: string;
+    orderId?: string;
+    productId?: string;
+    rating?: number;
+    message: string;
+    images?: string[];
+  }): Promise<any> {
+    const response = await this.client.post<ApiResponse<any>>('/feedback', data);
+    return response.data.data;
+  }
+
+  async getProductReviews(productId: string): Promise<any[]> {
+    const response = await this.client.get<ApiResponse<any[]>>(`/feedback/product/${productId}`);
+    return response.data.data;
+  }
+
+  async getMyFeedback(): Promise<any[]> {
+    const response = await this.client.get<ApiResponse<any[]>>('/feedback/my');
+    return response.data.data;
+  }
+
+  async getAllFeedback(params?: { page?: number; limit?: number; type?: string; status?: string }): Promise<PaginatedResponse<any>> {
+    const response = await this.client.get<ApiResponse<PaginatedResponse<any>>>('/feedback', { params });
+    return response.data.data;
+  }
+
+  async respondToFeedback(id: string, response: string): Promise<any> {
+    const res = await this.client.put<ApiResponse<any>>(`/feedback/${id}/respond`, { response });
+    return res.data.data;
+  }
+
+  async updateFeedbackStatus(id: string, status: string): Promise<any> {
+    const res = await this.client.put<ApiResponse<any>>(`/feedback/${id}/status`, { status });
+    return res.data.data;
+  }
+
+  // ==================== AUDIT ====================
+  async getAuditLogs(params?: { page?: number; limit?: number; action?: string }): Promise<PaginatedResponse<any>> {
+    const response = await this.client.get<ApiResponse<PaginatedResponse<any>>>('/audit', { params });
     return response.data.data;
   }
 

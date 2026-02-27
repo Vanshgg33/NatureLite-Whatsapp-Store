@@ -3,20 +3,37 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ShoppingBag, ArrowLeft, ArrowRight } from 'lucide-react';
+import { ShoppingBag, ArrowLeft, ArrowRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CartItem } from '@/components/ecommerce/cart-item';
 import { CartSummary } from '@/components/ecommerce/cart-summary';
+import { PremiumProductCardCompact } from '@/components/ecommerce/premium-product-card';
 import { useCartStore } from '@/lib/cart-store';
+import { api } from '@/lib/api';
+import { Product } from '@/types';
 
 export default function CartPage() {
   const { items, getItemCount } = useCartStore();
   const [mounted, setMounted] = useState(false);
+  const [crossSellProducts, setCrossSellProducts] = useState<Product[]>([]);
 
   // Handle hydration mismatch with Zustand persist
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Fetch cross-sell products
+  useEffect(() => {
+    if (!mounted || items.length === 0) return;
+    const cartProductIds = items.map((i) => i.productId);
+    api
+      .getProducts({ limit: 8, sortBy: 'totalSold', sortOrder: 'desc' })
+      .then((res) => {
+        const filtered = res.items.filter((p: Product) => !cartProductIds.includes(p._id));
+        setCrossSellProducts(filtered.slice(0, 4));
+      })
+      .catch(() => {});
+  }, [mounted, items]);
 
   if (!mounted) {
     return (
@@ -129,6 +146,32 @@ export default function CartPage() {
             </motion.div>
           </div>
         </div>
+
+        {/* Frequently Bought Together */}
+        {crossSellProducts.length > 0 && (
+          <motion.div
+            className="mt-12"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.3 }}
+          >
+            <div className="flex items-center gap-2 mb-6">
+              <Sparkles className="w-5 h-5 text-brand-mustard" />
+              <h2 className="font-display text-xl font-semibold text-brand-charcoal">
+                Frequently Bought Together
+              </h2>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {crossSellProducts.map((product, index) => (
+                <PremiumProductCardCompact
+                  key={product._id}
+                  product={product}
+                  index={index}
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
       </div>
     </div>
   );

@@ -35,6 +35,8 @@ export declare class User {
     preferences: Record<string, unknown>;
     tags: string[];
     notes?: string;
+    failedLoginAttempts: number;
+    lockoutUntil?: Date;
     createdAt: Date;
     updatedAt: Date;
 }

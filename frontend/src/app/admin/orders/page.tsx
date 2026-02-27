@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Eye, ChevronDown } from 'lucide-react';
+import { Search, Eye, ChevronDown, ShoppingCart } from 'lucide-react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -70,6 +70,16 @@ export default function OrdersPage() {
               <div className="flex items-center justify-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               </div>
+            ) : data?.items.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="rounded-full bg-muted/50 p-4 mb-4">
+                  <ShoppingCart className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-sm font-medium">No orders found</h3>
+                <p className="text-sm text-muted-foreground max-w-sm">
+                  {search || status ? 'Try adjusting your filters.' : 'Orders will appear here once customers start purchasing.'}
+                </p>
+              </div>
             ) : (
               <>
                 <Table>
@@ -121,7 +131,7 @@ export default function OrdersPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <Link href={`/orders/${order._id}`}>
-                            <Button variant="ghost" size="icon">
+                            <Button variant="ghost" size="icon" aria-label="View order">
                               <Eye className="h-4 w-4" />
                             </Button>
                           </Link>

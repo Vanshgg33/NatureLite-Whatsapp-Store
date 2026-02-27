@@ -40,8 +40,8 @@ const contactInfo = [
   {
     icon: Mail,
     title: 'Email',
-    value: 'hello@purityfoods.in',
-    href: 'mailto:hello@purityfoods.in',
+    value: 'hello@naturelite.in',
+    href: 'mailto:hello@naturelite.in',
     description: 'We reply within 24 hours',
   },
   {

@@ -3,7 +3,7 @@
 import { useRef, useState, useEffect } from 'react';
 import Image from 'next/image';
 import { motion, useInView, AnimatePresence } from 'framer-motion';
-import { Star, Quote, ChevronLeft, ChevronRight, Leaf } from 'lucide-react';
+import { Star, Quote, ChevronLeft, ChevronRight, Leaf, BadgeCheck } from 'lucide-react';
 
 interface Testimonial {
   id: string;
@@ -14,6 +14,7 @@ interface Testimonial {
   text: string;
   productName?: string;
   date?: string;
+  verified?: boolean;
 }
 
 const defaultTestimonials: Testimonial[] = [
@@ -22,36 +23,40 @@ const defaultTestimonials: Testimonial[] = [
     name: 'Priya Sharma',
     location: 'Mumbai',
     rating: 5,
-    text: "The quality of organic products here is unmatched. I've been ordering their honey and ghee for months, and my family loves it. The freshness is evident in every bite!",
-    productName: 'Organic Honey',
+    text: "Switched to Naturelite's wood-pressed oils 6 months ago — my cholesterol dropped 20 points and my skin has never looked better. The cold-pressed groundnut oil tastes exactly like what my grandmother used to make.",
+    productName: 'Wood-Pressed Groundnut Oil',
     date: '2 weeks ago',
+    verified: true,
   },
   {
     id: '2',
     name: 'Rahul Verma',
     location: 'Delhi',
     rating: 5,
-    text: "Finally found a store that delivers truly organic food. The packaging is eco-friendly, delivery is always on time, and the taste takes me back to my grandmother's kitchen.",
-    productName: 'Farm Fresh Ghee',
+    text: "My 4-year-old used to refuse vegetables. Started cooking with their A2 Bilona Ghee and he now asks for seconds! The aroma is incredible — you can actually taste the difference from store-bought ghee.",
+    productName: 'A2 Bilona Ghee',
     date: '1 month ago',
+    verified: true,
   },
   {
     id: '3',
     name: 'Anita Patel',
     location: 'Bangalore',
     rating: 5,
-    text: "As a health-conscious mom, I'm very particular about what my family eats. Naturelite has made my life easier with their curated selection of certified organic products.",
-    productName: 'Mixed Dry Fruits',
+    text: "After switching to Naturelite's organic turmeric and honey, my seasonal allergies have reduced dramatically. As a nutritionist, I now recommend them to all my clients. The purity is unmatched.",
+    productName: 'Organic Turmeric & Honey',
     date: '3 weeks ago',
+    verified: true,
   },
   {
     id: '4',
     name: 'Vikram Singh',
     location: 'Jaipur',
-    rating: 4,
-    text: "Great selection of traditional Indian superfoods. The moringa powder and turmeric are of exceptional quality. Customer service is also very responsive.",
-    productName: 'Turmeric Powder',
+    rating: 5,
+    text: "Ordered the immunity combo pack during monsoon season. My entire family of 5 got through without a single sick day — that's a first! Already on my 4th reorder. The quality is consistently outstanding.",
+    productName: 'Immunity Combo Pack',
     date: '1 week ago',
+    verified: true,
   },
 ];
 
@@ -164,8 +169,15 @@ export function Testimonials({
                     )}
                   </div>
                   <div className="flex-1">
-                    <div className="font-semibold text-brand-charcoal">
-                      {testimonial.name}
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-brand-charcoal">
+                        {testimonial.name}
+                      </span>
+                      {testimonial.verified && (
+                        <span className="inline-flex items-center gap-1 text-xs text-brand-green font-medium">
+                          <BadgeCheck className="w-3.5 h-3.5" /> Verified
+                        </span>
+                      )}
                     </div>
                     <div className="text-sm text-brand-muted">
                       {testimonial.location}
@@ -246,8 +258,15 @@ export function Testimonials({
                   )}
                 </div>
                 <div>
-                  <div className="font-display text-lg font-semibold text-brand-charcoal">
-                    {featured.name}
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="font-display text-lg font-semibold text-brand-charcoal">
+                      {featured.name}
+                    </span>
+                    {featured.verified && (
+                      <span className="inline-flex items-center gap-1 text-xs text-brand-green font-medium">
+                        <BadgeCheck className="w-3.5 h-3.5" /> Verified
+                      </span>
+                    )}
                   </div>
                   <div className="text-brand-muted">{featured.location}</div>
                 </div>
@@ -351,8 +370,15 @@ export function Testimonials({
                           "{testimonial.text}"
                         </p>
                         <div>
-                          <div className="font-semibold text-brand-charcoal">
-                            {testimonial.name}
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-brand-charcoal">
+                              {testimonial.name}
+                            </span>
+                            {testimonial.verified && (
+                              <span className="inline-flex items-center gap-1 text-xs text-brand-green font-medium">
+                                <BadgeCheck className="w-3.5 h-3.5" /> Verified
+                              </span>
+                            )}
                           </div>
                           <div className="text-sm text-brand-muted">
                             {testimonial.location}

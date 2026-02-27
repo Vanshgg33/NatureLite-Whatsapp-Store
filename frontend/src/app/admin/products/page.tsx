@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, Search } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Package } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Header } from '@/components/layout/header';
@@ -71,6 +71,16 @@ export default function ProductsPage() {
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            ) : data?.items.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="rounded-full bg-muted/50 p-4 mb-4">
+                  <Package className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-sm font-medium">No products found</h3>
+                <p className="text-sm text-muted-foreground max-w-sm">
+                  {search ? 'Try a different search term.' : 'Get started by adding your first product.'}
+                </p>
               </div>
             ) : (
               <>
@@ -145,13 +155,14 @@ export default function ProductsPage() {
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
                             <Link href={`/admin/products/${product._id}`}>
-                              <Button variant="ghost" size="icon">
+                              <Button variant="ghost" size="icon" aria-label="Edit product">
                                 <Pencil className="h-4 w-4" />
                               </Button>
                             </Link>
                             <Button
                               variant="ghost"
                               size="icon"
+                              aria-label="Delete product"
                               onClick={() => handleDelete(product)}
                             >
                               <Trash2 className="h-4 w-4 text-red-500" />

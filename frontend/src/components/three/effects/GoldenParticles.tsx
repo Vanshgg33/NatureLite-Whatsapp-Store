@@ -13,6 +13,7 @@ interface GoldenParticlesProps {
   color?: string;
   speed?: number;
   scrollProgress?: number;
+  opacity?: number;
 }
 
 export function GoldenParticles({
@@ -22,6 +23,7 @@ export function GoldenParticles({
   color = '#D4A574',
   speed = 0.3,
   scrollProgress = 0,
+  opacity = 0.6,
 }: GoldenParticlesProps) {
   const pointsRef = useRef<THREE.Points>(null);
   const { particleCount, shouldAnimate } = usePerformanceTier();
@@ -90,7 +92,7 @@ export function GoldenParticles({
         size={size}
         sizeAttenuation
         depthWrite={false}
-        opacity={0.6}
+        opacity={opacity}
         blending={THREE.AdditiveBlending}
       />
     </Points>

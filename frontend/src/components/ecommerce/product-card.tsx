@@ -143,12 +143,12 @@ export function ProductCard({
               )}
             </div>
 
-            {/* Quick actions */}
-            <motion.div
-              className="absolute top-3 right-3 flex flex-col gap-2"
-              initial={{ opacity: 0, x: 10 }}
-              animate={{ opacity: isHovered ? 1 : 0, x: isHovered ? 0 : 10 }}
-              transition={{ duration: 0.2 }}
+            {/* Quick actions - always visible on mobile, hover on desktop */}
+            <div
+              className={cn(
+                'absolute top-3 right-3 flex flex-col gap-2 transition-all duration-200',
+                isHovered ? 'opacity-100 translate-x-0' : 'sm:opacity-0 sm:translate-x-2 opacity-100 translate-x-0'
+              )}
             >
               <button
                 className="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center hover:bg-brand-sand transition-colors"
@@ -170,14 +170,14 @@ export function ProductCard({
               >
                 <Eye className="w-4 h-4 text-brand-text" />
               </button>
-            </motion.div>
+            </div>
 
-            {/* Add to cart button */}
-            <motion.div
-              className="absolute bottom-0 inset-x-0 p-4"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: isHovered ? 1 : 0, y: isHovered ? 0 : 20 }}
-              transition={{ duration: 0.2 }}
+            {/* Add to cart button - always visible on mobile, hover on desktop */}
+            <div
+              className={cn(
+                'absolute bottom-0 inset-x-0 p-4 transition-all duration-200',
+                isHovered ? 'opacity-100 translate-y-0' : 'sm:opacity-0 sm:translate-y-4 opacity-100 translate-y-0'
+              )}
             >
               <Button
                 className="w-full bg-brand-charcoal hover:bg-brand-brown text-white rounded-xl"
@@ -187,7 +187,7 @@ export function ProductCard({
                 <ShoppingBag className="w-4 h-4 mr-2" />
                 {product.stock === 0 ? 'Out of Stock' : 'Add to Cart'}
               </Button>
-            </motion.div>
+            </div>
           </div>
 
           {/* Content */}

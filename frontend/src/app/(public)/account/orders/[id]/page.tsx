@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
@@ -372,8 +373,19 @@ export default function OrderDetailPage() {
           <div className="divide-y divide-brand-border">
             {order.items.map((item, index) => (
               <div key={index} className="py-4 flex gap-4">
-                <div className="w-16 h-16 rounded-lg bg-brand-sand flex-shrink-0 flex items-center justify-center">
-                  <Package className="w-6 h-6 text-brand-muted" />
+                <div className="relative w-16 h-16 rounded-lg bg-brand-sand flex-shrink-0 overflow-hidden">
+                  {item.image ? (
+                    <Image
+                      src={item.image}
+                      alt={item.name}
+                      fill
+                      className="object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Package className="w-6 h-6 text-brand-muted" />
+                    </div>
+                  )}
                 </div>
                 <div className="flex-1">
                   <h3 className="font-display font-medium text-brand-charcoal">

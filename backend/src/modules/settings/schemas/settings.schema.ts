@@ -75,4 +75,20 @@ export const DEFAULT_SETTINGS = {
     autoReplyOutsideHours: true,
     outsideHoursMessage: 'We are currently outside business hours. We will get back to you soon!',
   },
+  appearance: {
+    activeTheme: 'forest-green',
+    logoUrl: '',
+    logoPublicId: '',
+  },
+  banners: {
+    heroBanners: [],
+    announcementBar: {
+      enabled: false,
+      text: '',
+      linkText: '',
+      linkUrl: '',
+      backgroundColor: 'primary',
+      textColor: 'white',
+    },
+  },
 };

@@ -45,4 +45,5 @@ export declare class ChatbotService {
     private isMenuCommand;
     getSession(phone: string): Promise<ChatSession | null>;
     resetSession(phone: string): Promise<void>;
+    cleanupExpiredSessions(): Promise<void>;
 }

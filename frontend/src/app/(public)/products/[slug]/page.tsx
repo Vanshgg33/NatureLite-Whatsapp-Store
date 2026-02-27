@@ -18,14 +18,22 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
+import { Box, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { QuantitySelector } from '@/components/ecommerce/quantity-selector';
 import { ProductCard } from '@/components/ecommerce/product-card';
 import { TrustBadgesCompact } from '@/components/story/trust-badges';
 import { useCartStore, CartItem } from '@/lib/cart-store';
+import { useCustomerStore } from '@/lib/customer-store';
 import { useToast } from '@/components/ui/use-toast';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import dynamic from 'next/dynamic';
+
+const Product3DViewer = dynamic(
+  () => import('@/components/three/scenes/Product3DViewer').then(mod => mod.Product3DViewer),
+  { ssr: false }
+);
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -33,7 +41,9 @@ export default function ProductDetailPage() {
   const [quantity, setQuantity] = useState(1);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [selectedVariant, setSelectedVariant] = useState<string | null>(null);
+  const [show3D, setShow3D] = useState(false);
   const addItem = useCartStore((state) => state.addItem);
+  const { isAuthenticated } = useCustomerStore();
   const { toast } = useToast();
 
   // Fetch product
@@ -48,6 +58,40 @@ export default function ProductDetailPage() {
     queryFn: () => api.getFeaturedProducts(4),
     enabled: !!product,
   });
+
+  // Fetch product reviews
+  const { data: reviews, refetch: refetchReviews } = useQuery({
+    queryKey: ['product-reviews', product?._id],
+    queryFn: () => api.getProductReviews(product!._id),
+    enabled: !!product,
+  });
+
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewMessage, setReviewMessage] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+
+  const handleSubmitReview = async () => {
+    if (!reviewMessage.trim()) return;
+    setSubmittingReview(true);
+    try {
+      await api.createFeedback({
+        type: 'review',
+        productId: product!._id,
+        rating: reviewRating,
+        message: reviewMessage,
+      });
+      toast({ title: 'Review submitted!', description: 'Thank you for your feedback.' });
+      setReviewMessage('');
+      setReviewRating(5);
+      setShowReviewForm(false);
+      refetchReviews();
+    } catch {
+      toast({ title: 'Failed to submit review', variant: 'destructive' });
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -144,60 +188,86 @@ export default function ProductDetailPage() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5 }}
           >
-            {/* Main Image */}
+            {/* Main Image / 3D Viewer */}
             <div className="relative aspect-square bg-white rounded-2xl overflow-hidden shadow-brand-sm mb-4">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={selectedImageIndex}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="absolute inset-0"
-                >
-                  {images[selectedImageIndex] ? (
-                    <Image
-                      src={images[selectedImageIndex]!}
-                      alt={product.name}
-                      fill
-                      className="object-cover"
-                      priority
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-brand-sand">
-                      <span className="font-display text-8xl text-brand-brown/20">
-                        {product.name[0]}
-                      </span>
-                    </div>
-                  )}
-                </motion.div>
-              </AnimatePresence>
-
-              {/* Navigation arrows */}
-              {images.length > 1 && (
+              {show3D ? (
+                /* 3D Model Viewer */
+                <Product3DViewer className="w-full h-full" />
+              ) : (
+                /* Image Gallery */
                 <>
-                  <button
-                    onClick={() =>
-                      setSelectedImageIndex((i) =>
-                        i === 0 ? images.length - 1 : i - 1
-                      )
-                    }
-                    className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/80 shadow-sm flex items-center justify-center hover:bg-white transition-colors"
-                  >
-                    <ChevronLeft className="w-5 h-5 text-brand-charcoal" />
-                  </button>
-                  <button
-                    onClick={() =>
-                      setSelectedImageIndex((i) =>
-                        i === images.length - 1 ? 0 : i + 1
-                      )
-                    }
-                    className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/80 shadow-sm flex items-center justify-center hover:bg-white transition-colors"
-                  >
-                    <ChevronRight className="w-5 h-5 text-brand-charcoal" />
-                  </button>
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={selectedImageIndex}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="absolute inset-0"
+                    >
+                      {images[selectedImageIndex] ? (
+                        <Image
+                          src={images[selectedImageIndex]!}
+                          alt={product.name}
+                          fill
+                          className="object-cover"
+                          priority
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-brand-sand">
+                          <span className="font-display text-8xl text-brand-brown/20">
+                            {product.name[0]}
+                          </span>
+                        </div>
+                      )}
+                    </motion.div>
+                  </AnimatePresence>
+
+                  {/* Navigation arrows */}
+                  {images.length > 1 && (
+                    <>
+                      <button
+                        onClick={() =>
+                          setSelectedImageIndex((i) =>
+                            i === 0 ? images.length - 1 : i - 1
+                          )
+                        }
+                        className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/80 shadow-sm flex items-center justify-center hover:bg-white transition-colors"
+                      >
+                        <ChevronLeft className="w-5 h-5 text-brand-charcoal" />
+                      </button>
+                      <button
+                        onClick={() =>
+                          setSelectedImageIndex((i) =>
+                            i === images.length - 1 ? 0 : i + 1
+                          )
+                        }
+                        className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/80 shadow-sm flex items-center justify-center hover:bg-white transition-colors"
+                      >
+                        <ChevronRight className="w-5 h-5 text-brand-charcoal" />
+                      </button>
+                    </>
+                  )}
                 </>
               )}
+
+              {/* View in 3D / Back to Photos toggle */}
+              <button
+                onClick={() => setShow3D(!show3D)}
+                className="absolute top-4 right-4 z-10 flex items-center gap-2 px-3 py-2 bg-white/90 backdrop-blur-sm rounded-full shadow-brand-sm text-sm font-medium text-brand-charcoal hover:bg-white transition-colors"
+              >
+                {show3D ? (
+                  <>
+                    <RotateCcw className="w-4 h-4" />
+                    Photos
+                  </>
+                ) : (
+                  <>
+                    <Box className="w-4 h-4" />
+                    View in 3D
+                  </>
+                )}
+              </button>
 
               {/* Badges */}
               <div className="absolute top-4 left-4 flex flex-col gap-2">
@@ -265,20 +335,27 @@ export default function ProductDetailPage() {
             {/* Rating */}
             <div className="flex items-center gap-3 mb-6">
               <div className="flex items-center gap-1">
-                {[...Array(5)].map((_, i) => (
-                  <Star
-                    key={i}
-                    className={cn(
-                      'w-5 h-5',
-                      i < 4
-                        ? 'fill-brand-mustard text-brand-mustard'
-                        : 'fill-brand-sand text-brand-sand'
-                    )}
-                  />
-                ))}
+                {[...Array(5)].map((_, i) => {
+                  const avgRating = reviews && reviews.length > 0
+                    ? reviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / reviews.length
+                    : 0;
+                  return (
+                    <Star
+                      key={i}
+                      className={cn(
+                        'w-5 h-5',
+                        i < Math.round(avgRating)
+                          ? 'fill-brand-mustard text-brand-mustard'
+                          : 'fill-brand-sand text-brand-sand'
+                      )}
+                    />
+                  );
+                })}
               </div>
               <span className="font-body text-sm text-brand-muted">
-                4.8 (128 reviews)
+                {reviews && reviews.length > 0
+                  ? `${(reviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / reviews.length).toFixed(1)} (${reviews.length} review${reviews.length !== 1 ? 's' : ''})`
+                  : 'No reviews yet'}
               </span>
             </div>
 
@@ -401,6 +478,142 @@ export default function ProductDetailPage() {
               </div>
             )}
           </motion.div>
+        </div>
+
+        {/* Customer Reviews */}
+        <div className="mt-20">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="font-display text-2xl font-bold text-brand-charcoal">
+              Customer Reviews
+              {reviews && reviews.length > 0 && (
+                <span className="text-lg font-normal text-brand-muted ml-2">
+                  ({reviews.length})
+                </span>
+              )}
+            </h2>
+            {isAuthenticated && !showReviewForm && (
+              <Button
+                variant="outline"
+                onClick={() => setShowReviewForm(true)}
+                className="rounded-xl"
+              >
+                Write a Review
+              </Button>
+            )}
+          </div>
+
+          {/* Review Form */}
+          {showReviewForm && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white rounded-2xl p-6 shadow-brand-sm mb-8"
+            >
+              <h3 className="font-display text-lg font-semibold text-brand-charcoal mb-4">
+                Your Review
+              </h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="font-body text-sm text-brand-text mb-2 block">Rating</label>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setReviewRating(star)}
+                        className="p-0.5"
+                      >
+                        <Star
+                          className={cn(
+                            'w-6 h-6 transition-colors',
+                            star <= reviewRating
+                              ? 'fill-brand-mustard text-brand-mustard'
+                              : 'text-brand-sand'
+                          )}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="font-body text-sm text-brand-text mb-2 block">Your Review</label>
+                  <textarea
+                    className="w-full min-h-[100px] rounded-xl border border-brand-border bg-white px-4 py-3 font-body text-sm"
+                    placeholder="Share your experience with this product..."
+                    value={reviewMessage}
+                    onChange={(e) => setReviewMessage(e.target.value)}
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <Button
+                    onClick={handleSubmitReview}
+                    disabled={submittingReview || !reviewMessage.trim()}
+                    className="bg-brand-mustard hover:bg-brand-mustard-dark text-white rounded-xl"
+                  >
+                    {submittingReview ? 'Submitting...' : 'Submit Review'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowReviewForm(false)}
+                    className="rounded-xl"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Reviews List */}
+          {reviews && reviews.length > 0 ? (
+            <div className="space-y-4">
+              {reviews.map((review: any) => (
+                <div
+                  key={review._id}
+                  className="bg-white rounded-2xl p-6 shadow-brand-sm"
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="flex items-center gap-1">
+                      {[...Array(5)].map((_, i) => (
+                        <Star
+                          key={i}
+                          className={cn(
+                            'w-4 h-4',
+                            i < (review.rating || 0)
+                              ? 'fill-brand-mustard text-brand-mustard'
+                              : 'text-brand-sand'
+                          )}
+                        />
+                      ))}
+                    </div>
+                    <span className="font-body text-sm font-medium text-brand-charcoal">
+                      {review.userId?.name || 'Customer'}
+                    </span>
+                    <span className="font-body text-xs text-brand-muted">
+                      {new Date(review.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <p className="font-body text-sm text-brand-text">{review.message}</p>
+                  {review.adminResponse && (
+                    <div className="mt-3 pl-4 border-l-2 border-brand-mustard">
+                      <p className="font-body text-xs font-medium text-brand-mustard mb-1">
+                        Store Response
+                      </p>
+                      <p className="font-body text-sm text-brand-text">
+                        {review.adminResponse}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 bg-white rounded-2xl shadow-brand-sm">
+              <p className="font-body text-brand-muted">
+                No reviews yet. Be the first to review this product!
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Related Products */}

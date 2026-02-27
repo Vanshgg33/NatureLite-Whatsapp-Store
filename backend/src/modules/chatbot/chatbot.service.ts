@@ -1,5 +1,6 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { Model, Types } from 'mongoose';
 import { ChatSession, ChatSessionDocument, SessionState } from './schemas/chat-session.schema';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
@@ -879,5 +880,24 @@ export class ChatbotService {
         },
       },
     );
+  }
+
+  @Cron(CronExpression.EVERY_HOUR)
+  async cleanupExpiredSessions(): Promise<void> {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const result = await this.chatSessionModel.updateMany(
+      {
+        isExpired: { $ne: true },
+        lastMessageAt: { $lt: twentyFourHoursAgo },
+      },
+      {
+        $set: { isExpired: true },
+      },
+    );
+
+    if (result.modifiedCount > 0) {
+      this.logger.log(`Expired ${result.modifiedCount} chat sessions`);
+    }
   }
 }

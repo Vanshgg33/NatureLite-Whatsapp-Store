@@ -25,6 +25,10 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { MediaModule } from './modules/media/media.module';
+import { AuditModule } from './modules/audit/audit.module';
+import { PaymentsModule } from './modules/payments/payments.module';
+import { EmailModule } from './modules/email/email.module';
+import { FeedbackModule } from './modules/feedback/feedback.module';
 
 @Module({
   imports: [
@@ -66,6 +70,10 @@ import { MediaModule } from './modules/media/media.module';
     AdminModule,
     SettingsModule,
     MediaModule,
+    AuditModule,
+    PaymentsModule,
+    EmailModule,
+    FeedbackModule,
   ],
   providers: [
     {

@@ -9,6 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ChatbotModule = void 0;
 const common_1 = require("@nestjs/common");
 const mongoose_1 = require("@nestjs/mongoose");
+const schedule_1 = require("@nestjs/schedule");
 const chatbot_service_1 = require("./chatbot.service");
 const chatbot_controller_1 = require("./chatbot.controller");
 const chat_session_schema_1 = require("./schemas/chat-session.schema");
@@ -24,6 +25,7 @@ exports.ChatbotModule = ChatbotModule;
 exports.ChatbotModule = ChatbotModule = __decorate([
     (0, common_1.Module)({
         imports: [
+            schedule_1.ScheduleModule.forRoot(),
             mongoose_1.MongooseModule.forFeature([{ name: chat_session_schema_1.ChatSession.name, schema: chat_session_schema_1.ChatSessionSchema }]),
             (0, common_1.forwardRef)(() => whatsapp_module_1.WhatsAppModule),
             users_module_1.UsersModule,

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import { Search, SlidersHorizontal, X, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -116,22 +117,112 @@ export default function ProductsPage() {
           {/* Filter Toggle (Mobile) */}
           <Button
             variant="outline"
-            onClick={() => setShowFilters(!showFilters)}
+            onClick={() => setShowFilters(true)}
             className="lg:hidden"
           >
             <SlidersHorizontal className="w-4 h-4 mr-2" />
             Filters
+            {selectedCategory && (
+              <span className="ml-1 w-5 h-5 rounded-full bg-brand-mustard text-white text-xs flex items-center justify-center">
+                1
+              </span>
+            )}
           </Button>
         </div>
 
+        {/* Mobile Filter Drawer */}
+        <AnimatePresence>
+          {showFilters && (
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/30 z-40 lg:hidden"
+                onClick={() => setShowFilters(false)}
+              />
+              <motion.div
+                initial={{ x: '-100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '-100%' }}
+                transition={{ type: 'tween', duration: 0.25 }}
+                className="fixed inset-y-0 left-0 z-50 w-72 bg-white shadow-xl lg:hidden overflow-y-auto"
+              >
+                <div className="p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="font-display text-lg font-semibold text-brand-charcoal">
+                      Filters
+                    </h3>
+                    <button
+                      onClick={() => setShowFilters(false)}
+                      className="p-2 rounded-full hover:bg-brand-sand transition-colors"
+                    >
+                      <X className="w-5 h-5 text-brand-muted" />
+                    </button>
+                  </div>
+
+                  <div className="mb-6">
+                    <h4 className="font-body text-sm font-medium text-brand-muted uppercase tracking-wider mb-3">
+                      Categories
+                    </h4>
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => {
+                          setSelectedCategory(null);
+                          setPage(1);
+                          setShowFilters(false);
+                        }}
+                        className={cn(
+                          'w-full text-left px-4 py-2.5 rounded-lg font-body text-sm transition-colors',
+                          selectedCategory === null
+                            ? 'bg-brand-mustard/10 text-brand-mustard font-medium'
+                            : 'text-brand-text hover:bg-brand-sand'
+                        )}
+                      >
+                        All Products
+                      </button>
+                      {categories?.map((category: Category) => (
+                        <button
+                          key={category._id}
+                          onClick={() => {
+                            setSelectedCategory(category._id);
+                            setPage(1);
+                            setShowFilters(false);
+                          }}
+                          className={cn(
+                            'w-full text-left px-4 py-2.5 rounded-lg font-body text-sm transition-colors',
+                            selectedCategory === category._id
+                              ? 'bg-brand-mustard/10 text-brand-mustard font-medium'
+                              : 'text-brand-text hover:bg-brand-sand'
+                          )}
+                        >
+                          {category.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {hasActiveFilters && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        clearFilters();
+                        setShowFilters(false);
+                      }}
+                      className="w-full"
+                    >
+                      Clear All Filters
+                    </Button>
+                  )}
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+
         <div className="flex gap-8">
-          {/* Sidebar Filters */}
-          <aside
-            className={cn(
-              'w-64 flex-shrink-0 hidden lg:block',
-              showFilters && 'block'
-            )}
-          >
+          {/* Desktop Sidebar Filters */}
+          <aside className="w-64 flex-shrink-0 hidden lg:block">
             <div className="bg-white rounded-2xl p-6 shadow-brand-sm sticky top-28">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="font-display text-lg font-semibold text-brand-charcoal">
@@ -220,6 +311,10 @@ export default function ProductsPage() {
               </motion.div>
             ) : (
               <>
+                <p className="font-body text-sm text-brand-muted mb-4">
+                  Showing {products.length} product{products.length !== 1 ? 's' : ''}
+                  {productsData?.total ? ` of ${productsData.total}` : ''}
+                </p>
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   {products.map((product: Product, index: number) => (
                     <ProductCard

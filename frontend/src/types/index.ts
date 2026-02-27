@@ -137,7 +137,7 @@ export type OrderStatus =
   | 'refunded';
 
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
-export type PaymentMethod = 'cod' | 'prepaid' | 'upi' | 'card' | 'netbanking' | 'wallet';
+export type PaymentMethod = 'cod' | 'prepaid' | 'upi' | 'card' | 'netbanking' | 'wallet' | 'razorpay';
 
 export interface Order {
   _id: string;
@@ -306,16 +306,64 @@ export interface WhatsAppSettings {
   abandonedCartReminderDelayMinutes: number;
 }
 
+// ==================== APPEARANCE & BANNER TYPES ====================
+export type ThemePresetName =
+  | 'forest-green'
+  | 'ocean-blue'
+  | 'royal-purple'
+  | 'sunset-orange'
+  | 'minimal-dark'
+  | 'rose-garden';
+
+export interface ThemePreset {
+  label: string;
+  description: string;
+  colors: Record<string, string>;
+}
+
+export interface AppearanceSettings {
+  activeTheme: ThemePresetName;
+  logoUrl: string;
+  logoPublicId: string;
+}
+
+export interface HeroBanner {
+  id: string;
+  imageUrl: string;
+  imagePublicId: string;
+  headline: string;
+  subtitle: string;
+  ctaText: string;
+  ctaLink: string;
+  isActive: boolean;
+}
+
+export interface AnnouncementBarConfig {
+  enabled: boolean;
+  text: string;
+  linkText: string;
+  linkUrl: string;
+  backgroundColor: string;
+  textColor: string;
+}
+
+export interface BannerSettings {
+  heroBanners: HeroBanner[];
+  announcementBar: AnnouncementBarConfig;
+}
+
 export interface SettingsValue {
   store?: StoreSettings;
   whatsapp?: WhatsAppSettings;
-  [key: string]: StoreSettings | WhatsAppSettings | undefined;
+  appearance?: AppearanceSettings;
+  banners?: BannerSettings;
+  [key: string]: StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings | undefined;
 }
 
 export interface Settings {
   _id: string;
   key: string;
-  value: StoreSettings | WhatsAppSettings;
+  value: StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings;
   isPublic: boolean;
   updatedAt: string;
 }

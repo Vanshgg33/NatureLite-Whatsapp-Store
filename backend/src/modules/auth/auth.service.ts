@@ -37,15 +37,28 @@ export class AuthService {
       throw new UnauthorizedException('Account is deactivated');
     }
 
+    // Check account lockout
+    if (admin.lockoutUntil && admin.lockoutUntil > new Date()) {
+      const minutesLeft = Math.ceil((admin.lockoutUntil.getTime() - Date.now()) / 60000);
+      throw new UnauthorizedException(`Account locked. Try again in ${minutesLeft} minutes.`);
+    }
+
     const isPasswordValid = await bcrypt.compare(dto.password, admin.password);
 
     if (!isPasswordValid) {
+      const attempts = (admin.failedLoginAttempts || 0) + 1;
+      const update: Record<string, any> = { failedLoginAttempts: attempts };
+      if (attempts >= 5) {
+        update.lockoutUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 min lockout
+      }
+      await this.adminUserModel.updateOne({ _id: admin._id }, update);
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    // Reset failed attempts on successful login
     await this.adminUserModel.updateOne(
       { _id: admin._id },
-      { lastLoginAt: new Date() },
+      { lastLoginAt: new Date(), failedLoginAttempts: 0, lockoutUntil: null },
     );
 
     const payload: JwtPayload = {
@@ -204,15 +217,33 @@ export class AuthService {
       throw new UnauthorizedException('Please login with phone/OTP or reset your password');
     }
 
-    const isPasswordValid = await bcrypt.compare(dto.password, user.password);
-
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
     if (user.isBlocked) {
       throw new UnauthorizedException('Account is blocked');
     }
+
+    // Check account lockout
+    if (user.lockoutUntil && user.lockoutUntil > new Date()) {
+      const minutesLeft = Math.ceil((user.lockoutUntil.getTime() - Date.now()) / 60000);
+      throw new UnauthorizedException(`Account locked. Try again in ${minutesLeft} minutes.`);
+    }
+
+    const isPasswordValid = await bcrypt.compare(dto.password, user.password);
+
+    if (!isPasswordValid) {
+      const attempts = (user.failedLoginAttempts || 0) + 1;
+      const update: Record<string, any> = { failedLoginAttempts: attempts };
+      if (attempts >= 5) {
+        update.lockoutUntil = new Date(Date.now() + 15 * 60 * 1000);
+      }
+      await this.userModel.updateOne({ _id: user._id }, update);
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Reset failed attempts on successful login
+    await this.userModel.updateOne(
+      { _id: user._id },
+      { failedLoginAttempts: 0, lockoutUntil: null },
+    );
 
     const payload: JwtPayload = {
       sub: user._id.toString(),
