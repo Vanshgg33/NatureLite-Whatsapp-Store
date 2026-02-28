@@ -35,7 +35,7 @@ export declare class UpdateCouponDto {
 export declare class ValidateCouponDto {
     code: string;
     orderAmount: number;
-    userId: string;
+    userId?: string;
     productIds?: string[];
     categoryIds?: string[];
 }

@@ -17,6 +17,7 @@ const products_module_1 = require("../products/products.module");
 const users_module_1 = require("../users/users.module");
 const coupons_module_1 = require("../coupons/coupons.module");
 const settings_module_1 = require("../settings/settings.module");
+const email_module_1 = require("../email/email.module");
 let OrdersModule = class OrdersModule {
 };
 exports.OrdersModule = OrdersModule;
@@ -29,6 +30,7 @@ exports.OrdersModule = OrdersModule = __decorate([
             users_module_1.UsersModule,
             coupons_module_1.CouponsModule,
             settings_module_1.SettingsModule,
+            email_module_1.EmailModule,
         ],
         controllers: [orders_controller_1.OrdersController],
         providers: [orders_service_1.OrdersService],

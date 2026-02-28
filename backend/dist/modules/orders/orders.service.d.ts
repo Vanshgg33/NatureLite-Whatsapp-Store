@@ -24,6 +24,7 @@ export declare class OrdersService {
     findById(id: string): Promise<Order>;
     findByOrderNumber(orderNumber: string): Promise<Order>;
     findUserOrders(userId: string, limit?: number): Promise<Order[]>;
+    private static readonly VALID_TRANSITIONS;
     updateStatus(id: string, dto: UpdateOrderStatusDto): Promise<Order>;
     updatePaymentStatus(id: string, dto: UpdatePaymentStatusDto): Promise<Order>;
     cancelOrder(id: string, dto: CancelOrderDto, cancelledBy?: string): Promise<Order>;

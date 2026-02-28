@@ -28,16 +28,26 @@ export class EmailService {
     }
   }
 
-  private async send(to: string, subject: string, html: string): Promise<void> {
+  private async send(to: string, subject: string, html: string, retries = 3): Promise<void> {
     if (!to) return;
 
     if (this.transporter) {
-      try {
-        await this.transporter.sendMail({ from: this.fromAddress, to, subject, html });
-        this.logger.log(`Email sent to ${to}: ${subject}`);
-      } catch (error) {
-        this.logger.error(`Failed to send email to ${to}: ${error.message}`);
+      for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+          await this.transporter.sendMail({ from: this.fromAddress, to, subject, html });
+          this.logger.log(`Email sent to ${to}: ${subject}`);
+          return;
+        } catch (error) {
+          this.logger.error(
+            `Failed to send email to ${to} (attempt ${attempt}/${retries}): ${error.message}`,
+          );
+          if (attempt < retries) {
+            // Exponential backoff: 1s, 2s, 4s
+            await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+          }
+        }
       }
+      this.logger.error(`All ${retries} attempts to send email to ${to} failed: ${subject}`);
     } else {
       this.logger.log(`[EMAIL] To: ${to} | Subject: ${subject}`);
     }

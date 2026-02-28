@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
-import { AdminLoginDto, AdminRegisterDto, CustomerLoginDto, CustomerRegisterDto, CustomerEmailLoginDto, SendOtpDto, ChangePasswordDto, AuthResponse } from './dto/auth.dto';
+import { AdminLoginDto, AdminRegisterDto, CustomerLoginDto, CustomerRegisterDto, CustomerEmailLoginDto, SendOtpDto, ChangePasswordDto, RefreshTokenDto, AuthResponse } from './dto/auth.dto';
 import { JwtPayload } from '@/common/decorators/current-user.decorator';
 export declare class AuthController {
     private readonly authService;
@@ -18,6 +18,7 @@ export declare class AuthController {
         success: boolean;
         message: string;
     }>;
+    refreshToken(dto: RefreshTokenDto, res: Response): Promise<AuthResponse>;
     logout(res: Response): Promise<{
         message: string;
     }>;

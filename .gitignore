@@ -2,7 +2,11 @@
 node_modules/
 
 # Environment files (keep .env.example tracked)
-# .env files are tracked in this project
+.env
+.env.local
+.env.development
+.env.production
+!.env.example
 
 # Build outputs
 .next/

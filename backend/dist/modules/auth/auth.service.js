@@ -16,17 +16,72 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthService = void 0;
 const common_1 = require("@nestjs/common");
 const jwt_1 = require("@nestjs/jwt");
+const config_1 = require("@nestjs/config");
 const mongoose_1 = require("@nestjs/mongoose");
 const mongoose_2 = require("mongoose");
 const bcrypt = require("bcrypt");
+const uuid_1 = require("uuid");
 const admin_user_schema_1 = require("../admin/schemas/admin-user.schema");
 const user_schema_1 = require("../users/schemas/user.schema");
 let AuthService = AuthService_1 = class AuthService {
-    constructor(adminUserModel, userModel, jwtService) {
+    constructor(adminUserModel, userModel, jwtService, configService) {
         this.adminUserModel = adminUserModel;
         this.userModel = userModel;
         this.jwtService = jwtService;
+        this.configService = configService;
         this.logger = new common_1.Logger(AuthService_1.name);
+        this.refreshTokens = new Map();
+    }
+    generateTokens(payload) {
+        const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
+        const refreshToken = (0, uuid_1.v4)();
+        this.refreshTokens.set(refreshToken, {
+            userId: payload.sub,
+            role: payload.role,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        });
+        return { accessToken, refreshToken };
+    }
+    async refreshAccessToken(refreshToken) {
+        const stored = this.refreshTokens.get(refreshToken);
+        if (!stored || stored.expiresAt < new Date()) {
+            this.refreshTokens.delete(refreshToken);
+            throw new common_1.UnauthorizedException('Invalid or expired refresh token');
+        }
+        this.refreshTokens.delete(refreshToken);
+        let user;
+        let phone = '';
+        if (stored.role === 'customer') {
+            user = await this.userModel.findById(stored.userId);
+            if (!user || user.isBlocked) {
+                throw new common_1.UnauthorizedException('User account is not active');
+            }
+            phone = user.phone || '';
+        }
+        else {
+            user = await this.adminUserModel.findById(stored.userId);
+            if (!user || !user.isActive) {
+                throw new common_1.UnauthorizedException('Admin account is not active');
+            }
+            phone = user.phone || '';
+        }
+        const payload = {
+            sub: stored.userId,
+            phone,
+            role: stored.role,
+        };
+        const tokens = this.generateTokens(payload);
+        return {
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken,
+            user: {
+                id: user._id.toString(),
+                email: user.email,
+                phone: user.phone,
+                name: user.name,
+                role: stored.role,
+            },
+        };
     }
     async adminLogin(dto) {
         const admin = await this.adminUserModel.findOne({ email: dto.email.toLowerCase() });
@@ -56,9 +111,9 @@ let AuthService = AuthService_1 = class AuthService {
             phone: admin.phone || '',
             role: admin.role,
         };
-        const accessToken = this.jwtService.sign(payload);
+        const tokens = this.generateTokens(payload);
         return {
-            accessToken,
+            ...tokens,
             user: {
                 id: admin._id.toString(),
                 email: admin.email,
@@ -88,9 +143,9 @@ let AuthService = AuthService_1 = class AuthService {
             phone: admin.phone || '',
             role: admin.role,
         };
-        const accessToken = this.jwtService.sign(payload);
+        const tokens = this.generateTokens(payload);
         return {
-            accessToken,
+            ...tokens,
             user: {
                 id: admin._id.toString(),
                 email: admin.email,
@@ -116,9 +171,9 @@ let AuthService = AuthService_1 = class AuthService {
             phone: user.phone || '',
             role: 'customer',
         };
-        const accessToken = this.jwtService.sign(payload);
+        const tokens = this.generateTokens(payload);
         return {
-            accessToken,
+            ...tokens,
             user: {
                 id: user._id.toString(),
                 phone: user.phone,
@@ -153,9 +208,9 @@ let AuthService = AuthService_1 = class AuthService {
             phone: user.phone || '',
             role: 'customer',
         };
-        const accessToken = this.jwtService.sign(payload);
+        const tokens = this.generateTokens(payload);
         return {
-            accessToken,
+            ...tokens,
             user: {
                 id: user._id.toString(),
                 email: user.email,
@@ -198,9 +253,9 @@ let AuthService = AuthService_1 = class AuthService {
             phone: user.phone || '',
             role: 'customer',
         };
-        const accessToken = this.jwtService.sign(payload);
+        const tokens = this.generateTokens(payload);
         return {
-            accessToken,
+            ...tokens,
             user: {
                 id: user._id.toString(),
                 email: user.email,
@@ -266,6 +321,7 @@ exports.AuthService = AuthService = AuthService_1 = __decorate([
     __param(1, (0, mongoose_1.InjectModel)(user_schema_1.User.name)),
     __metadata("design:paramtypes", [mongoose_2.Model,
         mongoose_2.Model,
-        jwt_1.JwtService])
+        jwt_1.JwtService,
+        config_1.ConfigService])
 ], AuthService);
 //# sourceMappingURL=auth.service.js.map

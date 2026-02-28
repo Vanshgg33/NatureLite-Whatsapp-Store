@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/layout/sidebar';
 import { useAdminAuthStore } from '@/lib/admin-store';
+import { ErrorBoundary } from '@/components/error-boundary';
 
 export default function AdminLayout({
   children,
@@ -26,7 +27,9 @@ export default function AdminLayout({
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-background">
       <Sidebar />
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="flex-1 overflow-auto">
+        <ErrorBoundary>{children}</ErrorBoundary>
+      </main>
     </div>
   );
 }

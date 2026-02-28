@@ -7,6 +7,7 @@ export interface CouponValidationResult {
     message: string;
     discountAmount: number;
     coupon?: Coupon;
+    minOrderAmount?: number;
 }
 export declare class CouponsService {
     private couponModel;

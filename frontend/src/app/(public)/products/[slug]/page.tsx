@@ -44,6 +44,7 @@ export default function ProductDetailPage() {
   const [show3D, setShow3D] = useState(false);
   const addItem = useCartStore((state) => state.addItem);
   const { isAuthenticated } = useCustomerStore();
+  const [variantAutoSelected, setVariantAutoSelected] = useState(false);
   const { toast } = useToast();
 
   // Fetch product
@@ -65,6 +66,20 @@ export default function ProductDetailPage() {
     queryFn: () => api.getProductReviews(product!._id),
     enabled: !!product,
   });
+
+  // Auto-select first variant when product loads
+  if (product && product.variants?.length > 0 && !variantAutoSelected) {
+    setSelectedVariant(product.variants[0].sku);
+    setVariantAutoSelected(true);
+  }
+
+  // Compute current price/stock based on selected variant (same pattern as QuickViewModal)
+  const selectedVariantData = product && selectedVariant
+    ? product.variants.find((v) => v.sku === selectedVariant)
+    : null;
+  const currentPrice = selectedVariantData?.price || product?.price || 0;
+  const comparePrice = selectedVariantData?.compareAtPrice || product?.compareAtPrice;
+  const currentStock = selectedVariantData ? selectedVariantData.stock : (product?.stock || 0);
 
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [reviewRating, setReviewRating] = useState(5);
@@ -109,16 +124,17 @@ export default function ProductDetailPage() {
       name: product.name,
       slug: product.slug,
       image: product.images[0] || '/images/products/placeholder.jpg',
-      price: product.price,
-      compareAtPrice: product.compareAtPrice,
+      price: currentPrice,
+      compareAtPrice: comparePrice,
       gstPercentage: product.gstPercentage,
       variantSku: selectedVariant || undefined,
+      variantName: selectedVariantData?.name,
     };
 
     addItem(cartItem, quantity);
     toast({
       title: 'Added to cart',
-      description: `${quantity} x ${product.name} added to your cart.`,
+      description: `${quantity} x ${product.name}${selectedVariantData ? ` (${selectedVariantData.name})` : ''} added to your cart.`,
     });
   };
 
@@ -160,9 +176,9 @@ export default function ProductDetailPage() {
     );
   }
 
-  const discount = product.compareAtPrice
+  const discount = comparePrice
     ? Math.round(
-        ((product.compareAtPrice - product.price) / product.compareAtPrice) * 100
+        ((comparePrice - currentPrice) / comparePrice) * 100
       )
     : 0;
 
@@ -362,15 +378,15 @@ export default function ProductDetailPage() {
             {/* Price */}
             <div className="flex items-center gap-3 mb-6">
               <span className="font-display text-3xl font-bold text-brand-charcoal">
-                {formatPrice(product.price)}
+                {formatPrice(currentPrice)}
               </span>
-              {product.compareAtPrice && (
+              {comparePrice && comparePrice > currentPrice && (
                 <>
                   <span className="font-body text-lg text-brand-muted line-through">
-                    {formatPrice(product.compareAtPrice)}
+                    {formatPrice(comparePrice)}
                   </span>
                   <span className="px-2 py-1 bg-brand-green/10 text-brand-green text-sm font-body font-medium rounded">
-                    Save {formatPrice(product.compareAtPrice - product.price)}
+                    Save {formatPrice(comparePrice - currentPrice)}
                   </span>
                 </>
               )}
@@ -416,16 +432,16 @@ export default function ProductDetailPage() {
                 value={quantity}
                 onChange={setQuantity}
                 min={1}
-                max={product.stock}
+                max={currentStock}
                 size="lg"
               />
               <Button
                 size="lg"
                 className="flex-1 bg-brand-mustard hover:bg-brand-mustard-dark text-white rounded-xl py-6"
                 onClick={handleAddToCart}
-                disabled={product.stock === 0}
+                disabled={currentStock === 0}
               >
-                {product.stock === 0 ? 'Out of Stock' : 'Add to Cart'}
+                {currentStock === 0 ? 'Out of Stock' : 'Add to Cart'}
               </Button>
               <Button
                 variant="outline"
@@ -438,9 +454,9 @@ export default function ProductDetailPage() {
             </div>
 
             {/* Stock Status */}
-            {product.stock > 0 && product.stock <= product.lowStockThreshold && (
+            {currentStock > 0 && currentStock <= product.lowStockThreshold && (
               <p className="font-body text-sm text-brand-terracotta mb-6">
-                Only {product.stock} left in stock!
+                Only {currentStock} left in stock!
               </p>
             )}
 

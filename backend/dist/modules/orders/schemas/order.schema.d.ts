@@ -78,8 +78,6 @@ export declare class Order {
     timeline: TimelineEntry[];
     awbNumber?: string;
     courierName?: string;
-    shiprocketOrderId?: string;
-    shiprocketShipmentId?: string;
     trackingUrl?: string;
     expectedDeliveryDate?: Date;
     deliveredAt?: Date;

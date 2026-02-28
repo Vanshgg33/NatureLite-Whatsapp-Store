@@ -15,6 +15,7 @@ export interface CouponValidationResult {
   message: string;
   discountAmount: number;
   coupon?: Coupon;
+  minOrderAmount?: number;
 }
 
 @Injectable()
@@ -126,6 +127,7 @@ export class CouponsService {
         valid: false,
         message: `Minimum order amount is ₹${coupon.minOrderAmount}`,
         discountAmount: 0,
+        minOrderAmount: coupon.minOrderAmount,
       };
     }
 
@@ -161,10 +163,22 @@ export class CouponsService {
   }
 
   async incrementUsageCount(couponCode: string): Promise<void> {
-    await this.couponModel.updateOne(
-      { code: couponCode.toUpperCase() },
+    // Atomic increment with maxUsageCount check to prevent race condition
+    const result = await this.couponModel.updateOne(
+      {
+        code: couponCode.toUpperCase(),
+        $or: [
+          { maxUsageCount: { $exists: false } },
+          { maxUsageCount: null },
+          { $expr: { $lt: ['$usedCount', '$maxUsageCount'] } },
+        ],
+      },
       { $inc: { usedCount: 1 } },
     );
+
+    if (result.modifiedCount === 0) {
+      throw new BadRequestException('Coupon usage limit reached');
+    }
   }
 
   async update(id: string, dto: UpdateCouponDto): Promise<Coupon> {

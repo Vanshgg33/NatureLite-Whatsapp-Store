@@ -42,14 +42,14 @@ let OrdersController = class OrdersController {
     async findByOrderNumber(orderNumber, user) {
         const order = await this.ordersService.findByOrderNumber(orderNumber);
         if (user.role === 'customer' && order.user.toString() !== user.sub) {
-            throw new Error('Unauthorized');
+            throw new common_1.ForbiddenException('You do not have access to this order');
         }
         return order;
     }
     async findOne(id, user) {
         const order = await this.ordersService.findById(id);
         if (user.role === 'customer' && order.user.toString() !== user.sub) {
-            throw new Error('Unauthorized');
+            throw new common_1.ForbiddenException('You do not have access to this order');
         }
         return order;
     }
@@ -64,7 +64,7 @@ let OrdersController = class OrdersController {
         if (user.role === 'customer') {
             const order = await this.ordersService.findById(id);
             if (order.user.toString() !== user.sub) {
-                throw new Error('Unauthorized');
+                throw new common_1.ForbiddenException('You do not have access to this order');
             }
         }
         return this.ordersService.cancelOrder(id, dto, user.sub);

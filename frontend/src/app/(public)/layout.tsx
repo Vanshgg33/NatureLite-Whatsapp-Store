@@ -8,6 +8,7 @@ import { AddToCartAnimationProvider } from '@/components/ecommerce/add-to-cart-a
 import { SocialProofPopup } from '@/components/ecommerce/social-proof-popup';
 import { SiteSettingsProvider } from '@/lib/site-settings-context';
 import { AnnouncementBar } from '@/components/layout/announcement-bar';
+import { ErrorBoundary } from '@/components/error-boundary';
 
 export default function PublicLayout({
   children,
@@ -22,7 +23,9 @@ export default function PublicLayout({
           <AnnouncementBar />
           <div className="min-h-screen flex flex-col bg-white">
             <PublicHeader />
-            <main className="flex-1">{children}</main>
+            <main className="flex-1">
+              <ErrorBoundary>{children}</ErrorBoundary>
+            </main>
             <PublicFooter />
           </div>
           <SocialProofPopup />

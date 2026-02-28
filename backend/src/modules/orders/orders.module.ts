@@ -8,6 +8,7 @@ import { ProductsModule } from '../products/products.module';
 import { UsersModule } from '../users/users.module';
 import { CouponsModule } from '../coupons/coupons.module';
 import { SettingsModule } from '../settings/settings.module';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { SettingsModule } from '../settings/settings.module';
     UsersModule,
     CouponsModule,
     SettingsModule,
+    EmailModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

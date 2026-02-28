@@ -1,4 +1,5 @@
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { Model } from 'mongoose';
 import { AdminUserDocument } from '../admin/schemas/admin-user.schema';
 import { UserDocument } from '../users/schemas/user.schema';
@@ -8,8 +9,12 @@ export declare class AuthService {
     private adminUserModel;
     private userModel;
     private jwtService;
+    private configService;
     private readonly logger;
-    constructor(adminUserModel: Model<AdminUserDocument>, userModel: Model<UserDocument>, jwtService: JwtService);
+    private refreshTokens;
+    constructor(adminUserModel: Model<AdminUserDocument>, userModel: Model<UserDocument>, jwtService: JwtService, configService: ConfigService);
+    private generateTokens;
+    refreshAccessToken(refreshToken: string): Promise<AuthResponse>;
     adminLogin(dto: AdminLoginDto): Promise<AuthResponse>;
     adminRegister(dto: AdminRegisterDto): Promise<AuthResponse>;
     customerLogin(dto: CustomerLoginDto): Promise<AuthResponse>;

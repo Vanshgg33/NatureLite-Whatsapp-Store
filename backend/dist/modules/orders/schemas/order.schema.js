@@ -199,14 +199,6 @@ __decorate([
 __decorate([
     (0, mongoose_1.Prop)(),
     __metadata("design:type", String)
-], Order.prototype, "shiprocketOrderId", void 0);
-__decorate([
-    (0, mongoose_1.Prop)(),
-    __metadata("design:type", String)
-], Order.prototype, "shiprocketShipmentId", void 0);
-__decorate([
-    (0, mongoose_1.Prop)(),
-    __metadata("design:type", String)
 ], Order.prototype, "trackingUrl", void 0);
 __decorate([
     (0, mongoose_1.Prop)(),
@@ -241,5 +233,4 @@ exports.OrderSchema.index({ user: 1, createdAt: -1 });
 exports.OrderSchema.index({ status: 1, createdAt: -1 });
 exports.OrderSchema.index({ paymentStatus: 1 });
 exports.OrderSchema.index({ createdAt: -1 });
-exports.OrderSchema.index({ awbNumber: 1 });
 //# sourceMappingURL=order.schema.js.map

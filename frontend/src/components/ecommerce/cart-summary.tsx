@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Tag, Truck, ShieldCheck, ArrowRight, X, PartyPopper } from 'lucide-react';
+import { Tag, Truck, ShieldCheck, ArrowRight, X, PartyPopper, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCartStore } from '@/lib/cart-store';
@@ -34,6 +34,11 @@ export function CartSummary({
 
   const [couponInput, setCouponInput] = useState('');
   const [isValidating, setIsValidating] = useState(false);
+  const [couponHint, setCouponHint] = useState<{
+    type: 'minOrder' | 'error';
+    message: string;
+    minOrderAmount?: number;
+  } | null>(null);
   const { toast } = useToast();
 
   const formatPrice = (price: number) => {
@@ -69,11 +74,14 @@ export function CartSummary({
     if (!couponInput.trim()) return;
 
     setIsValidating(true);
+    setCouponHint(null);
     try {
       // First validate the coupon
       const validationResult = await api.validateCoupon(couponInput, subtotal);
+      // Backend returns discountAmount (pre-calculated discount value)
+      const savedAmount = validationResult.discountAmount || 0;
 
-      if (validationResult.valid && validationResult.discount) {
+      if (validationResult.valid && savedAmount > 0) {
         // Apply coupon using store method (syncs with server if authenticated)
         const result = await applyCoupon(couponInput);
 
@@ -81,34 +89,37 @@ export function CartSummary({
           setCouponInput('');
           toast({
             title: 'Coupon applied!',
-            description: `You saved ${formatPrice(validationResult.discount)}`,
+            description: `You saved ${formatPrice(savedAmount)}`,
           });
         } else {
-          // Fallback: set local coupon for guests
+          // Fallback: set local coupon for guests or when server sync fails
+          // Always use 'fixed' because discountAmount is already the calculated value
           const { setLocalCoupon } = useCartStore.getState();
-          setLocalCoupon(
-            couponInput,
-            validationResult.discount,
-            (validationResult.discountType || 'fixed') as 'fixed' | 'percentage'
-          );
+          setLocalCoupon(couponInput, savedAmount, 'fixed');
           setCouponInput('');
           toast({
             title: 'Coupon applied!',
-            description: result.message || `You saved ${formatPrice(validationResult.discount)}`,
+            description: `You saved ${formatPrice(savedAmount)}`,
           });
         }
+      } else if (validationResult.minOrderAmount) {
+        // Minimum order amount not met — show graceful inline hint
+        setCouponHint({
+          type: 'minOrder',
+          message: validationResult.message,
+          minOrderAmount: validationResult.minOrderAmount,
+        });
       } else {
-        toast({
-          title: 'Invalid coupon',
-          description: validationResult.message || 'This coupon is not valid',
-          variant: 'destructive',
+        // Other validation failures
+        setCouponHint({
+          type: 'error',
+          message: validationResult.message || 'This coupon is not valid',
         });
       }
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Could not validate coupon. Please try again.',
-        variant: 'destructive',
+    } catch {
+      setCouponHint({
+        type: 'error',
+        message: 'Could not validate coupon. Please try again.',
       });
     } finally {
       setIsValidating(false);
@@ -141,7 +152,10 @@ export function CartSummary({
                 type="text"
                 placeholder="Enter coupon code"
                 value={couponInput}
-                onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                onChange={(e) => {
+                  setCouponInput(e.target.value.toUpperCase());
+                  if (couponHint) setCouponHint(null);
+                }}
                 className="pl-10 bg-brand-sand border-0"
               />
             </div>
@@ -154,6 +168,51 @@ export function CartSummary({
               {isValidating ? 'Checking...' : 'Apply'}
             </Button>
           </div>
+
+          {/* Inline coupon hint */}
+          {couponHint && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={cn(
+                'mt-3 p-3 rounded-xl',
+                couponHint.type === 'minOrder'
+                  ? 'bg-brand-mustard/10 border border-brand-mustard/20'
+                  : 'bg-red-50 border border-red-100'
+              )}
+            >
+              {couponHint.type === 'minOrder' && couponHint.minOrderAmount ? (
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Info className="w-4 h-4 text-brand-mustard shrink-0" />
+                    <span className="font-body text-sm text-brand-charcoal">
+                      Add <span className="font-semibold text-brand-mustard">{formatPrice(couponHint.minOrderAmount - subtotal)}</span> more to use this coupon
+                    </span>
+                  </div>
+                  <div className="relative h-2 bg-brand-mustard/10 rounded-full overflow-hidden">
+                    <motion.div
+                      className="h-full bg-brand-mustard rounded-full"
+                      initial={{ width: 0 }}
+                      animate={{
+                        width: `${Math.min((subtotal / couponHint.minOrderAmount) * 100, 100)}%`,
+                      }}
+                      transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                    />
+                  </div>
+                  <p className="font-body text-xs text-brand-muted mt-1.5">
+                    Minimum order: {formatPrice(couponHint.minOrderAmount)}
+                  </p>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Info className="w-4 h-4 text-red-400 shrink-0" />
+                  <span className="font-body text-sm text-red-600">
+                    {couponHint.message}
+                  </span>
+                </div>
+              )}
+            </motion.div>
+          )}
         </div>
       ) : (
         <div className="mb-6 p-3 bg-brand-green/10 rounded-xl flex items-center justify-between">

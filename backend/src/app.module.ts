@@ -20,7 +20,6 @@ import { CouponsModule } from './modules/coupons/coupons.module';
 import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
 import { ChatbotModule } from './modules/chatbot/chatbot.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
-import { ShiprocketModule } from './modules/shiprocket/shiprocket.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { SettingsModule } from './modules/settings/settings.module';
@@ -65,7 +64,6 @@ import { FeedbackModule } from './modules/feedback/feedback.module';
     WhatsAppModule,
     ChatbotModule,
     NotificationsModule,
-    ShiprocketModule,
     AnalyticsModule,
     AdminModule,
     SettingsModule,

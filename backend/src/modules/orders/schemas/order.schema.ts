@@ -158,12 +158,6 @@ export class Order {
   courierName?: string;
 
   @Prop()
-  shiprocketOrderId?: string;
-
-  @Prop()
-  shiprocketShipmentId?: string;
-
-  @Prop()
   trackingUrl?: string;
 
   @Prop()
@@ -195,4 +189,3 @@ OrderSchema.index({ user: 1, createdAt: -1 });
 OrderSchema.index({ status: 1, createdAt: -1 });
 OrderSchema.index({ paymentStatus: 1 });
 OrderSchema.index({ createdAt: -1 });
-OrderSchema.index({ awbNumber: 1 });

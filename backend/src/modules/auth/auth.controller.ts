@@ -19,6 +19,7 @@ import {
   CustomerEmailLoginDto,
   SendOtpDto,
   ChangePasswordDto,
+  RefreshTokenDto,
   AuthResponse,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
@@ -118,6 +119,18 @@ export class AuthController {
     @Body() dto: SendOtpDto,
   ): Promise<{ success: boolean; message: string }> {
     return this.authService.sendOtp(dto.phone);
+  }
+
+  @Public()
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  async refreshToken(
+    @Body() dto: RefreshTokenDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthResponse> {
+    const result = await this.authService.refreshAccessToken(dto.refreshToken);
+    this.setAuthCookie(res, result.accessToken);
+    return result;
   }
 
   @Public()

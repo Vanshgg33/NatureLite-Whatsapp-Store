@@ -179,21 +179,35 @@ let ProductsService = class ProductsService {
         return product.save();
     }
     async decrementStock(productId, quantity, variantSku) {
-        const product = await this.productModel.findById(productId);
-        if (!product) {
-            throw new common_1.NotFoundException('Product not found');
-        }
         if (variantSku) {
-            const variant = product.variants.find((v) => v.sku === variantSku);
-            if (variant) {
-                variant.stock = Math.max(0, variant.stock - quantity);
+            const result = await this.productModel.updateOne({
+                _id: new mongoose_2.Types.ObjectId(productId),
+                'variants.sku': variantSku,
+                'variants.stock': { $gte: quantity },
+            }, {
+                $inc: {
+                    'variants.$.stock': -quantity,
+                    totalSold: quantity,
+                },
+            });
+            if (result.modifiedCount === 0) {
+                throw new common_1.BadRequestException(`Insufficient stock for variant ${variantSku}`);
             }
         }
         else {
-            product.stock = Math.max(0, product.stock - quantity);
+            const result = await this.productModel.updateOne({
+                _id: new mongoose_2.Types.ObjectId(productId),
+                stock: { $gte: quantity },
+            }, {
+                $inc: {
+                    stock: -quantity,
+                    totalSold: quantity,
+                },
+            });
+            if (result.modifiedCount === 0) {
+                throw new common_1.BadRequestException('Insufficient stock for this product');
+            }
         }
-        product.totalSold += quantity;
-        await product.save();
     }
     async incrementViewCount(id) {
         await this.productModel.updateOne({ _id: new mongoose_2.Types.ObjectId(id) }, { $inc: { viewCount: 1 } });

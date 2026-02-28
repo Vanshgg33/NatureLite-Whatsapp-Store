@@ -101,6 +101,7 @@ let CouponsService = class CouponsService {
                 valid: false,
                 message: `Minimum order amount is ₹${coupon.minOrderAmount}`,
                 discountAmount: 0,
+                minOrderAmount: coupon.minOrderAmount,
             };
         }
         if (coupon.allowedUsers && coupon.allowedUsers.length > 0) {
@@ -128,7 +129,17 @@ let CouponsService = class CouponsService {
         };
     }
     async incrementUsageCount(couponCode) {
-        await this.couponModel.updateOne({ code: couponCode.toUpperCase() }, { $inc: { usedCount: 1 } });
+        const result = await this.couponModel.updateOne({
+            code: couponCode.toUpperCase(),
+            $or: [
+                { maxUsageCount: { $exists: false } },
+                { maxUsageCount: null },
+                { $expr: { $lt: ['$usedCount', '$maxUsageCount'] } },
+            ],
+        }, { $inc: { usedCount: 1 } });
+        if (result.modifiedCount === 0) {
+            throw new common_1.BadRequestException('Coupon usage limit reached');
+        }
     }
     async update(id, dto) {
         const updateData = { ...dto };

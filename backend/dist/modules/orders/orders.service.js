@@ -187,7 +187,6 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 { orderNumber: { $regex: search, $options: 'i' } },
                 { 'shippingAddress.name': { $regex: search, $options: 'i' } },
                 { 'shippingAddress.phone': { $regex: search, $options: 'i' } },
-                { awbNumber: { $regex: search, $options: 'i' } },
             ];
         }
         if (startDate || endDate) {
@@ -243,6 +242,10 @@ let OrdersService = OrdersService_1 = class OrdersService {
         const order = await this.orderModel.findById(id);
         if (!order) {
             throw new common_1.NotFoundException('Order not found');
+        }
+        const allowedNext = OrdersService_1.VALID_TRANSITIONS[order.status] || [];
+        if (!allowedNext.includes(dto.status)) {
+            throw new common_1.BadRequestException(`Cannot transition from "${order.status}" to "${dto.status}". Allowed: ${allowedNext.join(', ') || 'none'}`);
         }
         const timelineEntry = {
             status: dto.status,
@@ -446,6 +449,17 @@ let OrdersService = OrdersService_1 = class OrdersService {
     }
 };
 exports.OrdersService = OrdersService;
+OrdersService.VALID_TRANSITIONS = {
+    pending: ['confirmed', 'cancelled'],
+    confirmed: ['processing', 'cancelled'],
+    processing: ['shipped', 'cancelled'],
+    shipped: ['out_for_delivery', 'delivered', 'returned'],
+    out_for_delivery: ['delivered', 'returned'],
+    delivered: ['returned', 'refunded'],
+    cancelled: [],
+    returned: ['refunded'],
+    refunded: [],
+};
 exports.OrdersService = OrdersService = OrdersService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, mongoose_1.InjectModel)(order_schema_1.Order.name)),

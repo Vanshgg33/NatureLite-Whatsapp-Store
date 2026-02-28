@@ -142,7 +142,9 @@ export default function CouponsPage() {
     };
 
     if (editingCoupon) {
-      updateMutation.mutate({ id: editingCoupon._id, data: submitData });
+      // Remove 'code' — not allowed in UpdateCouponDto
+      const { code, ...updateData } = submitData;
+      updateMutation.mutate({ id: editingCoupon._id, data: updateData });
     } else {
       createMutation.mutate(submitData);
     }

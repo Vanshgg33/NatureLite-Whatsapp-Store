@@ -45,9 +45,21 @@ export default function CheckoutPage() {
   const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>('cod');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [shippingSettings, setShippingSettings] = useState({ freeShippingThreshold: 999, defaultShippingCharge: 50 });
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    api.getPublicSettings().then((settings: any) => {
+      if (settings?.store) {
+        setShippingSettings({
+          freeShippingThreshold: settings.store.freeShippingThreshold ?? 999,
+          defaultShippingCharge: settings.store.defaultShippingCharge ?? 50,
+        });
+      }
+    }).catch(() => {});
   }, []);
 
   const {
@@ -233,19 +245,6 @@ export default function CheckoutPage() {
   const subtotal = getSubtotal();
   const gst = getGstTotal();
   const discount = getDiscountAmount();
-
-  const [shippingSettings, setShippingSettings] = useState({ freeShippingThreshold: 999, defaultShippingCharge: 50 });
-  useEffect(() => {
-    api.getPublicSettings().then((settings: any) => {
-      if (settings?.store) {
-        setShippingSettings({
-          freeShippingThreshold: settings.store.freeShippingThreshold ?? 999,
-          defaultShippingCharge: settings.store.defaultShippingCharge ?? 50,
-        });
-      }
-    }).catch(() => {});
-  }, []);
-
   const shipping = subtotal >= shippingSettings.freeShippingThreshold ? 0 : shippingSettings.defaultShippingCharge;
   const total = getTotal() + shipping;
 

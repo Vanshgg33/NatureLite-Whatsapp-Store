@@ -23,11 +23,6 @@ export interface CloudinaryConfig {
     apiKey: string;
     apiSecret: string;
 }
-export interface ShiprocketConfig {
-    email: string;
-    password: string;
-    apiUrl: string;
-}
 export interface ThrottleConfig {
     ttl: number;
     limit: number;
@@ -51,7 +46,6 @@ export interface Configuration {
     jwt: JwtConfig;
     whatsapp: WhatsAppConfig;
     cloudinary: CloudinaryConfig;
-    shiprocket: ShiprocketConfig;
     throttle: ThrottleConfig;
     razorpay: RazorpayConfig;
     smtp: SmtpConfig;

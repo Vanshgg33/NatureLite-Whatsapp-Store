@@ -158,8 +158,8 @@ export class ValidateCouponDto {
   orderAmount: number;
 
   @IsString()
-  @IsNotEmpty()
-  userId: string;
+  @IsOptional()
+  userId?: string;
 
   @IsArray()
   @IsString({ each: true })

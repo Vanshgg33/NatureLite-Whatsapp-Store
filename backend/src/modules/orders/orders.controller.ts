@@ -7,6 +7,7 @@ import {
   Param,
   Query,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import {
@@ -85,7 +86,7 @@ export class OrdersController {
     const order = await this.ordersService.findByOrderNumber(orderNumber);
 
     if (user.role === 'customer' && order.user.toString() !== user.sub) {
-      throw new Error('Unauthorized');
+      throw new ForbiddenException('You do not have access to this order');
     }
 
     return order;
@@ -99,7 +100,7 @@ export class OrdersController {
     const order = await this.ordersService.findById(id);
 
     if (user.role === 'customer' && order.user.toString() !== user.sub) {
-      throw new Error('Unauthorized');
+      throw new ForbiddenException('You do not have access to this order');
     }
 
     return order;
@@ -136,7 +137,7 @@ export class OrdersController {
     if (user.role === 'customer') {
       const order = await this.ordersService.findById(id);
       if (order.user.toString() !== user.sub) {
-        throw new Error('Unauthorized');
+        throw new ForbiddenException('You do not have access to this order');
       }
     }
 

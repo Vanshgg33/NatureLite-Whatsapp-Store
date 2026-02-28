@@ -1,8 +1,10 @@
 import { Injectable, UnauthorizedException, ConflictException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcrypt';
+import { v4 as uuidv4 } from 'uuid';
 import { AdminUser, AdminUserDocument } from '../admin/schemas/admin-user.schema';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import {
@@ -19,12 +21,78 @@ import { JwtPayload } from '@/common/decorators/current-user.decorator';
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  // In-memory refresh token store. For production, use Redis or a DB collection.
+  private refreshTokens = new Map<string, { userId: string; role: string; expiresAt: Date }>();
 
   constructor(
     @InjectModel(AdminUser.name) private adminUserModel: Model<AdminUserDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private jwtService: JwtService,
+    private configService: ConfigService,
   ) {}
+
+  private generateTokens(payload: JwtPayload): { accessToken: string; refreshToken: string } {
+    const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
+    const refreshToken = uuidv4();
+
+    // Store refresh token with 7-day expiry
+    this.refreshTokens.set(refreshToken, {
+      userId: payload.sub,
+      role: payload.role,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    });
+
+    return { accessToken, refreshToken };
+  }
+
+  async refreshAccessToken(refreshToken: string): Promise<AuthResponse> {
+    const stored = this.refreshTokens.get(refreshToken);
+
+    if (!stored || stored.expiresAt < new Date()) {
+      this.refreshTokens.delete(refreshToken);
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
+    // Delete old refresh token (rotation)
+    this.refreshTokens.delete(refreshToken);
+
+    // Validate user still exists and is active
+    let user: any;
+    let phone = '';
+    if (stored.role === 'customer') {
+      user = await this.userModel.findById(stored.userId);
+      if (!user || user.isBlocked) {
+        throw new UnauthorizedException('User account is not active');
+      }
+      phone = user.phone || '';
+    } else {
+      user = await this.adminUserModel.findById(stored.userId);
+      if (!user || !user.isActive) {
+        throw new UnauthorizedException('Admin account is not active');
+      }
+      phone = user.phone || '';
+    }
+
+    const payload: JwtPayload = {
+      sub: stored.userId,
+      phone,
+      role: stored.role as JwtPayload['role'],
+    };
+
+    const tokens = this.generateTokens(payload);
+
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      user: {
+        id: user._id.toString(),
+        email: user.email,
+        phone: user.phone,
+        name: user.name,
+        role: stored.role,
+      },
+    };
+  }
 
   async adminLogin(dto: AdminLoginDto): Promise<AuthResponse> {
     const admin = await this.adminUserModel.findOne({ email: dto.email.toLowerCase() });
@@ -67,10 +135,10 @@ export class AuthService {
       role: admin.role,
     };
 
-    const accessToken = this.jwtService.sign(payload);
+    const tokens = this.generateTokens(payload);
 
     return {
-      accessToken,
+      ...tokens,
       user: {
         id: admin._id.toString(),
         email: admin.email,
@@ -107,10 +175,10 @@ export class AuthService {
       role: admin.role,
     };
 
-    const accessToken = this.jwtService.sign(payload);
+    const tokens = this.generateTokens(payload);
 
     return {
-      accessToken,
+      ...tokens,
       user: {
         id: admin._id.toString(),
         email: admin.email,
@@ -144,10 +212,10 @@ export class AuthService {
       role: 'customer',
     };
 
-    const accessToken = this.jwtService.sign(payload);
+    const tokens = this.generateTokens(payload);
 
     return {
-      accessToken,
+      ...tokens,
       user: {
         id: user._id.toString(),
         phone: user.phone,
@@ -190,10 +258,10 @@ export class AuthService {
       role: 'customer',
     };
 
-    const accessToken = this.jwtService.sign(payload);
+    const tokens = this.generateTokens(payload);
 
     return {
-      accessToken,
+      ...tokens,
       user: {
         id: user._id.toString(),
         email: user.email,
@@ -251,10 +319,10 @@ export class AuthService {
       role: 'customer',
     };
 
-    const accessToken = this.jwtService.sign(payload);
+    const tokens = this.generateTokens(payload);
 
     return {
-      accessToken,
+      ...tokens,
       user: {
         id: user._id.toString(),
         email: user.email,

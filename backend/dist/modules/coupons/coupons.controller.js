@@ -19,6 +19,7 @@ const coupon_dto_1 = require("./dto/coupon.dto");
 const jwt_auth_guard_1 = require("../../common/guards/jwt-auth.guard");
 const roles_guard_1 = require("../../common/guards/roles.guard");
 const roles_decorator_1 = require("../../common/decorators/roles.decorator");
+const public_decorator_1 = require("../../common/decorators/public.decorator");
 let CouponsController = class CouponsController {
     constructor(couponsService) {
         this.couponsService = couponsService;
@@ -75,6 +76,7 @@ __decorate([
 ], CouponsController.prototype, "getActiveCoupons", null);
 __decorate([
     (0, common_1.Post)('validate'),
+    (0, public_decorator_1.Public)(),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [coupon_dto_1.ValidateCouponDto]),

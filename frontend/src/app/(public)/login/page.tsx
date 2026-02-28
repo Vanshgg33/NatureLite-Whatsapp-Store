@@ -16,7 +16,7 @@ type LoginMethod = 'email' | 'phone';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { setCustomer, lastVisitedPage } = useCustomerStore();
+  const { setCustomer, updateCustomer, lastVisitedPage } = useCustomerStore();
   const { syncWithServer: syncCart } = useCartStore();
   const { toast } = useToast();
 
@@ -89,8 +89,12 @@ export default function LoginPage() {
 
       if (typeof window !== 'undefined') {
         localStorage.setItem('customer-token', response.accessToken);
+        if (response.refreshToken) {
+          localStorage.setItem('customer-refresh-token', response.refreshToken);
+        }
       }
 
+      // Set initial customer data from auth response
       setCustomer({
         id: response.user.id,
         phone: response.user.phone || '',
@@ -100,6 +104,21 @@ export default function LoginPage() {
         totalOrders: 0,
         totalSpent: 0,
       });
+
+      // Fetch full profile (addresses, totalOrders, totalSpent)
+      try {
+        const profile = await api.getMyProfile();
+        updateCustomer({
+          name: profile.name || response.user.name,
+          email: profile.email || response.user.email,
+          phone: profile.phone || response.user.phone || '',
+          addresses: profile.addresses || [],
+          totalOrders: profile.totalOrders || 0,
+          totalSpent: profile.totalSpent || 0,
+        });
+      } catch {
+        // Profile fetch failed — continue with basic data
+      }
 
       toast({
         title: 'Welcome back!',
@@ -139,8 +158,12 @@ export default function LoginPage() {
 
       if (typeof window !== 'undefined') {
         localStorage.setItem('customer-token', response.accessToken);
+        if (response.refreshToken) {
+          localStorage.setItem('customer-refresh-token', response.refreshToken);
+        }
       }
 
+      // Set initial customer data from auth response
       setCustomer({
         id: response.user.id,
         phone: response.user.phone || phone,
@@ -150,6 +173,21 @@ export default function LoginPage() {
         totalOrders: 0,
         totalSpent: 0,
       });
+
+      // Fetch full profile (addresses, totalOrders, totalSpent)
+      try {
+        const profile = await api.getMyProfile();
+        updateCustomer({
+          name: profile.name || response.user.name,
+          email: profile.email || response.user.email,
+          phone: profile.phone || response.user.phone || phone,
+          addresses: profile.addresses || [],
+          totalOrders: profile.totalOrders || 0,
+          totalSpent: profile.totalSpent || 0,
+        });
+      } catch {
+        // Profile fetch failed — continue with basic data
+      }
 
       toast({
         title: 'Welcome!',

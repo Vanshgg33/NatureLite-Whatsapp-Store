@@ -14,7 +14,7 @@ import { api } from '@/lib/api';
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { setCustomer } = useCustomerStore();
+  const { setCustomer, updateCustomer } = useCustomerStore();
   const { syncWithServer: syncCart } = useCartStore();
   const { toast } = useToast();
   const [name, setName] = useState('');
@@ -50,9 +50,12 @@ export default function RegisterPage() {
         phone: phone || undefined,
       });
 
-      // Store customer token
+      // Store customer tokens
       if (typeof window !== 'undefined') {
         localStorage.setItem('customer-token', response.accessToken);
+        if (response.refreshToken) {
+          localStorage.setItem('customer-refresh-token', response.refreshToken);
+        }
       }
 
       setCustomer({
@@ -64,6 +67,21 @@ export default function RegisterPage() {
         totalOrders: 0,
         totalSpent: 0,
       });
+
+      // Fetch full profile (addresses, totalOrders, totalSpent)
+      try {
+        const profile = await api.getMyProfile();
+        updateCustomer({
+          name: profile.name || response.user.name || name,
+          email: profile.email || response.user.email || email,
+          phone: profile.phone || response.user.phone || phone,
+          addresses: profile.addresses || [],
+          totalOrders: profile.totalOrders || 0,
+          totalSpent: profile.totalSpent || 0,
+        });
+      } catch {
+        // Profile fetch failed — continue with basic data
+      }
 
       toast({
         title: 'Account created!',

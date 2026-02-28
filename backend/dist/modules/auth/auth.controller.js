@@ -71,6 +71,11 @@ let AuthController = class AuthController {
     async sendOtp(dto) {
         return this.authService.sendOtp(dto.phone);
     }
+    async refreshToken(dto, res) {
+        const result = await this.authService.refreshAccessToken(dto.refreshToken);
+        this.setAuthCookie(res, result.accessToken);
+        return result;
+    }
     async logout(res) {
         this.clearAuthCookie(res);
         return { message: 'Logged out successfully' };
@@ -141,6 +146,16 @@ __decorate([
     __metadata("design:paramtypes", [auth_dto_1.SendOtpDto]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "sendOtp", null);
+__decorate([
+    (0, public_decorator_1.Public)(),
+    (0, common_1.Post)('refresh'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Res)({ passthrough: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [auth_dto_1.RefreshTokenDto, Object]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "refreshToken", null);
 __decorate([
     (0, public_decorator_1.Public)(),
     (0, common_1.Post)('logout'),

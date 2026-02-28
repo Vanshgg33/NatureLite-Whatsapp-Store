@@ -236,23 +236,48 @@ export class ProductsService {
     quantity: number,
     variantSku?: string,
   ): Promise<void> {
-    const product = await this.productModel.findById(productId);
-
-    if (!product) {
-      throw new NotFoundException('Product not found');
-    }
-
     if (variantSku) {
-      const variant = product.variants.find((v) => v.sku === variantSku);
-      if (variant) {
-        variant.stock = Math.max(0, variant.stock - quantity);
+      // Atomic decrement for variant stock - only succeeds if sufficient stock
+      const result = await this.productModel.updateOne(
+        {
+          _id: new Types.ObjectId(productId),
+          'variants.sku': variantSku,
+          'variants.stock': { $gte: quantity },
+        },
+        {
+          $inc: {
+            'variants.$.stock': -quantity,
+            totalSold: quantity,
+          },
+        },
+      );
+
+      if (result.modifiedCount === 0) {
+        throw new BadRequestException(
+          `Insufficient stock for variant ${variantSku}`,
+        );
       }
     } else {
-      product.stock = Math.max(0, product.stock - quantity);
-    }
+      // Atomic decrement for main stock - only succeeds if sufficient stock
+      const result = await this.productModel.updateOne(
+        {
+          _id: new Types.ObjectId(productId),
+          stock: { $gte: quantity },
+        },
+        {
+          $inc: {
+            stock: -quantity,
+            totalSold: quantity,
+          },
+        },
+      );
 
-    product.totalSold += quantity;
-    await product.save();
+      if (result.modifiedCount === 0) {
+        throw new BadRequestException(
+          'Insufficient stock for this product',
+        );
+      }
+    }
   }
 
   async incrementViewCount(id: string): Promise<void> {

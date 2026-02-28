@@ -409,43 +409,13 @@ export interface UploadResult {
   bytes: number;
 }
 
-// ==================== SHIPPING TYPES ====================
-export interface ShippingRate {
-  courierId: number;
-  courierName: string;
-  rate: number;
-  estimatedDays: number;
-  cod: boolean;
-}
-
-export interface ShipmentResponse {
-  success: boolean;
-  orderId?: string;
-  shipmentId?: string;
-  awbNumber?: string;
-  courierName?: string;
-  label?: string;
-  error?: string;
-}
-
-export interface TrackingInfo {
-  awbNumber: string;
-  status: string;
-  currentLocation?: string;
-  estimatedDelivery?: string;
-  activities: {
-    date: string;
-    activity: string;
-    location?: string;
-  }[];
-}
-
 // ==================== COUPON VALIDATION ====================
 export interface CouponValidationResult {
   valid: boolean;
-  discount?: number;
-  discountType?: 'percentage' | 'fixed';
-  message?: string;
+  discountAmount: number;
+  message: string;
+  coupon?: Coupon;
+  minOrderAmount?: number;
 }
 
 // ==================== DTO TYPES ====================

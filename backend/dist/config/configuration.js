@@ -26,11 +26,6 @@ exports.default = () => ({
         apiKey: process.env.CLOUDINARY_API_KEY || '',
         apiSecret: process.env.CLOUDINARY_API_SECRET || '',
     },
-    shiprocket: {
-        email: process.env.SHIPROCKET_EMAIL || '',
-        password: process.env.SHIPROCKET_PASSWORD || '',
-        apiUrl: process.env.SHIPROCKET_API_URL || 'https://apiv2.shiprocket.in/v1/external',
-    },
     throttle: {
         ttl: parseInt(process.env.THROTTLE_TTL || '60', 10),
         limit: parseInt(process.env.THROTTLE_LIMIT || '100', 10),

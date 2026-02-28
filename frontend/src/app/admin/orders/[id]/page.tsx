@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Truck, MessageSquare, Package, MapPin, ExternalLink, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Truck, MessageSquare, Package, MapPin, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Header } from '@/components/layout/header';
@@ -13,11 +13,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
 import { formatCurrency, formatDate, getStatusColor } from '@/lib/utils';
-import { OrderStatus, TrackingInfo } from '@/types';
+import { OrderStatus } from '@/types';
 
 const statusOptions = [
   { value: 'pending', label: 'Pending' },
@@ -38,8 +37,6 @@ export default function OrderDetailPage() {
   const [newStatus, setNewStatus] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [note, setNote] = useState('');
-  const [trackingData, setTrackingData] = useState<TrackingInfo | null>(null);
-  const [isTracking, setIsTracking] = useState(false);
 
   const { data: order, isLoading } = useQuery({
     queryKey: ['order', orderId],
@@ -66,41 +63,6 @@ export default function OrderDetailPage() {
     },
   });
 
-  const shipMutation = useMutation({
-    mutationFn: () => api.createShipment(orderId),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['order', orderId] });
-      toast({
-        title: 'Shipment Created',
-        description: data.awbNumber
-          ? `AWB: ${data.awbNumber} via ${data.courierName || 'Shiprocket'}`
-          : 'Shipment created successfully',
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Shipment Failed',
-        description: error.message || 'Could not create shipment. Please try again.',
-        variant: 'destructive',
-      });
-    },
-  });
-
-  const handleTrackShipment = async (awb: string) => {
-    setIsTracking(true);
-    try {
-      const tracking = await api.trackShipment(awb);
-      setTrackingData(tracking);
-    } catch (error) {
-      toast({
-        title: 'Tracking Failed',
-        description: 'Could not fetch tracking information.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsTracking(false);
-    }
-  };
 
   if (isLoading) {
     return (
@@ -299,72 +261,23 @@ export default function OrderDetailPage() {
                     Shipping Details
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <p><strong>AWB:</strong> {order.awbNumber}</p>
-                    {order.courierName && <p><strong>Courier:</strong> {order.courierName}</p>}
-                    {order.expectedDeliveryDate && (
-                      <p><strong>Expected:</strong> {formatDate(order.expectedDeliveryDate)}</p>
-                    )}
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleTrackShipment(order.awbNumber!)}
-                      disabled={isTracking}
+                <CardContent className="space-y-2">
+                  <p><strong>AWB:</strong> {order.awbNumber}</p>
+                  {order.courierName && <p><strong>Courier:</strong> {order.courierName}</p>}
+                  {order.expectedDeliveryDate && (
+                    <p><strong>Expected:</strong> {formatDate(order.expectedDeliveryDate)}</p>
+                  )}
+                  {order.trackingUrl && (
+                    <a
+                      href={order.trackingUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
                     >
-                      {isTracking ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <MapPin className="h-4 w-4 mr-2" />
-                      )}
-                      Track
-                    </Button>
-                    {order.trackingUrl && (
-                      <a
-                        href={order.trackingUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <Button variant="outline" size="sm">
-                          <ExternalLink className="h-4 w-4 mr-2" />
-                          External Track
-                        </Button>
-                      </a>
-                    )}
-                  </div>
-
-                  {trackingData && (
-                    <div className="mt-4 pt-4 border-t space-y-3">
-                      <div className="flex items-center gap-2">
-                        <Badge>{trackingData.status}</Badge>
-                        {trackingData.currentLocation && (
-                          <span className="text-sm text-muted-foreground">
-                            @ {trackingData.currentLocation}
-                          </span>
-                        )}
-                      </div>
-                      {trackingData.estimatedDelivery && (
-                        <p className="text-sm">
-                          <strong>ETA:</strong> {trackingData.estimatedDelivery}
-                        </p>
-                      )}
-                      {trackingData.activities && trackingData.activities.length > 0 && (
-                        <div className="space-y-2 max-h-48 overflow-y-auto">
-                          <p className="text-sm font-medium">Recent Activity:</p>
-                          {trackingData.activities.slice(0, 5).map((activity, idx) => (
-                            <div key={idx} className="text-xs text-muted-foreground pl-2 border-l-2">
-                              <p>{activity.activity}</p>
-                              <p className="text-[10px]">
-                                {activity.date} {activity.location && `- ${activity.location}`}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                      <Button variant="outline" size="sm" className="mt-2">
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        Track Order
+                      </Button>
+                    </a>
                   )}
                 </CardContent>
               </Card>
@@ -403,49 +316,6 @@ export default function OrderDetailPage() {
                 </Button>
               </CardContent>
             </Card>
-
-            {!order.awbNumber && order.status !== 'cancelled' && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Truck className="h-5 w-5" />
-                    Create Shipment
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {shipMutation.isError && (
-                    <Alert variant="destructive">
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertDescription>
-                        {(shipMutation.error as Error)?.message || 'Failed to create shipment'}
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                  <Button
-                    onClick={() => shipMutation.mutate()}
-                    disabled={shipMutation.isPending || order.status === 'pending'}
-                    className="w-full"
-                  >
-                    {shipMutation.isPending ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Creating Shipment...
-                      </>
-                    ) : (
-                      <>
-                        <Truck className="h-4 w-4 mr-2" />
-                        Ship with Shiprocket
-                      </>
-                    )}
-                  </Button>
-                  {order.status === 'pending' && (
-                    <p className="text-xs text-muted-foreground text-center">
-                      Confirm order before creating shipment
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            )}
 
             <Card>
               <CardHeader>

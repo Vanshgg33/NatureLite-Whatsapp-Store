@@ -26,7 +26,6 @@ const coupons_module_1 = require("./modules/coupons/coupons.module");
 const whatsapp_module_1 = require("./modules/whatsapp/whatsapp.module");
 const chatbot_module_1 = require("./modules/chatbot/chatbot.module");
 const notifications_module_1 = require("./modules/notifications/notifications.module");
-const shiprocket_module_1 = require("./modules/shiprocket/shiprocket.module");
 const analytics_module_1 = require("./modules/analytics/analytics.module");
 const admin_module_1 = require("./modules/admin/admin.module");
 const settings_module_1 = require("./modules/settings/settings.module");
@@ -71,7 +70,6 @@ exports.AppModule = AppModule = __decorate([
             whatsapp_module_1.WhatsAppModule,
             chatbot_module_1.ChatbotModule,
             notifications_module_1.NotificationsModule,
-            shiprocket_module_1.ShiprocketModule,
             analytics_module_1.AnalyticsModule,
             admin_module_1.AdminModule,
             settings_module_1.SettingsModule,

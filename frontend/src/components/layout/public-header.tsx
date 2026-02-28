@@ -20,8 +20,13 @@ export function PublicHeader() {
   const pathname = usePathname();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [hasMounted, setHasMounted] = useState(false);
   const itemCount = useCartStore((state) => state.getItemCount());
   const { isAuthenticated, customer } = useCustomerStore();
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
 
   // Standard light header — no dark theme needed
   const useDarkTheme = false;
@@ -124,7 +129,7 @@ export function PublicHeader() {
                 aria-label="Cart"
               >
                 <ShoppingBag className="w-5 h-5" />
-                {itemCount > 0 && (
+                {hasMounted && itemCount > 0 && (
                   <motion.span
                     key={itemCount}
                     className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-brand-mustard text-white text-xs font-medium rounded-full flex items-center justify-center"
@@ -138,7 +143,7 @@ export function PublicHeader() {
               </Link>
 
               {/* Account / Sign In */}
-              {isAuthenticated ? (
+              {hasMounted && isAuthenticated ? (
                 <Link
                   href="/account"
                   className={cn(
@@ -229,7 +234,7 @@ export function PublicHeader() {
                     })}
                   </div>
                   <div className="mt-4 pt-4 border-t border-brand-cream">
-                    {!isAuthenticated ? (
+                    {!(hasMounted && isAuthenticated) ? (
                       <Link
                         href="/login"
                         className="block w-full px-4 py-3 bg-brand-charcoal text-white rounded-xl text-center font-medium"

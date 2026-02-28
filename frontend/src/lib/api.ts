@@ -26,9 +26,6 @@ import {
   WhatsAppSettings,
   AppearanceSettings,
   BannerSettings,
-  ShippingRate,
-  ShipmentResponse,
-  TrackingInfo,
   MessageLog,
   OrderStats,
   OrdersByStatus,
@@ -44,6 +41,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1
 
 class ApiClient {
   private client: AxiosInstance;
+  private isRefreshing = false;
+  private failedQueue: Array<{ resolve: (token: string) => void; reject: (error: unknown) => void }> = [];
 
   constructor() {
     this.client = axios.create({
@@ -68,18 +67,71 @@ class ApiClient {
       (error) => Promise.reject(error)
     );
 
-    // Response interceptor for error handling
+    // Response interceptor with refresh token retry
     this.client.interceptors.response.use(
       (response) => response,
-      (error: AxiosError) => {
-        if (error.response?.status === 401) {
+      async (error: AxiosError) => {
+        const originalRequest = error.config as typeof error.config & { _retry?: boolean };
+
+        if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+          // Try refreshing the token
+          const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('customer-refresh-token') : null;
+
+          if (refreshToken) {
+            if (this.isRefreshing) {
+              // Queue this request until refresh completes
+              return new Promise((resolve, reject) => {
+                this.failedQueue.push({ resolve, reject });
+              }).then((token) => {
+                if (originalRequest.headers) {
+                  originalRequest.headers.Authorization = `Bearer ${token}`;
+                }
+                return this.client(originalRequest);
+              });
+            }
+
+            originalRequest._retry = true;
+            this.isRefreshing = true;
+
+            try {
+              const response = await axios.post(`${API_URL}/auth/refresh`, { refreshToken }, { withCredentials: true });
+              const data = response.data.data;
+              const newAccessToken = data.accessToken;
+              const newRefreshToken = data.refreshToken;
+
+              localStorage.setItem('customer-token', newAccessToken);
+              if (newRefreshToken) {
+                localStorage.setItem('customer-refresh-token', newRefreshToken);
+              }
+
+              // Retry all queued requests
+              this.failedQueue.forEach((req) => req.resolve(newAccessToken));
+              this.failedQueue = [];
+
+              if (originalRequest.headers) {
+                originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+              }
+              return this.client(originalRequest);
+            } catch (refreshError) {
+              this.failedQueue.forEach((req) => req.reject(refreshError));
+              this.failedQueue = [];
+
+              // Refresh failed - clear tokens
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem('customer-token');
+                localStorage.removeItem('customer-refresh-token');
+              }
+            } finally {
+              this.isRefreshing = false;
+            }
+          }
+
+          // No refresh token or refresh failed
           if (typeof window !== 'undefined') {
-            // Check if we're on a customer page or admin page
             const isAdminPage = window.location.pathname.startsWith('/admin');
             if (isAdminPage) {
               window.location.href = '/admin-login';
             }
-            // For customer pages, just reject - let the page handle it
           }
         }
         return Promise.reject(error);
@@ -790,33 +842,6 @@ class ApiClient {
     return response.data.data;
   }
 
-  // ==================== SHIPROCKET ====================
-  async createShipment(orderId: string): Promise<ShipmentResponse> {
-    const response = await this.client.post<ApiResponse<ShipmentResponse>>(
-      `/shiprocket/orders/${orderId}/ship`
-    );
-    return response.data.data;
-  }
-
-  async trackShipment(awbNumber: string): Promise<TrackingInfo> {
-    const response = await this.client.get<ApiResponse<TrackingInfo>>(`/shiprocket/track/${awbNumber}`);
-    return response.data.data;
-  }
-
-  async getShippingRates(
-    pickupPincode: string,
-    deliveryPincode: string,
-    weight: number,
-    cod: boolean = false
-  ): Promise<ShippingRate[]> {
-    const response = await this.client.post<ApiResponse<ShippingRate[]>>('/shiprocket/rates', {
-      pickupPincode,
-      deliveryPincode,
-      weight,
-      cod,
-    });
-    return response.data.data;
-  }
 }
 
 export const api = new ApiClient();

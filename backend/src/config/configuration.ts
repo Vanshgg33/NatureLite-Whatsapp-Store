@@ -28,12 +28,6 @@ export interface CloudinaryConfig {
   apiSecret: string;
 }
 
-export interface ShiprocketConfig {
-  email: string;
-  password: string;
-  apiUrl: string;
-}
-
 export interface ThrottleConfig {
   ttl: number;
   limit: number;
@@ -60,7 +54,6 @@ export interface Configuration {
   jwt: JwtConfig;
   whatsapp: WhatsAppConfig;
   cloudinary: CloudinaryConfig;
-  shiprocket: ShiprocketConfig;
   throttle: ThrottleConfig;
   razorpay: RazorpayConfig;
   smtp: SmtpConfig;
@@ -92,11 +85,6 @@ export default (): Configuration => ({
     cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
     apiKey: process.env.CLOUDINARY_API_KEY || '',
     apiSecret: process.env.CLOUDINARY_API_SECRET || '',
-  },
-  shiprocket: {
-    email: process.env.SHIPROCKET_EMAIL || '',
-    password: process.env.SHIPROCKET_PASSWORD || '',
-    apiUrl: process.env.SHIPROCKET_API_URL || 'https://apiv2.shiprocket.in/v1/external',
   },
   throttle: {
     ttl: parseInt(process.env.THROTTLE_TTL || '60', 10),

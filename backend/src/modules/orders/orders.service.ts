@@ -227,7 +227,6 @@ export class OrdersService {
         { orderNumber: { $regex: search, $options: 'i' } },
         { 'shippingAddress.name': { $regex: search, $options: 'i' } },
         { 'shippingAddress.phone': { $regex: search, $options: 'i' } },
-        { awbNumber: { $regex: search, $options: 'i' } },
       ];
     }
 
@@ -291,11 +290,30 @@ export class OrdersService {
       .exec();
   }
 
+  private static readonly VALID_TRANSITIONS: Record<string, string[]> = {
+    pending: ['confirmed', 'cancelled'],
+    confirmed: ['processing', 'cancelled'],
+    processing: ['shipped', 'cancelled'],
+    shipped: ['out_for_delivery', 'delivered', 'returned'],
+    out_for_delivery: ['delivered', 'returned'],
+    delivered: ['returned', 'refunded'],
+    cancelled: [],
+    returned: ['refunded'],
+    refunded: [],
+  };
+
   async updateStatus(id: string, dto: UpdateOrderStatusDto): Promise<Order> {
     const order = await this.orderModel.findById(id);
 
     if (!order) {
       throw new NotFoundException('Order not found');
+    }
+
+    const allowedNext = OrdersService.VALID_TRANSITIONS[order.status] || [];
+    if (!allowedNext.includes(dto.status)) {
+      throw new BadRequestException(
+        `Cannot transition from "${order.status}" to "${dto.status}". Allowed: ${allowedNext.join(', ') || 'none'}`,
+      );
     }
 
     const timelineEntry: TimelineEntry = {

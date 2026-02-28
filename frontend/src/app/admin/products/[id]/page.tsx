@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { api } from '@/lib/api';
@@ -39,6 +40,7 @@ export default function EditProductPage() {
     tags: '',
   });
   const [images, setImages] = useState<string[]>([]);
+  const [variants, setVariants] = useState<{ name: string; sku: string; price: string; compareAtPrice: string; stock: string }[]>([]);
   const [uploading, setUploading] = useState(false);
 
   const { data: product, isLoading } = useQuery({
@@ -71,6 +73,15 @@ export default function EditProductPage() {
         tags: product.tags.join(', '),
       });
       setImages(product.images);
+      setVariants(
+        (product.variants || []).map((v) => ({
+          name: v.name,
+          sku: v.sku,
+          price: v.price.toString(),
+          compareAtPrice: v.compareAtPrice?.toString() || '',
+          stock: v.stock.toString(),
+        }))
+      );
     }
   }, [product]);
 
@@ -111,6 +122,18 @@ export default function EditProductPage() {
     setImages((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const addVariant = () => {
+    setVariants((prev) => [...prev, { name: '', sku: '', price: '', compareAtPrice: '', stock: '0' }]);
+  };
+
+  const updateVariant = (index: number, field: string, value: string) => {
+    setVariants((prev) => prev.map((v, i) => (i === index ? { ...v, [field]: value } : v)));
+  };
+
+  const removeVariant = (index: number) => {
+    setVariants((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -131,6 +154,16 @@ export default function EditProductPage() {
       hsnCode: formData.hsnCode || undefined,
       images,
       tags: formData.tags.split(',').map((t) => t.trim()).filter(Boolean),
+      variants: variants
+        .filter((v) => v.name && v.sku && v.price)
+        .map((v) => ({
+          name: v.name,
+          sku: v.sku,
+          price: parseFloat(v.price),
+          compareAtPrice: v.compareAtPrice ? parseFloat(v.compareAtPrice) : undefined,
+          stock: parseInt(v.stock) || 0,
+          attributes: {},
+        })),
     });
   };
 
@@ -349,6 +382,87 @@ export default function EditProductPage() {
                   />
                   <Label htmlFor="trackStock">Track stock quantity</Label>
                 </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Size / Weight Variants</span>
+                  <Button type="button" variant="outline" size="sm" onClick={addVariant}>
+                    + Add Variant
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {variants.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No variants. Add variants for different sizes like 250ml, 500ml, 1L or 250g, 500g, 1kg.
+                  </p>
+                ) : (
+                  <div className="space-y-4">
+                    {variants.map((variant, index) => (
+                      <div key={index} className="grid gap-3 md:grid-cols-6 items-end p-4 border rounded-lg">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Name *</Label>
+                          <Input
+                            placeholder="e.g. 500ml"
+                            value={variant.name}
+                            onChange={(e) => updateVariant(index, 'name', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">SKU *</Label>
+                          <Input
+                            placeholder="e.g. OIL-500ML"
+                            value={variant.sku}
+                            onChange={(e) => updateVariant(index, 'sku', e.target.value.toUpperCase())}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Price (₹) *</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0"
+                            value={variant.price}
+                            onChange={(e) => updateVariant(index, 'price', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">MRP (₹)</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0"
+                            value={variant.compareAtPrice}
+                            onChange={(e) => updateVariant(index, 'compareAtPrice', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Stock</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={variant.stock}
+                            onChange={(e) => updateVariant(index, 'stock', e.target.value)}
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeVariant(index)}
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
