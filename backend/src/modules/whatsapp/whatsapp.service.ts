@@ -1,10 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
 import axios, { AxiosInstance } from 'axios';
 import * as crypto from 'crypto';
-import { MessageLog, MessageLogDocument } from './schemas/message-log.schema';
+import { MessageLogDocument } from './schemas/message-log.schema';
+import { MessageLogRepository } from './repositories/message-log.repository';
 import {
   SendTextMessageDto,
   SendTemplateMessageDto,
@@ -29,7 +28,7 @@ export class WhatsAppService {
   private readonly config: WhatsAppConfig;
 
   constructor(
-    @InjectModel(MessageLog.name) private messageLogModel: Model<MessageLogDocument>,
+    private readonly messageLogRepository: MessageLogRepository,
     private configService: ConfigService,
   ) {
     this.config = this.configService.get<WhatsAppConfig>('whatsapp')!;
@@ -410,16 +409,14 @@ export class WhatsAppService {
     direction: 'inbound' | 'outbound',
   ): Promise<void> {
     try {
-      const log = new this.messageLogModel({
+      await this.messageLogRepository.create({
         phone: message.phone,
         direction,
         messageType: message.type,
         whatsappMessageId: message.messageId,
         content: message.content,
         status: direction === 'outbound' ? 'sent' : undefined,
-      });
-
-      await log.save();
+      } as Partial<MessageLogDocument>);
     } catch (error) {
       this.logger.error('Failed to log message', error);
     }
@@ -439,10 +436,7 @@ export class WhatsAppService {
         updateData.readAt = new Date(parseInt(timestamp, 10) * 1000);
       }
 
-      await this.messageLogModel.updateOne(
-        { whatsappMessageId: messageId },
-        { $set: updateData },
-      );
+      await this.messageLogRepository.updateOneByWhatsAppMessageId(messageId, updateData);
     } catch (error) {
       this.logger.error('Failed to update message status', error);
     }
@@ -452,10 +446,6 @@ export class WhatsAppService {
     phone: string,
     limit: number = 50,
   ): Promise<MessageLogDocument[]> {
-    return this.messageLogModel
-      .find({ phone })
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .exec();
+    return this.messageLogRepository.findByPhone(phone, limit);
   }
 }

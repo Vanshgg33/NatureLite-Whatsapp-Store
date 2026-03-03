@@ -1,10 +1,10 @@
-import { Model } from 'mongoose';
-import { Category, CategoryDocument } from './schemas/category.schema';
+import { Category } from './schemas/category.schema';
+import { CategoryRepository } from './repositories/category.repository';
 import { CreateCategoryDto, UpdateCategoryDto, CategoryQueryDto } from './dto/category.dto';
 import { PaginatedResult } from '@/common/types/pagination.types';
 export declare class CategoriesService {
-    private categoryModel;
-    constructor(categoryModel: Model<CategoryDocument>);
+    private readonly categoryRepository;
+    constructor(categoryRepository: CategoryRepository);
     create(dto: CreateCategoryDto): Promise<Category>;
     findAll(query: CategoryQueryDto): Promise<PaginatedResult<Category>>;
     findById(id: string): Promise<Category>;

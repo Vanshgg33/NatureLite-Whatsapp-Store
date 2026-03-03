@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AdminUserSchema = exports.AdminUser = void 0;
 const mongoose_1 = require("@nestjs/mongoose");
+const mongoose_2 = require("mongoose");
 let AdminUser = class AdminUser {
 };
 exports.AdminUser = AdminUser;
@@ -30,6 +31,10 @@ __decorate([
     (0, mongoose_1.Prop)({ unique: true }),
     __metadata("design:type", String)
 ], AdminUser.prototype, "phone", void 0);
+__decorate([
+    (0, mongoose_1.Prop)({ type: mongoose_2.Types.ObjectId, ref: 'Store' }),
+    __metadata("design:type", mongoose_2.Types.ObjectId)
+], AdminUser.prototype, "store", void 0);
 __decorate([
     (0, mongoose_1.Prop)({ default: 'admin' }),
     __metadata("design:type", String)
@@ -74,6 +79,6 @@ exports.AdminUser = AdminUser = __decorate([
     (0, mongoose_1.Schema)({ timestamps: true })
 ], AdminUser);
 exports.AdminUserSchema = mongoose_1.SchemaFactory.createForClass(AdminUser);
-exports.AdminUserSchema.index({ email: 1 });
 exports.AdminUserSchema.index({ role: 1, isActive: 1 });
+exports.AdminUserSchema.index({ store: 1 });
 //# sourceMappingURL=admin-user.schema.js.map

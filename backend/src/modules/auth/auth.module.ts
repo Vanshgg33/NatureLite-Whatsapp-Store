@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
-import { AdminUser, AdminUserSchema } from '../admin/schemas/admin-user.schema';
-import { User, UserSchema } from '../users/schemas/user.schema';
+import { AdminModule } from '../admin/admin.module';
+import { UsersModule } from '../users/users.module';
+import { StoresModule } from '../stores/stores.module';
 
 @Module({
   imports: [
@@ -22,10 +22,9 @@ import { User, UserSchema } from '../users/schemas/user.schema';
         },
       }),
     }),
-    MongooseModule.forFeature([
-      { name: AdminUser.name, schema: AdminUserSchema },
-      { name: User.name, schema: UserSchema },
-    ]),
+    AdminModule,
+    UsersModule,
+    StoresModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],

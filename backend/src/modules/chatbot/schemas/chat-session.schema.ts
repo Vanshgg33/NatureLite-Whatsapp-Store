@@ -81,7 +81,6 @@ export class ChatSession {
 
 export const ChatSessionSchema = SchemaFactory.createForClass(ChatSession);
 
-ChatSessionSchema.index({ phone: 1 });
 ChatSessionSchema.index({ user: 1 });
 ChatSessionSchema.index({ isHandedOffToSupport: 1 });
 ChatSessionSchema.index({ lastMessageAt: -1 });

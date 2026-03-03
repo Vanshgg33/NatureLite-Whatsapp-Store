@@ -15,10 +15,9 @@ var ChatbotService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ChatbotService = void 0;
 const common_1 = require("@nestjs/common");
-const mongoose_1 = require("@nestjs/mongoose");
 const schedule_1 = require("@nestjs/schedule");
-const mongoose_2 = require("mongoose");
-const chat_session_schema_1 = require("./schemas/chat-session.schema");
+const mongoose_1 = require("mongoose");
+const chat_session_repository_1 = require("./repositories/chat-session.repository");
 const whatsapp_service_1 = require("../whatsapp/whatsapp.service");
 const users_service_1 = require("../users/users.service");
 const products_service_1 = require("../products/products.service");
@@ -27,8 +26,8 @@ const cart_service_1 = require("../cart/cart.service");
 const orders_service_1 = require("../orders/orders.service");
 const chatbot_flows_1 = require("./chatbot.flows");
 let ChatbotService = ChatbotService_1 = class ChatbotService {
-    constructor(chatSessionModel, whatsappService, usersService, productsService, categoriesService, cartService, ordersService) {
-        this.chatSessionModel = chatSessionModel;
+    constructor(chatSessionRepository, whatsappService, usersService, productsService, categoriesService, cartService, ordersService) {
+        this.chatSessionRepository = chatSessionRepository;
         this.whatsappService = whatsappService;
         this.usersService = usersService;
         this.productsService = productsService;
@@ -646,15 +645,14 @@ let ChatbotService = ChatbotService_1 = class ChatbotService {
         }
     }
     async getOrCreateSession(phone) {
-        let session = await this.chatSessionModel.findOne({ phone });
+        let session = await this.chatSessionRepository.findOneByPhone(phone);
         if (!session) {
             const user = await this.usersService.findOrCreateByPhone(phone);
-            session = new this.chatSessionModel({
+            session = await this.chatSessionRepository.create({
                 phone,
                 user: user._id,
                 currentState: 'main_menu',
             });
-            await session.save();
         }
         return session;
     }
@@ -664,10 +662,7 @@ let ChatbotService = ChatbotService_1 = class ChatbotService {
         await session.save();
     }
     async updateSessionActivity(sessionId) {
-        await this.chatSessionModel.updateOne({ _id: new mongoose_2.Types.ObjectId(sessionId) }, {
-            $set: { lastMessageAt: new Date() },
-            $inc: { messageCount: 1 },
-        });
+        await this.chatSessionRepository.updateActivity(new mongoose_1.Types.ObjectId(sessionId));
     }
     extractInputText(message) {
         return (message.content.text ||
@@ -683,25 +678,18 @@ let ChatbotService = ChatbotService_1 = class ChatbotService {
         return ['menu', 'start', 'hi', 'hello', 'hey', '/start', '/menu'].includes(normalized);
     }
     async getSession(phone) {
-        return this.chatSessionModel.findOne({ phone });
+        return this.chatSessionRepository.findOneByPhone(phone);
     }
     async resetSession(phone) {
-        await this.chatSessionModel.updateOne({ phone }, {
-            $set: {
-                currentState: 'main_menu',
-                context: {},
-                isHandedOffToSupport: false,
-            },
+        await this.chatSessionRepository.updateOneByPhone(phone, {
+            currentState: 'main_menu',
+            context: {},
+            isHandedOffToSupport: false,
         });
     }
     async cleanupExpiredSessions() {
         const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-        const result = await this.chatSessionModel.updateMany({
-            isExpired: { $ne: true },
-            lastMessageAt: { $lt: twentyFourHoursAgo },
-        }, {
-            $set: { isExpired: true },
-        });
+        const result = await this.chatSessionRepository.updateManyExpired(twentyFourHoursAgo);
         if (result.modifiedCount > 0) {
             this.logger.log(`Expired ${result.modifiedCount} chat sessions`);
         }
@@ -716,9 +704,8 @@ __decorate([
 ], ChatbotService.prototype, "cleanupExpiredSessions", null);
 exports.ChatbotService = ChatbotService = ChatbotService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __param(0, (0, mongoose_1.InjectModel)(chat_session_schema_1.ChatSession.name)),
     __param(1, (0, common_1.Inject)((0, common_1.forwardRef)(() => whatsapp_service_1.WhatsAppService))),
-    __metadata("design:paramtypes", [mongoose_2.Model,
+    __metadata("design:paramtypes", [chat_session_repository_1.ChatSessionRepository,
         whatsapp_service_1.WhatsAppService,
         users_service_1.UsersService,
         products_service_1.ProductsService,

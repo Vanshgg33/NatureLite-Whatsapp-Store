@@ -1,10 +1,10 @@
-import { Model } from 'mongoose';
-import { User, UserDocument } from './schemas/user.schema';
+import { User } from './schemas/user.schema';
+import { UserRepository } from './repositories/user.repository';
 import { CreateUserDto, UpdateUserDto, AddAddressDto, UpdateAddressDto, UserQueryDto } from './dto/user.dto';
 import { PaginatedResult } from '@/common/types/pagination.types';
 export declare class UsersService {
-    private userModel;
-    constructor(userModel: Model<UserDocument>);
+    private readonly userRepository;
+    constructor(userRepository: UserRepository);
     create(dto: CreateUserDto): Promise<User>;
     findAll(query: UserQueryDto): Promise<PaginatedResult<User>>;
     findById(id: string): Promise<User>;

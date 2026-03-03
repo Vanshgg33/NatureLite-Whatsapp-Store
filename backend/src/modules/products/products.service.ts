@@ -1,215 +1,171 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { Product, ProductDocument } from './schemas/product.schema';
+import { Injectable, NotFoundException, BadRequestException, Logger, OnModuleInit } from '@nestjs/common';
+import { Types } from 'mongoose';
+import { Product } from './schemas/product.schema';
 import {
   CreateProductDto,
   UpdateProductDto,
   ProductQueryDto,
   UpdateStockDto,
 } from './dto/product.dto';
-import { PaginatedResult, paginate } from '@/common/types/pagination.types';
+import { PaginatedResult } from '@/common/types/pagination.types';
+import { isValidObjectIdString, parseObjectId } from '@/common/utils/objectid.util';
+import { StoreStockService } from '../store-stock/store-stock.service';
+import { StoresService } from '../stores/stores.service';
+import { ProductRepository } from './repositories/product.repository';
 
 @Injectable()
-export class ProductsService {
+export class ProductsService implements OnModuleInit {
+  private readonly logger = new Logger(ProductsService.name);
+
   constructor(
-    @InjectModel(Product.name) private productModel: Model<ProductDocument>,
+    private readonly productRepository: ProductRepository,
+    private readonly storeStockService: StoreStockService,
+    private readonly storesService: StoresService,
   ) {}
 
+  async onModuleInit(): Promise<void> {
+    await this.backfillStoreStock();
+  }
+
+  private async backfillStoreStock(): Promise<void> {
+    const stores = await this.storesService.findAll();
+    if (stores.length === 0) return;
+
+    const storeIds = stores.map((s) => s._id.toString());
+    const products = await this.productRepository.findIdsAndStock();
+
+    for (const product of products) {
+      await this.storeStockService.initializeStockForProduct(
+        product._id.toString(),
+        storeIds,
+      );
+    }
+
+    if (products.length > 0) {
+      this.logger.log(`Backfilled StoreStock for ${products.length} product(s) across ${stores.length} store(s)`);
+    }
+  }
+
   async create(dto: CreateProductDto): Promise<Product> {
+    const categoryId = parseObjectId(dto.category, 'category');
     const slug = dto.slug || this.generateSlug(dto.name);
 
-    const existingSku = await this.productModel.findOne({ sku: dto.sku });
+    const existingSku = await this.productRepository.findOneBySku(dto.sku);
     if (existingSku) {
       throw new BadRequestException('Product with this SKU already exists');
     }
 
-    const existingSlug = await this.productModel.findOne({ slug });
+    const existingSlug = await this.productRepository.findOneBySlug(slug);
     if (existingSlug) {
       throw new BadRequestException('Product with this slug already exists');
     }
 
-    const product = new this.productModel({
+    const saved = await this.productRepository.create({
       ...dto,
       slug,
-      category: new Types.ObjectId(dto.category),
-    });
+      category: categoryId,
+    } as any);
 
-    return product.save();
+    try {
+      const stores = await this.storesService.findAll();
+      const storeIds = stores.map((s) => s._id.toString());
+      if (storeIds.length > 0) {
+        await this.storeStockService.initializeStockForProduct(
+          saved._id.toString(),
+          storeIds,
+        );
+        this.logger.log(`Initialized StoreStock for product ${saved.name} across ${storeIds.length} store(s)`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to initialize StoreStock for product ${saved.name}: ${(error as Error).message}`);
+    }
+
+    return saved as Product;
   }
 
   async findAll(query: ProductQueryDto): Promise<PaginatedResult<Product>> {
-    const {
-      page = 1,
-      limit = 20,
-      search,
-      category,
-      isActive,
-      isFeatured,
-      inStock,
-      minPrice,
-      maxPrice,
-      tags,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
-    } = query;
-
-    const filter: Record<string, unknown> = {};
-
-    if (search) {
-      filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { sku: { $regex: search, $options: 'i' } },
-      ];
-    }
-
-    if (category) {
-      filter.category = new Types.ObjectId(category);
-    }
-
-    if (isActive !== undefined) {
-      filter.isActive = isActive;
-    }
-
-    if (isFeatured !== undefined) {
-      filter.isFeatured = isFeatured;
-    }
-
-    if (inStock !== undefined) {
-      if (inStock) {
-        filter.stock = { $gt: 0 };
-      } else {
-        filter.stock = { $lte: 0 };
-      }
-    }
-
-    if (minPrice !== undefined || maxPrice !== undefined) {
-      filter.price = {};
-      if (minPrice !== undefined) {
-        (filter.price as Record<string, number>).$gte = minPrice;
-      }
-      if (maxPrice !== undefined) {
-        (filter.price as Record<string, number>).$lte = maxPrice;
-      }
-    }
-
-    if (tags && tags.length > 0) {
-      filter.tags = { $in: tags };
-    }
-
-    const skip = (page - 1) * limit;
-    const sort: Record<string, 1 | -1> = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
-
-    const [products, total] = await Promise.all([
-      this.productModel
-        .find(filter)
-        .populate('category', 'name slug')
-        .sort(sort)
-        .skip(skip)
-        .limit(limit)
-        .exec(),
-      this.productModel.countDocuments(filter),
-    ]);
-
-    return paginate(products, total, { page, limit });
+    return this.productRepository.findAllPaginated(query) as Promise<PaginatedResult<Product>>;
   }
 
   async findById(id: string): Promise<Product> {
-    const product = await this.productModel
-      .findById(id)
-      .populate('category', 'name slug');
-
+    const idObj = parseObjectId(id, 'id');
+    const product = await this.productRepository.findByIdWithCategory(idObj);
     if (!product) {
       throw new NotFoundException('Product not found');
     }
-
-    return product;
+    const catId = product.category?.toString?.() ?? (product.category as unknown);
+    if (isValidObjectIdString(catId)) {
+      await product.populate('category', 'name slug');
+    }
+    return product as Product;
   }
 
   async findBySlug(slug: string): Promise<Product> {
-    const product = await this.productModel
-      .findOne({ slug })
-      .populate('category', 'name slug');
-
+    const product = await this.productRepository.findOneBySlugWithCategory(slug);
     if (!product) {
       throw new NotFoundException('Product not found');
     }
-
-    return product;
+    const catId = product.category?.toString?.() ?? (product.category as unknown);
+    if (isValidObjectIdString(catId)) {
+      await product.populate('category', 'name slug');
+    }
+    return product as Product;
   }
 
   async findBySku(sku: string): Promise<Product> {
-    const product = await this.productModel
-      .findOne({ sku })
-      .populate('category', 'name slug');
-
+    const product = await this.productRepository.findOneBySkuWithCategory(sku);
     if (!product) {
       throw new NotFoundException('Product not found');
     }
-
-    return product;
+    const catId = product.category?.toString?.() ?? (product.category as unknown);
+    if (isValidObjectIdString(catId)) {
+      await product.populate('category', 'name slug');
+    }
+    return product as Product;
   }
 
   async findByCategory(categoryId: string): Promise<Product[]> {
-    return this.productModel
-      .find({ category: new Types.ObjectId(categoryId), isActive: true })
-      .sort({ createdAt: -1 })
-      .exec();
+    if (!isValidObjectIdString(categoryId)) {
+      return [];
+    }
+    return this.productRepository.findByCategoryId(parseObjectId(categoryId, 'categoryId')) as Promise<Product[]>;
   }
 
   async findFeatured(limit: number = 10): Promise<Product[]> {
-    return this.productModel
-      .find({ isActive: true, isFeatured: true })
-      .populate('category', 'name slug')
-      .limit(limit)
-      .exec();
+    return this.productRepository.findFeatured(limit) as Promise<Product[]>;
   }
 
   async update(id: string, dto: UpdateProductDto): Promise<Product> {
-    if (dto.sku) {
-      const existingSku = await this.productModel.findOne({
-        sku: dto.sku,
-        _id: { $ne: new Types.ObjectId(id) },
-      });
+    const idObj = parseObjectId(id, 'id');
 
+    if (dto.sku) {
+      const existingSku = await this.productRepository.findOneBySkuExcludingId(dto.sku, idObj);
       if (existingSku) {
         throw new BadRequestException('Product with this SKU already exists');
       }
     }
 
     if (dto.slug) {
-      const existingSlug = await this.productModel.findOne({
-        slug: dto.slug,
-        _id: { $ne: new Types.ObjectId(id) },
-      });
-
+      const existingSlug = await this.productRepository.findOneBySlugExcludingId(dto.slug, idObj);
       if (existingSlug) {
         throw new BadRequestException('Product with this slug already exists');
       }
     }
 
     const updateData: Record<string, unknown> = { ...dto };
-    if (dto.category) {
-      updateData.category = new Types.ObjectId(dto.category);
+    if (dto.category !== undefined) {
+      updateData.category = parseObjectId(dto.category, 'category');
     }
 
-    const product = await this.productModel.findByIdAndUpdate(
-      id,
-      { $set: updateData },
-      { new: true },
-    );
-
+    const product = await this.productRepository.findByIdAndUpdateDoc(id, updateData);
     if (!product) {
       throw new NotFoundException('Product not found');
     }
-
-    return product;
+    return product as Product;
   }
 
   async updateStock(id: string, dto: UpdateStockDto): Promise<Product> {
-    const product = await this.productModel.findById(id);
-
+    const product = await this.productRepository.findByIdString(id);
     if (!product) {
       throw new NotFoundException('Product not found');
     }
@@ -218,17 +174,15 @@ export class ProductsService {
       const variantIndex = product.variants.findIndex(
         (v) => v.sku === dto.variantSku,
       );
-
       if (variantIndex === -1) {
         throw new BadRequestException('Variant not found');
       }
-
       product.variants[variantIndex].stock = dto.stock;
     } else {
       product.stock = dto.stock;
     }
 
-    return product.save();
+    return product.save() as Promise<Product>;
   }
 
   async decrementStock(
@@ -236,43 +190,17 @@ export class ProductsService {
     quantity: number,
     variantSku?: string,
   ): Promise<void> {
+    const productObjId = parseObjectId(productId, 'productId');
     if (variantSku) {
-      // Atomic decrement for variant stock - only succeeds if sufficient stock
-      const result = await this.productModel.updateOne(
-        {
-          _id: new Types.ObjectId(productId),
-          'variants.sku': variantSku,
-          'variants.stock': { $gte: quantity },
-        },
-        {
-          $inc: {
-            'variants.$.stock': -quantity,
-            totalSold: quantity,
-          },
-        },
-      );
-
-      if (result.modifiedCount === 0) {
+      const modified = await this.productRepository.decrementVariantStock(productObjId, variantSku, quantity);
+      if (modified === 0) {
         throw new BadRequestException(
           `Insufficient stock for variant ${variantSku}`,
         );
       }
     } else {
-      // Atomic decrement for main stock - only succeeds if sufficient stock
-      const result = await this.productModel.updateOne(
-        {
-          _id: new Types.ObjectId(productId),
-          stock: { $gte: quantity },
-        },
-        {
-          $inc: {
-            stock: -quantity,
-            totalSold: quantity,
-          },
-        },
-      );
-
-      if (result.modifiedCount === 0) {
+      const modified = await this.productRepository.decrementMainStock(productObjId, quantity);
+      if (modified === 0) {
         throw new BadRequestException(
           'Insufficient stock for this product',
         );
@@ -280,39 +208,28 @@ export class ProductsService {
     }
   }
 
-  async incrementViewCount(id: string): Promise<void> {
-    await this.productModel.updateOne(
-      { _id: new Types.ObjectId(id) },
-      { $inc: { viewCount: 1 } },
+  async incrementTotalSold(productId: string, quantity: number): Promise<void> {
+    await this.productRepository.incrementTotalSold(
+      parseObjectId(productId, 'productId'),
+      quantity,
     );
   }
 
+  async incrementViewCount(id: string): Promise<void> {
+    await this.productRepository.incrementViewCount(parseObjectId(id, 'id'));
+  }
+
   async getLowStockProducts(): Promise<Product[]> {
-    return this.productModel
-      .find({
-        isActive: true,
-        trackStock: true,
-        $expr: { $lte: ['$stock', '$lowStockThreshold'] },
-      })
-      .exec();
+    return this.productRepository.findLowStock() as Promise<Product[]>;
   }
 
   async searchProducts(searchTerm: string, limit: number = 20): Promise<Product[]> {
-    return this.productModel
-      .find({
-        isActive: true,
-        $text: { $search: searchTerm },
-      })
-      .limit(limit)
-      .exec();
+    return this.productRepository.searchByText(searchTerm, limit) as Promise<Product[]>;
   }
 
   async delete(id: string): Promise<void> {
-    const result = await this.productModel.deleteOne({
-      _id: new Types.ObjectId(id),
-    });
-
-    if (result.deletedCount === 0) {
+    const deleted = await this.productRepository.deleteById(parseObjectId(id, 'id'));
+    if (deleted === 0) {
       throw new NotFoundException('Product not found');
     }
   }

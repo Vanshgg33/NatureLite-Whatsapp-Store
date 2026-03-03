@@ -1,10 +1,18 @@
-import { Model } from 'mongoose';
-import { Product, ProductDocument } from './schemas/product.schema';
+import { OnModuleInit } from '@nestjs/common';
+import { Product } from './schemas/product.schema';
 import { CreateProductDto, UpdateProductDto, ProductQueryDto, UpdateStockDto } from './dto/product.dto';
 import { PaginatedResult } from '@/common/types/pagination.types';
-export declare class ProductsService {
-    private productModel;
-    constructor(productModel: Model<ProductDocument>);
+import { StoreStockService } from '../store-stock/store-stock.service';
+import { StoresService } from '../stores/stores.service';
+import { ProductRepository } from './repositories/product.repository';
+export declare class ProductsService implements OnModuleInit {
+    private readonly productRepository;
+    private readonly storeStockService;
+    private readonly storesService;
+    private readonly logger;
+    constructor(productRepository: ProductRepository, storeStockService: StoreStockService, storesService: StoresService);
+    onModuleInit(): Promise<void>;
+    private backfillStoreStock;
     create(dto: CreateProductDto): Promise<Product>;
     findAll(query: ProductQueryDto): Promise<PaginatedResult<Product>>;
     findById(id: string): Promise<Product>;
@@ -15,6 +23,7 @@ export declare class ProductsService {
     update(id: string, dto: UpdateProductDto): Promise<Product>;
     updateStock(id: string, dto: UpdateStockDto): Promise<Product>;
     decrementStock(productId: string, quantity: number, variantSku?: string): Promise<void>;
+    incrementTotalSold(productId: string, quantity: number): Promise<void>;
     incrementViewCount(id: string): Promise<void>;
     getLowStockProducts(): Promise<Product[]>;
     searchProducts(searchTerm: string, limit?: number): Promise<Product[]>;

@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Star, ShoppingBag, Heart, Eye } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, getProductTotalStock } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useCartStore, CartItem } from '@/lib/cart-store';
 import { useToast } from '@/components/ui/use-toast';
@@ -136,11 +136,14 @@ export function ProductCard({
                   {discount}% OFF
                 </span>
               )}
-              {product.stock <= product.lowStockThreshold && product.stock > 0 && (
-                <span className="px-3 py-1 text-xs font-body font-medium bg-brand-terracotta text-white rounded-full">
-                  Low Stock
-                </span>
-              )}
+              {(() => {
+                const totalStock = getProductTotalStock(product);
+                return totalStock <= (product.lowStockThreshold ?? 5) && totalStock > 0 ? (
+                  <span className="px-3 py-1 text-xs font-body font-medium bg-brand-terracotta text-white rounded-full">
+                    Low Stock
+                  </span>
+                ) : null;
+              })()}
             </div>
 
             {/* Quick actions - always visible on mobile, hover on desktop */}
@@ -182,10 +185,10 @@ export function ProductCard({
               <Button
                 className="w-full bg-brand-charcoal hover:bg-brand-brown text-white rounded-xl"
                 onClick={handleAddToCart}
-                disabled={product.stock === 0}
+                disabled={getProductTotalStock(product) === 0}
               >
                 <ShoppingBag className="w-4 h-4 mr-2" />
-                {product.stock === 0 ? 'Out of Stock' : 'Add to Cart'}
+                {getProductTotalStock(product) === 0 ? 'Out of Stock' : 'Add to Cart'}
               </Button>
             </div>
           </div>

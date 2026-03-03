@@ -1,10 +1,9 @@
 import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
 import { ConfigService } from '@nestjs/config';
-import { Model, Types } from 'mongoose';
 import * as crypto from 'crypto';
-import { Payment, PaymentDocument } from './schemas/payment.schema';
-import { Order } from '../orders/schemas/order.schema';
+import { PaymentRepository } from './repositories/payment.repository';
+import { OrderRepository } from '../orders/repositories/order.repository';
+import { parseObjectId } from '@/common/utils/objectid.util';
 
 @Injectable()
 export class PaymentsService {
@@ -12,8 +11,8 @@ export class PaymentsService {
   private razorpay: any;
 
   constructor(
-    @InjectModel(Payment.name) private paymentModel: Model<PaymentDocument>,
-    @InjectModel(Order.name) private orderModel: Model<any>,
+    private readonly paymentRepository: PaymentRepository,
+    private readonly orderRepository: OrderRepository,
     private configService: ConfigService,
   ) {
     const keyId = this.configService.get<string>('razorpay.keyId');
@@ -40,12 +39,14 @@ export class PaymentsService {
       throw new BadRequestException('Payment gateway not configured');
     }
 
-    const order = await this.orderModel.findById(orderId);
+    const orderIdObj = parseObjectId(orderId, 'orderId');
+    const userObjId = parseObjectId(userId, 'userId');
+    const order = await this.orderRepository.findById(orderIdObj);
     if (!order) {
       throw new NotFoundException('Order not found');
     }
 
-    if (order.user.toString() !== userId) {
+    if (order.user.toString() !== userObjId.toString()) {
       throw new BadRequestException('Unauthorized');
     }
 
@@ -53,23 +54,21 @@ export class PaymentsService {
       throw new BadRequestException('Order already paid');
     }
 
-    // Create Razorpay order
     const razorpayOrder = await this.razorpay.orders.create({
-      amount: Math.round(order.total * 100), // convert to paise
+      amount: Math.round(order.total * 100),
       currency: 'INR',
       receipt: order.orderNumber,
-      notes: { orderId: orderId, userId },
+      notes: { orderId, userId },
     });
 
-    // Save payment record
-    await new this.paymentModel({
-      order: new Types.ObjectId(orderId),
-      user: new Types.ObjectId(userId),
+    await this.paymentRepository.createOne({
+      order: orderIdObj,
+      user: userObjId,
       amount: order.total,
       gateway: 'razorpay',
       status: 'initiated',
       gatewayOrderId: razorpayOrder.id,
-    }).save();
+    });
 
     return {
       razorpayOrderId: razorpayOrder.id,
@@ -86,7 +85,6 @@ export class PaymentsService {
   }) {
     const keySecret = this.configService.get<string>('razorpay.keySecret');
 
-    // Verify signature
     const generated = crypto
       .createHmac('sha256', keySecret)
       .update(`${data.razorpay_order_id}|${data.razorpay_payment_id}`)
@@ -96,23 +94,20 @@ export class PaymentsService {
       throw new BadRequestException('Invalid payment signature');
     }
 
-    // Update payment record
-    const payment = await this.paymentModel.findOneAndUpdate(
-      { gatewayOrderId: data.razorpay_order_id },
+    const payment = await this.paymentRepository.findOneAndUpdateByGatewayOrderId(
+      data.razorpay_order_id,
       {
         status: 'success',
         gatewayPaymentId: data.razorpay_payment_id,
         gatewaySignature: data.razorpay_signature,
       },
-      { new: true },
     );
 
     if (!payment) {
       throw new NotFoundException('Payment record not found');
     }
 
-    // Update order payment status
-    await this.orderModel.findByIdAndUpdate(payment.order, {
+    await this.orderRepository.findByIdAndUpdate(payment.order, {
       paymentStatus: 'paid',
       paymentMethod: 'razorpay',
       $push: {
@@ -130,7 +125,6 @@ export class PaymentsService {
   async handleWebhook(body: any, signature: string) {
     const webhookSecret = this.configService.get<string>('razorpay.webhookSecret');
 
-    // Verify webhook signature
     const expected = crypto
       .createHmac('sha256', webhookSecret)
       .update(JSON.stringify(body))
@@ -147,30 +141,23 @@ export class PaymentsService {
       const razorpayPaymentId = payload.payment.entity.id;
       const razorpayOrderId = payload.payment.entity.order_id;
 
-      await this.paymentModel.findOneAndUpdate(
-        { gatewayOrderId: razorpayOrderId },
-        {
-          status: 'success',
-          gatewayPaymentId: razorpayPaymentId,
-          gatewayResponse: payload.payment.entity,
-        },
-      );
+      await this.paymentRepository.findOneAndUpdateByGatewayOrderId(razorpayOrderId, {
+        status: 'success',
+        gatewayPaymentId: razorpayPaymentId,
+        gatewayResponse: payload.payment.entity,
+      });
     } else if (event === 'payment.failed') {
       const razorpayOrderId = payload.payment.entity.order_id;
 
-      await this.paymentModel.findOneAndUpdate(
-        { gatewayOrderId: razorpayOrderId },
-        {
-          status: 'failed',
-          failureReason: payload.payment.entity.error_description,
-          gatewayResponse: payload.payment.entity,
-        },
-      );
+      await this.paymentRepository.findOneAndUpdateByGatewayOrderId(razorpayOrderId, {
+        status: 'failed',
+        failureReason: payload.payment.entity.error_description,
+        gatewayResponse: payload.payment.entity,
+      });
 
-      // Update order payment status
-      const payment = await this.paymentModel.findOne({ gatewayOrderId: razorpayOrderId });
+      const payment = await this.paymentRepository.findOneByGatewayOrderId(razorpayOrderId);
       if (payment) {
-        await this.orderModel.findByIdAndUpdate(payment.order, {
+        await this.orderRepository.findByIdAndUpdate(payment.order, {
           paymentStatus: 'failed',
         });
       }
@@ -184,10 +171,8 @@ export class PaymentsService {
       throw new BadRequestException('Payment gateway not configured');
     }
 
-    const payment = await this.paymentModel.findOne({
-      order: new Types.ObjectId(orderId),
-      status: 'success',
-    });
+    const orderIdObj = parseObjectId(orderId, 'orderId');
+    const payment = await this.paymentRepository.findOneByOrderAndStatus(orderIdObj, 'success');
 
     if (!payment) {
       throw new NotFoundException('No successful payment found for this order');
@@ -200,7 +185,7 @@ export class PaymentsService {
       notes: { reason: reason || 'Order refund' },
     });
 
-    await this.paymentModel.findByIdAndUpdate(payment._id, {
+    await this.paymentRepository.findByIdAndUpdateDoc(payment._id, {
       status: 'refunded',
       refundId: refund.id,
       refundAmount,
@@ -208,8 +193,7 @@ export class PaymentsService {
       refundReason: reason,
     });
 
-    // Update order
-    await this.orderModel.findByIdAndUpdate(payment.order, {
+    await this.orderRepository.findByIdAndUpdate(payment.order, {
       paymentStatus: 'refunded',
       $push: {
         timeline: {

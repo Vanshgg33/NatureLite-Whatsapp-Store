@@ -51,7 +51,6 @@ exports.Category = Category = __decorate([
     (0, mongoose_1.Schema)({ timestamps: true })
 ], Category);
 exports.CategorySchema = mongoose_1.SchemaFactory.createForClass(Category);
-exports.CategorySchema.index({ slug: 1 });
 exports.CategorySchema.index({ parent: 1 });
 exports.CategorySchema.index({ isActive: 1, sortOrder: 1 });
 //# sourceMappingURL=category.schema.js.map

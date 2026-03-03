@@ -1,25 +1,31 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { Order, OrderDocument } from '../orders/schemas/order.schema';
-import { User, UserDocument } from '../users/schemas/user.schema';
-import { Product, ProductDocument } from '../products/schemas/product.schema';
-import { ChatSession, ChatSessionDocument } from '../chatbot/schemas/chat-session.schema';
-import { MessageLog, MessageLogDocument } from '../whatsapp/schemas/message-log.schema';
-import { AnalyticsSnapshot, AnalyticsSnapshotDocument, SnapshotPeriod } from './schemas/analytics-snapshot.schema';
+import { AnalyticsSnapshotRepository } from './repositories/analytics-snapshot.repository';
+import { OrderRepository } from '../orders/repositories/order.repository';
+import { UserRepository } from '../users/repositories/user.repository';
+import { ProductRepository } from '../products/repositories/product.repository';
+import { ChatSessionRepository } from '../chatbot/repositories/chat-session.repository';
+import { MessageLogRepository } from '../whatsapp/repositories/message-log.repository';
+import { StoreSaleRepository } from '../store-sales/repositories/store-sale.repository';
+import { StoreStockRepository } from '../store-stock/repositories/store-stock.repository';
+import { StoreRepository } from '../stores/repositories/store.repository';
+import { AnalyticsSnapshot, SnapshotPeriod } from './schemas/analytics-snapshot.schema';
+import { parseObjectId } from '@/common/utils/objectid.util';
 
 @Injectable()
 export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
 
   constructor(
-    @InjectModel(Order.name) private orderModel: Model<OrderDocument>,
-    @InjectModel(User.name) private userModel: Model<UserDocument>,
-    @InjectModel(Product.name) private productModel: Model<ProductDocument>,
-    @InjectModel(ChatSession.name) private chatSessionModel: Model<ChatSessionDocument>,
-    @InjectModel(MessageLog.name) private messageLogModel: Model<MessageLogDocument>,
-    @InjectModel(AnalyticsSnapshot.name) private snapshotModel: Model<AnalyticsSnapshotDocument>,
+    private readonly orderRepository: OrderRepository,
+    private readonly userRepository: UserRepository,
+    private readonly productRepository: ProductRepository,
+    private readonly chatSessionRepository: ChatSessionRepository,
+    private readonly messageLogRepository: MessageLogRepository,
+    private readonly snapshotRepository: AnalyticsSnapshotRepository,
+    private readonly storeSaleRepository: StoreSaleRepository,
+    private readonly storeStockRepository: StoreStockRepository,
+    private readonly storeRepository: StoreRepository,
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
@@ -79,16 +85,14 @@ export class AnalyticsService {
         this.getChatMetrics(startDate, endDate),
       ]);
 
-      const snapshot = new this.snapshotModel({
+      await this.snapshotRepository.create({
         period,
         date: startDate,
         orders: orderMetrics,
         customers: customerMetrics,
         products: productMetrics,
         chat: chatMetrics,
-      });
-
-      await snapshot.save();
+      } as any);
     } catch (error) {
       this.logger.error('Failed to create analytics snapshot', error);
     }
@@ -102,34 +106,37 @@ export class AnalyticsService {
     thisMonth.setDate(1);
     thisMonth.setHours(0, 0, 0, 0);
 
-    const [todayOrders, monthOrders, totalCustomers, pendingOrders] = await Promise.all([
-      this.orderModel.aggregate([
+    const orderModel = this.orderRepository.getModel();
+    const storeSaleModel = this.storeSaleRepository.getModel();
+    const [
+      todayOrders,
+      monthOrders,
+      todayStoreSales,
+      monthStoreSales,
+      totalCustomers,
+      pendingOrders,
+    ] = await Promise.all([
+      orderModel.aggregate([
         { $match: { createdAt: { $gte: today } } },
-        {
-          $group: {
-            _id: null,
-            count: { $sum: 1 },
-            revenue: { $sum: '$total' },
-          },
-        },
+        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$total' } } },
       ]),
-      this.orderModel.aggregate([
+      orderModel.aggregate([
         { $match: { createdAt: { $gte: thisMonth } } },
-        {
-          $group: {
-            _id: null,
-            count: { $sum: 1 },
-            revenue: { $sum: '$total' },
-          },
-        },
+        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$total' } } },
       ]),
-      this.userModel.countDocuments(),
-      this.orderModel.countDocuments({
-        status: { $in: ['pending', 'confirmed', 'processing'] },
-      }),
+      storeSaleModel.aggregate([
+        { $match: { createdAt: { $gte: today } } },
+        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$total' } } },
+      ]),
+      storeSaleModel.aggregate([
+        { $match: { createdAt: { $gte: thisMonth } } },
+        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$total' } } },
+      ]),
+      this.userRepository.countDocuments(),
+      orderModel.countDocuments({ status: { $in: ['pending', 'confirmed', 'processing'] } }),
     ]);
 
-    const recentOrders = await this.orderModel
+    const recentOrders = await orderModel
       .find()
       .sort({ createdAt: -1 })
       .limit(5)
@@ -138,10 +145,10 @@ export class AnalyticsService {
       .exec();
 
     return {
-      todayOrders: todayOrders[0]?.count || 0,
-      todayRevenue: todayOrders[0]?.revenue || 0,
-      monthOrders: monthOrders[0]?.count || 0,
-      monthRevenue: monthOrders[0]?.revenue || 0,
+      todayOrders: (todayOrders[0]?.count || 0) + (todayStoreSales[0]?.count || 0),
+      todayRevenue: (todayOrders[0]?.revenue || 0) + (todayStoreSales[0]?.revenue || 0),
+      monthOrders: (monthOrders[0]?.count || 0) + (monthStoreSales[0]?.count || 0),
+      monthRevenue: (monthOrders[0]?.revenue || 0) + (monthStoreSales[0]?.revenue || 0),
       totalCustomers,
       pendingOrders,
       recentOrders,
@@ -152,7 +159,7 @@ export class AnalyticsService {
     startDate: Date,
     endDate: Date,
   ): Promise<Record<string, unknown>> {
-    const result = await this.orderModel.aggregate([
+    const result = await this.orderRepository.getModel().aggregate([
       {
         $match: {
           createdAt: { $gte: startDate, $lt: endDate },
@@ -205,17 +212,18 @@ export class AnalyticsService {
     startDate: Date,
     endDate: Date,
   ): Promise<Record<string, unknown>> {
+    const userModel = this.userRepository.getModel();
     const [totalCustomers, newCustomers, activeCustomers] = await Promise.all([
-      this.userModel.countDocuments(),
-      this.userModel.countDocuments({
+      userModel.countDocuments(),
+      userModel.countDocuments({
         createdAt: { $gte: startDate, $lt: endDate },
       }),
-      this.userModel.countDocuments({
+      userModel.countDocuments({
         lastOrderAt: { $gte: startDate },
       }),
     ]);
 
-    const returningCustomers = await this.orderModel.aggregate([
+    const returningCustomers = await this.orderRepository.getModel().aggregate([
       {
         $match: {
           createdAt: { $gte: startDate, $lt: endDate },
@@ -249,18 +257,15 @@ export class AnalyticsService {
     startDate: Date,
     endDate: Date,
   ): Promise<Record<string, unknown>> {
+    const productModel = this.productRepository.getModel();
     const [totalProducts, activeProducts, outOfStock, lowStock] = await Promise.all([
-      this.productModel.countDocuments(),
-      this.productModel.countDocuments({ isActive: true }),
-      this.productModel.countDocuments({ isActive: true, stock: { $lte: 0 } }),
-      this.productModel.countDocuments({
-        isActive: true,
-        trackStock: true,
-        $expr: { $lte: ['$stock', '$lowStockThreshold'] },
-      }),
+      productModel.countDocuments(),
+      productModel.countDocuments({ isActive: true }),
+      productModel.countDocuments({ isActive: true, stock: { $lte: 0 } }),
+      this.productRepository.countLowStock(),
     ]);
 
-    const topSelling = await this.orderModel.aggregate([
+    const topSelling = await this.orderRepository.getModel().aggregate([
       {
         $match: {
           createdAt: { $gte: startDate, $lt: endDate },
@@ -298,11 +303,13 @@ export class AnalyticsService {
     startDate: Date,
     endDate: Date,
   ): Promise<Record<string, unknown>> {
+    const chatSessionModel = this.chatSessionRepository.getModel();
+    const messageLogModel = this.messageLogRepository.getModel();
     const [totalSessions, messageStats, supportHandoffs] = await Promise.all([
-      this.chatSessionModel.countDocuments({
+      chatSessionModel.countDocuments({
         createdAt: { $gte: startDate, $lt: endDate },
       }),
-      this.messageLogModel.aggregate([
+      messageLogModel.aggregate([
         {
           $match: {
             createdAt: { $gte: startDate, $lt: endDate },
@@ -321,7 +328,7 @@ export class AnalyticsService {
           },
         },
       ]),
-      this.chatSessionModel.countDocuments({
+      chatSessionModel.countDocuments({
         isHandedOffToSupport: true,
         supportHandoffAt: { $gte: startDate, $lt: endDate },
       }),
@@ -341,40 +348,362 @@ export class AnalyticsService {
     startDate.setDate(startDate.getDate() - days);
     startDate.setHours(0, 0, 0, 0);
 
-    const result = await this.orderModel.aggregate([
-      {
-        $match: {
-          createdAt: { $gte: startDate },
-          status: { $ne: 'cancelled' },
-        },
-      },
-      {
-        $group: {
-          _id: {
-            $dateToString: { format: '%Y-%m-%d', date: '$createdAt' },
+    const [orderResult, storeSaleResult] = await Promise.all([
+      this.orderRepository.getModel().aggregate([
+        {
+          $match: {
+            createdAt: { $gte: startDate },
+            status: { $ne: 'cancelled' },
           },
-          revenue: { $sum: '$total' },
-          orders: { $sum: 1 },
         },
-      },
-      { $sort: { _id: 1 } },
+        {
+          $group: {
+            _id: {
+              $dateToString: { format: '%Y-%m-%d', date: '$createdAt' },
+            },
+            revenue: { $sum: '$total' },
+            orders: { $sum: 1 },
+          },
+        },
+      ]),
+      this.storeSaleRepository.getModel().aggregate([
+        { $match: { createdAt: { $gte: startDate } } },
+        {
+          $group: {
+            _id: {
+              $dateToString: { format: '%Y-%m-%d', date: '$createdAt' },
+            },
+            revenue: { $sum: '$total' },
+            sales: { $sum: 1 },
+          },
+        },
+      ]),
     ]);
 
-    return result.map((item) => ({
-      date: item._id,
-      revenue: item.revenue,
-      orders: item.orders,
-    }));
+    const dateMap = new Map<string, { revenue: number; orders: number }>();
+    for (const item of orderResult) {
+      dateMap.set(item._id, {
+        revenue: item.revenue,
+        orders: item.orders,
+      });
+    }
+    for (const item of storeSaleResult) {
+      const existing = dateMap.get(item._id);
+      if (existing) {
+        existing.revenue += item.revenue;
+        existing.orders += item.sales;
+      } else {
+        dateMap.set(item._id, {
+          revenue: item.revenue,
+          orders: item.sales,
+        });
+      }
+    }
+
+    return Array.from(dateMap.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, { revenue, orders }]) => ({ date, revenue, orders }));
   }
 
   async getSnapshots(
     period: SnapshotPeriod,
     limit: number = 30,
   ): Promise<AnalyticsSnapshot[]> {
-    return this.snapshotModel
-      .find({ period })
-      .sort({ date: -1 })
-      .limit(limit)
+    return this.snapshotRepository.findByPeriod(period, limit);
+  }
+
+  // ==================== MULTI-STORE ANALYTICS ====================
+
+  async getStoreDashboardStats(storeId: string): Promise<Record<string, unknown>> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const thisMonth = new Date();
+    thisMonth.setDate(1);
+    thisMonth.setHours(0, 0, 0, 0);
+
+    const storeObjId = parseObjectId(storeId, 'storeId');
+
+    const storeSaleModel = this.storeSaleRepository.getModel();
+    const storeStockModel = this.storeStockRepository.getModel();
+    const [todaySales, monthSales] = await Promise.all([
+      storeSaleModel.aggregate([
+        { $match: { store: storeObjId, createdAt: { $gte: today } } },
+        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$total' } } },
+      ]),
+      storeSaleModel.aggregate([
+        { $match: { store: storeObjId, createdAt: { $gte: thisMonth } } },
+        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$total' } } },
+      ]),
+    ]);
+
+    const recentSales = await storeSaleModel
+      .find({ store: storeObjId })
+      .sort({ createdAt: -1 })
+      .limit(5)
       .exec();
+
+    const lowStock = await this.storeStockRepository.findLowStockByStore(storeObjId);
+
+    return {
+      todaySales: todaySales[0]?.count || 0,
+      todayRevenue: todaySales[0]?.revenue || 0,
+      monthSales: monthSales[0]?.count || 0,
+      monthRevenue: monthSales[0]?.revenue || 0,
+      recentSales,
+      lowStockProducts: lowStock,
+    };
+  }
+
+  async getTodayRevenuePerStore(): Promise<any[]> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return this.storeSaleRepository.getModel().aggregate([
+      { $match: { createdAt: { $gte: today } } },
+      {
+        $group: {
+          _id: '$store',
+          revenue: { $sum: '$total' },
+          salesCount: { $sum: 1 },
+        },
+      },
+      {
+        $lookup: {
+          from: 'stores',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'storeInfo',
+        },
+      },
+      { $unwind: '$storeInfo' },
+      {
+        $project: {
+          storeId: { $toString: '$_id' },
+          storeName: '$storeInfo.name',
+          storeCode: '$storeInfo.code',
+          revenue: 1,
+          salesCount: 1,
+        },
+      },
+      { $sort: { revenue: -1 } },
+    ]);
+  }
+
+  async getMultiStoreRevenue(days: number = 30): Promise<any[]> {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    startDate.setHours(0, 0, 0, 0);
+
+    return this.storeSaleRepository.getModel().aggregate([
+      { $match: { createdAt: { $gte: startDate } } },
+      {
+        $group: {
+          _id: {
+            store: '$store',
+            date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          },
+          revenue: { $sum: '$total' },
+          sales: { $sum: 1 },
+        },
+      },
+      {
+        $group: {
+          _id: '$_id.store',
+          data: {
+            $push: { date: '$_id.date', revenue: '$revenue', sales: '$sales' },
+          },
+        },
+      },
+      {
+        $lookup: {
+          from: 'stores',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'storeInfo',
+        },
+      },
+      { $unwind: '$storeInfo' },
+      {
+        $project: {
+          storeId: { $toString: '$_id' },
+          storeName: '$storeInfo.name',
+          data: { $sortArray: { input: '$data', sortBy: { date: 1 } } },
+        },
+      },
+    ]);
+  }
+
+  async getStockSummaryPerStore(): Promise<any[]> {
+    const storeModel = this.storeRepository.getModel();
+    const storeStockModel = this.storeStockRepository.getModel();
+    const stores = await storeModel.find({ isActive: true });
+    const result = [];
+
+    for (const store of stores) {
+      const [total, inStock, outOfStock, lowStock] = await Promise.all([
+        storeStockModel.countDocuments({ store: store._id }),
+        storeStockModel.countDocuments({ store: store._id, stock: { $gt: 0 } }),
+        storeStockModel.countDocuments({ store: store._id, stock: { $lte: 0 } }),
+        this.storeStockRepository.countLowStockByStore(store._id),
+      ]);
+
+      result.push({
+        storeId: store._id.toString(),
+        storeName: store.name,
+        storeCode: store.code,
+        totalProducts: total,
+        inStock,
+        outOfStock,
+        lowStock,
+      });
+    }
+
+    return result;
+  }
+
+  async getTopSellingByStore(
+    storeId: string,
+    startDate: Date,
+    endDate: Date,
+    limit: number = 10,
+  ): Promise<any[]> {
+    const storeObjId = parseObjectId(storeId, 'storeId');
+    return this.storeSaleRepository.getModel().aggregate([
+      {
+        $match: {
+          store: storeObjId,
+          createdAt: { $gte: startDate, $lte: endDate },
+        },
+      },
+      { $unwind: '$items' },
+      {
+        $group: {
+          _id: '$items.product',
+          name: { $first: '$items.name' },
+          quantitySold: { $sum: '$items.quantity' },
+          revenue: { $sum: '$items.total' },
+        },
+      },
+      { $sort: { quantitySold: -1 } },
+      { $limit: limit },
+    ]);
+  }
+
+  async getTopSellingOverall(
+    startDate: Date,
+    endDate: Date,
+    limit: number = 10,
+  ): Promise<any[]> {
+    return this.storeSaleRepository.getModel().aggregate([
+      { $match: { createdAt: { $gte: startDate, $lte: endDate } } },
+      { $unwind: '$items' },
+      {
+        $group: {
+          _id: '$items.product',
+          name: { $first: '$items.name' },
+          quantitySold: { $sum: '$items.quantity' },
+          revenue: { $sum: '$items.total' },
+        },
+      },
+      { $sort: { quantitySold: -1 } },
+      { $limit: limit },
+    ]);
+  }
+
+  async getMonthOverMonthByStore(): Promise<any[]> {
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+    const storeModel = this.storeRepository.getModel();
+    const storeSaleModel = this.storeSaleRepository.getModel();
+    const stores = await storeModel.find({ isActive: true });
+    const result = [];
+
+    for (const store of stores) {
+      const [thisMonth, lastMonth] = await Promise.all([
+        storeSaleModel.aggregate([
+          {
+            $match: {
+              store: store._id,
+              createdAt: { $gte: thisMonthStart },
+            },
+          },
+          { $group: { _id: null, revenue: { $sum: '$total' }, count: { $sum: 1 } } },
+        ]),
+        storeSaleModel.aggregate([
+          {
+            $match: {
+              store: store._id,
+              createdAt: { $gte: lastMonthStart, $lt: thisMonthStart },
+            },
+          },
+          { $group: { _id: null, revenue: { $sum: '$total' }, count: { $sum: 1 } } },
+        ]),
+      ]);
+
+      const thisMonthRevenue = thisMonth[0]?.revenue || 0;
+      const lastMonthRevenue = lastMonth[0]?.revenue || 0;
+      const changePercent = lastMonthRevenue > 0
+        ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
+        : thisMonthRevenue > 0 ? 100 : 0;
+
+      result.push({
+        storeId: store._id.toString(),
+        storeName: store.name,
+        thisMonth: thisMonthRevenue,
+        thisMonthSales: thisMonth[0]?.count || 0,
+        lastMonth: lastMonthRevenue,
+        lastMonthSales: lastMonth[0]?.count || 0,
+        changePercent: Math.round(changePercent * 10) / 10,
+      });
+    }
+
+    return result;
+  }
+
+  async getTopCustomersByStore(storeId: string, limit: number = 10): Promise<any[]> {
+    const storeObjId = parseObjectId(storeId, 'storeId');
+    return this.storeSaleRepository.getModel().aggregate([
+      {
+        $match: {
+          store: storeObjId,
+          customerPhone: { $exists: true, $nin: [null, ''] },
+        },
+      },
+      {
+        $group: {
+          _id: '$customerPhone',
+          customerName: { $last: '$customerName' },
+          totalSpent: { $sum: '$total' },
+          totalOrders: { $sum: 1 },
+          lastPurchase: { $max: '$createdAt' },
+        },
+      },
+      { $sort: { totalSpent: -1 } },
+      { $limit: limit },
+    ]);
+  }
+
+  async getTopCustomersOverall(limit: number = 10): Promise<any[]> {
+    return this.storeSaleRepository.getModel().aggregate([
+      {
+        $match: {
+          customerPhone: { $exists: true, $nin: [null, ''] },
+        },
+      },
+      {
+        $group: {
+          _id: '$customerPhone',
+          customerName: { $last: '$customerName' },
+          totalSpent: { $sum: '$total' },
+          totalOrders: { $sum: 1 },
+          lastPurchase: { $max: '$createdAt' },
+        },
+      },
+      { $sort: { totalSpent: -1 } },
+      { $limit: limit },
+    ]);
   }
 }

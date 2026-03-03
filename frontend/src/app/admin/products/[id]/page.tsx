@@ -15,6 +15,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { api } from '@/lib/api';
+import { BarcodeScanCard } from '@/components/admin/barcode-scan-card';
+import type { BarcodeProduct } from '@/lib/barcode-lookup';
 
 export default function EditProductPage() {
   const router = useRouter();
@@ -134,6 +136,19 @@ export default function EditProductPage() {
     setVariants((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleBarcodeProduct = (product: BarcodeProduct) => {
+    setFormData((prev) => ({
+      ...prev,
+      ...(product.name && { name: product.name }),
+      ...(product.sku && { sku: product.sku }),
+      ...(product.description && { description: product.description }),
+      ...(product.quantity && { shortDescription: `Size: ${product.quantity}` }),
+    }));
+    if (product.imageUrl && !images.includes(product.imageUrl)) {
+      setImages((prev) => [...prev, product.imageUrl!]);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -203,6 +218,8 @@ export default function EditProductPage() {
       <form onSubmit={handleSubmit} className="p-6 space-y-6">
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-6">
+            <BarcodeScanCard onProductFound={handleBarcodeProduct} />
+
             <Card>
               <CardHeader>
                 <CardTitle>Basic Information</CardTitle>
@@ -311,6 +328,18 @@ export default function EditProductPage() {
                   </div>
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor="sku">Product SKU *</Label>
+                  <Input
+                    id="sku"
+                    value={formData.sku}
+                    onChange={(e) => setFormData({ ...formData, sku: e.target.value.toUpperCase() })}
+                    placeholder="e.g. OIL-001"
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">Unique identifier for this product. Stock is tracked per variant below.</p>
+                </div>
+
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="gstPercentage">GST %</Label>
@@ -335,55 +364,6 @@ export default function EditProductPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Inventory</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="sku">SKU *</Label>
-                    <Input
-                      id="sku"
-                      value={formData.sku}
-                      onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="stock">Stock Quantity</Label>
-                    <Input
-                      id="stock"
-                      type="number"
-                      min="0"
-                      value={formData.stock}
-                      onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="lowStockThreshold">Low Stock Alert</Label>
-                    <Input
-                      id="lowStockThreshold"
-                      type="number"
-                      min="0"
-                      value={formData.lowStockThreshold}
-                      onChange={(e) => setFormData({ ...formData, lowStockThreshold: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="trackStock"
-                    checked={formData.trackStock}
-                    onChange={(e) => setFormData({ ...formData, trackStock: e.target.checked })}
-                    className="rounded"
-                  />
-                  <Label htmlFor="trackStock">Track stock quantity</Label>
-                </div>
-              </CardContent>
-            </Card>
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">

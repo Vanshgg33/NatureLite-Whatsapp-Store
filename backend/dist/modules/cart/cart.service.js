@@ -8,20 +8,16 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
-var __param = (this && this.__param) || function (paramIndex, decorator) {
-    return function (target, key) { decorator(target, key, paramIndex); }
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CartService = void 0;
 const common_1 = require("@nestjs/common");
-const mongoose_1 = require("@nestjs/mongoose");
-const mongoose_2 = require("mongoose");
-const cart_schema_1 = require("./schemas/cart.schema");
+const cart_repository_1 = require("./repositories/cart.repository");
 const products_service_1 = require("../products/products.service");
 const coupons_service_1 = require("../coupons/coupons.service");
+const objectid_util_1 = require("../../common/utils/objectid.util");
 let CartService = class CartService {
-    constructor(cartModel, productsService, couponsService) {
-        this.cartModel = cartModel;
+    constructor(cartRepository, productsService, couponsService) {
+        this.cartRepository = cartRepository;
         this.productsService = productsService;
         this.couponsService = couponsService;
     }
@@ -30,6 +26,7 @@ let CartService = class CartService {
         return this.formatCartResponse(cart);
     }
     async addItem(userId, dto) {
+        const productIdObj = (0, objectid_util_1.parseObjectId)(dto.productId, 'productId');
         const cart = await this.findOrCreateCart(userId);
         const product = await this.productsService.findById(dto.productId);
         if (!product.isActive) {
@@ -51,7 +48,7 @@ let CartService = class CartService {
         if (product.trackStock && stock < dto.quantity) {
             throw new common_1.BadRequestException('Not enough stock available');
         }
-        const existingItemIndex = cart.items.findIndex((item) => item.product.toString() === dto.productId &&
+        const existingItemIndex = cart.items.findIndex((item) => item.product.toString() === productIdObj.toString() &&
             item.variantSku === dto.variantSku);
         if (existingItemIndex >= 0) {
             const newQuantity = cart.items[existingItemIndex].quantity + dto.quantity;
@@ -62,7 +59,7 @@ let CartService = class CartService {
         }
         else {
             const cartItem = {
-                product: new mongoose_2.Types.ObjectId(dto.productId),
+                product: productIdObj,
                 variantSku: dto.variantSku,
                 quantity: dto.quantity,
                 price,
@@ -77,6 +74,7 @@ let CartService = class CartService {
         return this.formatCartResponse(cart);
     }
     async updateItemQuantity(userId, productId, dto, variantSku) {
+        (0, objectid_util_1.parseObjectId)(productId, 'productId');
         const cart = await this.findOrCreateCart(userId);
         const itemIndex = cart.items.findIndex((item) => item.product.toString() === productId &&
             item.variantSku === variantSku);
@@ -100,6 +98,7 @@ let CartService = class CartService {
         return this.formatCartResponse(cart);
     }
     async removeItem(userId, productId, variantSku) {
+        (0, objectid_util_1.parseObjectId)(productId, 'productId');
         const cart = await this.findOrCreateCart(userId);
         const itemIndex = cart.items.findIndex((item) => item.product.toString() === productId &&
             item.variantSku === variantSku);
@@ -148,37 +147,28 @@ let CartService = class CartService {
         return this.formatCartResponse(cart);
     }
     async markAsAbandoned(cartId) {
-        await this.cartModel.updateOne({ _id: new mongoose_2.Types.ObjectId(cartId) }, { abandonedAt: new Date() });
+        const cartObjId = (0, objectid_util_1.parseObjectId)(cartId, 'cartId');
+        await this.cartRepository.updateOne({ _id: cartObjId }, { abandonedAt: new Date() });
     }
     async getAbandonedCarts(minutesOld, limit = 100) {
         const cutoffTime = new Date(Date.now() - minutesOld * 60 * 1000);
-        return this.cartModel
-            .find({
-            updatedAt: { $lt: cutoffTime },
-            abandonedAt: { $exists: false },
-            abandonedReminderSent: false,
-            'items.0': { $exists: true },
-        })
-            .populate('user', 'phone name')
-            .limit(limit)
-            .exec();
+        return this.cartRepository.findAbandonedCarts(cutoffTime, limit);
     }
     async markAbandonedReminderSent(cartId) {
-        await this.cartModel.updateOne({ _id: new mongoose_2.Types.ObjectId(cartId) }, { abandonedReminderSent: true });
+        const cartObjId = (0, objectid_util_1.parseObjectId)(cartId, 'cartId');
+        await this.cartRepository.updateOne({ _id: cartObjId }, { abandonedReminderSent: true });
     }
     async findOrCreateCart(userId) {
-        let cart = await this.cartModel.findOne({
-            user: new mongoose_2.Types.ObjectId(userId),
-        });
+        const userObjId = (0, objectid_util_1.parseObjectId)(userId, 'userId');
+        let cart = await this.cartRepository.findOneByUser(userObjId);
         if (!cart) {
-            cart = new this.cartModel({
-                user: new mongoose_2.Types.ObjectId(userId),
+            cart = await this.cartRepository.create({
+                user: userObjId,
                 items: [],
                 subtotal: 0,
                 discount: 0,
                 total: 0,
             });
-            await cart.save();
         }
         return cart;
     }
@@ -212,8 +202,7 @@ let CartService = class CartService {
 exports.CartService = CartService;
 exports.CartService = CartService = __decorate([
     (0, common_1.Injectable)(),
-    __param(0, (0, mongoose_1.InjectModel)(cart_schema_1.Cart.name)),
-    __metadata("design:paramtypes", [mongoose_2.Model,
+    __metadata("design:paramtypes", [cart_repository_1.CartRepository,
         products_service_1.ProductsService,
         coupons_service_1.CouponsService])
 ], CartService);

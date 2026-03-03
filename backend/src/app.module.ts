@@ -28,6 +28,10 @@ import { AuditModule } from './modules/audit/audit.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { EmailModule } from './modules/email/email.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
+import { StoresModule } from './modules/stores/stores.module';
+import { StoreStockModule } from './modules/store-stock/store-stock.module';
+import { StoreSalesModule } from './modules/store-sales/store-sales.module';
+import { RemindersModule } from './modules/reminders/reminders.module';
 
 @Module({
   imports: [
@@ -72,6 +76,10 @@ import { FeedbackModule } from './modules/feedback/feedback.module';
     PaymentsModule,
     EmailModule,
     FeedbackModule,
+    StoresModule,
+    StoreStockModule,
+    StoreSalesModule,
+    RemindersModule,
   ],
   providers: [
     {

@@ -42,7 +42,6 @@ exports.Settings = Settings = __decorate([
     (0, mongoose_1.Schema)({ timestamps: true })
 ], Settings);
 exports.SettingsSchema = mongoose_1.SchemaFactory.createForClass(Settings);
-exports.SettingsSchema.index({ key: 1 });
 exports.SettingsSchema.index({ category: 1 });
 exports.DEFAULT_SETTINGS = {
     store: {

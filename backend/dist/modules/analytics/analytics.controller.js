@@ -43,6 +43,37 @@ let AnalyticsController = class AnalyticsController {
     async getSnapshots(period = 'daily', limit) {
         return this.analyticsService.getSnapshots(period, limit ? parseInt(limit, 10) : 30);
     }
+    async getStoreDashboardStats(storeId) {
+        return this.analyticsService.getStoreDashboardStats(storeId);
+    }
+    async getTodayRevenuePerStore() {
+        return this.analyticsService.getTodayRevenuePerStore();
+    }
+    async getMultiStoreRevenue(days) {
+        return this.analyticsService.getMultiStoreRevenue(days ? parseInt(days, 10) : 30);
+    }
+    async getStockSummaryPerStore() {
+        return this.analyticsService.getStockSummaryPerStore();
+    }
+    async getTopSellingByStore(storeId, startDate, endDate) {
+        const start = startDate ? new Date(startDate) : new Date(new Date().setDate(new Date().getDate() - 30));
+        const end = endDate ? new Date(endDate) : new Date();
+        return this.analyticsService.getTopSellingByStore(storeId, start, end);
+    }
+    async getTopSellingOverall(startDate, endDate) {
+        const start = startDate ? new Date(startDate) : new Date(new Date().setDate(new Date().getDate() - 30));
+        const end = endDate ? new Date(endDate) : new Date();
+        return this.analyticsService.getTopSellingOverall(start, end);
+    }
+    async getMonthOverMonthByStore() {
+        return this.analyticsService.getMonthOverMonthByStore();
+    }
+    async getTopCustomersByStore(storeId) {
+        return this.analyticsService.getTopCustomersByStore(storeId);
+    }
+    async getTopCustomersOverall() {
+        return this.analyticsService.getTopCustomersOverall();
+    }
 };
 exports.AnalyticsController = AnalyticsController;
 __decorate([
@@ -98,6 +129,68 @@ __decorate([
     __metadata("design:paramtypes", [String, String]),
     __metadata("design:returntype", Promise)
 ], AnalyticsController.prototype, "getSnapshots", null);
+__decorate([
+    (0, common_1.Get)('stores/dashboard/:storeId'),
+    __param(0, (0, common_1.Param)('storeId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], AnalyticsController.prototype, "getStoreDashboardStats", null);
+__decorate([
+    (0, common_1.Get)('stores/today'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], AnalyticsController.prototype, "getTodayRevenuePerStore", null);
+__decorate([
+    (0, common_1.Get)('stores/revenue-comparison'),
+    __param(0, (0, common_1.Query)('days')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], AnalyticsController.prototype, "getMultiStoreRevenue", null);
+__decorate([
+    (0, common_1.Get)('stores/stock-summary'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], AnalyticsController.prototype, "getStockSummaryPerStore", null);
+__decorate([
+    (0, common_1.Get)('stores/top-products/:storeId'),
+    __param(0, (0, common_1.Param)('storeId')),
+    __param(1, (0, common_1.Query)('startDate')),
+    __param(2, (0, common_1.Query)('endDate')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String]),
+    __metadata("design:returntype", Promise)
+], AnalyticsController.prototype, "getTopSellingByStore", null);
+__decorate([
+    (0, common_1.Get)('stores/top-products'),
+    __param(0, (0, common_1.Query)('startDate')),
+    __param(1, (0, common_1.Query)('endDate')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", Promise)
+], AnalyticsController.prototype, "getTopSellingOverall", null);
+__decorate([
+    (0, common_1.Get)('stores/month-over-month'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], AnalyticsController.prototype, "getMonthOverMonthByStore", null);
+__decorate([
+    (0, common_1.Get)('stores/top-customers/:storeId'),
+    __param(0, (0, common_1.Param)('storeId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], AnalyticsController.prototype, "getTopCustomersByStore", null);
+__decorate([
+    (0, common_1.Get)('stores/top-customers'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], AnalyticsController.prototype, "getTopCustomersOverall", null);
 exports.AnalyticsController = AnalyticsController = __decorate([
     (0, common_1.Controller)('analytics'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),

@@ -83,7 +83,6 @@ exports.Payment = Payment = __decorate([
     (0, mongoose_1.Schema)({ timestamps: true })
 ], Payment);
 exports.PaymentSchema = mongoose_1.SchemaFactory.createForClass(Payment);
-exports.PaymentSchema.index({ order: 1 });
 exports.PaymentSchema.index({ user: 1, createdAt: -1 });
 exports.PaymentSchema.index({ status: 1 });
 exports.PaymentSchema.index({ gatewayOrderId: 1 });

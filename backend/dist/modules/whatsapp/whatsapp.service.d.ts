@@ -1,14 +1,14 @@
 import { ConfigService } from '@nestjs/config';
-import { Model } from 'mongoose';
 import { MessageLogDocument } from './schemas/message-log.schema';
+import { MessageLogRepository } from './repositories/message-log.repository';
 import { SendTextMessageDto, SendTemplateMessageDto, SendInteractiveButtonDto, SendInteractiveListDto, SendMediaMessageDto, WebhookPayload, WhatsAppMessage } from './dto/whatsapp.dto';
 export declare class WhatsAppService {
-    private messageLogModel;
+    private readonly messageLogRepository;
     private configService;
     private readonly logger;
     private readonly httpClient;
     private readonly config;
-    constructor(messageLogModel: Model<MessageLogDocument>, configService: ConfigService);
+    constructor(messageLogRepository: MessageLogRepository, configService: ConfigService);
     verifyWebhook(mode: string, token: string, challenge: string): string | null;
     verifySignature(payload: string, signature: string): boolean;
     processWebhook(payload: WebhookPayload): Promise<WhatsAppMessage[]>;

@@ -1,9 +1,9 @@
 import { OnModuleInit } from '@nestjs/common';
-import { Model } from 'mongoose';
-import { Settings, SettingsDocument } from './schemas/settings.schema';
+import { Settings } from './schemas/settings.schema';
+import { SettingsRepository } from './repositories/settings.repository';
 export declare class SettingsService implements OnModuleInit {
-    private settingsModel;
-    constructor(settingsModel: Model<SettingsDocument>);
+    private readonly settingsRepository;
+    constructor(settingsRepository: SettingsRepository);
     onModuleInit(): Promise<void>;
     private initializeDefaultSettings;
     get(key: string): Promise<Record<string, unknown> | null>;

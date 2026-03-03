@@ -31,7 +31,6 @@ export class Settings {
 
 export const SettingsSchema = SchemaFactory.createForClass(Settings);
 
-SettingsSchema.index({ key: 1 });
 SettingsSchema.index({ category: 1 });
 
 // Default settings structure

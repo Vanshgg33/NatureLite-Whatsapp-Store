@@ -12,6 +12,7 @@ const mongoose_1 = require("@nestjs/mongoose");
 const settings_service_1 = require("./settings.service");
 const settings_controller_1 = require("./settings.controller");
 const settings_schema_1 = require("./schemas/settings.schema");
+const settings_repository_1 = require("./repositories/settings.repository");
 let SettingsModule = class SettingsModule {
 };
 exports.SettingsModule = SettingsModule;
@@ -21,8 +22,8 @@ exports.SettingsModule = SettingsModule = __decorate([
             mongoose_1.MongooseModule.forFeature([{ name: settings_schema_1.Settings.name, schema: settings_schema_1.SettingsSchema }]),
         ],
         controllers: [settings_controller_1.SettingsController],
-        providers: [settings_service_1.SettingsService],
-        exports: [settings_service_1.SettingsService],
+        providers: [settings_repository_1.SettingsRepository, settings_service_1.SettingsService],
+        exports: [settings_repository_1.SettingsRepository, settings_service_1.SettingsService],
     })
 ], SettingsModule);
 //# sourceMappingURL=settings.module.js.map

@@ -63,6 +63,5 @@ export class Cart {
 
 export const CartSchema = SchemaFactory.createForClass(Cart);
 
-CartSchema.index({ user: 1 });
 CartSchema.index({ abandonedAt: 1, abandonedReminderSent: 1 });
 CartSchema.index({ updatedAt: 1 });

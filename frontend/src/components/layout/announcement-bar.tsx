@@ -26,7 +26,7 @@ export function AnnouncementBar() {
 
   return (
     <div
-      className="relative z-[60] flex items-center justify-center gap-2 px-10 py-2.5 text-sm font-medium"
+      className="relative z-[60] flex flex-wrap items-center justify-center gap-2 px-4 sm:px-6 md:px-10 py-2.5 text-xs sm:text-sm font-medium text-center"
       style={{ ...bgStyle, ...txtStyle }}
     >
       <span>{text}</span>

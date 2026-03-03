@@ -5,6 +5,7 @@ export interface JwtPayload {
   sub: string;
   phone: string;
   role: 'customer' | 'admin' | 'superadmin';
+  storeId?: string;
   iat?: number;
   exp?: number;
 }

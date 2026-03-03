@@ -42,5 +42,7 @@ export interface AuthResponse {
         phone?: string;
         name?: string;
         role: string;
+        storeId?: string;
+        storeName?: string;
     };
 }

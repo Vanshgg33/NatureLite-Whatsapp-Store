@@ -21,6 +21,9 @@ export class AdminUser {
   @Prop({ unique: true })
   phone?: string;
 
+  @Prop({ type: Types.ObjectId, ref: 'Store' })
+  store?: Types.ObjectId;
+
   @Prop({ default: 'admin' })
   role: AdminRole;
 
@@ -57,5 +60,5 @@ export class AdminUser {
 
 export const AdminUserSchema = SchemaFactory.createForClass(AdminUser);
 
-AdminUserSchema.index({ email: 1 });
 AdminUserSchema.index({ role: 1, isActive: 1 });
+AdminUserSchema.index({ store: 1 });

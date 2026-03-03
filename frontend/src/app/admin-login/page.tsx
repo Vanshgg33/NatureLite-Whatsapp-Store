@@ -31,6 +31,8 @@ export default function AdminLoginPage() {
         email: response.user.email,
         name: response.user.name,
         role: response.user.role,
+        storeId: response.user.storeId,
+        storeName: response.user.storeName,
       });
       router.push('/admin/dashboard');
     } catch (err) {
@@ -48,7 +50,7 @@ export default function AdminLoginPage() {
         initial={{ opacity: 0, x: 40 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.6, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-        className="flex-1 flex items-center justify-center px-6 py-12 lg:py-0 bg-white"
+        className="flex-1 flex items-center justify-center px-4 sm:px-6 py-12 lg:py-0 bg-white"
       >
         <div className="w-full max-w-md">
           <motion.div

@@ -12,6 +12,7 @@ const mongoose_1 = require("@nestjs/mongoose");
 const users_service_1 = require("./users.service");
 const users_controller_1 = require("./users.controller");
 const user_schema_1 = require("./schemas/user.schema");
+const user_repository_1 = require("./repositories/user.repository");
 let UsersModule = class UsersModule {
 };
 exports.UsersModule = UsersModule;
@@ -21,8 +22,8 @@ exports.UsersModule = UsersModule = __decorate([
             mongoose_1.MongooseModule.forFeature([{ name: user_schema_1.User.name, schema: user_schema_1.UserSchema }]),
         ],
         controllers: [users_controller_1.UsersController],
-        providers: [users_service_1.UsersService],
-        exports: [users_service_1.UsersService],
+        providers: [user_repository_1.UserRepository, users_service_1.UsersService],
+        exports: [user_repository_1.UserRepository, users_service_1.UsersService],
     })
 ], UsersModule);
 //# sourceMappingURL=users.module.js.map

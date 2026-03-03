@@ -8,7 +8,7 @@ import { Heart, ShoppingBag, Star, Eye, Leaf, Flame, TrendingUp, Award, Check } 
 import { useCartStore, CartItem } from '@/lib/cart-store';
 import { useToast } from '@/components/ui/use-toast';
 import { useAddToCartAnimation } from '@/components/ecommerce/add-to-cart-animation';
-import { cn } from '@/lib/utils';
+import { cn, getProductTotalStock } from '@/lib/utils';
 import { Product } from '@/types';
 
 interface PremiumProductCardProps {
@@ -30,7 +30,7 @@ export function PremiumProductCard({
   const [heartBurst, setHeartBurst] = useState(false);
   const addToCartBtnRef = useRef<HTMLButtonElement>(null);
 
-  const { addItem } = useCartStore();
+  const addItem = useCartStore((state) => state.addItem);
   const { toast } = useToast();
   const flyAnimation = useAddToCartAnimation();
 
@@ -169,7 +169,8 @@ export function PremiumProductCard({
             <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
               {(() => {
                 const badges: React.ReactNode[] = [];
-                const isLowStock = product.stock <= (product.lowStockThreshold || 5) && product.stock > 0;
+                const totalStock = getProductTotalStock(product);
+                const isLowStock = totalStock <= (product.lowStockThreshold || 5) && totalStock > 0;
                 const isBestSeller = product.totalSold > 50;
                 const isTrending = product.viewCount > 100;
 
@@ -197,7 +198,7 @@ export function PremiumProductCard({
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.2 }}
                     >
-                      Only {product.stock} left!
+                      Only {totalStock} left!
                     </motion.span>
                   );
                 }
@@ -325,7 +326,7 @@ export function PremiumProductCard({
 
             {/* Add to Cart Overlay */}
             <AnimatePresence>
-              {isHovered && product.stock > 0 && (
+              {isHovered && getProductTotalStock(product) > 0 && (
                 <motion.div
                   className="absolute bottom-0 left-0 right-0 p-4"
                   initial={{ opacity: 0, y: 20 }}
@@ -374,7 +375,7 @@ export function PremiumProductCard({
             </AnimatePresence>
 
             {/* Out of Stock Overlay */}
-            {product.stock === 0 && (
+            {getProductTotalStock(product) === 0 && (
               <div className="absolute inset-0 bg-white/60 backdrop-blur-sm flex items-center justify-center">
                 <span className="px-6 py-2 bg-brand-charcoal text-white rounded-full font-medium">
                   Out of Stock
@@ -461,7 +462,7 @@ export function PremiumProductCardCompact({
   product,
   index = 0,
 }: Omit<PremiumProductCardProps, 'onQuickView'>) {
-  const { addItem } = useCartStore();
+  const addItem = useCartStore((state) => state.addItem);
   const { toast } = useToast();
 
   const handleAddToCart = async (e: React.MouseEvent) => {

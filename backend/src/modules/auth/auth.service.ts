@@ -1,12 +1,11 @@
 import { Injectable, UnauthorizedException, ConflictException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
-import { AdminUser, AdminUserDocument } from '../admin/schemas/admin-user.schema';
-import { User, UserDocument } from '../users/schemas/user.schema';
+import { AdminUserRepository } from '../admin/repositories/admin-user.repository';
+import { UserRepository } from '../users/repositories/user.repository';
+import { StoreRepository } from '../stores/repositories/store.repository';
 import {
   AdminLoginDto,
   AdminRegisterDto,
@@ -17,16 +16,17 @@ import {
   ChangePasswordDto,
 } from './dto/auth.dto';
 import { JwtPayload } from '@/common/decorators/current-user.decorator';
+import { parseObjectId } from '@/common/utils/objectid.util';
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  // In-memory refresh token store. For production, use Redis or a DB collection.
-  private refreshTokens = new Map<string, { userId: string; role: string; expiresAt: Date }>();
+  private refreshTokens = new Map<string, { userId: string; role: string; storeId?: string; expiresAt: Date }>();
 
   constructor(
-    @InjectModel(AdminUser.name) private adminUserModel: Model<AdminUserDocument>,
-    @InjectModel(User.name) private userModel: Model<UserDocument>,
+    private readonly adminUserRepository: AdminUserRepository,
+    private readonly userRepository: UserRepository,
+    private readonly storeRepository: StoreRepository,
     private jwtService: JwtService,
     private configService: ConfigService,
   ) {}
@@ -34,14 +34,12 @@ export class AuthService {
   private generateTokens(payload: JwtPayload): { accessToken: string; refreshToken: string } {
     const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
     const refreshToken = uuidv4();
-
-    // Store refresh token with 7-day expiry
     this.refreshTokens.set(refreshToken, {
       userId: payload.sub,
       role: payload.role,
+      storeId: payload.storeId,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
-
     return { accessToken, refreshToken };
   }
 
@@ -53,20 +51,18 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
-    // Delete old refresh token (rotation)
     this.refreshTokens.delete(refreshToken);
 
-    // Validate user still exists and is active
     let user: any;
     let phone = '';
     if (stored.role === 'customer') {
-      user = await this.userModel.findById(stored.userId);
+      user = await this.userRepository.findByIdString(stored.userId);
       if (!user || user.isBlocked) {
         throw new UnauthorizedException('User account is not active');
       }
       phone = user.phone || '';
     } else {
-      user = await this.adminUserModel.findById(stored.userId);
+      user = await this.adminUserRepository.findByIdString(stored.userId);
       if (!user || !user.isActive) {
         throw new UnauthorizedException('Admin account is not active');
       }
@@ -77,6 +73,7 @@ export class AuthService {
       sub: stored.userId,
       phone,
       role: stored.role as JwtPayload['role'],
+      storeId: stored.storeId,
     };
 
     const tokens = this.generateTokens(payload);
@@ -90,12 +87,13 @@ export class AuthService {
         phone: user.phone,
         name: user.name,
         role: stored.role,
+        storeId: stored.storeId,
       },
     };
   }
 
   async adminLogin(dto: AdminLoginDto): Promise<AuthResponse> {
-    const admin = await this.adminUserModel.findOne({ email: dto.email.toLowerCase() });
+    const admin = await this.adminUserRepository.findOneByEmail(dto.email.toLowerCase());
 
     if (!admin) {
       throw new UnauthorizedException('Invalid credentials');
@@ -105,7 +103,6 @@ export class AuthService {
       throw new UnauthorizedException('Account is deactivated');
     }
 
-    // Check account lockout
     if (admin.lockoutUntil && admin.lockoutUntil > new Date()) {
       const minutesLeft = Math.ceil((admin.lockoutUntil.getTime() - Date.now()) / 60000);
       throw new UnauthorizedException(`Account locked. Try again in ${minutesLeft} minutes.`);
@@ -115,24 +112,32 @@ export class AuthService {
 
     if (!isPasswordValid) {
       const attempts = (admin.failedLoginAttempts || 0) + 1;
-      const update: Record<string, any> = { failedLoginAttempts: attempts };
+      const update: Record<string, unknown> = { failedLoginAttempts: attempts };
       if (attempts >= 5) {
-        update.lockoutUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 min lockout
+        update.lockoutUntil = new Date(Date.now() + 15 * 60 * 1000);
       }
-      await this.adminUserModel.updateOne({ _id: admin._id }, update);
+      await this.adminUserRepository.updateOne({ _id: admin._id }, update);
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Reset failed attempts on successful login
-    await this.adminUserModel.updateOne(
+    await this.adminUserRepository.updateOne(
       { _id: admin._id },
       { lastLoginAt: new Date(), failedLoginAttempts: 0, lockoutUntil: null },
     );
+
+    let storeId: string | undefined;
+    let storeName: string | undefined;
+    if (admin.store) {
+      storeId = admin.store.toString();
+      const store = await this.storeRepository.findById(admin.store);
+      if (store) storeName = store.name;
+    }
 
     const payload: JwtPayload = {
       sub: admin._id.toString(),
       phone: admin.phone || '',
       role: admin.role,
+      storeId,
     };
 
     const tokens = this.generateTokens(payload);
@@ -144,14 +149,14 @@ export class AuthService {
         email: admin.email,
         name: admin.name,
         role: admin.role,
+        storeId,
+        storeName,
       },
     };
   }
 
   async adminRegister(dto: AdminRegisterDto): Promise<AuthResponse> {
-    const existingAdmin = await this.adminUserModel.findOne({
-      email: dto.email.toLowerCase(),
-    });
+    const existingAdmin = await this.adminUserRepository.findOneByEmail(dto.email.toLowerCase());
 
     if (existingAdmin) {
       throw new ConflictException('Email already registered');
@@ -159,20 +164,31 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-    const admin = new this.adminUserModel({
+    const adminData: any = {
       name: dto.name,
       email: dto.email.toLowerCase(),
       password: hashedPassword,
       phone: dto.phone,
       role: dto.role || 'admin',
-    });
+    };
+    if ((dto as any).storeId) {
+      adminData.store = parseObjectId((dto as any).storeId, 'storeId');
+    }
 
-    await admin.save();
+    const admin = await this.adminUserRepository.create(adminData);
+
+    const storeId = admin.store?.toString();
+    let storeName: string | undefined;
+    if (admin.store) {
+      const store = await this.storeRepository.findById(admin.store);
+      if (store) storeName = store.name;
+    }
 
     const payload: JwtPayload = {
       sub: admin._id.toString(),
       phone: admin.phone || '',
       role: admin.role,
+      storeId,
     };
 
     const tokens = this.generateTokens(payload);
@@ -184,22 +200,21 @@ export class AuthService {
         email: admin.email,
         name: admin.name,
         role: admin.role,
+        storeId,
+        storeName,
       },
     };
   }
 
   async customerLogin(dto: CustomerLoginDto): Promise<AuthResponse> {
-    // In production, verify OTP with your OTP provider
-    // For now, we'll accept any OTP for development
     if (dto.otp !== '123456' && process.env.NODE_ENV === 'production') {
       throw new UnauthorizedException('Invalid OTP');
     }
 
-    let user = await this.userModel.findOne({ phone: dto.phone });
+    let user = await this.userRepository.findOneByPhone(dto.phone);
 
     if (!user) {
-      user = new this.userModel({ phone: dto.phone });
-      await user.save();
+      user = await this.userRepository.create({ phone: dto.phone } as any);
     }
 
     if (user.isBlocked) {
@@ -226,16 +241,14 @@ export class AuthService {
   }
 
   async customerRegister(dto: CustomerRegisterDto): Promise<AuthResponse> {
-    const existingUser = await this.userModel.findOne({
-      email: dto.email.toLowerCase(),
-    });
+    const existingUser = await this.userRepository.findOneByEmail(dto.email.toLowerCase());
 
     if (existingUser) {
       throw new ConflictException('Email already registered');
     }
 
     if (dto.phone) {
-      const phoneExists = await this.userModel.findOne({ phone: dto.phone });
+      const phoneExists = await this.userRepository.findOneByPhone(dto.phone);
       if (phoneExists) {
         throw new ConflictException('Phone number already registered');
       }
@@ -243,14 +256,12 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-    const user = new this.userModel({
+    const user = await this.userRepository.create({
       name: dto.name,
       email: dto.email.toLowerCase(),
       password: hashedPassword,
       phone: dto.phone,
-    });
-
-    await user.save();
+    } as any);
 
     const payload: JwtPayload = {
       sub: user._id.toString(),
@@ -273,9 +284,7 @@ export class AuthService {
   }
 
   async customerEmailLogin(dto: CustomerEmailLoginDto): Promise<AuthResponse> {
-    const user = await this.userModel.findOne({
-      email: dto.email.toLowerCase(),
-    });
+    const user = await this.userRepository.findOneByEmail(dto.email.toLowerCase());
 
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
@@ -289,7 +298,6 @@ export class AuthService {
       throw new UnauthorizedException('Account is blocked');
     }
 
-    // Check account lockout
     if (user.lockoutUntil && user.lockoutUntil > new Date()) {
       const minutesLeft = Math.ceil((user.lockoutUntil.getTime() - Date.now()) / 60000);
       throw new UnauthorizedException(`Account locked. Try again in ${minutesLeft} minutes.`);
@@ -299,16 +307,15 @@ export class AuthService {
 
     if (!isPasswordValid) {
       const attempts = (user.failedLoginAttempts || 0) + 1;
-      const update: Record<string, any> = { failedLoginAttempts: attempts };
+      const update: Record<string, unknown> = { failedLoginAttempts: attempts };
       if (attempts >= 5) {
         update.lockoutUntil = new Date(Date.now() + 15 * 60 * 1000);
       }
-      await this.userModel.updateOne({ _id: user._id }, update);
+      await this.userRepository.updateOne({ _id: user._id }, update);
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Reset failed attempts on successful login
-    await this.userModel.updateOne(
+    await this.userRepository.updateOne(
       { _id: user._id },
       { failedLoginAttempts: 0, lockoutUntil: null },
     );
@@ -334,11 +341,7 @@ export class AuthService {
   }
 
   async sendOtp(phone: string): Promise<{ success: boolean; message: string }> {
-    // In production, integrate with your SMS provider (Twilio, MSG91, etc.)
-    // For now, we'll just log and return success
     this.logger.log(`Sending OTP to ${phone}`);
-
-    // In development, the OTP is always '123456'
     return {
       success: true,
       message: 'OTP sent successfully',
@@ -346,7 +349,7 @@ export class AuthService {
   }
 
   async changePassword(adminId: string, dto: ChangePasswordDto): Promise<void> {
-    const admin = await this.adminUserModel.findById(adminId);
+    const admin = await this.adminUserRepository.findByIdString(adminId);
 
     if (!admin) {
       throw new UnauthorizedException('User not found');
@@ -360,20 +363,20 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
 
-    await this.adminUserModel.updateOne(
-      { _id: adminId },
+    await this.adminUserRepository.updateOne(
+      { _id: parseObjectId(adminId, 'adminId') },
       { password: hashedPassword },
     );
   }
 
   async validateUser(payload: JwtPayload): Promise<JwtPayload | null> {
     if (payload.role === 'customer') {
-      const user = await this.userModel.findById(payload.sub);
+      const user = await this.userRepository.findByIdString(payload.sub);
       if (!user || user.isBlocked) {
         return null;
       }
     } else {
-      const admin = await this.adminUserModel.findById(payload.sub);
+      const admin = await this.adminUserRepository.findByIdString(payload.sub);
       if (!admin || !admin.isActive) {
         return null;
       }
@@ -384,17 +387,22 @@ export class AuthService {
 
   async getProfile(userId: string, role: string): Promise<any> {
     if (role === 'customer') {
-      const user = await this.userModel.findById(userId).select('-__v');
+      const user = await this.userRepository.findByIdString(userId);
       if (!user) {
         throw new UnauthorizedException('User not found');
       }
-      return user.toObject();
+      return user.toObject ? user.toObject() : user;
     }
 
-    const admin = await this.adminUserModel.findById(userId).select('-password -__v');
+    const admin = await this.adminUserRepository.getModel()
+      .findById(userId)
+      .select('-password -__v')
+      .populate('store', 'name code')
+      .exec();
+
     if (!admin) {
       throw new UnauthorizedException('User not found');
     }
-    return admin.toObject();
+    return admin.toObject ? admin.toObject() : admin;
   }
 }

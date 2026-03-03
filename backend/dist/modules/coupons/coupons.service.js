@@ -8,78 +8,47 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
-var __param = (this && this.__param) || function (paramIndex, decorator) {
-    return function (target, key) { decorator(target, key, paramIndex); }
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CouponsService = void 0;
 const common_1 = require("@nestjs/common");
-const mongoose_1 = require("@nestjs/mongoose");
-const mongoose_2 = require("mongoose");
-const coupon_schema_1 = require("./schemas/coupon.schema");
-const pagination_types_1 = require("../../common/types/pagination.types");
+const objectid_util_1 = require("../../common/utils/objectid.util");
+const coupon_repository_1 = require("./repositories/coupon.repository");
 let CouponsService = class CouponsService {
-    constructor(couponModel) {
-        this.couponModel = couponModel;
+    constructor(couponRepository) {
+        this.couponRepository = couponRepository;
     }
     async create(dto) {
-        const existingCoupon = await this.couponModel.findOne({
-            code: dto.code.toUpperCase(),
-        });
+        const existingCoupon = await this.couponRepository.findOneByCode(dto.code.toUpperCase());
         if (existingCoupon) {
             throw new common_1.BadRequestException('Coupon with this code already exists');
         }
-        const coupon = new this.couponModel({
+        return this.couponRepository.create({
             ...dto,
             code: dto.code.toUpperCase(),
-            allowedUsers: dto.allowedUsers?.map((id) => new mongoose_2.Types.ObjectId(id)),
-            allowedCategories: dto.allowedCategories?.map((id) => new mongoose_2.Types.ObjectId(id)),
-            allowedProducts: dto.allowedProducts?.map((id) => new mongoose_2.Types.ObjectId(id)),
+            allowedUsers: (0, objectid_util_1.parseObjectIdArray)(dto.allowedUsers, 'allowedUsers'),
+            allowedCategories: (0, objectid_util_1.parseObjectIdArray)(dto.allowedCategories, 'allowedCategories'),
+            allowedProducts: (0, objectid_util_1.parseObjectIdArray)(dto.allowedProducts, 'allowedProducts'),
         });
-        return coupon.save();
     }
     async findAll(query) {
-        const { page = 1, limit = 20, isActive, search } = query;
-        const filter = {};
-        if (isActive !== undefined) {
-            filter.isActive = isActive;
-        }
-        if (search) {
-            filter.$or = [
-                { code: { $regex: search, $options: 'i' } },
-                { description: { $regex: search, $options: 'i' } },
-            ];
-        }
-        const skip = (page - 1) * limit;
-        const [coupons, total] = await Promise.all([
-            this.couponModel
-                .find(filter)
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit)
-                .exec(),
-            this.couponModel.countDocuments(filter),
-        ]);
-        return (0, pagination_types_1.paginate)(coupons, total, { page, limit });
+        return this.couponRepository.findAllPaginated(query);
     }
     async findById(id) {
-        const coupon = await this.couponModel.findById(id);
+        const coupon = await this.couponRepository.findByIdString(id);
         if (!coupon) {
             throw new common_1.NotFoundException('Coupon not found');
         }
         return coupon;
     }
     async findByCode(code) {
-        const coupon = await this.couponModel.findOne({ code: code.toUpperCase() });
+        const coupon = await this.couponRepository.findOneByCode(code.toUpperCase());
         if (!coupon) {
             throw new common_1.NotFoundException('Coupon not found');
         }
         return coupon;
     }
     async validateCoupon(dto) {
-        const coupon = await this.couponModel.findOne({
-            code: dto.code.toUpperCase(),
-        });
+        const coupon = await this.couponRepository.findOneByCode(dto.code.toUpperCase());
         if (!coupon) {
             return { valid: false, message: 'Coupon not found', discountAmount: 0 };
         }
@@ -129,62 +98,44 @@ let CouponsService = class CouponsService {
         };
     }
     async incrementUsageCount(couponCode) {
-        const result = await this.couponModel.updateOne({
-            code: couponCode.toUpperCase(),
-            $or: [
-                { maxUsageCount: { $exists: false } },
-                { maxUsageCount: null },
-                { $expr: { $lt: ['$usedCount', '$maxUsageCount'] } },
-            ],
-        }, { $inc: { usedCount: 1 } });
+        const result = await this.couponRepository.incrementUsageCount(couponCode);
         if (result.modifiedCount === 0) {
             throw new common_1.BadRequestException('Coupon usage limit reached');
         }
     }
     async update(id, dto) {
+        const idObj = (0, objectid_util_1.parseObjectId)(id, 'id');
         const updateData = { ...dto };
         if (dto.allowedUsers) {
-            updateData.allowedUsers = dto.allowedUsers.map((id) => new mongoose_2.Types.ObjectId(id));
+            updateData.allowedUsers = (0, objectid_util_1.parseObjectIdArray)(dto.allowedUsers, 'allowedUsers');
         }
         if (dto.allowedCategories) {
-            updateData.allowedCategories = dto.allowedCategories.map((id) => new mongoose_2.Types.ObjectId(id));
+            updateData.allowedCategories = (0, objectid_util_1.parseObjectIdArray)(dto.allowedCategories, 'allowedCategories');
         }
         if (dto.allowedProducts) {
-            updateData.allowedProducts = dto.allowedProducts.map((id) => new mongoose_2.Types.ObjectId(id));
+            updateData.allowedProducts = (0, objectid_util_1.parseObjectIdArray)(dto.allowedProducts, 'allowedProducts');
         }
-        const coupon = await this.couponModel.findByIdAndUpdate(id, { $set: updateData }, { new: true });
+        const coupon = await this.couponRepository.findByIdAndUpdate(idObj, { $set: updateData });
         if (!coupon) {
             throw new common_1.NotFoundException('Coupon not found');
         }
         return coupon;
     }
     async delete(id) {
-        const result = await this.couponModel.deleteOne({
-            _id: new mongoose_2.Types.ObjectId(id),
+        const result = await this.couponRepository.deleteOne({
+            _id: (0, objectid_util_1.parseObjectId)(id, 'id'),
         });
         if (result.deletedCount === 0) {
             throw new common_1.NotFoundException('Coupon not found');
         }
     }
     async getActiveCoupons() {
-        const now = new Date();
-        return this.couponModel
-            .find({
-            isActive: true,
-            validFrom: { $lte: now },
-            validUntil: { $gte: now },
-            $or: [
-                { maxUsageCount: { $exists: false } },
-                { $expr: { $lt: ['$usedCount', '$maxUsageCount'] } },
-            ],
-        })
-            .exec();
+        return this.couponRepository.findActiveCoupons();
     }
 };
 exports.CouponsService = CouponsService;
 exports.CouponsService = CouponsService = __decorate([
     (0, common_1.Injectable)(),
-    __param(0, (0, mongoose_1.InjectModel)(coupon_schema_1.Coupon.name)),
-    __metadata("design:paramtypes", [mongoose_2.Model])
+    __metadata("design:paramtypes", [coupon_repository_1.CouponRepository])
 ], CouponsService);
 //# sourceMappingURL=coupons.service.js.map

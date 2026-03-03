@@ -66,5 +66,4 @@ export class Coupon {
 
 export const CouponSchema = SchemaFactory.createForClass(Coupon);
 
-CouponSchema.index({ code: 1 });
 CouponSchema.index({ isActive: 1, validFrom: 1, validUntil: 1 });

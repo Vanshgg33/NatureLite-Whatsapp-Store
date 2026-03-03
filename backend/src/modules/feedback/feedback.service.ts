@@ -1,130 +1,76 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { Feedback, FeedbackDocument } from './schemas/feedback.schema';
+import { Feedback } from './schemas/feedback.schema';
+import { FeedbackRepository } from './repositories/feedback.repository';
 import {
   CreateFeedbackDto,
   RespondToFeedbackDto,
   UpdateFeedbackStatusDto,
   FeedbackQueryDto,
 } from './dto/feedback.dto';
+import { parseObjectIdOptional, parseObjectId } from '@/common/utils/objectid.util';
 
 @Injectable()
 export class FeedbackService {
-  constructor(
-    @InjectModel(Feedback.name) private feedbackModel: Model<FeedbackDocument>,
-  ) {}
+  constructor(private readonly feedbackRepository: FeedbackRepository) {}
 
   async create(userId: string, dto: CreateFeedbackDto): Promise<Feedback> {
-    const feedback = new this.feedbackModel({
-      user: new Types.ObjectId(userId),
+    const data = {
+      user: parseObjectId(userId, 'userId'),
       type: dto.type,
-      order: dto.orderId ? new Types.ObjectId(dto.orderId) : undefined,
-      product: dto.productId ? new Types.ObjectId(dto.productId) : undefined,
+      order: parseObjectIdOptional(dto.orderId, 'orderId'),
+      product: parseObjectIdOptional(dto.productId, 'productId'),
       rating: dto.rating,
       message: dto.message,
       images: dto.images || [],
       isPublic: dto.type === 'product_review',
-    });
-
-    return feedback.save();
+    };
+    return this.feedbackRepository.create(data as Partial<Feedback>) as Promise<Feedback>;
   }
 
   async findAll(query: FeedbackQueryDto) {
-    const { page = 1, limit = 20, type, status, productId } = query;
-    const filter: Record<string, any> = {};
-
-    if (type) filter.type = type;
-    if (status) filter.status = status;
-    if (productId) filter.product = new Types.ObjectId(productId);
-
-    const [items, total] = await Promise.all([
-      this.feedbackModel
-        .find(filter)
-        .populate('user', 'name phone email')
-        .populate('product', 'name slug')
-        .populate('order', 'orderNumber')
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean(),
-      this.feedbackModel.countDocuments(filter),
-    ]);
-
-    return {
-      items,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-      hasNext: page * limit < total,
-      hasPrevious: page > 1,
-    };
+    return this.feedbackRepository.findAllPaginated(query);
   }
 
   async findById(id: string): Promise<Feedback> {
-    const feedback = await this.feedbackModel
-      .findById(id)
-      .populate('user', 'name phone email')
-      .populate('product', 'name slug')
-      .populate('order', 'orderNumber');
-
+    const idObj = parseObjectId(id, 'id');
+    const feedback = await this.feedbackRepository.findByIdWithPopulate(idObj);
     if (!feedback) {
       throw new NotFoundException('Feedback not found');
     }
-
-    return feedback;
+    return feedback as unknown as Feedback;
   }
 
   async getPublicReviews(productId: string) {
-    return this.feedbackModel
-      .find({
-        product: new Types.ObjectId(productId),
-        isPublic: true,
-        type: 'product_review',
-      })
-      .populate('user', 'name')
-      .sort({ createdAt: -1 })
-      .lean();
+    const productObjId = parseObjectId(productId, 'productId');
+    return this.feedbackRepository.findPublicReviewsByProduct(productObjId);
   }
 
   async respond(id: string, dto: RespondToFeedbackDto, adminId: string): Promise<Feedback> {
-    const feedback = await this.feedbackModel.findById(id);
-
+    const idObj = parseObjectId(id, 'id');
+    const feedback = await this.feedbackRepository.findById(idObj);
     if (!feedback) {
       throw new NotFoundException('Feedback not found');
     }
-
     feedback.adminResponse = dto.response;
     feedback.respondedAt = new Date();
     feedback.respondedBy = adminId;
     if (feedback.status === 'pending') {
       feedback.status = 'acknowledged';
     }
-
     return feedback.save();
   }
 
   async updateStatus(id: string, dto: UpdateFeedbackStatusDto): Promise<Feedback> {
-    const feedback = await this.feedbackModel.findByIdAndUpdate(
-      id,
-      { status: dto.status },
-      { new: true },
-    );
-
+    const idObj = parseObjectId(id, 'id');
+    const feedback = await this.feedbackRepository.findByIdAndUpdate(idObj, { status: dto.status });
     if (!feedback) {
       throw new NotFoundException('Feedback not found');
     }
-
-    return feedback;
+    return feedback as unknown as Feedback;
   }
 
   async findUserFeedback(userId: string) {
-    return this.feedbackModel
-      .find({ user: new Types.ObjectId(userId) })
-      .populate('product', 'name slug')
-      .populate('order', 'orderNumber')
-      .sort({ createdAt: -1 })
-      .lean();
+    const userObjId = parseObjectId(userId, 'userId');
+    return this.feedbackRepository.findUserFeedback(userObjId);
   }
 }

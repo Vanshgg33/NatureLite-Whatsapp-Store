@@ -1,9 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { MessageLogRepository } from '../whatsapp/repositories/message-log.repository';
 import { Order } from '../orders/schemas/order.schema';
-import { MessageLog, MessageLogDocument } from '../whatsapp/schemas/message-log.schema';
 
 interface NotificationPayload {
   phone: string;
@@ -19,7 +17,7 @@ export class NotificationsService {
   private readonly sentNotifications = new Set<string>();
 
   constructor(
-    @InjectModel(MessageLog.name) private messageLogModel: Model<MessageLogDocument>,
+    private readonly messageLogRepository: MessageLogRepository,
     private whatsappService: WhatsAppService,
   ) {}
 
@@ -187,10 +185,7 @@ export class NotificationsService {
       return true;
     }
 
-    const existing = await this.messageLogModel.findOne({
-      'metadata.idempotencyKey': key,
-    });
-
+    const existing = await this.messageLogRepository.findOneByIdempotencyKey(key);
     return !!existing;
   }
 

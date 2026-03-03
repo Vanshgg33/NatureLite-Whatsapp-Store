@@ -397,6 +397,8 @@ export interface AuthUser {
   phone?: string;
   name?: string;
   role: 'admin' | 'superadmin' | 'customer';
+  storeId?: string;
+  storeName?: string;
 }
 
 export interface UploadResult {
@@ -584,4 +586,193 @@ export interface CustomerLoginDto {
 export interface SendOtpResponse {
   success: boolean;
   message: string;
+}
+
+// ==================== STORE TYPES ====================
+export interface Store {
+  _id: string;
+  name: string;
+  code: string;
+  address?: string;
+  phone?: string;
+  isMainStore: boolean;
+  isActive: boolean;
+  adminEmail?: string;
+  adminPassword?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VariantStockEntry {
+  variantSku: string;
+  stock: number;
+}
+
+export interface StoreStockItem {
+  _id: string;
+  store: Store | string;
+  product: Product | string;
+  stock: number;
+  variantStocks: VariantStockEntry[];
+  lowStockThreshold: number;
+  productName?: string;
+  productSku?: string;
+  productPrice?: number;
+  productImages?: string[];
+  productVariants?: ProductVariant[];
+  categoryName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SaleType = 'walk_in' | 'delivery' | 'website';
+
+export interface SaleItem {
+  product: Product | string;
+  name: string;
+  variantSku?: string;
+  variantName?: string;
+  quantity: number;
+  price: number;
+  total: number;
+}
+
+export interface StoreSale {
+  _id: string;
+  saleNumber: string;
+  store: Store | string;
+  saleType: SaleType;
+  items: SaleItem[];
+  customerName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  subtotal: number;
+  discount: number;
+  total: number;
+  paymentMethod: string;
+  paymentProofUrl?: string;
+  images?: string[];
+  notes?: string;
+  loggedBy: { _id: string; name: string } | string;
+  linkedOrder?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ==================== MULTI-STORE ANALYTICS TYPES ====================
+export interface StoreRevenueToday {
+  storeId: string;
+  storeName: string;
+  storeCode: string;
+  revenue: number;
+  salesCount: number;
+}
+
+export interface StoreStockSummary {
+  storeId: string;
+  storeName: string;
+  storeCode: string;
+  totalProducts: number;
+  inStock: number;
+  outOfStock: number;
+  lowStock: number;
+}
+
+export interface MonthOverMonthData {
+  storeId: string;
+  storeName: string;
+  thisMonth: number;
+  thisMonthSales: number;
+  lastMonth: number;
+  lastMonthSales: number;
+  changePercent: number;
+}
+
+export interface TopSellingProduct {
+  _id: string;
+  name: string;
+  quantitySold: number;
+  revenue: number;
+}
+
+export interface TopCustomer {
+  _id: string;
+  customerName: string;
+  totalSpent: number;
+  totalOrders: number;
+  lastPurchase: string;
+}
+
+export interface CreateStoreSaleDto {
+  storeId: string;
+  saleType: 'walk_in' | 'delivery';
+  items: { productId: string; variantSku?: string; quantity: number }[];
+  customerName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  discount?: number;
+  paymentMethod?: string;
+  paymentProofUrl?: string;
+  images?: string[];
+  notes?: string;
+  reminderMessage?: string;
+  reminderDueAt?: string;
+}
+
+export interface UpdateStoreSaleDto {
+  storeId: string;
+  saleType?: 'walk_in' | 'delivery' | 'website';
+  items?: { productId: string; variantSku?: string; quantity: number }[];
+  customerName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  discount?: number;
+  paymentMethod?: string;
+  paymentProofUrl?: string;
+  images?: string[];
+  notes?: string;
+}
+
+export interface Reminder {
+  _id: string;
+  sale: { _id: string; saleNumber: string; customerName?: string; total: number };
+  store: { _id: string; name: string; code: string };
+  message: string;
+  dueAt: string;
+  createdAt: string;
+}
+
+export interface SetStoreStockDto {
+  storeId: string;
+  productId: string;
+  stock: number;
+  variantSku?: string;
+  lowStockThreshold?: number;
+}
+
+export interface SaleStats {
+  totalSales: number;
+  totalRevenue: number;
+  avgSaleValue: number;
+  walkInSales: number;
+  deliverySales: number;
+  websiteSales: number;
+  walkInRevenue: number;
+  deliveryRevenue: number;
+  websiteRevenue: number;
+}
+
+export interface StoreDashboardStats {
+  todaySales: number;
+  todayRevenue: number;
+  monthSales: number;
+  monthRevenue: number;
+  recentSales: StoreSale[];
+  lowStockProducts: StoreStockItem[];
+}
+
+export interface MultiStoreRevenueData {
+  storeId: string;
+  storeName: string;
+  data: { date: string; revenue: number; sales: number }[];
 }

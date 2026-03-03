@@ -1,5 +1,5 @@
-import { Model } from 'mongoose';
-import { Coupon, CouponDocument } from './schemas/coupon.schema';
+import { Coupon } from './schemas/coupon.schema';
+import { CouponRepository } from './repositories/coupon.repository';
 import { CreateCouponDto, UpdateCouponDto, ValidateCouponDto, CouponQueryDto } from './dto/coupon.dto';
 import { PaginatedResult } from '@/common/types/pagination.types';
 export interface CouponValidationResult {
@@ -10,8 +10,8 @@ export interface CouponValidationResult {
     minOrderAmount?: number;
 }
 export declare class CouponsService {
-    private couponModel;
-    constructor(couponModel: Model<CouponDocument>);
+    private readonly couponRepository;
+    constructor(couponRepository: CouponRepository);
     create(dto: CreateCouponDto): Promise<Coupon>;
     findAll(query: CouponQueryDto): Promise<PaginatedResult<Coupon>>;
     findById(id: string): Promise<Coupon>;

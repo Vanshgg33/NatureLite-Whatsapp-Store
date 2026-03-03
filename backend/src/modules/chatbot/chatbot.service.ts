@@ -1,8 +1,8 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { Model, Types } from 'mongoose';
+import { Types } from 'mongoose';
 import { ChatSession, ChatSessionDocument, SessionState } from './schemas/chat-session.schema';
+import { ChatSessionRepository } from './repositories/chat-session.repository';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { UsersService } from '../users/users.service';
 import { ProductsService } from '../products/products.service';
@@ -17,7 +17,7 @@ export class ChatbotService {
   private readonly logger = new Logger(ChatbotService.name);
 
   constructor(
-    @InjectModel(ChatSession.name) private chatSessionModel: Model<ChatSessionDocument>,
+    private readonly chatSessionRepository: ChatSessionRepository,
     @Inject(forwardRef(() => WhatsAppService))
     private whatsappService: WhatsAppService,
     private usersService: UsersService,
@@ -811,18 +811,16 @@ export class ChatbotService {
   }
 
   private async getOrCreateSession(phone: string): Promise<ChatSessionDocument> {
-    let session = await this.chatSessionModel.findOne({ phone });
+    let session = await this.chatSessionRepository.findOneByPhone(phone);
 
     if (!session) {
       const user = await this.usersService.findOrCreateByPhone(phone);
 
-      session = new this.chatSessionModel({
+      session = await this.chatSessionRepository.create({
         phone,
         user: user._id,
         currentState: 'main_menu',
-      });
-
-      await session.save();
+      } as Partial<ChatSessionDocument>);
     }
 
     return session;
@@ -838,13 +836,7 @@ export class ChatbotService {
   }
 
   private async updateSessionActivity(sessionId: string): Promise<void> {
-    await this.chatSessionModel.updateOne(
-      { _id: new Types.ObjectId(sessionId) },
-      {
-        $set: { lastMessageAt: new Date() },
-        $inc: { messageCount: 1 },
-      },
-    );
+    await this.chatSessionRepository.updateActivity(new Types.ObjectId(sessionId));
   }
 
   private extractInputText(message: WhatsAppMessage): string {
@@ -866,35 +858,22 @@ export class ChatbotService {
   }
 
   async getSession(phone: string): Promise<ChatSession | null> {
-    return this.chatSessionModel.findOne({ phone });
+    return this.chatSessionRepository.findOneByPhone(phone);
   }
 
   async resetSession(phone: string): Promise<void> {
-    await this.chatSessionModel.updateOne(
-      { phone },
-      {
-        $set: {
-          currentState: 'main_menu',
-          context: {},
-          isHandedOffToSupport: false,
-        },
-      },
-    );
+    await this.chatSessionRepository.updateOneByPhone(phone, {
+      currentState: 'main_menu',
+      context: {},
+      isHandedOffToSupport: false,
+    });
   }
 
   @Cron(CronExpression.EVERY_HOUR)
   async cleanupExpiredSessions(): Promise<void> {
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    const result = await this.chatSessionModel.updateMany(
-      {
-        isExpired: { $ne: true },
-        lastMessageAt: { $lt: twentyFourHoursAgo },
-      },
-      {
-        $set: { isExpired: true },
-      },
-    );
+    const result = await this.chatSessionRepository.updateManyExpired(twentyFourHoursAgo);
 
     if (result.modifiedCount > 0) {
       this.logger.log(`Expired ${result.modifiedCount} chat sessions`);

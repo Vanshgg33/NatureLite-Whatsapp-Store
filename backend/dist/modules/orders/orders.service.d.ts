@@ -1,15 +1,19 @@
-import { Model, Connection } from 'mongoose';
-import { Order, OrderDocument, OrderStatus } from './schemas/order.schema';
+import { Connection } from 'mongoose';
+import { Order, OrderStatus } from './schemas/order.schema';
+import { OrderRepository } from './repositories/order.repository';
 import { CartService } from '../cart/cart.service';
 import { ProductsService } from '../products/products.service';
 import { UsersService } from '../users/users.service';
 import { CouponsService } from '../coupons/coupons.service';
 import { EmailService } from '../email/email.service';
 import { SettingsService } from '../settings/settings.service';
+import { StoresService } from '../stores/stores.service';
+import { StoreStockService } from '../store-stock/store-stock.service';
+import { StoreSalesService } from '../store-sales/store-sales.service';
 import { CreateOrderDto, UpdateOrderStatusDto, UpdatePaymentStatusDto, CancelOrderDto, AddOrderNoteDto, UpdateShippingDto, OrderQueryDto, ReorderDto } from './dto/order.dto';
 import { PaginatedResult } from '@/common/types/pagination.types';
 export declare class OrdersService {
-    private orderModel;
+    private readonly orderRepository;
     private connection;
     private cartService;
     private productsService;
@@ -17,8 +21,11 @@ export declare class OrdersService {
     private couponsService;
     private emailService;
     private settingsService;
+    private storesService;
+    private storeStockService;
+    private storeSalesService;
     private readonly logger;
-    constructor(orderModel: Model<OrderDocument>, connection: Connection, cartService: CartService, productsService: ProductsService, usersService: UsersService, couponsService: CouponsService, emailService: EmailService, settingsService: SettingsService);
+    constructor(orderRepository: OrderRepository, connection: Connection, cartService: CartService, productsService: ProductsService, usersService: UsersService, couponsService: CouponsService, emailService: EmailService, settingsService: SettingsService, storesService: StoresService, storeStockService: StoreStockService, storeSalesService: StoreSalesService);
     create(userId: string, dto: CreateOrderDto): Promise<Order>;
     findAll(query: OrderQueryDto): Promise<PaginatedResult<Order>>;
     findById(id: string): Promise<Order>;

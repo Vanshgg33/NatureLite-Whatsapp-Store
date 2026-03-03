@@ -8,89 +8,51 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
-var __param = (this && this.__param) || function (paramIndex, decorator) {
-    return function (target, key) { decorator(target, key, paramIndex); }
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CategoriesService = void 0;
 const common_1 = require("@nestjs/common");
-const mongoose_1 = require("@nestjs/mongoose");
-const mongoose_2 = require("mongoose");
-const category_schema_1 = require("./schemas/category.schema");
-const pagination_types_1 = require("../../common/types/pagination.types");
+const category_repository_1 = require("./repositories/category.repository");
+const objectid_util_1 = require("../../common/utils/objectid.util");
 let CategoriesService = class CategoriesService {
-    constructor(categoryModel) {
-        this.categoryModel = categoryModel;
+    constructor(categoryRepository) {
+        this.categoryRepository = categoryRepository;
     }
     async create(dto) {
         const slug = dto.slug || this.generateSlug(dto.name);
-        const existingCategory = await this.categoryModel.findOne({ slug });
-        if (existingCategory) {
+        const existing = await this.categoryRepository.findOneBySlug(slug);
+        if (existing) {
             throw new common_1.BadRequestException('Category with this slug already exists');
         }
-        const category = new this.categoryModel({
-            ...dto,
-            slug,
-            parent: dto.parent ? new mongoose_2.Types.ObjectId(dto.parent) : undefined,
-        });
-        return category.save();
+        const parentId = (0, objectid_util_1.parseObjectIdOptional)(dto.parent, 'parent');
+        return this.categoryRepository.createOne(dto, slug, parentId);
     }
     async findAll(query) {
-        const { page = 1, limit = 50, isActive, parent, rootOnly } = query;
-        const filter = {};
-        if (isActive !== undefined) {
-            filter.isActive = isActive;
-        }
-        if (rootOnly) {
-            filter.parent = { $exists: false };
-        }
-        else if (parent) {
-            filter.parent = new mongoose_2.Types.ObjectId(parent);
-        }
-        const skip = (page - 1) * limit;
-        const [categories, total] = await Promise.all([
-            this.categoryModel
-                .find(filter)
-                .sort({ sortOrder: 1, name: 1 })
-                .skip(skip)
-                .limit(limit)
-                .exec(),
-            this.categoryModel.countDocuments(filter),
-        ]);
-        return (0, pagination_types_1.paginate)(categories, total, { page, limit });
+        return this.categoryRepository.findAllPaginated(query);
     }
     async findById(id) {
-        const category = await this.categoryModel.findById(id);
+        const category = await this.categoryRepository.findByIdString(id);
         if (!category) {
             throw new common_1.NotFoundException('Category not found');
         }
         return category;
     }
     async findBySlug(slug) {
-        const category = await this.categoryModel.findOne({ slug });
+        const category = await this.categoryRepository.findOneBySlug(slug);
         if (!category) {
             throw new common_1.NotFoundException('Category not found');
         }
         return category;
     }
     async findActiveCategories() {
-        return this.categoryModel
-            .find({ isActive: true })
-            .sort({ sortOrder: 1, name: 1 })
-            .exec();
+        return this.categoryRepository.findActiveSorted();
     }
     async findSubcategories(parentId) {
-        return this.categoryModel
-            .find({ parent: new mongoose_2.Types.ObjectId(parentId), isActive: true })
-            .sort({ sortOrder: 1, name: 1 })
-            .exec();
+        if (!(0, objectid_util_1.isValidObjectIdString)(parentId))
+            return [];
+        return this.categoryRepository.findSubcategoriesByParentId((0, objectid_util_1.parseObjectId)(parentId, 'parentId'));
     }
     async getCategoryTree() {
-        const allCategories = await this.categoryModel
-            .find({ isActive: true })
-            .sort({ sortOrder: 1, name: 1 })
-            .lean()
-            .exec();
+        const allCategories = await this.categoryRepository.findActiveLean();
         const categoryMap = new Map();
         const rootCategories = [];
         allCategories.forEach((cat) => {
@@ -113,35 +75,30 @@ let CategoriesService = class CategoriesService {
         return rootCategories;
     }
     async update(id, dto) {
+        const idObj = (0, objectid_util_1.parseObjectId)(id, 'id');
         if (dto.slug) {
-            const existingCategory = await this.categoryModel.findOne({
-                slug: dto.slug,
-                _id: { $ne: new mongoose_2.Types.ObjectId(id) },
-            });
-            if (existingCategory) {
+            const existing = await this.categoryRepository.findOneBySlugExcludingId(dto.slug, idObj);
+            if (existing) {
                 throw new common_1.BadRequestException('Category with this slug already exists');
             }
         }
         const updateData = { ...dto };
-        if (dto.parent) {
-            updateData.parent = new mongoose_2.Types.ObjectId(dto.parent);
+        if (dto.parent !== undefined && dto.parent !== null && dto.parent !== '') {
+            updateData.parent = (0, objectid_util_1.parseObjectId)(dto.parent, 'parent');
         }
-        const category = await this.categoryModel.findByIdAndUpdate(id, { $set: updateData }, { new: true });
+        const category = await this.categoryRepository.findByIdAndUpdateDoc(idObj, updateData);
         if (!category) {
             throw new common_1.NotFoundException('Category not found');
         }
         return category;
     }
     async delete(id) {
-        const hasSubcategories = await this.categoryModel.exists({
-            parent: new mongoose_2.Types.ObjectId(id),
-        });
+        const idObj = (0, objectid_util_1.parseObjectId)(id, 'id');
+        const hasSubcategories = await this.categoryRepository.existsByParentId(idObj);
         if (hasSubcategories) {
             throw new common_1.BadRequestException('Cannot delete category with subcategories. Delete subcategories first.');
         }
-        const result = await this.categoryModel.deleteOne({
-            _id: new mongoose_2.Types.ObjectId(id),
-        });
+        const result = await this.categoryRepository.deleteOne({ _id: idObj });
         if (result.deletedCount === 0) {
             throw new common_1.NotFoundException('Category not found');
         }
@@ -156,7 +113,6 @@ let CategoriesService = class CategoriesService {
 exports.CategoriesService = CategoriesService;
 exports.CategoriesService = CategoriesService = __decorate([
     (0, common_1.Injectable)(),
-    __param(0, (0, mongoose_1.InjectModel)(category_schema_1.Category.name)),
-    __metadata("design:paramtypes", [mongoose_2.Model])
+    __metadata("design:paramtypes", [category_repository_1.CategoryRepository])
 ], CategoriesService);
 //# sourceMappingURL=categories.service.js.map

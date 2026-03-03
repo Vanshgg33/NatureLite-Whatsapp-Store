@@ -13,6 +13,7 @@ const schedule_1 = require("@nestjs/schedule");
 const chatbot_service_1 = require("./chatbot.service");
 const chatbot_controller_1 = require("./chatbot.controller");
 const chat_session_schema_1 = require("./schemas/chat-session.schema");
+const chat_session_repository_1 = require("./repositories/chat-session.repository");
 const whatsapp_module_1 = require("../whatsapp/whatsapp.module");
 const users_module_1 = require("../users/users.module");
 const products_module_1 = require("../products/products.module");
@@ -35,8 +36,8 @@ exports.ChatbotModule = ChatbotModule = __decorate([
             (0, common_1.forwardRef)(() => orders_module_1.OrdersModule),
         ],
         controllers: [chatbot_controller_1.ChatbotController],
-        providers: [chatbot_service_1.ChatbotService],
-        exports: [chatbot_service_1.ChatbotService],
+        providers: [chat_session_repository_1.ChatSessionRepository, chatbot_service_1.ChatbotService],
+        exports: [chat_session_repository_1.ChatSessionRepository, chatbot_service_1.ChatbotService],
     })
 ], ChatbotModule);
 //# sourceMappingURL=chatbot.module.js.map

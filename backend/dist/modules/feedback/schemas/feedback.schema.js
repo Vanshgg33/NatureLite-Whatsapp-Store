@@ -16,7 +16,7 @@ let Feedback = class Feedback {
 };
 exports.Feedback = Feedback;
 __decorate([
-    (0, mongoose_1.Prop)({ type: mongoose_2.Types.ObjectId, ref: 'User', required: true, index: true }),
+    (0, mongoose_1.Prop)({ type: mongoose_2.Types.ObjectId, ref: 'User', required: true }),
     __metadata("design:type", mongoose_2.Types.ObjectId)
 ], Feedback.prototype, "user", void 0);
 __decorate([

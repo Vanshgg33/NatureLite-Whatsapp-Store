@@ -35,6 +35,21 @@ import {
   AddAddressDto,
   UpdateAddressDto,
   Address,
+  Store,
+  StoreStockItem,
+  StoreSale,
+  CreateStoreSaleDto,
+  UpdateStoreSaleDto,
+  SetStoreStockDto,
+  StoreRevenueToday,
+  StoreStockSummary,
+  MonthOverMonthData,
+  TopSellingProduct,
+  TopCustomer,
+  SaleStats,
+  StoreDashboardStats,
+  MultiStoreRevenueData,
+  Reminder,
 } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
@@ -435,8 +450,11 @@ class ApiClient {
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
     customerId?: string;
+    userId?: string;
   }): Promise<PaginatedResponse<Order>> {
-    const response = await this.client.get<ApiResponse<PaginatedResponse<Order>>>('/orders', { params });
+    const { customerId, userId, ...rest } = params;
+    const query = { ...rest, userId: userId ?? customerId };
+    const response = await this.client.get<ApiResponse<PaginatedResponse<Order>>>('/orders', { params: query });
     return response.data.data;
   }
 
@@ -839,6 +857,146 @@ class ApiClient {
   // ==================== AUDIT ====================
   async getAuditLogs(params?: { page?: number; limit?: number; action?: string }): Promise<PaginatedResponse<any>> {
     const response = await this.client.get<ApiResponse<PaginatedResponse<any>>>('/audit', { params });
+    return response.data.data;
+  }
+
+  // ==================== STORES ====================
+  async getStores(): Promise<Store[]> {
+    const response = await this.client.get<ApiResponse<Store[]>>('/stores');
+    return response.data.data;
+  }
+
+  async getStore(id: string): Promise<Store> {
+    const response = await this.client.get<ApiResponse<Store>>(`/stores/${id}`);
+    return response.data.data;
+  }
+
+  async createStore(data: { name: string; code: string; address?: string; phone?: string }): Promise<Store> {
+    const response = await this.client.post<ApiResponse<Store>>('/stores', data);
+    return response.data.data;
+  }
+
+  async updateStore(id: string, data: Partial<{ name: string; address: string; phone: string; isActive: boolean }>): Promise<Store> {
+    const response = await this.client.put<ApiResponse<Store>>(`/stores/${id}`, data);
+    return response.data.data;
+  }
+
+  async resetStorePassword(storeId: string, newPassword: string): Promise<{ message: string }> {
+    const response = await this.client.put<ApiResponse<{ message: string }>>(`/stores/${storeId}/reset-password`, { newPassword });
+    return response.data.data;
+  }
+
+  // ==================== STORE STOCK ====================
+  async getStoreStock(storeId: string, params?: { page?: number; limit?: number; search?: string; category?: string; lowStockOnly?: boolean; inStockOnly?: boolean }): Promise<PaginatedResponse<StoreStockItem>> {
+    const response = await this.client.get<ApiResponse<PaginatedResponse<StoreStockItem>>>(`/store-stock/store/${storeId}`, { params });
+    return response.data.data;
+  }
+
+  async getProductStockAllStores(productId: string): Promise<StoreStockItem[]> {
+    const response = await this.client.get<ApiResponse<StoreStockItem[]>>(`/store-stock/product/${productId}`);
+    return response.data.data;
+  }
+
+  async setStoreStock(data: SetStoreStockDto): Promise<StoreStockItem> {
+    const response = await this.client.put<ApiResponse<StoreStockItem>>('/store-stock', data);
+    return response.data.data;
+  }
+
+  async bulkSetStoreStock(storeId: string, items: { productId: string; stock: number; variantSku?: string }[]): Promise<void> {
+    await this.client.put('/store-stock/bulk', { storeId, items });
+  }
+
+  async getLowStockByStore(storeId: string): Promise<StoreStockItem[]> {
+    const response = await this.client.get<ApiResponse<StoreStockItem[]>>(`/store-stock/store/${storeId}/low-stock`);
+    return response.data.data;
+  }
+
+  // ==================== STORE SALES ====================
+  async logSale(data: CreateStoreSaleDto): Promise<StoreSale> {
+    const response = await this.client.post<ApiResponse<StoreSale>>('/store-sales', data);
+    return response.data.data;
+  }
+
+  async getStoreSales(storeId: string, params?: { page?: number; limit?: number; saleType?: string; startDate?: string; endDate?: string; search?: string }): Promise<PaginatedResponse<StoreSale>> {
+    const response = await this.client.get<ApiResponse<PaginatedResponse<StoreSale>>>(`/store-sales/store/${storeId}`, { params });
+    return response.data.data;
+  }
+
+  async getAllStoreSales(params?: { page?: number; limit?: number; saleType?: string; startDate?: string; endDate?: string; search?: string }): Promise<PaginatedResponse<StoreSale>> {
+    const response = await this.client.get<ApiResponse<PaginatedResponse<StoreSale>>>('/store-sales', { params });
+    return response.data.data;
+  }
+
+  async getSaleStats(storeId: string, startDate?: string, endDate?: string): Promise<SaleStats> {
+    const response = await this.client.get<ApiResponse<SaleStats>>(`/store-sales/stats/${storeId}`, { params: { startDate, endDate } });
+    return response.data.data;
+  }
+
+  async getSaleById(id: string, storeId?: string): Promise<StoreSale> {
+    const params = storeId ? { storeId } : {};
+    const response = await this.client.get<ApiResponse<StoreSale>>(`/store-sales/${id}`, { params });
+    return response.data.data;
+  }
+
+  async updateSale(id: string, data: UpdateStoreSaleDto): Promise<StoreSale> {
+    const response = await this.client.patch<ApiResponse<StoreSale>>(`/store-sales/${id}`, data);
+    return response.data.data;
+  }
+
+  // ==================== REMINDERS ====================
+  async getDueReminders(): Promise<Reminder[]> {
+    const response = await this.client.get<ApiResponse<Reminder[]>>('/reminders/due');
+    return response.data.data;
+  }
+
+  async dismissReminder(id: string): Promise<Reminder> {
+    const response = await this.client.post<ApiResponse<Reminder>>(`/reminders/${id}/dismiss`);
+    return response.data.data;
+  }
+
+  // ==================== MULTI-STORE ANALYTICS ====================
+  async getStoreDashboardStats(storeId: string): Promise<StoreDashboardStats> {
+    const response = await this.client.get<ApiResponse<StoreDashboardStats>>(`/analytics/stores/dashboard/${storeId}`);
+    return response.data.data;
+  }
+
+  async getTodayRevenuePerStore(): Promise<StoreRevenueToday[]> {
+    const response = await this.client.get<ApiResponse<StoreRevenueToday[]>>('/analytics/stores/today');
+    return response.data.data;
+  }
+
+  async getMultiStoreRevenue(days: number = 30): Promise<MultiStoreRevenueData[]> {
+    const response = await this.client.get<ApiResponse<MultiStoreRevenueData[]>>('/analytics/stores/revenue-comparison', { params: { days } });
+    return response.data.data;
+  }
+
+  async getStockSummaryPerStore(): Promise<StoreStockSummary[]> {
+    const response = await this.client.get<ApiResponse<StoreStockSummary[]>>('/analytics/stores/stock-summary');
+    return response.data.data;
+  }
+
+  async getTopSellingByStore(storeId: string, startDate?: string, endDate?: string): Promise<TopSellingProduct[]> {
+    const response = await this.client.get<ApiResponse<TopSellingProduct[]>>(`/analytics/stores/top-products/${storeId}`, { params: { startDate, endDate } });
+    return response.data.data;
+  }
+
+  async getTopSellingOverall(startDate?: string, endDate?: string): Promise<TopSellingProduct[]> {
+    const response = await this.client.get<ApiResponse<TopSellingProduct[]>>('/analytics/stores/top-products', { params: { startDate, endDate } });
+    return response.data.data;
+  }
+
+  async getMonthOverMonthByStore(): Promise<MonthOverMonthData[]> {
+    const response = await this.client.get<ApiResponse<MonthOverMonthData[]>>('/analytics/stores/month-over-month');
+    return response.data.data;
+  }
+
+  async getTopCustomersByStore(storeId: string): Promise<TopCustomer[]> {
+    const response = await this.client.get<ApiResponse<TopCustomer[]>>(`/analytics/stores/top-customers/${storeId}`);
+    return response.data.data;
+  }
+
+  async getTopCustomersOverall(): Promise<TopCustomer[]> {
+    const response = await this.client.get<ApiResponse<TopCustomer[]>>('/analytics/stores/top-customers');
     return response.data.data;
   }
 

@@ -1,26 +1,23 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
-import { AdminUser, AdminUserDocument } from './schemas/admin-user.schema';
+import { AdminUser } from './schemas/admin-user.schema';
+import { AdminUserRepository } from './repositories/admin-user.repository';
+import { parseObjectId } from '@/common/utils/objectid.util';
 
 @Injectable()
 export class AdminService {
-  constructor(
-    @InjectModel(AdminUser.name) private adminUserModel: Model<AdminUserDocument>,
-  ) {}
+  constructor(private readonly adminUserRepository: AdminUserRepository) {}
 
   async findAll(): Promise<AdminUser[]> {
-    return this.adminUserModel.find().select('-password').exec();
+    return this.adminUserRepository.findAllExcludePassword();
   }
 
   async findById(id: string): Promise<AdminUser> {
-    const admin = await this.adminUserModel.findById(id).select('-password');
-
+    const idObj = parseObjectId(id, 'id');
+    const admin = await this.adminUserRepository.findByIdExcludePassword(idObj);
     if (!admin) {
       throw new NotFoundException('Admin not found');
     }
-
     return admin;
   }
 
@@ -31,23 +28,18 @@ export class AdminService {
     phone?: string;
     role?: 'admin' | 'superadmin';
   }): Promise<AdminUser> {
-    const existing = await this.adminUserModel.findOne({
-      email: data.email.toLowerCase(),
-    });
-
+    const existing = await this.adminUserRepository.findOneByEmail(data.email.toLowerCase());
     if (existing) {
       throw new BadRequestException('Email already exists');
     }
 
     const hashedPassword = await bcrypt.hash(data.password, 10);
 
-    const admin = new this.adminUserModel({
+    const admin = await this.adminUserRepository.create({
       ...data,
       email: data.email.toLowerCase(),
       password: hashedPassword,
-    });
-
-    await admin.save();
+    } as Partial<AdminUser>);
 
     const result = admin.toObject() as any;
     delete result.password;
@@ -64,51 +56,42 @@ export class AdminService {
       permissions?: string[];
     },
   ): Promise<AdminUser> {
-    const admin = await this.adminUserModel.findByIdAndUpdate(
-      id,
-      { $set: data },
-      { new: true },
-    ).select('-password');
-
+    const idObj = parseObjectId(id, 'id');
+    const admin = await this.adminUserRepository.findByIdAndUpdateExcludePassword(idObj, data);
     if (!admin) {
       throw new NotFoundException('Admin not found');
     }
-
     return admin;
   }
 
   async resetPassword(id: string, newPassword: string): Promise<void> {
+    const idObj = parseObjectId(id, 'id');
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    const result = await this.adminUserModel.updateOne(
-      { _id: new Types.ObjectId(id) },
+    const result = await this.adminUserRepository.updateOne(
+      { _id: idObj },
       { $set: { password: hashedPassword } },
     );
 
-    if (result.matchedCount === 0) {
+    if (result.modifiedCount === 0) {
       throw new NotFoundException('Admin not found');
     }
   }
 
   async deactivate(id: string): Promise<AdminUser> {
-    const admin = await this.adminUserModel.findByIdAndUpdate(
-      id,
-      { $set: { isActive: false } },
-      { new: true },
-    ).select('-password');
-
+    const idObj = parseObjectId(id, 'id');
+    const admin = await this.adminUserRepository.findByIdAndUpdateExcludePassword(idObj, {
+      isActive: false,
+    });
     if (!admin) {
       throw new NotFoundException('Admin not found');
     }
-
     return admin;
   }
 
   async delete(id: string): Promise<void> {
-    const result = await this.adminUserModel.deleteOne({
-      _id: new Types.ObjectId(id),
-    });
-
+    const idObj = parseObjectId(id, 'id');
+    const result = await this.adminUserRepository.deleteOne({ _id: idObj });
     if (result.deletedCount === 0) {
       throw new NotFoundException('Admin not found');
     }

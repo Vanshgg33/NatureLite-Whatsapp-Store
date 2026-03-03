@@ -22,7 +22,7 @@ export function PublicHeader() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
   const itemCount = useCartStore((state) => state.getItemCount());
-  const { isAuthenticated, customer } = useCustomerStore();
+  const isAuthenticated = useCustomerStore((state) => state.isAuthenticated);
 
   useEffect(() => {
     setHasMounted(true);
@@ -54,7 +54,7 @@ export function PublicHeader() {
             : 'bg-transparent'
         )}
       >
-        <div className="max-w-7xl mx-auto px-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <nav className="flex items-center justify-between h-20">
             {/* Logo */}
             <Link href="/" className="flex items-center gap-3 group">

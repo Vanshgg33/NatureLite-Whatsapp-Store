@@ -1,15 +1,15 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { Cart, CartDocument, CartItem } from './schemas/cart.schema';
+import { CartDocument, CartItem } from './schemas/cart.schema';
+import { CartRepository } from './repositories/cart.repository';
 import { ProductsService } from '../products/products.service';
 import { CouponsService } from '../coupons/coupons.service';
 import { AddToCartDto, UpdateCartItemDto, CartResponse } from './dto/cart.dto';
+import { parseObjectId } from '@/common/utils/objectid.util';
 
 @Injectable()
 export class CartService {
   constructor(
-    @InjectModel(Cart.name) private cartModel: Model<CartDocument>,
+    private readonly cartRepository: CartRepository,
     private productsService: ProductsService,
     private couponsService: CouponsService,
   ) {}
@@ -20,6 +20,7 @@ export class CartService {
   }
 
   async addItem(userId: string, dto: AddToCartDto): Promise<CartResponse> {
+    const productIdObj = parseObjectId(dto.productId, 'productId');
     const cart = await this.findOrCreateCart(userId);
     const product = await this.productsService.findById(dto.productId);
 
@@ -48,7 +49,7 @@ export class CartService {
 
     const existingItemIndex = cart.items.findIndex(
       (item) =>
-        item.product.toString() === dto.productId &&
+        item.product.toString() === productIdObj.toString() &&
         item.variantSku === dto.variantSku,
     );
 
@@ -62,7 +63,7 @@ export class CartService {
       cart.items[existingItemIndex].quantity = newQuantity;
     } else {
       const cartItem: CartItem = {
-        product: new Types.ObjectId(dto.productId),
+        product: productIdObj,
         variantSku: dto.variantSku,
         quantity: dto.quantity,
         price,
@@ -86,6 +87,7 @@ export class CartService {
     dto: UpdateCartItemDto,
     variantSku?: string,
   ): Promise<CartResponse> {
+    parseObjectId(productId, 'productId');
     const cart = await this.findOrCreateCart(userId);
 
     const itemIndex = cart.items.findIndex(
@@ -125,6 +127,7 @@ export class CartService {
     productId: string,
     variantSku?: string,
   ): Promise<CartResponse> {
+    parseObjectId(productId, 'productId');
     const cart = await this.findOrCreateCart(userId);
 
     const itemIndex = cart.items.findIndex(
@@ -197,8 +200,9 @@ export class CartService {
   }
 
   async markAsAbandoned(cartId: string): Promise<void> {
-    await this.cartModel.updateOne(
-      { _id: new Types.ObjectId(cartId) },
+    const cartObjId = parseObjectId(cartId, 'cartId');
+    await this.cartRepository.updateOne(
+      { _id: cartObjId },
       { abandonedAt: new Date() },
     );
   }
@@ -206,44 +210,31 @@ export class CartService {
   async getAbandonedCarts(
     minutesOld: number,
     limit: number = 100,
-  ): Promise<Cart[]> {
+  ): Promise<CartDocument[]> {
     const cutoffTime = new Date(Date.now() - minutesOld * 60 * 1000);
-
-    return this.cartModel
-      .find({
-        updatedAt: { $lt: cutoffTime },
-        abandonedAt: { $exists: false },
-        abandonedReminderSent: false,
-        'items.0': { $exists: true },
-      })
-      .populate('user', 'phone name')
-      .limit(limit)
-      .exec();
+    return this.cartRepository.findAbandonedCarts(cutoffTime, limit);
   }
 
   async markAbandonedReminderSent(cartId: string): Promise<void> {
-    await this.cartModel.updateOne(
-      { _id: new Types.ObjectId(cartId) },
+    const cartObjId = parseObjectId(cartId, 'cartId');
+    await this.cartRepository.updateOne(
+      { _id: cartObjId },
       { abandonedReminderSent: true },
     );
   }
 
   private async findOrCreateCart(userId: string): Promise<CartDocument> {
-    let cart = await this.cartModel.findOne({
-      user: new Types.ObjectId(userId),
-    });
-
+    const userObjId = parseObjectId(userId, 'userId');
+    let cart = await this.cartRepository.findOneByUser(userObjId);
     if (!cart) {
-      cart = new this.cartModel({
-        user: new Types.ObjectId(userId),
+      cart = await this.cartRepository.create({
+        user: userObjId,
         items: [],
         subtotal: 0,
         discount: 0,
         total: 0,
-      });
-      await cart.save();
+      } as Partial<CartDocument>);
     }
-
     return cart;
   }
 

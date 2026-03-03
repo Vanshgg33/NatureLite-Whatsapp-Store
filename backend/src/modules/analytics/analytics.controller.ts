@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Param,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -83,5 +84,65 @@ export class AnalyticsController {
       period,
       limit ? parseInt(limit, 10) : 30,
     );
+  }
+
+  // ==================== MULTI-STORE ANALYTICS ====================
+
+  @Get('stores/dashboard/:storeId')
+  async getStoreDashboardStats(@Param('storeId') storeId: string) {
+    return this.analyticsService.getStoreDashboardStats(storeId);
+  }
+
+  @Get('stores/today')
+  async getTodayRevenuePerStore() {
+    return this.analyticsService.getTodayRevenuePerStore();
+  }
+
+  @Get('stores/revenue-comparison')
+  async getMultiStoreRevenue(@Query('days') days?: string) {
+    return this.analyticsService.getMultiStoreRevenue(
+      days ? parseInt(days, 10) : 30,
+    );
+  }
+
+  @Get('stores/stock-summary')
+  async getStockSummaryPerStore() {
+    return this.analyticsService.getStockSummaryPerStore();
+  }
+
+  @Get('stores/top-products/:storeId')
+  async getTopSellingByStore(
+    @Param('storeId') storeId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const start = startDate ? new Date(startDate) : new Date(new Date().setDate(new Date().getDate() - 30));
+    const end = endDate ? new Date(endDate) : new Date();
+    return this.analyticsService.getTopSellingByStore(storeId, start, end);
+  }
+
+  @Get('stores/top-products')
+  async getTopSellingOverall(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const start = startDate ? new Date(startDate) : new Date(new Date().setDate(new Date().getDate() - 30));
+    const end = endDate ? new Date(endDate) : new Date();
+    return this.analyticsService.getTopSellingOverall(start, end);
+  }
+
+  @Get('stores/month-over-month')
+  async getMonthOverMonthByStore() {
+    return this.analyticsService.getMonthOverMonthByStore();
+  }
+
+  @Get('stores/top-customers/:storeId')
+  async getTopCustomersByStore(@Param('storeId') storeId: string) {
+    return this.analyticsService.getTopCustomersByStore(storeId);
+  }
+
+  @Get('stores/top-customers')
+  async getTopCustomersOverall() {
+    return this.analyticsService.getTopCustomersOverall();
   }
 }

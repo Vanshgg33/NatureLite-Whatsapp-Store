@@ -27,7 +27,7 @@ import { useCartStore, CartItem } from '@/lib/cart-store';
 import { useCustomerStore } from '@/lib/customer-store';
 import { useToast } from '@/components/ui/use-toast';
 import { api } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { cn, getProductTotalStock } from '@/lib/utils';
 import dynamic from 'next/dynamic';
 
 const Product3DViewer = dynamic(
@@ -43,7 +43,7 @@ export default function ProductDetailPage() {
   const [selectedVariant, setSelectedVariant] = useState<string | null>(null);
   const [show3D, setShow3D] = useState(false);
   const addItem = useCartStore((state) => state.addItem);
-  const { isAuthenticated } = useCustomerStore();
+  const isAuthenticated = useCustomerStore((state) => state.isAuthenticated);
   const [variantAutoSelected, setVariantAutoSelected] = useState(false);
   const { toast } = useToast();
 
@@ -53,18 +53,18 @@ export default function ProductDetailPage() {
     queryFn: () => api.getProductBySlug(slug),
   });
 
-  // Fetch related products
+  // Fetch related products (parallel — doesn't depend on product data)
   const { data: relatedProducts } = useQuery({
     queryKey: ['products', 'featured'],
     queryFn: () => api.getFeaturedProducts(4),
-    enabled: !!product,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
-  // Fetch product reviews
+  // Fetch product reviews (needs product ID — waits for product)
   const { data: reviews, refetch: refetchReviews } = useQuery({
     queryKey: ['product-reviews', product?._id],
     queryFn: () => api.getProductReviews(product!._id),
-    enabled: !!product,
+    enabled: !!product?._id,
   });
 
   // Auto-select first variant when product loads
@@ -454,11 +454,14 @@ export default function ProductDetailPage() {
             </div>
 
             {/* Stock Status */}
-            {currentStock > 0 && currentStock <= product.lowStockThreshold && (
-              <p className="font-body text-sm text-brand-terracotta mb-6">
-                Only {currentStock} left in stock!
-              </p>
-            )}
+            {(() => {
+              const totalStock = getProductTotalStock(product);
+              return totalStock > 0 && totalStock <= (product.lowStockThreshold ?? 5) ? (
+                <p className="font-body text-sm text-brand-terracotta mb-6">
+                  Only {totalStock} left in stock!
+                </p>
+              ) : null;
+            })()}
 
             {/* Trust Badges */}
             <TrustBadgesCompact />

@@ -13,7 +13,8 @@ interface CartItemProps {
 }
 
 export function CartItem({ item, variant = 'default' }: CartItemProps) {
-  const { updateQuantity, removeItem } = useCartStore();
+  const updateQuantity = useCartStore((state) => state.updateQuantity);
+  const removeItem = useCartStore((state) => state.removeItem);
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('en-IN', {

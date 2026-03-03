@@ -9,6 +9,9 @@ var HttpExceptionFilter_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.HttpExceptionFilter = void 0;
 const common_1 = require("@nestjs/common");
+function isCastError(e) {
+    return e instanceof Error && e.name === 'CastError';
+}
 let HttpExceptionFilter = HttpExceptionFilter_1 = class HttpExceptionFilter {
     constructor() {
         this.logger = new common_1.Logger(HttpExceptionFilter_1.name);
@@ -32,6 +35,14 @@ let HttpExceptionFilter = HttpExceptionFilter_1 = class HttpExceptionFilter {
                 message = exception.message;
                 error = 'Error';
             }
+        }
+        else if (isCastError(exception)) {
+            status = common_1.HttpStatus.BAD_REQUEST;
+            const path = exception.path ?? 'field';
+            const value = exception.stringValue ?? String(exception.value ?? '');
+            message = `Invalid value for "${path}": "${value}" is not a valid ID.`;
+            error = 'Bad Request';
+            this.logger.warn(`CastError: ${message}`);
         }
         else if (exception instanceof Error) {
             status = common_1.HttpStatus.INTERNAL_SERVER_ERROR;

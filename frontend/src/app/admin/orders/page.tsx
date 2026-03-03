@@ -38,11 +38,11 @@ export default function OrdersPage() {
     <div>
       <Header title="Orders" description="Manage customer orders" />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4 mb-6">
-              <div className="relative flex-1 max-w-sm">
+          <CardContent className="p-4 sm:pt-6 sm:px-6 sm:pb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+              <div className="relative flex-1 min-w-0 max-w-full sm:max-w-sm">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                 <Input
                   type="search"
@@ -82,6 +82,7 @@ export default function OrdersPage() {
               </div>
             ) : (
               <>
+                <div className="overflow-x-auto -mx-4 sm:mx-0">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -140,6 +141,7 @@ export default function OrdersPage() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
 
                 {data && data.totalPages > 1 && (
                   <div className="flex items-center justify-between mt-6">

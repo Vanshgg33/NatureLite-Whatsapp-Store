@@ -86,7 +86,6 @@ exports.Cart = Cart = __decorate([
     (0, mongoose_1.Schema)({ timestamps: true })
 ], Cart);
 exports.CartSchema = mongoose_1.SchemaFactory.createForClass(Cart);
-exports.CartSchema.index({ user: 1 });
 exports.CartSchema.index({ abandonedAt: 1, abandonedReminderSent: 1 });
 exports.CartSchema.index({ updatedAt: 1 });
 //# sourceMappingURL=cart.schema.js.map

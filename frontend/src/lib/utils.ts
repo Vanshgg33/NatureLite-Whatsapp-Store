@@ -5,6 +5,20 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** Sum of main product stock + all variant stocks (for Product from API). */
+export function getProductTotalStock(product: { stock?: number; variants?: { stock?: number }[] }): number {
+  const main = product.stock ?? 0;
+  const variantsSum = (product.variants ?? []).reduce((s, v) => s + (v.stock ?? 0), 0);
+  return main + variantsSum;
+}
+
+/** Sum of main stock + all variant SKU stocks (for StoreStockItem). */
+export function getStoreItemTotalStock(item: { stock?: number; variantStocks?: { stock?: number }[] }): number {
+  const main = item.stock ?? 0;
+  const variantsSum = (item.variantStocks ?? []).reduce((s, v) => s + (v.stock ?? 0), 0);
+  return main + variantsSum;
+}
+
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',

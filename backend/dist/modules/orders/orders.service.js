@@ -17,17 +17,20 @@ exports.OrdersService = void 0;
 const common_1 = require("@nestjs/common");
 const mongoose_1 = require("@nestjs/mongoose");
 const mongoose_2 = require("mongoose");
-const order_schema_1 = require("./schemas/order.schema");
+const order_repository_1 = require("./repositories/order.repository");
 const cart_service_1 = require("../cart/cart.service");
 const products_service_1 = require("../products/products.service");
 const users_service_1 = require("../users/users.service");
 const coupons_service_1 = require("../coupons/coupons.service");
 const email_service_1 = require("../email/email.service");
 const settings_service_1 = require("../settings/settings.service");
-const pagination_types_1 = require("../../common/types/pagination.types");
+const stores_service_1 = require("../stores/stores.service");
+const store_stock_service_1 = require("../store-stock/store-stock.service");
+const store_sales_service_1 = require("../store-sales/store-sales.service");
+const objectid_util_1 = require("../../common/utils/objectid.util");
 let OrdersService = OrdersService_1 = class OrdersService {
-    constructor(orderModel, connection, cartService, productsService, usersService, couponsService, emailService, settingsService) {
-        this.orderModel = orderModel;
+    constructor(orderRepository, connection, cartService, productsService, usersService, couponsService, emailService, settingsService, storesService, storeStockService, storeSalesService) {
+        this.orderRepository = orderRepository;
         this.connection = connection;
         this.cartService = cartService;
         this.productsService = productsService;
@@ -35,9 +38,13 @@ let OrdersService = OrdersService_1 = class OrdersService {
         this.couponsService = couponsService;
         this.emailService = emailService;
         this.settingsService = settingsService;
+        this.storesService = storesService;
+        this.storeStockService = storeStockService;
+        this.storeSalesService = storeSalesService;
         this.logger = new common_1.Logger(OrdersService_1.name);
     }
     async create(userId, dto) {
+        const userObjId = (0, objectid_util_1.parseObjectId)(userId, 'userId');
         const session = await this.connection.startSession();
         session.startTransaction();
         try {
@@ -66,6 +73,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
             }
             else if (dto.items && dto.items.length > 0) {
                 for (const item of dto.items) {
+                    const productIdObj = (0, objectid_util_1.parseObjectId)(item.productId, 'items[].productId');
                     const product = await this.productsService.findById(item.productId);
                     let price = product.price;
                     if (item.variantSku) {
@@ -75,7 +83,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
                         }
                     }
                     const orderItem = {
-                        product: new mongoose_2.Types.ObjectId(item.productId),
+                        product: productIdObj,
                         name: product.name,
                         variantSku: item.variantSku,
                         variantName: item.variantSku
@@ -121,9 +129,9 @@ let OrdersService = OrdersService_1 = class OrdersService {
             const shippingCharge = subtotal >= freeShippingThreshold ? 0 : defaultShippingCharge;
             const total = subtotal - discount + shippingCharge;
             const orderNumber = await this.generateOrderNumber();
-            const order = new this.orderModel({
+            const savedOrder = await this.orderRepository.createWithSession({
                 orderNumber,
-                user: new mongoose_2.Types.ObjectId(userId),
+                user: userObjId,
                 items: orderItems,
                 shippingAddress: dto.shippingAddress,
                 paymentMethod: dto.paymentMethod,
@@ -141,16 +149,24 @@ let OrdersService = OrdersService_1 = class OrdersService {
                         timestamp: new Date(),
                     },
                 ],
-            });
-            const savedOrder = await order.save({ session });
+            }, session);
+            const mainStore = await this.storesService.findMainStore();
+            const mainStoreId = mainStore._id.toString();
             for (const item of orderItems) {
-                await this.productsService.decrementStock(item.product.toString(), item.quantity, item.variantSku);
+                await this.storeStockService.decrementStock(mainStoreId, item.product.toString(), item.quantity, item.variantSku);
+                await this.productsService.incrementTotalSold(item.product.toString(), item.quantity);
             }
             if (dto.cartId) {
                 await this.cartService.clearCart(userId);
             }
             await this.usersService.updateOrderStats(userId, total);
             await session.commitTransaction();
+            try {
+                await this.storeSalesService.createFromOrder(savedOrder.toObject(), mainStoreId);
+            }
+            catch (saleError) {
+                this.logger.warn(`Failed to auto-log website sale: ${saleError.message}`);
+            }
             try {
                 const user = await this.usersService.findById(userId);
                 if (user?.email) {
@@ -171,75 +187,30 @@ let OrdersService = OrdersService_1 = class OrdersService {
         }
     }
     async findAll(query) {
-        const { page = 1, limit = 20, userId, status, paymentStatus, search, startDate, endDate, sortBy = 'createdAt', sortOrder = 'desc', } = query;
-        const filter = {};
-        if (userId) {
-            filter.user = new mongoose_2.Types.ObjectId(userId);
-        }
-        if (status) {
-            filter.status = status;
-        }
-        if (paymentStatus) {
-            filter.paymentStatus = paymentStatus;
-        }
-        if (search) {
-            filter.$or = [
-                { orderNumber: { $regex: search, $options: 'i' } },
-                { 'shippingAddress.name': { $regex: search, $options: 'i' } },
-                { 'shippingAddress.phone': { $regex: search, $options: 'i' } },
-            ];
-        }
-        if (startDate || endDate) {
-            filter.createdAt = {};
-            if (startDate) {
-                filter.createdAt.$gte = new Date(startDate);
-            }
-            if (endDate) {
-                filter.createdAt.$lte = new Date(endDate);
-            }
-        }
-        const skip = (page - 1) * limit;
-        const sort = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
-        const [orders, total] = await Promise.all([
-            this.orderModel
-                .find(filter)
-                .populate('user', 'phone name email')
-                .sort(sort)
-                .skip(skip)
-                .limit(limit)
-                .exec(),
-            this.orderModel.countDocuments(filter),
-        ]);
-        return (0, pagination_types_1.paginate)(orders, total, { page, limit });
+        return this.orderRepository.findAllPaginated(query);
     }
     async findById(id) {
-        const order = await this.orderModel
-            .findById(id)
-            .populate('user', 'phone name email addresses')
-            .populate('items.product', 'name slug images');
+        const idObj = (0, objectid_util_1.parseObjectId)(id, 'id');
+        const order = await this.orderRepository.findByIdWithUserAndItems(idObj);
         if (!order) {
             throw new common_1.NotFoundException('Order not found');
         }
         return order;
     }
     async findByOrderNumber(orderNumber) {
-        const order = await this.orderModel
-            .findOne({ orderNumber })
-            .populate('user', 'phone name email');
+        const order = await this.orderRepository.findOneByOrderNumber(orderNumber);
         if (!order) {
             throw new common_1.NotFoundException('Order not found');
         }
         return order;
     }
     async findUserOrders(userId, limit = 10) {
-        return this.orderModel
-            .find({ user: new mongoose_2.Types.ObjectId(userId) })
-            .sort({ createdAt: -1 })
-            .limit(limit)
-            .exec();
+        const userObjId = (0, objectid_util_1.parseObjectId)(userId, 'userId');
+        return this.orderRepository.findUserOrders(userObjId, limit);
     }
     async updateStatus(id, dto) {
-        const order = await this.orderModel.findById(id);
+        const idObj = (0, objectid_util_1.parseObjectId)(id, 'id');
+        const order = await this.orderRepository.findById(idObj);
         if (!order) {
             throw new common_1.NotFoundException('Order not found');
         }
@@ -277,7 +248,8 @@ let OrdersService = OrdersService_1 = class OrdersService {
         return savedOrder;
     }
     async updatePaymentStatus(id, dto) {
-        const order = await this.orderModel.findById(id);
+        const idObj = (0, objectid_util_1.parseObjectId)(id, 'id');
+        const order = await this.orderRepository.findById(idObj);
         if (!order) {
             throw new common_1.NotFoundException('Order not found');
         }
@@ -291,7 +263,8 @@ let OrdersService = OrdersService_1 = class OrdersService {
         return order.save();
     }
     async cancelOrder(id, dto, cancelledBy) {
-        const order = await this.orderModel.findById(id);
+        const idObj = (0, objectid_util_1.parseObjectId)(id, 'id');
+        const order = await this.orderRepository.findById(idObj);
         if (!order) {
             throw new common_1.NotFoundException('Order not found');
         }
@@ -321,7 +294,8 @@ let OrdersService = OrdersService_1 = class OrdersService {
         return savedOrder;
     }
     async addNote(id, dto) {
-        const order = await this.orderModel.findById(id);
+        const idObj = (0, objectid_util_1.parseObjectId)(id, 'id');
+        const order = await this.orderRepository.findById(idObj);
         if (!order) {
             throw new common_1.NotFoundException('Order not found');
         }
@@ -332,7 +306,8 @@ let OrdersService = OrdersService_1 = class OrdersService {
         return order.save();
     }
     async updateShipping(id, dto) {
-        const order = await this.orderModel.findById(id);
+        const idObj = (0, objectid_util_1.parseObjectId)(id, 'id');
+        const order = await this.orderRepository.findById(idObj);
         if (!order) {
             throw new common_1.NotFoundException('Order not found');
         }
@@ -348,14 +323,19 @@ let OrdersService = OrdersService_1 = class OrdersService {
         return order.save();
     }
     async setPriorityTags(id, tags) {
-        const order = await this.orderModel.findByIdAndUpdate(id, { $set: { priorityTags: tags } }, { new: true });
+        const idObj = (0, objectid_util_1.parseObjectId)(id, 'id');
+        const order = await this.orderRepository.findByIdAndUpdate(idObj, {
+            $set: { priorityTags: tags },
+        });
         if (!order) {
             throw new common_1.NotFoundException('Order not found');
         }
         return order;
     }
     async reorder(userId, dto) {
-        const originalOrder = await this.orderModel.findById(dto.orderId);
+        (0, objectid_util_1.parseObjectId)(userId, 'userId');
+        const orderIdObj = (0, objectid_util_1.parseObjectId)(dto.orderId, 'orderId');
+        const originalOrder = await this.orderRepository.findById(orderIdObj);
         if (!originalOrder) {
             throw new common_1.NotFoundException('Original order not found');
         }
@@ -379,67 +359,15 @@ let OrdersService = OrdersService_1 = class OrdersService {
         });
     }
     async getOrderStats(startDate, endDate) {
-        const matchStage = {};
-        if (startDate || endDate) {
-            matchStage.createdAt = {};
-            if (startDate) {
-                matchStage.createdAt.$gte = startDate;
-            }
-            if (endDate) {
-                matchStage.createdAt.$lte = endDate;
-            }
-        }
-        const stats = await this.orderModel.aggregate([
-            { $match: matchStage },
-            {
-                $group: {
-                    _id: null,
-                    totalOrders: { $sum: 1 },
-                    totalRevenue: { $sum: '$total' },
-                    avgOrderValue: { $avg: '$total' },
-                    completedOrders: {
-                        $sum: { $cond: [{ $eq: ['$status', 'delivered'] }, 1, 0] },
-                    },
-                    cancelledOrders: {
-                        $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] },
-                    },
-                    pendingOrders: {
-                        $sum: {
-                            $cond: [
-                                { $in: ['$status', ['pending', 'confirmed', 'processing']] },
-                                1,
-                                0,
-                            ],
-                        },
-                    },
-                },
-            },
-        ]);
-        return stats[0] || {
-            totalOrders: 0,
-            totalRevenue: 0,
-            avgOrderValue: 0,
-            completedOrders: 0,
-            cancelledOrders: 0,
-            pendingOrders: 0,
-        };
+        return this.orderRepository.getOrderStats(startDate, endDate);
     }
     async getOrdersByStatus() {
-        const result = await this.orderModel.aggregate([
-            { $group: { _id: '$status', count: { $sum: 1 } } },
-        ]);
-        const statusCounts = {};
-        result.forEach((item) => {
-            statusCounts[item._id] = item.count;
-        });
-        return statusCounts;
+        return this.orderRepository.getOrdersByStatus();
     }
     async generateOrderNumber() {
         const today = new Date();
         const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
-        const lastOrder = await this.orderModel
-            .findOne({ orderNumber: { $regex: `^ORD${dateStr}` } })
-            .sort({ orderNumber: -1 });
+        const lastOrder = await this.orderRepository.findOneByOrderNumberPrefix(`ORD${dateStr}`);
         let sequence = 1;
         if (lastOrder) {
             const lastSequence = parseInt(lastOrder.orderNumber.slice(-4), 10);
@@ -462,15 +390,17 @@ OrdersService.VALID_TRANSITIONS = {
 };
 exports.OrdersService = OrdersService = OrdersService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __param(0, (0, mongoose_1.InjectModel)(order_schema_1.Order.name)),
     __param(1, (0, mongoose_1.InjectConnection)()),
-    __metadata("design:paramtypes", [mongoose_2.Model,
+    __metadata("design:paramtypes", [order_repository_1.OrderRepository,
         mongoose_2.Connection,
         cart_service_1.CartService,
         products_service_1.ProductsService,
         users_service_1.UsersService,
         coupons_service_1.CouponsService,
         email_service_1.EmailService,
-        settings_service_1.SettingsService])
+        settings_service_1.SettingsService,
+        stores_service_1.StoresService,
+        store_stock_service_1.StoreStockService,
+        store_sales_service_1.StoreSalesService])
 ], OrdersService);
 //# sourceMappingURL=orders.service.js.map

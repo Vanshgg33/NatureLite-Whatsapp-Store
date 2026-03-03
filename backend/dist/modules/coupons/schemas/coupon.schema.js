@@ -87,6 +87,5 @@ exports.Coupon = Coupon = __decorate([
     (0, mongoose_1.Schema)({ timestamps: true })
 ], Coupon);
 exports.CouponSchema = mongoose_1.SchemaFactory.createForClass(Coupon);
-exports.CouponSchema.index({ code: 1 });
 exports.CouponSchema.index({ isActive: 1, validFrom: 1, validUntil: 1 });
 //# sourceMappingURL=coupon.schema.js.map

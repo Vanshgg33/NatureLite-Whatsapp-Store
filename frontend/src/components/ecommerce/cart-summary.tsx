@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { Tag, Truck, ShieldCheck, ArrowRight, X, PartyPopper, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -54,17 +55,15 @@ export function CartSummary({
   const discountAmount = getDiscountAmount();
   const total = getTotal();
 
-  const [shippingSettings, setShippingSettings] = useState({ freeShippingThreshold: 999, defaultShippingCharge: 50 });
-  useEffect(() => {
-    api.getPublicSettings().then((settings: any) => {
-      if (settings?.store) {
-        setShippingSettings({
-          freeShippingThreshold: settings.store.freeShippingThreshold ?? 999,
-          defaultShippingCharge: settings.store.defaultShippingCharge ?? 50,
-        });
-      }
-    }).catch(() => {});
-  }, []);
+  const { data: publicSettings } = useQuery({
+    queryKey: ['public-settings'],
+    queryFn: () => api.getPublicSettings(),
+    staleTime: 10 * 60 * 1000, // Cache for 10 minutes
+  });
+  const shippingSettings = {
+    freeShippingThreshold: publicSettings?.store?.freeShippingThreshold ?? 999,
+    defaultShippingCharge: publicSettings?.store?.defaultShippingCharge ?? 50,
+  };
 
   const freeShippingThreshold = shippingSettings.freeShippingThreshold;
   const shippingCost = subtotal >= freeShippingThreshold ? 0 : shippingSettings.defaultShippingCharge;

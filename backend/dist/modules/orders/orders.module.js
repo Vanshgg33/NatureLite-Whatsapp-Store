@@ -12,12 +12,16 @@ const mongoose_1 = require("@nestjs/mongoose");
 const orders_service_1 = require("./orders.service");
 const orders_controller_1 = require("./orders.controller");
 const order_schema_1 = require("./schemas/order.schema");
+const order_repository_1 = require("./repositories/order.repository");
 const cart_module_1 = require("../cart/cart.module");
 const products_module_1 = require("../products/products.module");
 const users_module_1 = require("../users/users.module");
 const coupons_module_1 = require("../coupons/coupons.module");
 const settings_module_1 = require("../settings/settings.module");
 const email_module_1 = require("../email/email.module");
+const stores_module_1 = require("../stores/stores.module");
+const store_stock_module_1 = require("../store-stock/store-stock.module");
+const store_sales_module_1 = require("../store-sales/store-sales.module");
 let OrdersModule = class OrdersModule {
 };
 exports.OrdersModule = OrdersModule;
@@ -31,10 +35,13 @@ exports.OrdersModule = OrdersModule = __decorate([
             coupons_module_1.CouponsModule,
             settings_module_1.SettingsModule,
             email_module_1.EmailModule,
+            stores_module_1.StoresModule,
+            store_stock_module_1.StoreStockModule,
+            store_sales_module_1.StoreSalesModule,
         ],
         controllers: [orders_controller_1.OrdersController],
-        providers: [orders_service_1.OrdersService],
-        exports: [orders_service_1.OrdersService],
+        providers: [order_repository_1.OrderRepository, orders_service_1.OrdersService],
+        exports: [order_repository_1.OrderRepository, orders_service_1.OrdersService],
     })
 ], OrdersModule);
 //# sourceMappingURL=orders.module.js.map

@@ -2,6 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import {
   ArrowLeft,
   Phone,
@@ -12,7 +13,11 @@ import {
   Ban,
   CheckCircle,
   Package,
+  TrendingUp,
+  Star,
+  Clock,
 } from 'lucide-react';
+import { Header } from '@/components/layout/header';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -42,6 +47,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useState } from 'react';
+import { formatCurrency } from '@/lib/utils';
 import { Order } from '@/types';
 
 export default function CustomerDetailPage() {
@@ -58,8 +64,8 @@ export default function CustomerDetailPage() {
 
   const { data: ordersData } = useQuery({
     queryKey: ['customer-orders', params.id],
-    queryFn: () => api.getOrders({ search: customer?.phone, limit: 50 }),
-    enabled: !!customer?.phone,
+    queryFn: () => api.getOrders({ userId: params.id as string, limit: 50, page: 1 }),
+    enabled: !!params.id,
   });
 
   const blockMutation = useMutation({
@@ -99,6 +105,47 @@ export default function CustomerDetailPage() {
 
   const orders = ordersData?.items || [];
 
+  const { avgOrderValue, lastOrderDate, ordersLast30Days, ordersLast60Days, ordersLast90Days, mostBoughtItems } = useMemo(() => {
+    const now = new Date();
+    const day30 = new Date(now);
+    day30.setDate(day30.getDate() - 30);
+    const day60 = new Date(now);
+    day60.setDate(day60.getDate() - 60);
+    const day90 = new Date(now);
+    day90.setDate(day90.getDate() - 90);
+
+    const totalOrders = customer?.totalOrders ?? 0;
+    const totalSpent = customer?.totalSpent ?? 0;
+    const avg = totalOrders > 0 ? totalSpent / totalOrders : 0;
+    const last = orders.length > 0 ? new Date(orders[0].createdAt) : null;
+
+    let last30 = 0, last60 = 0, last90 = 0;
+    const productCount: Record<string, { name: string; quantity: number }> = {};
+    orders.forEach((o: Order) => {
+      const d = new Date(o.createdAt);
+      if (d >= day30) last30++;
+      if (d >= day60) last60++;
+      if (d >= day90) last90++;
+      (o.items || []).forEach((item: { name?: string; product?: { name?: string }; quantity: number }) => {
+        const name = item.name || (item.product as { name?: string })?.name || 'Unknown';
+        if (!productCount[name]) productCount[name] = { name, quantity: 0 };
+        productCount[name].quantity += item.quantity || 0;
+      });
+    });
+    const mostBought = Object.values(productCount)
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 10);
+
+    return {
+      avgOrderValue: avg,
+      lastOrderDate: last,
+      ordersLast30Days: last30,
+      ordersLast60Days: last60,
+      ordersLast90Days: last90,
+      mostBoughtItems: mostBought,
+    };
+  }, [customer?.totalOrders, customer?.totalSpent, orders]);
+
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
       pending: 'bg-yellow-100 text-yellow-800',
@@ -112,18 +159,18 @@ export default function CustomerDetailPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div>
+      <Header
+        title={customer.name || 'Customer'}
+        description="Customer dashboard — details, orders, and insights"
+      />
+      <div className="p-6 space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="sm" onClick={() => router.back()}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back
         </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold tracking-tight">
-            {customer.name || 'Customer'}
-          </h1>
-          <p className="text-muted-foreground">Customer details and order history</p>
-        </div>
+        <div className="flex-1" />
         {customer.isBlocked ? (
           <Button onClick={() => unblockMutation.mutate()} disabled={unblockMutation.isPending}>
             <CheckCircle className="mr-2 h-4 w-4" />
@@ -191,7 +238,7 @@ export default function CustomerDetailPage() {
               </div>
               <div className="text-center p-3 bg-muted rounded-lg">
                 <span className="text-2xl font-bold">
-                  ₹{customer.totalSpent.toLocaleString()}
+                  {formatCurrency(customer.totalSpent)}
                 </span>
                 <p className="text-xs text-muted-foreground">Total Spent</p>
               </div>
@@ -245,6 +292,78 @@ export default function CustomerDetailPage() {
         </Card>
       </div>
 
+      {/* Stats: Avg order value, Last order, Frequency */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <TrendingUp className="h-4 w-4" />
+              <span className="text-sm font-medium">Avg Order Value</span>
+            </div>
+            <p className="text-2xl font-bold">{formatCurrency(avgOrderValue)}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <Clock className="h-4 w-4" />
+              <span className="text-sm font-medium">Last Order</span>
+            </div>
+            <p className="text-2xl font-bold">
+              {lastOrderDate ? lastOrderDate.toLocaleDateString() : '—'}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <ShoppingBag className="h-4 w-4" />
+              <span className="text-sm font-medium">Orders (30 / 60 / 90 days)</span>
+            </div>
+            <p className="text-2xl font-bold">
+              {ordersLast30Days} / {ordersLast60Days} / {ordersLast90Days}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <Package className="h-4 w-4" />
+              <span className="text-sm font-medium">Total Orders</span>
+            </div>
+            <p className="text-2xl font-bold">{customer.totalOrders}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Most Bought Items */}
+      {mostBoughtItems.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Star className="h-5 w-5" />
+              Most Bought Items
+            </CardTitle>
+            <CardDescription>Top products by quantity ordered</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+              {mostBoughtItems.map((item, index) => (
+                <div
+                  key={item.name}
+                  className="flex items-center justify-between p-3 rounded-lg border bg-muted/30"
+                >
+                  <span className="text-sm font-medium truncate" title={item.name}>
+                    {index + 1}. {item.name}
+                  </span>
+                  <Badge variant="secondary">{item.quantity} bought</Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Order History */}
       <Card>
         <CardHeader>
@@ -276,7 +395,7 @@ export default function CustomerDetailPage() {
                   <TableRow
                     key={order._id}
                     className="cursor-pointer"
-                    onClick={() => router.push(`/orders/${order._id}`)}
+                    onClick={() => router.push(`/admin/orders/${order._id}`)}
                   >
                     <TableCell className="font-medium">
                       {order.orderNumber}
@@ -343,6 +462,7 @@ export default function CustomerDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }

@@ -13,7 +13,7 @@ import { api } from '@/lib/api';
 import { Product } from '@/types';
 
 export default function CartPage() {
-  const { items, getItemCount } = useCartStore();
+  const items = useCartStore((state) => state.items);
   const [mounted, setMounted] = useState(false);
   const [crossSellProducts, setCrossSellProducts] = useState<Product[]>([]);
 
@@ -22,9 +22,10 @@ export default function CartPage() {
     setMounted(true);
   }, []);
 
-  // Fetch cross-sell products
+  // Fetch cross-sell products (only on mount, not on every quantity change)
+  const itemCount = items.length;
   useEffect(() => {
-    if (!mounted || items.length === 0) return;
+    if (!mounted || itemCount === 0) return;
     const cartProductIds = items.map((i) => i.productId);
     api
       .getProducts({ limit: 8, sortBy: 'totalSold', sortOrder: 'desc' })
@@ -33,7 +34,8 @@ export default function CartPage() {
         setCrossSellProducts(filtered.slice(0, 4));
       })
       .catch(() => {});
-  }, [mounted, items]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted, itemCount]);
 
   if (!mounted) {
     return (
@@ -54,8 +56,6 @@ export default function CartPage() {
       </div>
     );
   }
-
-  const itemCount = getItemCount();
 
   if (items.length === 0) {
     return (

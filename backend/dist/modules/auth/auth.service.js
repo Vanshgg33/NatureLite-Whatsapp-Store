@@ -8,25 +8,23 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
-var __param = (this && this.__param) || function (paramIndex, decorator) {
-    return function (target, key) { decorator(target, key, paramIndex); }
-};
 var AuthService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthService = void 0;
 const common_1 = require("@nestjs/common");
 const jwt_1 = require("@nestjs/jwt");
 const config_1 = require("@nestjs/config");
-const mongoose_1 = require("@nestjs/mongoose");
-const mongoose_2 = require("mongoose");
 const bcrypt = require("bcrypt");
 const uuid_1 = require("uuid");
-const admin_user_schema_1 = require("../admin/schemas/admin-user.schema");
-const user_schema_1 = require("../users/schemas/user.schema");
+const admin_user_repository_1 = require("../admin/repositories/admin-user.repository");
+const user_repository_1 = require("../users/repositories/user.repository");
+const store_repository_1 = require("../stores/repositories/store.repository");
+const objectid_util_1 = require("../../common/utils/objectid.util");
 let AuthService = AuthService_1 = class AuthService {
-    constructor(adminUserModel, userModel, jwtService, configService) {
-        this.adminUserModel = adminUserModel;
-        this.userModel = userModel;
+    constructor(adminUserRepository, userRepository, storeRepository, jwtService, configService) {
+        this.adminUserRepository = adminUserRepository;
+        this.userRepository = userRepository;
+        this.storeRepository = storeRepository;
         this.jwtService = jwtService;
         this.configService = configService;
         this.logger = new common_1.Logger(AuthService_1.name);
@@ -38,6 +36,7 @@ let AuthService = AuthService_1 = class AuthService {
         this.refreshTokens.set(refreshToken, {
             userId: payload.sub,
             role: payload.role,
+            storeId: payload.storeId,
             expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         });
         return { accessToken, refreshToken };
@@ -52,14 +51,14 @@ let AuthService = AuthService_1 = class AuthService {
         let user;
         let phone = '';
         if (stored.role === 'customer') {
-            user = await this.userModel.findById(stored.userId);
+            user = await this.userRepository.findByIdString(stored.userId);
             if (!user || user.isBlocked) {
                 throw new common_1.UnauthorizedException('User account is not active');
             }
             phone = user.phone || '';
         }
         else {
-            user = await this.adminUserModel.findById(stored.userId);
+            user = await this.adminUserRepository.findByIdString(stored.userId);
             if (!user || !user.isActive) {
                 throw new common_1.UnauthorizedException('Admin account is not active');
             }
@@ -69,6 +68,7 @@ let AuthService = AuthService_1 = class AuthService {
             sub: stored.userId,
             phone,
             role: stored.role,
+            storeId: stored.storeId,
         };
         const tokens = this.generateTokens(payload);
         return {
@@ -80,11 +80,12 @@ let AuthService = AuthService_1 = class AuthService {
                 phone: user.phone,
                 name: user.name,
                 role: stored.role,
+                storeId: stored.storeId,
             },
         };
     }
     async adminLogin(dto) {
-        const admin = await this.adminUserModel.findOne({ email: dto.email.toLowerCase() });
+        const admin = await this.adminUserRepository.findOneByEmail(dto.email.toLowerCase());
         if (!admin) {
             throw new common_1.UnauthorizedException('Invalid credentials');
         }
@@ -102,14 +103,23 @@ let AuthService = AuthService_1 = class AuthService {
             if (attempts >= 5) {
                 update.lockoutUntil = new Date(Date.now() + 15 * 60 * 1000);
             }
-            await this.adminUserModel.updateOne({ _id: admin._id }, update);
+            await this.adminUserRepository.updateOne({ _id: admin._id }, update);
             throw new common_1.UnauthorizedException('Invalid credentials');
         }
-        await this.adminUserModel.updateOne({ _id: admin._id }, { lastLoginAt: new Date(), failedLoginAttempts: 0, lockoutUntil: null });
+        await this.adminUserRepository.updateOne({ _id: admin._id }, { lastLoginAt: new Date(), failedLoginAttempts: 0, lockoutUntil: null });
+        let storeId;
+        let storeName;
+        if (admin.store) {
+            storeId = admin.store.toString();
+            const store = await this.storeRepository.findById(admin.store);
+            if (store)
+                storeName = store.name;
+        }
         const payload = {
             sub: admin._id.toString(),
             phone: admin.phone || '',
             role: admin.role,
+            storeId,
         };
         const tokens = this.generateTokens(payload);
         return {
@@ -119,29 +129,40 @@ let AuthService = AuthService_1 = class AuthService {
                 email: admin.email,
                 name: admin.name,
                 role: admin.role,
+                storeId,
+                storeName,
             },
         };
     }
     async adminRegister(dto) {
-        const existingAdmin = await this.adminUserModel.findOne({
-            email: dto.email.toLowerCase(),
-        });
+        const existingAdmin = await this.adminUserRepository.findOneByEmail(dto.email.toLowerCase());
         if (existingAdmin) {
             throw new common_1.ConflictException('Email already registered');
         }
         const hashedPassword = await bcrypt.hash(dto.password, 10);
-        const admin = new this.adminUserModel({
+        const adminData = {
             name: dto.name,
             email: dto.email.toLowerCase(),
             password: hashedPassword,
             phone: dto.phone,
             role: dto.role || 'admin',
-        });
-        await admin.save();
+        };
+        if (dto.storeId) {
+            adminData.store = (0, objectid_util_1.parseObjectId)(dto.storeId, 'storeId');
+        }
+        const admin = await this.adminUserRepository.create(adminData);
+        const storeId = admin.store?.toString();
+        let storeName;
+        if (admin.store) {
+            const store = await this.storeRepository.findById(admin.store);
+            if (store)
+                storeName = store.name;
+        }
         const payload = {
             sub: admin._id.toString(),
             phone: admin.phone || '',
             role: admin.role,
+            storeId,
         };
         const tokens = this.generateTokens(payload);
         return {
@@ -151,6 +172,8 @@ let AuthService = AuthService_1 = class AuthService {
                 email: admin.email,
                 name: admin.name,
                 role: admin.role,
+                storeId,
+                storeName,
             },
         };
     }
@@ -158,10 +181,9 @@ let AuthService = AuthService_1 = class AuthService {
         if (dto.otp !== '123456' && process.env.NODE_ENV === 'production') {
             throw new common_1.UnauthorizedException('Invalid OTP');
         }
-        let user = await this.userModel.findOne({ phone: dto.phone });
+        let user = await this.userRepository.findOneByPhone(dto.phone);
         if (!user) {
-            user = new this.userModel({ phone: dto.phone });
-            await user.save();
+            user = await this.userRepository.create({ phone: dto.phone });
         }
         if (user.isBlocked) {
             throw new common_1.UnauthorizedException('Account is blocked');
@@ -183,26 +205,23 @@ let AuthService = AuthService_1 = class AuthService {
         };
     }
     async customerRegister(dto) {
-        const existingUser = await this.userModel.findOne({
-            email: dto.email.toLowerCase(),
-        });
+        const existingUser = await this.userRepository.findOneByEmail(dto.email.toLowerCase());
         if (existingUser) {
             throw new common_1.ConflictException('Email already registered');
         }
         if (dto.phone) {
-            const phoneExists = await this.userModel.findOne({ phone: dto.phone });
+            const phoneExists = await this.userRepository.findOneByPhone(dto.phone);
             if (phoneExists) {
                 throw new common_1.ConflictException('Phone number already registered');
             }
         }
         const hashedPassword = await bcrypt.hash(dto.password, 10);
-        const user = new this.userModel({
+        const user = await this.userRepository.create({
             name: dto.name,
             email: dto.email.toLowerCase(),
             password: hashedPassword,
             phone: dto.phone,
         });
-        await user.save();
         const payload = {
             sub: user._id.toString(),
             phone: user.phone || '',
@@ -221,9 +240,7 @@ let AuthService = AuthService_1 = class AuthService {
         };
     }
     async customerEmailLogin(dto) {
-        const user = await this.userModel.findOne({
-            email: dto.email.toLowerCase(),
-        });
+        const user = await this.userRepository.findOneByEmail(dto.email.toLowerCase());
         if (!user) {
             throw new common_1.UnauthorizedException('Invalid credentials');
         }
@@ -244,10 +261,10 @@ let AuthService = AuthService_1 = class AuthService {
             if (attempts >= 5) {
                 update.lockoutUntil = new Date(Date.now() + 15 * 60 * 1000);
             }
-            await this.userModel.updateOne({ _id: user._id }, update);
+            await this.userRepository.updateOne({ _id: user._id }, update);
             throw new common_1.UnauthorizedException('Invalid credentials');
         }
-        await this.userModel.updateOne({ _id: user._id }, { failedLoginAttempts: 0, lockoutUntil: null });
+        await this.userRepository.updateOne({ _id: user._id }, { failedLoginAttempts: 0, lockoutUntil: null });
         const payload = {
             sub: user._id.toString(),
             phone: user.phone || '',
@@ -273,7 +290,7 @@ let AuthService = AuthService_1 = class AuthService {
         };
     }
     async changePassword(adminId, dto) {
-        const admin = await this.adminUserModel.findById(adminId);
+        const admin = await this.adminUserRepository.findByIdString(adminId);
         if (!admin) {
             throw new common_1.UnauthorizedException('User not found');
         }
@@ -282,17 +299,17 @@ let AuthService = AuthService_1 = class AuthService {
             throw new common_1.UnauthorizedException('Current password is incorrect');
         }
         const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
-        await this.adminUserModel.updateOne({ _id: adminId }, { password: hashedPassword });
+        await this.adminUserRepository.updateOne({ _id: (0, objectid_util_1.parseObjectId)(adminId, 'adminId') }, { password: hashedPassword });
     }
     async validateUser(payload) {
         if (payload.role === 'customer') {
-            const user = await this.userModel.findById(payload.sub);
+            const user = await this.userRepository.findByIdString(payload.sub);
             if (!user || user.isBlocked) {
                 return null;
             }
         }
         else {
-            const admin = await this.adminUserModel.findById(payload.sub);
+            const admin = await this.adminUserRepository.findByIdString(payload.sub);
             if (!admin || !admin.isActive) {
                 return null;
             }
@@ -301,26 +318,29 @@ let AuthService = AuthService_1 = class AuthService {
     }
     async getProfile(userId, role) {
         if (role === 'customer') {
-            const user = await this.userModel.findById(userId).select('-__v');
+            const user = await this.userRepository.findByIdString(userId);
             if (!user) {
                 throw new common_1.UnauthorizedException('User not found');
             }
-            return user.toObject();
+            return user.toObject ? user.toObject() : user;
         }
-        const admin = await this.adminUserModel.findById(userId).select('-password -__v');
+        const admin = await this.adminUserRepository.getModel()
+            .findById(userId)
+            .select('-password -__v')
+            .populate('store', 'name code')
+            .exec();
         if (!admin) {
             throw new common_1.UnauthorizedException('User not found');
         }
-        return admin.toObject();
+        return admin.toObject ? admin.toObject() : admin;
     }
 };
 exports.AuthService = AuthService;
 exports.AuthService = AuthService = AuthService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __param(0, (0, mongoose_1.InjectModel)(admin_user_schema_1.AdminUser.name)),
-    __param(1, (0, mongoose_1.InjectModel)(user_schema_1.User.name)),
-    __metadata("design:paramtypes", [mongoose_2.Model,
-        mongoose_2.Model,
+    __metadata("design:paramtypes", [admin_user_repository_1.AdminUserRepository,
+        user_repository_1.UserRepository,
+        store_repository_1.StoreRepository,
         jwt_1.JwtService,
         config_1.ConfigService])
 ], AuthService);

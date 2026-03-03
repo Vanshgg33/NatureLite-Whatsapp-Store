@@ -50,7 +50,7 @@ let User = class User {
 };
 exports.User = User;
 __decorate([
-    (0, mongoose_1.Prop)({ sparse: true, index: true }),
+    (0, mongoose_1.Prop)({ sparse: true }),
     __metadata("design:type", String)
 ], User.prototype, "phone", void 0);
 __decorate([
@@ -58,7 +58,7 @@ __decorate([
     __metadata("design:type", String)
 ], User.prototype, "name", void 0);
 __decorate([
-    (0, mongoose_1.Prop)({ sparse: true, index: true }),
+    (0, mongoose_1.Prop)({ sparse: true }),
     __metadata("design:type", String)
 ], User.prototype, "email", void 0);
 __decorate([

@@ -228,7 +228,6 @@ exports.Order = Order = __decorate([
     (0, mongoose_1.Schema)({ timestamps: true })
 ], Order);
 exports.OrderSchema = mongoose_1.SchemaFactory.createForClass(Order);
-exports.OrderSchema.index({ orderNumber: 1 });
 exports.OrderSchema.index({ user: 1, createdAt: -1 });
 exports.OrderSchema.index({ status: 1, createdAt: -1 });
 exports.OrderSchema.index({ paymentStatus: 1 });

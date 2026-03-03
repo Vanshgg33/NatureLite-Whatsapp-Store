@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ShoppingBag, Heart, Star, Minus, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCartStore, CartItem } from '@/lib/cart-store';
+import { getProductTotalStock } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 import { Product } from '@/types';
 
@@ -21,7 +22,7 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
   const [selectedVariant, setSelectedVariant] = useState<string | null>(null);
   const [isAddingToCart, setIsAddingToCart] = useState(false);
 
-  const { addItem } = useCartStore();
+  const addItem = useCartStore((state) => state.addItem);
   const { toast } = useToast();
 
   if (!product) return null;
@@ -286,7 +287,7 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
                 <div className="flex gap-3">
                   <motion.button
                     onClick={handleAddToCart}
-                    disabled={isAddingToCart || product.stock === 0}
+                    disabled={isAddingToCart || (selectedVariant ? (product.variants.find((v) => v.sku === selectedVariant)?.stock ?? 0) === 0 : getProductTotalStock(product) === 0)}
                     className="flex-1 py-4 bg-brand-charcoal text-white rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-brand-green transition-colors disabled:opacity-50"
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}

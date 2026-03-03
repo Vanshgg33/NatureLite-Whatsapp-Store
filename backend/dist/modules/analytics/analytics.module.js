@@ -13,11 +13,15 @@ const schedule_1 = require("@nestjs/schedule");
 const analytics_service_1 = require("./analytics.service");
 const analytics_controller_1 = require("./analytics.controller");
 const analytics_snapshot_schema_1 = require("./schemas/analytics-snapshot.schema");
-const order_schema_1 = require("../orders/schemas/order.schema");
-const user_schema_1 = require("../users/schemas/user.schema");
-const product_schema_1 = require("../products/schemas/product.schema");
-const chat_session_schema_1 = require("../chatbot/schemas/chat-session.schema");
-const message_log_schema_1 = require("../whatsapp/schemas/message-log.schema");
+const analytics_snapshot_repository_1 = require("./repositories/analytics-snapshot.repository");
+const orders_module_1 = require("../orders/orders.module");
+const users_module_1 = require("../users/users.module");
+const products_module_1 = require("../products/products.module");
+const chatbot_module_1 = require("../chatbot/chatbot.module");
+const whatsapp_module_1 = require("../whatsapp/whatsapp.module");
+const store_sales_module_1 = require("../store-sales/store-sales.module");
+const store_stock_module_1 = require("../store-stock/store-stock.module");
+const stores_module_1 = require("../stores/stores.module");
 let AnalyticsModule = class AnalyticsModule {
 };
 exports.AnalyticsModule = AnalyticsModule;
@@ -27,16 +31,19 @@ exports.AnalyticsModule = AnalyticsModule = __decorate([
             schedule_1.ScheduleModule.forRoot(),
             mongoose_1.MongooseModule.forFeature([
                 { name: analytics_snapshot_schema_1.AnalyticsSnapshot.name, schema: analytics_snapshot_schema_1.AnalyticsSnapshotSchema },
-                { name: order_schema_1.Order.name, schema: order_schema_1.OrderSchema },
-                { name: user_schema_1.User.name, schema: user_schema_1.UserSchema },
-                { name: product_schema_1.Product.name, schema: product_schema_1.ProductSchema },
-                { name: chat_session_schema_1.ChatSession.name, schema: chat_session_schema_1.ChatSessionSchema },
-                { name: message_log_schema_1.MessageLog.name, schema: message_log_schema_1.MessageLogSchema },
             ]),
+            orders_module_1.OrdersModule,
+            users_module_1.UsersModule,
+            products_module_1.ProductsModule,
+            chatbot_module_1.ChatbotModule,
+            whatsapp_module_1.WhatsAppModule,
+            store_sales_module_1.StoreSalesModule,
+            store_stock_module_1.StoreStockModule,
+            stores_module_1.StoresModule,
         ],
         controllers: [analytics_controller_1.AnalyticsController],
-        providers: [analytics_service_1.AnalyticsService],
-        exports: [analytics_service_1.AnalyticsService],
+        providers: [analytics_snapshot_repository_1.AnalyticsSnapshotRepository, analytics_service_1.AnalyticsService],
+        exports: [analytics_snapshot_repository_1.AnalyticsSnapshotRepository, analytics_service_1.AnalyticsService],
     })
 ], AnalyticsModule);
 //# sourceMappingURL=analytics.module.js.map

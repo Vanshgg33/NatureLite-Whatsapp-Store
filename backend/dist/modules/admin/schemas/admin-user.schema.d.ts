@@ -7,6 +7,7 @@ export declare class AdminUser {
     email: string;
     password: string;
     phone?: string;
+    store?: Types.ObjectId;
     role: AdminRole;
     isActive: boolean;
     lastLoginAt?: Date;

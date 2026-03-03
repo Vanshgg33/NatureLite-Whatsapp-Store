@@ -28,7 +28,7 @@ export function PublicFooter() {
     <footer className="bg-brand-brown text-white/90">
       {/* Trust Certifications */}
       <div className="border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-6 py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
           <div className="flex flex-wrap justify-center items-center gap-6 lg:gap-10">
             {[
               { icon: <ShieldCheck className="w-5 h-5" />, label: 'FSSAI Certified' },
@@ -45,7 +45,7 @@ export function PublicFooter() {
       </div>
 
       {/* Main Footer */}
-      <div className="max-w-7xl mx-auto px-6 py-20">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12">
           {/* Brand Column */}
           <div className="lg:col-span-2">
@@ -154,7 +154,7 @@ export function PublicFooter() {
 
       {/* Payment Methods */}
       <div className="border-t border-white/10">
-        <div className="max-w-7xl mx-auto px-6 py-5">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-5">
           <div className="flex flex-wrap justify-center items-center gap-4">
             <span className="text-xs text-white/40 mr-2">We Accept:</span>
             {['Visa', 'Mastercard', 'UPI', 'RuPay', 'Razorpay'].map((method) => (
@@ -171,7 +171,7 @@ export function PublicFooter() {
 
       {/* Bottom Bar */}
       <div className="border-t border-white/10">
-        <div className="max-w-7xl mx-auto px-6 py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-sm text-white/40">
               &copy; {currentYear} Naturelite. All rights reserved.

@@ -4,6 +4,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ChatbotService } from './chatbot.service';
 import { ChatbotController } from './chatbot.controller';
 import { ChatSession, ChatSessionSchema } from './schemas/chat-session.schema';
+import { ChatSessionRepository } from './repositories/chat-session.repository';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { UsersModule } from '../users/users.module';
 import { ProductsModule } from '../products/products.module';
@@ -23,7 +24,7 @@ import { OrdersModule } from '../orders/orders.module';
     forwardRef(() => OrdersModule),
   ],
   controllers: [ChatbotController],
-  providers: [ChatbotService],
-  exports: [ChatbotService],
+  providers: [ChatSessionRepository, ChatbotService],
+  exports: [ChatSessionRepository, ChatbotService],
 })
 export class ChatbotModule {}

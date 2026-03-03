@@ -65,7 +65,6 @@ export class Payment {
 
 export const PaymentSchema = SchemaFactory.createForClass(Payment);
 
-PaymentSchema.index({ order: 1 });
 PaymentSchema.index({ user: 1, createdAt: -1 });
 PaymentSchema.index({ status: 1 });
 PaymentSchema.index({ gatewayOrderId: 1 });

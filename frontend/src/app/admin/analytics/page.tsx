@@ -36,7 +36,7 @@ import { Header } from '@/components/layout/header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, getProductTotalStock } from '@/lib/utils';
 
 const TOOLTIP_STYLE = {
   backgroundColor: '#fff',
@@ -648,7 +648,7 @@ export default function AnalyticsPage() {
                         >
                           <span className="text-sm truncate flex-1">{p.name}</span>
                           <Badge variant="destructive" className="rounded-lg text-xs">
-                            {p.stock} left
+                            {getProductTotalStock(p)} left
                           </Badge>
                         </div>
                       ))}

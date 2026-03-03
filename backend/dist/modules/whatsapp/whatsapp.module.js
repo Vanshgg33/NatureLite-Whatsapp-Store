@@ -12,6 +12,7 @@ const mongoose_1 = require("@nestjs/mongoose");
 const whatsapp_service_1 = require("./whatsapp.service");
 const whatsapp_controller_1 = require("./whatsapp.controller");
 const message_log_schema_1 = require("./schemas/message-log.schema");
+const message_log_repository_1 = require("./repositories/message-log.repository");
 const chatbot_module_1 = require("../chatbot/chatbot.module");
 let WhatsAppModule = class WhatsAppModule {
 };
@@ -23,8 +24,8 @@ exports.WhatsAppModule = WhatsAppModule = __decorate([
             (0, common_1.forwardRef)(() => chatbot_module_1.ChatbotModule),
         ],
         controllers: [whatsapp_controller_1.WhatsAppController],
-        providers: [whatsapp_service_1.WhatsAppService],
-        exports: [whatsapp_service_1.WhatsAppService],
+        providers: [message_log_repository_1.MessageLogRepository, whatsapp_service_1.WhatsAppService],
+        exports: [message_log_repository_1.MessageLogRepository, whatsapp_service_1.WhatsAppService],
     })
 ], WhatsAppModule);
 //# sourceMappingURL=whatsapp.module.js.map

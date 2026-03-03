@@ -33,13 +33,13 @@ export const AddressSchema = SchemaFactory.createForClass(Address);
 export class User {
   _id: Types.ObjectId;
 
-  @Prop({ sparse: true, index: true })
+  @Prop({ sparse: true })
   phone?: string;
 
   @Prop()
   name?: string;
 
-  @Prop({ sparse: true, index: true })
+  @Prop({ sparse: true })
   email?: string;
 
   @Prop()

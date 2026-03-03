@@ -146,10 +146,8 @@ exports.Product = Product = __decorate([
     (0, mongoose_1.Schema)({ timestamps: true })
 ], Product);
 exports.ProductSchema = mongoose_1.SchemaFactory.createForClass(Product);
-exports.ProductSchema.index({ slug: 1 });
 exports.ProductSchema.index({ category: 1, isActive: 1 });
 exports.ProductSchema.index({ isActive: 1, isFeatured: 1 });
-exports.ProductSchema.index({ sku: 1 });
 exports.ProductSchema.index({ tags: 1 });
 exports.ProductSchema.index({ price: 1 });
 exports.ProductSchema.index({ createdAt: -1 });

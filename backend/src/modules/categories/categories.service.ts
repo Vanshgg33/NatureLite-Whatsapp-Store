@@ -1,104 +1,56 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { Category, CategoryDocument } from './schemas/category.schema';
+import { Types } from 'mongoose';
+import { Category } from './schemas/category.schema';
+import { CategoryRepository } from './repositories/category.repository';
 import { CreateCategoryDto, UpdateCategoryDto, CategoryQueryDto } from './dto/category.dto';
-import { PaginatedResult, paginate } from '@/common/types/pagination.types';
+import { PaginatedResult } from '@/common/types/pagination.types';
+import { parseObjectId, parseObjectIdOptional, isValidObjectIdString } from '@/common/utils/objectid.util';
 
 @Injectable()
 export class CategoriesService {
-  constructor(
-    @InjectModel(Category.name) private categoryModel: Model<CategoryDocument>,
-  ) {}
+  constructor(private readonly categoryRepository: CategoryRepository) {}
 
   async create(dto: CreateCategoryDto): Promise<Category> {
     const slug = dto.slug || this.generateSlug(dto.name);
-
-    const existingCategory = await this.categoryModel.findOne({ slug });
-    if (existingCategory) {
+    const existing = await this.categoryRepository.findOneBySlug(slug);
+    if (existing) {
       throw new BadRequestException('Category with this slug already exists');
     }
-
-    const category = new this.categoryModel({
-      ...dto,
-      slug,
-      parent: dto.parent ? new Types.ObjectId(dto.parent) : undefined,
-    });
-
-    return category.save();
+    const parentId = parseObjectIdOptional(dto.parent, 'parent');
+    return this.categoryRepository.createOne(dto, slug, parentId);
   }
 
   async findAll(query: CategoryQueryDto): Promise<PaginatedResult<Category>> {
-    const { page = 1, limit = 50, isActive, parent, rootOnly } = query;
-
-    const filter: Record<string, unknown> = {};
-
-    if (isActive !== undefined) {
-      filter.isActive = isActive;
-    }
-
-    if (rootOnly) {
-      filter.parent = { $exists: false };
-    } else if (parent) {
-      filter.parent = new Types.ObjectId(parent);
-    }
-
-    const skip = (page - 1) * limit;
-
-    const [categories, total] = await Promise.all([
-      this.categoryModel
-        .find(filter)
-        .sort({ sortOrder: 1, name: 1 })
-        .skip(skip)
-        .limit(limit)
-        .exec(),
-      this.categoryModel.countDocuments(filter),
-    ]);
-
-    return paginate(categories, total, { page, limit });
+    return this.categoryRepository.findAllPaginated(query);
   }
 
   async findById(id: string): Promise<Category> {
-    const category = await this.categoryModel.findById(id);
-
+    const category = await this.categoryRepository.findByIdString(id);
     if (!category) {
       throw new NotFoundException('Category not found');
     }
-
     return category;
   }
 
   async findBySlug(slug: string): Promise<Category> {
-    const category = await this.categoryModel.findOne({ slug });
-
+    const category = await this.categoryRepository.findOneBySlug(slug);
     if (!category) {
       throw new NotFoundException('Category not found');
     }
-
     return category;
   }
 
   async findActiveCategories(): Promise<Category[]> {
-    return this.categoryModel
-      .find({ isActive: true })
-      .sort({ sortOrder: 1, name: 1 })
-      .exec();
+    return this.categoryRepository.findActiveSorted();
   }
 
   async findSubcategories(parentId: string): Promise<Category[]> {
-    return this.categoryModel
-      .find({ parent: new Types.ObjectId(parentId), isActive: true })
-      .sort({ sortOrder: 1, name: 1 })
-      .exec();
+    if (!isValidObjectIdString(parentId)) return [];
+    return this.categoryRepository.findSubcategoriesByParentId(parseObjectId(parentId, 'parentId'));
   }
 
   async getCategoryTree(): Promise<Category[]> {
-    const allCategories = await this.categoryModel
-      .find({ isActive: true })
-      .sort({ sortOrder: 1, name: 1 })
-      .lean()
-      .exec();
-
+    const allCategories = await this.categoryRepository.findActiveLean();
     const categoryMap = new Map<string, Category & { children?: Category[] }>();
     const rootCategories: (Category & { children?: Category[] })[] = [];
 
@@ -124,50 +76,33 @@ export class CategoriesService {
   }
 
   async update(id: string, dto: UpdateCategoryDto): Promise<Category> {
+    const idObj = parseObjectId(id, 'id');
     if (dto.slug) {
-      const existingCategory = await this.categoryModel.findOne({
-        slug: dto.slug,
-        _id: { $ne: new Types.ObjectId(id) },
-      });
-
-      if (existingCategory) {
+      const existing = await this.categoryRepository.findOneBySlugExcludingId(dto.slug, idObj);
+      if (existing) {
         throw new BadRequestException('Category with this slug already exists');
       }
     }
-
     const updateData: Record<string, unknown> = { ...dto };
-    if (dto.parent) {
-      updateData.parent = new Types.ObjectId(dto.parent);
+    if (dto.parent !== undefined && dto.parent !== null && dto.parent !== '') {
+      updateData.parent = parseObjectId(dto.parent, 'parent');
     }
-
-    const category = await this.categoryModel.findByIdAndUpdate(
-      id,
-      { $set: updateData },
-      { new: true },
-    );
-
+    const category = await this.categoryRepository.findByIdAndUpdateDoc(idObj, updateData);
     if (!category) {
       throw new NotFoundException('Category not found');
     }
-
     return category;
   }
 
   async delete(id: string): Promise<void> {
-    const hasSubcategories = await this.categoryModel.exists({
-      parent: new Types.ObjectId(id),
-    });
-
+    const idObj = parseObjectId(id, 'id');
+    const hasSubcategories = await this.categoryRepository.existsByParentId(idObj);
     if (hasSubcategories) {
       throw new BadRequestException(
         'Cannot delete category with subcategories. Delete subcategories first.',
       );
     }
-
-    const result = await this.categoryModel.deleteOne({
-      _id: new Types.ObjectId(id),
-    });
-
+    const result = await this.categoryRepository.deleteOne({ _id: idObj });
     if (result.deletedCount === 0) {
       throw new NotFoundException('Category not found');
     }

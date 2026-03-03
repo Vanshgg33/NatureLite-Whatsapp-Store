@@ -1,10 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { AuditLog, AuditLogDocument, AuditAction } from './schemas/audit-log.schema';
+import { AuditLog } from './schemas/audit-log.schema';
+import { AuditLogRepository, type AuditFindAllQuery } from './repositories/audit-log.repository';
 
 export interface AuditLogInput {
-  action: AuditAction;
+  action: string;
   performedBy: string;
   performedByName?: string;
   targetId?: string;
@@ -19,62 +18,18 @@ export interface AuditLogInput {
 export class AuditService {
   private readonly logger = new Logger(AuditService.name);
 
-  constructor(
-    @InjectModel(AuditLog.name) private auditLogModel: Model<AuditLogDocument>,
-  ) {}
+  constructor(private readonly auditLogRepository: AuditLogRepository) {}
 
-  async log(data: AuditLogInput): Promise<AuditLog> {
+  async log(data: AuditLogInput): Promise<AuditLog | null> {
     try {
-      const entry = new this.auditLogModel({
-        ...data,
-        targetId: data.targetId ? new Types.ObjectId(data.targetId) : undefined,
-      });
-      return await entry.save();
+      return await this.auditLogRepository.createOne(data);
     } catch (error) {
-      this.logger.error(`Failed to create audit log: ${error.message}`, error.stack);
+      this.logger.error(`Failed to create audit log: ${(error as Error).message}`, (error as Error).stack);
       return null;
     }
   }
 
-  async findAll(query: {
-    page?: number;
-    limit?: number;
-    action?: string;
-    performedBy?: string;
-    targetId?: string;
-    startDate?: string;
-    endDate?: string;
-  }) {
-    const { page = 1, limit = 20, action, performedBy, targetId, startDate, endDate } = query;
-    const filter: Record<string, any> = {};
-
-    if (action) filter.action = action;
-    if (performedBy) filter.performedBy = performedBy;
-    if (targetId) filter.targetId = new Types.ObjectId(targetId);
-    if (startDate || endDate) {
-      filter.createdAt = {};
-      if (startDate) filter.createdAt.$gte = new Date(startDate);
-      if (endDate) filter.createdAt.$lte = new Date(endDate);
-    }
-
-    const [items, total] = await Promise.all([
-      this.auditLogModel
-        .find(filter)
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean(),
-      this.auditLogModel.countDocuments(filter),
-    ]);
-
-    return {
-      items,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-      hasNext: page * limit < total,
-      hasPrevious: page > 1,
-    };
+  async findAll(query: AuditFindAllQuery) {
+    return this.auditLogRepository.findAllPaginated(query);
   }
 }

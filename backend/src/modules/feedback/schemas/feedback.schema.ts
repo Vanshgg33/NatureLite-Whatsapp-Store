@@ -10,7 +10,7 @@ export type FeedbackStatus = 'pending' | 'acknowledged' | 'resolved' | 'closed';
 export class Feedback {
   _id: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   user: Types.ObjectId;
 
   @Prop({ type: Types.ObjectId, ref: 'Order' })

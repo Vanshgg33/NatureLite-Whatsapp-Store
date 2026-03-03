@@ -5,7 +5,9 @@ interface AdminUser {
   id: string;
   email?: string;
   name?: string;
-  role: string;
+  role: 'admin' | 'superadmin' | 'customer';
+  storeId?: string;
+  storeName?: string;
 }
 
 interface AdminAuthState {

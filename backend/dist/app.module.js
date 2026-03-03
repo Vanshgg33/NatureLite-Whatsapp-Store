@@ -34,6 +34,10 @@ const audit_module_1 = require("./modules/audit/audit.module");
 const payments_module_1 = require("./modules/payments/payments.module");
 const email_module_1 = require("./modules/email/email.module");
 const feedback_module_1 = require("./modules/feedback/feedback.module");
+const stores_module_1 = require("./modules/stores/stores.module");
+const store_stock_module_1 = require("./modules/store-stock/store-stock.module");
+const store_sales_module_1 = require("./modules/store-sales/store-sales.module");
+const reminders_module_1 = require("./modules/reminders/reminders.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -78,6 +82,10 @@ exports.AppModule = AppModule = __decorate([
             payments_module_1.PaymentsModule,
             email_module_1.EmailModule,
             feedback_module_1.FeedbackModule,
+            stores_module_1.StoresModule,
+            store_stock_module_1.StoreStockModule,
+            store_sales_module_1.StoreSalesModule,
+            reminders_module_1.RemindersModule,
         ],
         providers: [
             {

@@ -1,13 +1,12 @@
-import { Model } from 'mongoose';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { MessageLogRepository } from '../whatsapp/repositories/message-log.repository';
 import { Order } from '../orders/schemas/order.schema';
-import { MessageLogDocument } from '../whatsapp/schemas/message-log.schema';
 export declare class NotificationsService {
-    private messageLogModel;
+    private readonly messageLogRepository;
     private whatsappService;
     private readonly logger;
     private readonly sentNotifications;
-    constructor(messageLogModel: Model<MessageLogDocument>, whatsappService: WhatsAppService);
+    constructor(messageLogRepository: MessageLogRepository, whatsappService: WhatsAppService);
     sendOrderConfirmation(order: Order, phone: string): Promise<void>;
     sendShippingUpdate(order: Order, phone: string, awbNumber: string, courierName: string): Promise<void>;
     sendOutForDelivery(order: Order, phone: string): Promise<void>;

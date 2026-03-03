@@ -91,7 +91,6 @@ exports.ChatSession = ChatSession = __decorate([
     (0, mongoose_1.Schema)({ timestamps: true })
 ], ChatSession);
 exports.ChatSessionSchema = mongoose_1.SchemaFactory.createForClass(ChatSession);
-exports.ChatSessionSchema.index({ phone: 1 });
 exports.ChatSessionSchema.index({ user: 1 });
 exports.ChatSessionSchema.index({ isHandedOffToSupport: 1 });
 exports.ChatSessionSchema.index({ lastMessageAt: -1 });

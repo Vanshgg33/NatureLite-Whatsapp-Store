@@ -8,161 +8,138 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
-var __param = (this && this.__param) || function (paramIndex, decorator) {
-    return function (target, key) { decorator(target, key, paramIndex); }
-};
+var ProductsService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ProductsService = void 0;
 const common_1 = require("@nestjs/common");
-const mongoose_1 = require("@nestjs/mongoose");
-const mongoose_2 = require("mongoose");
-const product_schema_1 = require("./schemas/product.schema");
-const pagination_types_1 = require("../../common/types/pagination.types");
-let ProductsService = class ProductsService {
-    constructor(productModel) {
-        this.productModel = productModel;
+const objectid_util_1 = require("../../common/utils/objectid.util");
+const store_stock_service_1 = require("../store-stock/store-stock.service");
+const stores_service_1 = require("../stores/stores.service");
+const product_repository_1 = require("./repositories/product.repository");
+let ProductsService = ProductsService_1 = class ProductsService {
+    constructor(productRepository, storeStockService, storesService) {
+        this.productRepository = productRepository;
+        this.storeStockService = storeStockService;
+        this.storesService = storesService;
+        this.logger = new common_1.Logger(ProductsService_1.name);
+    }
+    async onModuleInit() {
+        await this.backfillStoreStock();
+    }
+    async backfillStoreStock() {
+        const stores = await this.storesService.findAll();
+        if (stores.length === 0)
+            return;
+        const storeIds = stores.map((s) => s._id.toString());
+        const products = await this.productRepository.findIdsAndStock();
+        for (const product of products) {
+            await this.storeStockService.initializeStockForProduct(product._id.toString(), storeIds);
+        }
+        if (products.length > 0) {
+            this.logger.log(`Backfilled StoreStock for ${products.length} product(s) across ${stores.length} store(s)`);
+        }
     }
     async create(dto) {
+        const categoryId = (0, objectid_util_1.parseObjectId)(dto.category, 'category');
         const slug = dto.slug || this.generateSlug(dto.name);
-        const existingSku = await this.productModel.findOne({ sku: dto.sku });
+        const existingSku = await this.productRepository.findOneBySku(dto.sku);
         if (existingSku) {
             throw new common_1.BadRequestException('Product with this SKU already exists');
         }
-        const existingSlug = await this.productModel.findOne({ slug });
+        const existingSlug = await this.productRepository.findOneBySlug(slug);
         if (existingSlug) {
             throw new common_1.BadRequestException('Product with this slug already exists');
         }
-        const product = new this.productModel({
+        const saved = await this.productRepository.create({
             ...dto,
             slug,
-            category: new mongoose_2.Types.ObjectId(dto.category),
+            category: categoryId,
         });
-        return product.save();
+        try {
+            const stores = await this.storesService.findAll();
+            const storeIds = stores.map((s) => s._id.toString());
+            if (storeIds.length > 0) {
+                await this.storeStockService.initializeStockForProduct(saved._id.toString(), storeIds);
+                this.logger.log(`Initialized StoreStock for product ${saved.name} across ${storeIds.length} store(s)`);
+            }
+        }
+        catch (error) {
+            this.logger.error(`Failed to initialize StoreStock for product ${saved.name}: ${error.message}`);
+        }
+        return saved;
     }
     async findAll(query) {
-        const { page = 1, limit = 20, search, category, isActive, isFeatured, inStock, minPrice, maxPrice, tags, sortBy = 'createdAt', sortOrder = 'desc', } = query;
-        const filter = {};
-        if (search) {
-            filter.$or = [
-                { name: { $regex: search, $options: 'i' } },
-                { description: { $regex: search, $options: 'i' } },
-                { sku: { $regex: search, $options: 'i' } },
-            ];
-        }
-        if (category) {
-            filter.category = new mongoose_2.Types.ObjectId(category);
-        }
-        if (isActive !== undefined) {
-            filter.isActive = isActive;
-        }
-        if (isFeatured !== undefined) {
-            filter.isFeatured = isFeatured;
-        }
-        if (inStock !== undefined) {
-            if (inStock) {
-                filter.stock = { $gt: 0 };
-            }
-            else {
-                filter.stock = { $lte: 0 };
-            }
-        }
-        if (minPrice !== undefined || maxPrice !== undefined) {
-            filter.price = {};
-            if (minPrice !== undefined) {
-                filter.price.$gte = minPrice;
-            }
-            if (maxPrice !== undefined) {
-                filter.price.$lte = maxPrice;
-            }
-        }
-        if (tags && tags.length > 0) {
-            filter.tags = { $in: tags };
-        }
-        const skip = (page - 1) * limit;
-        const sort = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
-        const [products, total] = await Promise.all([
-            this.productModel
-                .find(filter)
-                .populate('category', 'name slug')
-                .sort(sort)
-                .skip(skip)
-                .limit(limit)
-                .exec(),
-            this.productModel.countDocuments(filter),
-        ]);
-        return (0, pagination_types_1.paginate)(products, total, { page, limit });
+        return this.productRepository.findAllPaginated(query);
     }
     async findById(id) {
-        const product = await this.productModel
-            .findById(id)
-            .populate('category', 'name slug');
+        const idObj = (0, objectid_util_1.parseObjectId)(id, 'id');
+        const product = await this.productRepository.findByIdWithCategory(idObj);
         if (!product) {
             throw new common_1.NotFoundException('Product not found');
+        }
+        const catId = product.category?.toString?.() ?? product.category;
+        if ((0, objectid_util_1.isValidObjectIdString)(catId)) {
+            await product.populate('category', 'name slug');
         }
         return product;
     }
     async findBySlug(slug) {
-        const product = await this.productModel
-            .findOne({ slug })
-            .populate('category', 'name slug');
+        const product = await this.productRepository.findOneBySlugWithCategory(slug);
         if (!product) {
             throw new common_1.NotFoundException('Product not found');
+        }
+        const catId = product.category?.toString?.() ?? product.category;
+        if ((0, objectid_util_1.isValidObjectIdString)(catId)) {
+            await product.populate('category', 'name slug');
         }
         return product;
     }
     async findBySku(sku) {
-        const product = await this.productModel
-            .findOne({ sku })
-            .populate('category', 'name slug');
+        const product = await this.productRepository.findOneBySkuWithCategory(sku);
         if (!product) {
             throw new common_1.NotFoundException('Product not found');
+        }
+        const catId = product.category?.toString?.() ?? product.category;
+        if ((0, objectid_util_1.isValidObjectIdString)(catId)) {
+            await product.populate('category', 'name slug');
         }
         return product;
     }
     async findByCategory(categoryId) {
-        return this.productModel
-            .find({ category: new mongoose_2.Types.ObjectId(categoryId), isActive: true })
-            .sort({ createdAt: -1 })
-            .exec();
+        if (!(0, objectid_util_1.isValidObjectIdString)(categoryId)) {
+            return [];
+        }
+        return this.productRepository.findByCategoryId((0, objectid_util_1.parseObjectId)(categoryId, 'categoryId'));
     }
     async findFeatured(limit = 10) {
-        return this.productModel
-            .find({ isActive: true, isFeatured: true })
-            .populate('category', 'name slug')
-            .limit(limit)
-            .exec();
+        return this.productRepository.findFeatured(limit);
     }
     async update(id, dto) {
+        const idObj = (0, objectid_util_1.parseObjectId)(id, 'id');
         if (dto.sku) {
-            const existingSku = await this.productModel.findOne({
-                sku: dto.sku,
-                _id: { $ne: new mongoose_2.Types.ObjectId(id) },
-            });
+            const existingSku = await this.productRepository.findOneBySkuExcludingId(dto.sku, idObj);
             if (existingSku) {
                 throw new common_1.BadRequestException('Product with this SKU already exists');
             }
         }
         if (dto.slug) {
-            const existingSlug = await this.productModel.findOne({
-                slug: dto.slug,
-                _id: { $ne: new mongoose_2.Types.ObjectId(id) },
-            });
+            const existingSlug = await this.productRepository.findOneBySlugExcludingId(dto.slug, idObj);
             if (existingSlug) {
                 throw new common_1.BadRequestException('Product with this slug already exists');
             }
         }
         const updateData = { ...dto };
-        if (dto.category) {
-            updateData.category = new mongoose_2.Types.ObjectId(dto.category);
+        if (dto.category !== undefined) {
+            updateData.category = (0, objectid_util_1.parseObjectId)(dto.category, 'category');
         }
-        const product = await this.productModel.findByIdAndUpdate(id, { $set: updateData }, { new: true });
+        const product = await this.productRepository.findByIdAndUpdateDoc(id, updateData);
         if (!product) {
             throw new common_1.NotFoundException('Product not found');
         }
         return product;
     }
     async updateStock(id, dto) {
-        const product = await this.productModel.findById(id);
+        const product = await this.productRepository.findByIdString(id);
         if (!product) {
             throw new common_1.NotFoundException('Product not found');
         }
@@ -179,62 +156,35 @@ let ProductsService = class ProductsService {
         return product.save();
     }
     async decrementStock(productId, quantity, variantSku) {
+        const productObjId = (0, objectid_util_1.parseObjectId)(productId, 'productId');
         if (variantSku) {
-            const result = await this.productModel.updateOne({
-                _id: new mongoose_2.Types.ObjectId(productId),
-                'variants.sku': variantSku,
-                'variants.stock': { $gte: quantity },
-            }, {
-                $inc: {
-                    'variants.$.stock': -quantity,
-                    totalSold: quantity,
-                },
-            });
-            if (result.modifiedCount === 0) {
+            const modified = await this.productRepository.decrementVariantStock(productObjId, variantSku, quantity);
+            if (modified === 0) {
                 throw new common_1.BadRequestException(`Insufficient stock for variant ${variantSku}`);
             }
         }
         else {
-            const result = await this.productModel.updateOne({
-                _id: new mongoose_2.Types.ObjectId(productId),
-                stock: { $gte: quantity },
-            }, {
-                $inc: {
-                    stock: -quantity,
-                    totalSold: quantity,
-                },
-            });
-            if (result.modifiedCount === 0) {
+            const modified = await this.productRepository.decrementMainStock(productObjId, quantity);
+            if (modified === 0) {
                 throw new common_1.BadRequestException('Insufficient stock for this product');
             }
         }
     }
+    async incrementTotalSold(productId, quantity) {
+        await this.productRepository.incrementTotalSold((0, objectid_util_1.parseObjectId)(productId, 'productId'), quantity);
+    }
     async incrementViewCount(id) {
-        await this.productModel.updateOne({ _id: new mongoose_2.Types.ObjectId(id) }, { $inc: { viewCount: 1 } });
+        await this.productRepository.incrementViewCount((0, objectid_util_1.parseObjectId)(id, 'id'));
     }
     async getLowStockProducts() {
-        return this.productModel
-            .find({
-            isActive: true,
-            trackStock: true,
-            $expr: { $lte: ['$stock', '$lowStockThreshold'] },
-        })
-            .exec();
+        return this.productRepository.findLowStock();
     }
     async searchProducts(searchTerm, limit = 20) {
-        return this.productModel
-            .find({
-            isActive: true,
-            $text: { $search: searchTerm },
-        })
-            .limit(limit)
-            .exec();
+        return this.productRepository.searchByText(searchTerm, limit);
     }
     async delete(id) {
-        const result = await this.productModel.deleteOne({
-            _id: new mongoose_2.Types.ObjectId(id),
-        });
-        if (result.deletedCount === 0) {
+        const deleted = await this.productRepository.deleteById((0, objectid_util_1.parseObjectId)(id, 'id'));
+        if (deleted === 0) {
             throw new common_1.NotFoundException('Product not found');
         }
     }
@@ -246,9 +196,10 @@ let ProductsService = class ProductsService {
     }
 };
 exports.ProductsService = ProductsService;
-exports.ProductsService = ProductsService = __decorate([
+exports.ProductsService = ProductsService = ProductsService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __param(0, (0, mongoose_1.InjectModel)(product_schema_1.Product.name)),
-    __metadata("design:paramtypes", [mongoose_2.Model])
+    __metadata("design:paramtypes", [product_repository_1.ProductRepository,
+        store_stock_service_1.StoreStockService,
+        stores_service_1.StoresService])
 ], ProductsService);
 //# sourceMappingURL=products.service.js.map

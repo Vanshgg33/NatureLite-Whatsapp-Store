@@ -1,6 +1,7 @@
 'use client';
 
-import { useRef, useEffect, ReactNode } from 'react';
+import { useRef, useEffect, useMemo, ReactNode } from 'react';
+import Image from 'next/image';
 import { motion, useAnimationControls, useInView } from 'framer-motion';
 
 interface InfiniteMarqueeProps {
@@ -97,7 +98,7 @@ export function TextMarquee({
   className?: string;
   textClassName?: string;
 }) {
-  const items = Array(10).fill(text);
+  const items = useMemo(() => Array(10).fill(text), [text]);
 
   return (
     <InfiniteMarquee direction={direction} speed={speed} className={className}>
@@ -127,13 +128,14 @@ export function LogoMarquee({
       {logos.map((logo, index) => (
         <div
           key={index}
-          className="flex items-center justify-center w-32 h-16 grayscale hover:grayscale-0 opacity-60 hover:opacity-100 transition-all duration-300"
+          className="relative flex items-center justify-center w-32 h-16 grayscale hover:grayscale-0 opacity-60 hover:opacity-100 transition-all duration-300"
         >
-          <img
+          <Image
             src={logo.src}
             alt={logo.alt}
-            className="max-w-full max-h-full object-contain"
-            style={{ width: logo.width || 'auto' }}
+            width={logo.width || 128}
+            height={64}
+            className="object-contain"
           />
         </div>
       ))}

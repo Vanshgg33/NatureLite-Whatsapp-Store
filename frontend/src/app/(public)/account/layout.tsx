@@ -38,15 +38,15 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
   }
 
   return (
-    <div className="min-h-screen pt-20 bg-brand-cream">
-      <div className="brand-container py-12">
-        <div className="grid lg:grid-cols-4 gap-8">
+    <div className="min-h-screen pt-20 pb-8 sm:pb-12 bg-brand-cream">
+      <div className="brand-container py-6 sm:py-12">
+        <div className="grid lg:grid-cols-4 gap-6 lg:gap-8">
           {/* Sidebar */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-2xl p-6 shadow-brand-sm">
+            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-brand-sm">
               {/* User Info */}
-              <div className="flex items-center gap-4 mb-6 pb-6 border-b border-brand-border">
-                <div className="w-14 h-14 rounded-full bg-brand-mustard/10 flex items-center justify-center">
+              <div className="flex items-center gap-3 sm:gap-4 mb-4 sm:mb-6 pb-4 sm:pb-6 border-b border-brand-border">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-brand-mustard/10 flex items-center justify-center shrink-0">
                   <span className="font-display text-xl font-bold text-brand-mustard">
                     {customer?.name?.[0]?.toUpperCase() || customer?.email?.[0]?.toUpperCase() || 'U'}
                   </span>

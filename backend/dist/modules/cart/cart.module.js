@@ -12,6 +12,7 @@ const mongoose_1 = require("@nestjs/mongoose");
 const cart_service_1 = require("./cart.service");
 const cart_controller_1 = require("./cart.controller");
 const cart_schema_1 = require("./schemas/cart.schema");
+const cart_repository_1 = require("./repositories/cart.repository");
 const products_module_1 = require("../products/products.module");
 const coupons_module_1 = require("../coupons/coupons.module");
 let CartModule = class CartModule {
@@ -25,8 +26,8 @@ exports.CartModule = CartModule = __decorate([
             (0, common_1.forwardRef)(() => coupons_module_1.CouponsModule),
         ],
         controllers: [cart_controller_1.CartController],
-        providers: [cart_service_1.CartService],
-        exports: [cart_service_1.CartService],
+        providers: [cart_repository_1.CartRepository, cart_service_1.CartService],
+        exports: [cart_repository_1.CartRepository, cart_service_1.CartService],
     })
 ], CartModule);
 //# sourceMappingURL=cart.module.js.map

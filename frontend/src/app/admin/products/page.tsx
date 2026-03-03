@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { api } from '@/lib/api';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, getProductTotalStock } from '@/lib/utils';
 import { Product } from '@/types';
 
 export default function ProductsPage() {
@@ -20,10 +20,23 @@ export default function ProductsPage() {
   const [page, setPage] = useState(1);
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data: rawData, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['products', page, search],
     queryFn: () => api.getProducts({ page, limit: 20, search }),
   });
+
+  // Normalize response: backend returns { items, total, ... }; handle alternate shapes
+  const items = Array.isArray(rawData?.items) ? rawData.items : Array.isArray((rawData as any)?.data) ? (rawData as any).data : [];
+  const data = rawData
+    ? {
+        ...rawData,
+        items,
+        total: typeof rawData.total === 'number' ? rawData.total : items.length,
+        totalPages: typeof rawData.totalPages === 'number' ? rawData.totalPages : Math.max(1, Math.ceil((rawData.total ?? items.length) / (rawData.limit ?? 20))),
+        hasPrevious: rawData.hasPrevious ?? page > 1,
+        hasNext: rawData.hasNext ?? items.length === (rawData.limit ?? 20),
+      }
+    : undefined;
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.deleteProduct(id),
@@ -72,6 +85,19 @@ export default function ProductsPage() {
               <div className="flex items-center justify-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               </div>
+            ) : isError ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="rounded-full bg-destructive/10 p-4 mb-4">
+                  <Package className="h-8 w-8 text-destructive" />
+                </div>
+                <h3 className="text-sm font-medium">Unable to load products</h3>
+                <p className="text-sm text-muted-foreground max-w-sm mb-4">
+                  {error instanceof Error ? error.message : 'Check your connection and that the API is running.'}
+                </p>
+                <Button variant="outline" onClick={() => refetch()}>
+                  Try again
+                </Button>
+              </div>
             ) : data?.items.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <div className="rounded-full bg-muted/50 p-4 mb-4">
@@ -81,6 +107,9 @@ export default function ProductsPage() {
                 <p className="text-sm text-muted-foreground max-w-sm">
                   {search ? 'Try a different search term.' : 'Get started by adding your first product.'}
                 </p>
+                <Link href="/admin/products/new" className="mt-4">
+                  <Button>Add Product</Button>
+                </Link>
               </div>
             ) : (
               <>
@@ -97,7 +126,9 @@ export default function ProductsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data?.items.map((product) => (
+                    {data?.items.map((product) => {
+                      const totalStock = getProductTotalStock(product);
+                      return (
                       <TableRow key={product._id}>
                         <TableCell>
                           {product.images[0] ? (
@@ -135,16 +166,16 @@ export default function ProductsPage() {
                         </TableCell>
                         <TableCell>
                           <Badge
-                            variant={product.stock > 0 ? 'default' : 'destructive'}
+                            variant={totalStock > 0 ? 'default' : 'destructive'}
                             className={
-                              product.stock > product.lowStockThreshold
+                              totalStock > product.lowStockThreshold
                                 ? 'bg-green-100 text-green-800'
-                                : product.stock > 0
+                                : totalStock > 0
                                 ? 'bg-yellow-100 text-yellow-800'
                                 : ''
                             }
                           >
-                            {product.stock}
+                            {totalStock}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -170,7 +201,8 @@ export default function ProductsPage() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                    );
+                    })}
                   </TableBody>
                 </Table>
 

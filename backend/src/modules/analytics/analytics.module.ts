@@ -4,26 +4,33 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { AnalyticsService } from './analytics.service';
 import { AnalyticsController } from './analytics.controller';
 import { AnalyticsSnapshot, AnalyticsSnapshotSchema } from './schemas/analytics-snapshot.schema';
-import { Order, OrderSchema } from '../orders/schemas/order.schema';
-import { User, UserSchema } from '../users/schemas/user.schema';
-import { Product, ProductSchema } from '../products/schemas/product.schema';
-import { ChatSession, ChatSessionSchema } from '../chatbot/schemas/chat-session.schema';
-import { MessageLog, MessageLogSchema } from '../whatsapp/schemas/message-log.schema';
+import { AnalyticsSnapshotRepository } from './repositories/analytics-snapshot.repository';
+import { OrdersModule } from '../orders/orders.module';
+import { UsersModule } from '../users/users.module';
+import { ProductsModule } from '../products/products.module';
+import { ChatbotModule } from '../chatbot/chatbot.module';
+import { WhatsAppModule } from '../whatsapp/whatsapp.module';
+import { StoreSalesModule } from '../store-sales/store-sales.module';
+import { StoreStockModule } from '../store-stock/store-stock.module';
+import { StoresModule } from '../stores/stores.module';
 
 @Module({
   imports: [
     ScheduleModule.forRoot(),
     MongooseModule.forFeature([
       { name: AnalyticsSnapshot.name, schema: AnalyticsSnapshotSchema },
-      { name: Order.name, schema: OrderSchema },
-      { name: User.name, schema: UserSchema },
-      { name: Product.name, schema: ProductSchema },
-      { name: ChatSession.name, schema: ChatSessionSchema },
-      { name: MessageLog.name, schema: MessageLogSchema },
     ]),
+    OrdersModule,
+    UsersModule,
+    ProductsModule,
+    ChatbotModule,
+    WhatsAppModule,
+    StoreSalesModule,
+    StoreStockModule,
+    StoresModule,
   ],
   controllers: [AnalyticsController],
-  providers: [AnalyticsService],
-  exports: [AnalyticsService],
+  providers: [AnalyticsSnapshotRepository, AnalyticsService],
+  exports: [AnalyticsSnapshotRepository, AnalyticsService],
 })
 export class AnalyticsModule {}

@@ -8,22 +8,17 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
-var __param = (this && this.__param) || function (paramIndex, decorator) {
-    return function (target, key) { decorator(target, key, paramIndex); }
-};
 var WhatsAppService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WhatsAppService = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
-const mongoose_1 = require("@nestjs/mongoose");
-const mongoose_2 = require("mongoose");
 const axios_1 = require("axios");
 const crypto = require("crypto");
-const message_log_schema_1 = require("./schemas/message-log.schema");
+const message_log_repository_1 = require("./repositories/message-log.repository");
 let WhatsAppService = WhatsAppService_1 = class WhatsAppService {
-    constructor(messageLogModel, configService) {
-        this.messageLogModel = messageLogModel;
+    constructor(messageLogRepository, configService) {
+        this.messageLogRepository = messageLogRepository;
         this.configService = configService;
         this.logger = new common_1.Logger(WhatsAppService_1.name);
         this.config = this.configService.get('whatsapp');
@@ -341,7 +336,7 @@ let WhatsAppService = WhatsAppService_1 = class WhatsAppService {
     }
     async logMessage(message, direction) {
         try {
-            const log = new this.messageLogModel({
+            await this.messageLogRepository.create({
                 phone: message.phone,
                 direction,
                 messageType: message.type,
@@ -349,7 +344,6 @@ let WhatsAppService = WhatsAppService_1 = class WhatsAppService {
                 content: message.content,
                 status: direction === 'outbound' ? 'sent' : undefined,
             });
-            await log.save();
         }
         catch (error) {
             this.logger.error('Failed to log message', error);
@@ -364,25 +358,20 @@ let WhatsAppService = WhatsAppService_1 = class WhatsAppService {
             else if (status === 'read') {
                 updateData.readAt = new Date(parseInt(timestamp, 10) * 1000);
             }
-            await this.messageLogModel.updateOne({ whatsappMessageId: messageId }, { $set: updateData });
+            await this.messageLogRepository.updateOneByWhatsAppMessageId(messageId, updateData);
         }
         catch (error) {
             this.logger.error('Failed to update message status', error);
         }
     }
     async getMessageLogs(phone, limit = 50) {
-        return this.messageLogModel
-            .find({ phone })
-            .sort({ createdAt: -1 })
-            .limit(limit)
-            .exec();
+        return this.messageLogRepository.findByPhone(phone, limit);
     }
 };
 exports.WhatsAppService = WhatsAppService;
 exports.WhatsAppService = WhatsAppService = WhatsAppService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __param(0, (0, mongoose_1.InjectModel)(message_log_schema_1.MessageLog.name)),
-    __metadata("design:paramtypes", [mongoose_2.Model,
+    __metadata("design:paramtypes", [message_log_repository_1.MessageLogRepository,
         config_1.ConfigService])
 ], WhatsAppService);
 //# sourceMappingURL=whatsapp.service.js.map

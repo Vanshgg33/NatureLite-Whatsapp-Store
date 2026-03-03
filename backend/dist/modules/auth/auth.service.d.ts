@@ -1,18 +1,19 @@
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { Model } from 'mongoose';
-import { AdminUserDocument } from '../admin/schemas/admin-user.schema';
-import { UserDocument } from '../users/schemas/user.schema';
+import { AdminUserRepository } from '../admin/repositories/admin-user.repository';
+import { UserRepository } from '../users/repositories/user.repository';
+import { StoreRepository } from '../stores/repositories/store.repository';
 import { AdminLoginDto, AdminRegisterDto, CustomerLoginDto, CustomerRegisterDto, CustomerEmailLoginDto, AuthResponse, ChangePasswordDto } from './dto/auth.dto';
 import { JwtPayload } from '@/common/decorators/current-user.decorator';
 export declare class AuthService {
-    private adminUserModel;
-    private userModel;
+    private readonly adminUserRepository;
+    private readonly userRepository;
+    private readonly storeRepository;
     private jwtService;
     private configService;
     private readonly logger;
     private refreshTokens;
-    constructor(adminUserModel: Model<AdminUserDocument>, userModel: Model<UserDocument>, jwtService: JwtService, configService: ConfigService);
+    constructor(adminUserRepository: AdminUserRepository, userRepository: UserRepository, storeRepository: StoreRepository, jwtService: JwtService, configService: ConfigService);
     private generateTokens;
     refreshAccessToken(refreshToken: string): Promise<AuthResponse>;
     adminLogin(dto: AdminLoginDto): Promise<AuthResponse>;

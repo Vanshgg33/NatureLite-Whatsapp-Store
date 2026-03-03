@@ -16,6 +16,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { api } from '@/lib/api';
 import { validateProduct, getFieldError, ValidationError } from '@/lib/validation';
+import { BarcodeScanCard } from '@/components/admin/barcode-scan-card';
+import type { BarcodeProduct } from '@/lib/barcode-lookup';
 
 export default function NewProductPage() {
   const router = useRouter();
@@ -134,6 +136,19 @@ export default function NewProductPage() {
 
   const getError = (field: string) => getFieldError(errors, field);
 
+  const handleBarcodeProduct = (product: BarcodeProduct) => {
+    setFormData((prev) => ({
+      ...prev,
+      ...(product.name && { name: product.name }),
+      ...(product.sku && { sku: product.sku }),
+      ...(product.description && { description: product.description }),
+      ...(product.quantity && { shortDescription: `Size: ${product.quantity}` }),
+    }));
+    if (product.imageUrl && !images.includes(product.imageUrl)) {
+      setImages((prev) => [...prev, product.imageUrl!]);
+    }
+  };
+
   return (
     <div>
       <Header
@@ -172,6 +187,8 @@ export default function NewProductPage() {
 
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-6">
+            <BarcodeScanCard onProductFound={handleBarcodeProduct} />
+
             <Card>
               <CardHeader>
                 <CardTitle>Basic Information</CardTitle>
@@ -295,6 +312,21 @@ export default function NewProductPage() {
                   </div>
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor="sku">Product SKU *</Label>
+                  <Input
+                    id="sku"
+                    value={formData.sku}
+                    onChange={(e) => setFormData({ ...formData, sku: e.target.value.toUpperCase() })}
+                    placeholder="e.g. OIL-001"
+                    className={getError('sku') ? 'border-red-500' : ''}
+                  />
+                  {getError('sku') && (
+                    <p className="text-sm text-red-500">{getError('sku')}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">Unique identifier for this product. Stock is tracked per variant below.</p>
+                </div>
+
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="gstPercentage">GST %</Label>
@@ -324,63 +356,6 @@ export default function NewProductPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Inventory</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="sku">SKU *</Label>
-                    <Input
-                      id="sku"
-                      value={formData.sku}
-                      onChange={(e) => setFormData({ ...formData, sku: e.target.value.toUpperCase() })}
-                      placeholder="Stock Keeping Unit"
-                      className={getError('sku') ? 'border-red-500' : ''}
-                    />
-                    {getError('sku') && (
-                      <p className="text-sm text-red-500">{getError('sku')}</p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="stock">Stock Quantity</Label>
-                    <Input
-                      id="stock"
-                      type="number"
-                      min="0"
-                      value={formData.stock}
-                      onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                      className={getError('stock') ? 'border-red-500' : ''}
-                    />
-                    {getError('stock') && (
-                      <p className="text-sm text-red-500">{getError('stock')}</p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="lowStockThreshold">Low Stock Alert</Label>
-                    <Input
-                      id="lowStockThreshold"
-                      type="number"
-                      min="0"
-                      value={formData.lowStockThreshold}
-                      onChange={(e) => setFormData({ ...formData, lowStockThreshold: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="trackStock"
-                    checked={formData.trackStock}
-                    onChange={(e) => setFormData({ ...formData, trackStock: e.target.checked })}
-                    className="rounded"
-                  />
-                  <Label htmlFor="trackStock">Track stock quantity</Label>
-                </div>
-              </CardContent>
-            </Card>
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">

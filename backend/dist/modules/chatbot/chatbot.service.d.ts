@@ -1,5 +1,5 @@
-import { Model } from 'mongoose';
-import { ChatSession, ChatSessionDocument } from './schemas/chat-session.schema';
+import { ChatSession } from './schemas/chat-session.schema';
+import { ChatSessionRepository } from './repositories/chat-session.repository';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { UsersService } from '../users/users.service';
 import { ProductsService } from '../products/products.service';
@@ -8,7 +8,7 @@ import { CartService } from '../cart/cart.service';
 import { OrdersService } from '../orders/orders.service';
 import { WhatsAppMessage } from '../whatsapp/dto/whatsapp.dto';
 export declare class ChatbotService {
-    private chatSessionModel;
+    private readonly chatSessionRepository;
     private whatsappService;
     private usersService;
     private productsService;
@@ -16,7 +16,7 @@ export declare class ChatbotService {
     private cartService;
     private ordersService;
     private readonly logger;
-    constructor(chatSessionModel: Model<ChatSessionDocument>, whatsappService: WhatsAppService, usersService: UsersService, productsService: ProductsService, categoriesService: CategoriesService, cartService: CartService, ordersService: OrdersService);
+    constructor(chatSessionRepository: ChatSessionRepository, whatsappService: WhatsAppService, usersService: UsersService, productsService: ProductsService, categoriesService: CategoriesService, cartService: CartService, ordersService: OrdersService);
     handleMessage(message: WhatsAppMessage): Promise<void>;
     private processInput;
     private handleMainMenu;

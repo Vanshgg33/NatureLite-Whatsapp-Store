@@ -1,13 +1,17 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
-import { InjectModel, InjectConnection } from '@nestjs/mongoose';
-import { Model, Types, Connection } from 'mongoose';
-import { Order, OrderDocument, OrderItem, TimelineEntry, OrderStatus } from './schemas/order.schema';
+import { InjectConnection } from '@nestjs/mongoose';
+import { Types, Connection } from 'mongoose';
+import { Order, OrderItem, TimelineEntry, OrderStatus } from './schemas/order.schema';
+import { OrderRepository } from './repositories/order.repository';
 import { CartService } from '../cart/cart.service';
 import { ProductsService } from '../products/products.service';
 import { UsersService } from '../users/users.service';
 import { CouponsService } from '../coupons/coupons.service';
 import { EmailService } from '../email/email.service';
 import { SettingsService } from '../settings/settings.service';
+import { StoresService } from '../stores/stores.service';
+import { StoreStockService } from '../store-stock/store-stock.service';
+import { StoreSalesService } from '../store-sales/store-sales.service';
 import {
   CreateOrderDto,
   UpdateOrderStatusDto,
@@ -18,14 +22,15 @@ import {
   OrderQueryDto,
   ReorderDto,
 } from './dto/order.dto';
-import { PaginatedResult, paginate } from '@/common/types/pagination.types';
+import { PaginatedResult } from '@/common/types/pagination.types';
+import { parseObjectId } from '@/common/utils/objectid.util';
 
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
 
   constructor(
-    @InjectModel(Order.name) private orderModel: Model<OrderDocument>,
+    private readonly orderRepository: OrderRepository,
     @InjectConnection() private connection: Connection,
     private cartService: CartService,
     private productsService: ProductsService,
@@ -33,9 +38,13 @@ export class OrdersService {
     private couponsService: CouponsService,
     private emailService: EmailService,
     private settingsService: SettingsService,
+    private storesService: StoresService,
+    private storeStockService: StoreStockService,
+    private storeSalesService: StoreSalesService,
   ) {}
 
   async create(userId: string, dto: CreateOrderDto): Promise<Order> {
+    const userObjId = parseObjectId(userId, 'userId');
     // Use transaction for atomic order creation
     const session = await this.connection.startSession();
     session.startTransaction();
@@ -70,6 +79,7 @@ export class OrdersService {
         }
       } else if (dto.items && dto.items.length > 0) {
         for (const item of dto.items) {
+          const productIdObj = parseObjectId(item.productId, 'items[].productId');
           const product = await this.productsService.findById(item.productId);
           let price = product.price;
 
@@ -81,7 +91,7 @@ export class OrdersService {
           }
 
           const orderItem: OrderItem = {
-            product: new Types.ObjectId(item.productId),
+            product: productIdObj,
             name: product.name,
             variantSku: item.variantSku,
             variantName: item.variantSku
@@ -134,36 +144,46 @@ export class OrdersService {
 
       const orderNumber = await this.generateOrderNumber();
 
-      const order = new this.orderModel({
-        orderNumber,
-        user: new Types.ObjectId(userId),
-        items: orderItems,
-        shippingAddress: dto.shippingAddress,
-        paymentMethod: dto.paymentMethod,
-        subtotal,
-        discount,
-        couponCode: dto.couponCode,
-        shippingCharge,
-        gstTotal,
-        total,
-        notes: dto.notes,
-        timeline: [
-          {
-            status: 'pending',
-            message: 'Order placed successfully',
-            timestamp: new Date(),
-          },
-        ],
-      });
+      const savedOrder = await this.orderRepository.createWithSession(
+        {
+          orderNumber,
+          user: userObjId,
+          items: orderItems,
+          shippingAddress: dto.shippingAddress,
+          paymentMethod: dto.paymentMethod,
+          subtotal,
+          discount,
+          couponCode: dto.couponCode,
+          shippingCharge,
+          gstTotal,
+          total,
+          notes: dto.notes,
+          timeline: [
+            {
+              status: 'pending',
+              message: 'Order placed successfully',
+              timestamp: new Date(),
+            },
+          ],
+        },
+        session,
+      );
 
-      const savedOrder = await order.save({ session });
+      // Decrement stock from main store (Raipur) for website orders
+      const mainStore = await this.storesService.findMainStore();
+      const mainStoreId = mainStore._id.toString();
 
-      // Decrement stock atomically
       for (const item of orderItems) {
-        await this.productsService.decrementStock(
+        await this.storeStockService.decrementStock(
+          mainStoreId,
           item.product.toString(),
           item.quantity,
           item.variantSku,
+        );
+        // Keep global totalSold counter updated
+        await this.productsService.incrementTotalSold(
+          item.product.toString(),
+          item.quantity,
         );
       }
 
@@ -174,6 +194,13 @@ export class OrdersService {
       await this.usersService.updateOrderStats(userId, total);
 
       await session.commitTransaction();
+
+      // Auto-log as website sale for the main store (non-blocking)
+      try {
+        await this.storeSalesService.createFromOrder(savedOrder.toObject(), mainStoreId);
+      } catch (saleError) {
+        this.logger.warn(`Failed to auto-log website sale: ${saleError.message}`);
+      }
 
       // Send order confirmation email (non-blocking, after transaction)
       try {
@@ -195,99 +222,29 @@ export class OrdersService {
   }
 
   async findAll(query: OrderQueryDto): Promise<PaginatedResult<Order>> {
-    const {
-      page = 1,
-      limit = 20,
-      userId,
-      status,
-      paymentStatus,
-      search,
-      startDate,
-      endDate,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
-    } = query;
-
-    const filter: Record<string, unknown> = {};
-
-    if (userId) {
-      filter.user = new Types.ObjectId(userId);
-    }
-
-    if (status) {
-      filter.status = status;
-    }
-
-    if (paymentStatus) {
-      filter.paymentStatus = paymentStatus;
-    }
-
-    if (search) {
-      filter.$or = [
-        { orderNumber: { $regex: search, $options: 'i' } },
-        { 'shippingAddress.name': { $regex: search, $options: 'i' } },
-        { 'shippingAddress.phone': { $regex: search, $options: 'i' } },
-      ];
-    }
-
-    if (startDate || endDate) {
-      filter.createdAt = {};
-      if (startDate) {
-        (filter.createdAt as Record<string, Date>).$gte = new Date(startDate);
-      }
-      if (endDate) {
-        (filter.createdAt as Record<string, Date>).$lte = new Date(endDate);
-      }
-    }
-
-    const skip = (page - 1) * limit;
-    const sort: Record<string, 1 | -1> = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
-
-    const [orders, total] = await Promise.all([
-      this.orderModel
-        .find(filter)
-        .populate('user', 'phone name email')
-        .sort(sort)
-        .skip(skip)
-        .limit(limit)
-        .exec(),
-      this.orderModel.countDocuments(filter),
-    ]);
-
-    return paginate(orders, total, { page, limit });
+    return this.orderRepository.findAllPaginated(query);
   }
 
   async findById(id: string): Promise<Order> {
-    const order = await this.orderModel
-      .findById(id)
-      .populate('user', 'phone name email addresses')
-      .populate('items.product', 'name slug images');
-
+    const idObj = parseObjectId(id, 'id');
+    const order = await this.orderRepository.findByIdWithUserAndItems(idObj);
     if (!order) {
       throw new NotFoundException('Order not found');
     }
-
     return order;
   }
 
   async findByOrderNumber(orderNumber: string): Promise<Order> {
-    const order = await this.orderModel
-      .findOne({ orderNumber })
-      .populate('user', 'phone name email');
-
+    const order = await this.orderRepository.findOneByOrderNumber(orderNumber);
     if (!order) {
       throw new NotFoundException('Order not found');
     }
-
     return order;
   }
 
   async findUserOrders(userId: string, limit: number = 10): Promise<Order[]> {
-    return this.orderModel
-      .find({ user: new Types.ObjectId(userId) })
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .exec();
+    const userObjId = parseObjectId(userId, 'userId');
+    return this.orderRepository.findUserOrders(userObjId, limit);
   }
 
   private static readonly VALID_TRANSITIONS: Record<string, string[]> = {
@@ -303,7 +260,8 @@ export class OrdersService {
   };
 
   async updateStatus(id: string, dto: UpdateOrderStatusDto): Promise<Order> {
-    const order = await this.orderModel.findById(id);
+    const idObj = parseObjectId(id, 'id');
+    const order = await this.orderRepository.findById(idObj);
 
     if (!order) {
       throw new NotFoundException('Order not found');
@@ -351,7 +309,8 @@ export class OrdersService {
   }
 
   async updatePaymentStatus(id: string, dto: UpdatePaymentStatusDto): Promise<Order> {
-    const order = await this.orderModel.findById(id);
+    const idObj = parseObjectId(id, 'id');
+    const order = await this.orderRepository.findById(idObj);
 
     if (!order) {
       throw new NotFoundException('Order not found');
@@ -371,7 +330,8 @@ export class OrdersService {
   }
 
   async cancelOrder(id: string, dto: CancelOrderDto, cancelledBy?: string): Promise<Order> {
-    const order = await this.orderModel.findById(id);
+    const idObj = parseObjectId(id, 'id');
+    const order = await this.orderRepository.findById(idObj);
 
     if (!order) {
       throw new NotFoundException('Order not found');
@@ -410,7 +370,8 @@ export class OrdersService {
   }
 
   async addNote(id: string, dto: AddOrderNoteDto): Promise<Order> {
-    const order = await this.orderModel.findById(id);
+    const idObj = parseObjectId(id, 'id');
+    const order = await this.orderRepository.findById(idObj);
 
     if (!order) {
       throw new NotFoundException('Order not found');
@@ -425,7 +386,8 @@ export class OrdersService {
   }
 
   async updateShipping(id: string, dto: UpdateShippingDto): Promise<Order> {
-    const order = await this.orderModel.findById(id);
+    const idObj = parseObjectId(id, 'id');
+    const order = await this.orderRepository.findById(idObj);
 
     if (!order) {
       throw new NotFoundException('Order not found');
@@ -442,11 +404,10 @@ export class OrdersService {
   }
 
   async setPriorityTags(id: string, tags: string[]): Promise<Order> {
-    const order = await this.orderModel.findByIdAndUpdate(
-      id,
-      { $set: { priorityTags: tags } },
-      { new: true },
-    );
+    const idObj = parseObjectId(id, 'id');
+    const order = await this.orderRepository.findByIdAndUpdate(idObj, {
+      $set: { priorityTags: tags },
+    });
 
     if (!order) {
       throw new NotFoundException('Order not found');
@@ -456,7 +417,9 @@ export class OrdersService {
   }
 
   async reorder(userId: string, dto: ReorderDto): Promise<Order> {
-    const originalOrder = await this.orderModel.findById(dto.orderId);
+    parseObjectId(userId, 'userId');
+    const orderIdObj = parseObjectId(dto.orderId, 'orderId');
+    const originalOrder = await this.orderRepository.findById(orderIdObj);
 
     if (!originalOrder) {
       throw new NotFoundException('Original order not found');
@@ -484,83 +447,22 @@ export class OrdersService {
   }
 
   async getOrderStats(startDate?: Date, endDate?: Date): Promise<Record<string, unknown>> {
-    const matchStage: Record<string, unknown> = {};
-
-    if (startDate || endDate) {
-      matchStage.createdAt = {};
-      if (startDate) {
-        (matchStage.createdAt as Record<string, Date>).$gte = startDate;
-      }
-      if (endDate) {
-        (matchStage.createdAt as Record<string, Date>).$lte = endDate;
-      }
-    }
-
-    const stats = await this.orderModel.aggregate([
-      { $match: matchStage },
-      {
-        $group: {
-          _id: null,
-          totalOrders: { $sum: 1 },
-          totalRevenue: { $sum: '$total' },
-          avgOrderValue: { $avg: '$total' },
-          completedOrders: {
-            $sum: { $cond: [{ $eq: ['$status', 'delivered'] }, 1, 0] },
-          },
-          cancelledOrders: {
-            $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] },
-          },
-          pendingOrders: {
-            $sum: {
-              $cond: [
-                { $in: ['$status', ['pending', 'confirmed', 'processing']] },
-                1,
-                0,
-              ],
-            },
-          },
-        },
-      },
-    ]);
-
-    return stats[0] || {
-      totalOrders: 0,
-      totalRevenue: 0,
-      avgOrderValue: 0,
-      completedOrders: 0,
-      cancelledOrders: 0,
-      pendingOrders: 0,
-    };
+    return this.orderRepository.getOrderStats(startDate, endDate);
   }
 
   async getOrdersByStatus(): Promise<Record<OrderStatus, number>> {
-    const result = await this.orderModel.aggregate([
-      { $group: { _id: '$status', count: { $sum: 1 } } },
-    ]);
-
-    const statusCounts: Partial<Record<OrderStatus, number>> = {};
-    result.forEach((item) => {
-      statusCounts[item._id as OrderStatus] = item.count;
-    });
-
-    return statusCounts as Record<OrderStatus, number>;
+    return this.orderRepository.getOrdersByStatus();
   }
 
   private async generateOrderNumber(): Promise<string> {
     const today = new Date();
     const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
-
-    const lastOrder = await this.orderModel
-      .findOne({ orderNumber: { $regex: `^ORD${dateStr}` } })
-      .sort({ orderNumber: -1 });
-
+    const lastOrder = await this.orderRepository.findOneByOrderNumberPrefix(`ORD${dateStr}`);
     let sequence = 1;
-
     if (lastOrder) {
       const lastSequence = parseInt(lastOrder.orderNumber.slice(-4), 10);
       sequence = lastSequence + 1;
     }
-
     return `ORD${dateStr}${sequence.toString().padStart(4, '0')}`;
   }
 }

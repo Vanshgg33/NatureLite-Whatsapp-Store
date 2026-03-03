@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { ShoppingBag, Heart, Eye, Star, Sparkles } from 'lucide-react';
 import { useCartStore } from '@/lib/cart-store';
+import { getProductTotalStock } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 import { Product } from '@/types';
 
@@ -25,7 +26,7 @@ export function PremiumProductCard3D({
   const [isLiked, setIsLiked] = useState(false);
   const [isAddingToCart, setIsAddingToCart] = useState(false);
 
-  const { addItem } = useCartStore();
+  const addItem = useCartStore((state) => state.addItem);
   const { toast } = useToast();
 
   // 3D tilt effect
@@ -293,26 +294,30 @@ export function PremiumProductCard3D({
           </div>
 
           {/* Stock indicator */}
-          {product.stock < 10 && product.stock > 0 && (
-            <motion.div
-              className="mt-3 flex items-center gap-2"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-            >
-              <div className="flex-1 h-1.5 bg-brand-cream rounded-full overflow-hidden">
-                <motion.div
-                  className="h-full bg-brand-terracotta rounded-full"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${(product.stock / 10) * 100}%` }}
-                  transition={{ duration: 1, delay: 0.6 }}
-                />
-              </div>
-              <span className="text-xs text-brand-terracotta font-medium">
-                Only {product.stock} left
-              </span>
-            </motion.div>
-          )}
+          {(() => {
+            const totalStock = getProductTotalStock(product);
+            const threshold = product.lowStockThreshold ?? 10;
+            return totalStock > 0 && totalStock <= threshold ? (
+              <motion.div
+                className="mt-3 flex items-center gap-2"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.5 }}
+              >
+                <div className="flex-1 h-1.5 bg-brand-cream rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-brand-terracotta rounded-full"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min(100, (totalStock / threshold) * 100)}%` }}
+                    transition={{ duration: 1, delay: 0.6 }}
+                  />
+                </div>
+                <span className="text-xs text-brand-terracotta font-medium">
+                  Only {totalStock} left
+                </span>
+              </motion.div>
+            ) : null;
+          })()}
         </motion.div>
 
         {/* Bottom border accent */}

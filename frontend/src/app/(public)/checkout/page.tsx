@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -45,22 +46,19 @@ export default function CheckoutPage() {
   const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>('cod');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [shippingSettings, setShippingSettings] = useState({ freeShippingThreshold: 999, defaultShippingCharge: 50 });
-
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  useEffect(() => {
-    api.getPublicSettings().then((settings: any) => {
-      if (settings?.store) {
-        setShippingSettings({
-          freeShippingThreshold: settings.store.freeShippingThreshold ?? 999,
-          defaultShippingCharge: settings.store.defaultShippingCharge ?? 50,
-        });
-      }
-    }).catch(() => {});
-  }, []);
+  const { data: publicSettings } = useQuery({
+    queryKey: ['public-settings'],
+    queryFn: () => api.getPublicSettings(),
+    staleTime: 10 * 60 * 1000,
+  });
+  const shippingSettings = {
+    freeShippingThreshold: publicSettings?.store?.freeShippingThreshold ?? 999,
+    defaultShippingCharge: publicSettings?.store?.defaultShippingCharge ?? 50,
+  };
 
   const {
     register,

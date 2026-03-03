@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { WhatsAppService } from './whatsapp.service';
 import { WhatsAppController } from './whatsapp.controller';
 import { MessageLog, MessageLogSchema } from './schemas/message-log.schema';
+import { MessageLogRepository } from './repositories/message-log.repository';
 import { ChatbotModule } from '../chatbot/chatbot.module';
 
 @Module({
@@ -11,7 +12,7 @@ import { ChatbotModule } from '../chatbot/chatbot.module';
     forwardRef(() => ChatbotModule),
   ],
   controllers: [WhatsAppController],
-  providers: [WhatsAppService],
-  exports: [WhatsAppService],
+  providers: [MessageLogRepository, WhatsAppService],
+  exports: [MessageLogRepository, WhatsAppService],
 })
 export class WhatsAppModule {}

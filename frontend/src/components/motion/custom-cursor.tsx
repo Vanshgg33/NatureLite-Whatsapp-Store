@@ -31,9 +31,23 @@ export function CustomCursor({
     const isTouchDevice = 'ontouchstart' in window;
     if (isTouchDevice) return;
 
-    const moveCursor = (e: MouseEvent) => {
+    // Single merged mousemove handler
+    const handleMouseMove = (e: MouseEvent) => {
       cursorX.set(e.clientX - size / 2);
       cursorY.set(e.clientY - size / 2);
+
+      // Track hover states inline (avoids second listener)
+      const target = e.target as HTMLElement;
+      const isInteractive =
+        target.tagName === 'A' ||
+        target.tagName === 'BUTTON' ||
+        target.closest('a') ||
+        target.closest('button') ||
+        target.dataset.cursorHover;
+      const hoverText = target.dataset.cursorText || target.closest('[data-cursor-text]')?.getAttribute('data-cursor-text');
+
+      setIsHovering(!!isInteractive);
+      setCursorText(hoverText || '');
     };
 
     const handleMouseEnter = () => setIsVisible(true);
@@ -41,35 +55,14 @@ export function CustomCursor({
     const handleMouseDown = () => setIsClicking(true);
     const handleMouseUp = () => setIsClicking(false);
 
-    // Track hover states
-    const handleElementHover = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-
-      // Check for interactive elements
-      const isInteractive =
-        target.tagName === 'A' ||
-        target.tagName === 'BUTTON' ||
-        target.closest('a') ||
-        target.closest('button') ||
-        target.dataset.cursorHover;
-
-      // Check for custom cursor text
-      const hoverText = target.dataset.cursorText || target.closest('[data-cursor-text]')?.getAttribute('data-cursor-text');
-
-      setIsHovering(!!isInteractive);
-      setCursorText(hoverText || '');
-    };
-
-    window.addEventListener('mousemove', moveCursor);
-    window.addEventListener('mousemove', handleElementHover);
+    window.addEventListener('mousemove', handleMouseMove);
     document.body.addEventListener('mouseenter', handleMouseEnter);
     document.body.addEventListener('mouseleave', handleMouseLeave);
     window.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mouseup', handleMouseUp);
 
     return () => {
-      window.removeEventListener('mousemove', moveCursor);
-      window.removeEventListener('mousemove', handleElementHover);
+      window.removeEventListener('mousemove', handleMouseMove);
       document.body.removeEventListener('mouseenter', handleMouseEnter);
       document.body.removeEventListener('mouseleave', handleMouseLeave);
       window.removeEventListener('mousedown', handleMouseDown);

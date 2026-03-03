@@ -136,7 +136,7 @@ export default function CustomersPage() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => router.push(`/customers/${user._id}`)}
+                              onClick={() => router.push(`/admin/customers/${user._id}`)}
                               title="View Details"
                               aria-label="View details"
                             >

@@ -1,8 +1,8 @@
-import { Model } from 'mongoose';
-import { AdminUser, AdminUserDocument } from './schemas/admin-user.schema';
+import { AdminUser } from './schemas/admin-user.schema';
+import { AdminUserRepository } from './repositories/admin-user.repository';
 export declare class AdminService {
-    private adminUserModel;
-    constructor(adminUserModel: Model<AdminUserDocument>);
+    private readonly adminUserRepository;
+    constructor(adminUserRepository: AdminUserRepository);
     findAll(): Promise<AdminUser[]>;
     findById(id: string): Promise<AdminUser>;
     create(data: {

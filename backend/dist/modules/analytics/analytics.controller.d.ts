@@ -14,4 +14,13 @@ export declare class AnalyticsController {
         orders: number;
     }>>;
     getSnapshots(period?: SnapshotPeriod, limit?: string): Promise<unknown[]>;
+    getStoreDashboardStats(storeId: string): Promise<Record<string, unknown>>;
+    getTodayRevenuePerStore(): Promise<any[]>;
+    getMultiStoreRevenue(days?: string): Promise<any[]>;
+    getStockSummaryPerStore(): Promise<any[]>;
+    getTopSellingByStore(storeId: string, startDate?: string, endDate?: string): Promise<any[]>;
+    getTopSellingOverall(startDate?: string, endDate?: string): Promise<any[]>;
+    getMonthOverMonthByStore(): Promise<any[]>;
+    getTopCustomersByStore(storeId: string): Promise<any[]>;
+    getTopCustomersOverall(): Promise<any[]>;
 }
