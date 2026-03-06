@@ -732,8 +732,9 @@ export default function AnalyticsPage() {
                             {customerAnalytics.topCustomers
                               .slice(0, 5)
                               .map((c: any, i: number) => {
-                                const name =
+                                const rawName =
                                   c.customer?.name || c.name || c.email || c._id || '?';
+                                const name = String(rawName);
                                 const spent = c.totalSpent || 0;
                                 const orders = c.orderCount || 0;
                                 return (
@@ -743,7 +744,7 @@ export default function AnalyticsPage() {
                                   >
                                     <div className="flex items-center gap-3 min-w-0">
                                       <div className="h-8 w-8 rounded-full bg-brand-green/10 flex items-center justify-center text-xs font-bold text-brand-green flex-shrink-0">
-                                        {name[0].toUpperCase()}
+                                        {name.charAt(0).toUpperCase()}
                                       </div>
                                       <div className="min-w-0">
                                         <p className="text-sm font-medium truncate">{name}</p>

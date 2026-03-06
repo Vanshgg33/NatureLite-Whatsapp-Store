@@ -22,6 +22,7 @@ const email_module_1 = require("../email/email.module");
 const stores_module_1 = require("../stores/stores.module");
 const store_stock_module_1 = require("../store-stock/store-stock.module");
 const store_sales_module_1 = require("../store-sales/store-sales.module");
+const wallet_module_1 = require("../wallet/wallet.module");
 let OrdersModule = class OrdersModule {
 };
 exports.OrdersModule = OrdersModule;
@@ -38,6 +39,7 @@ exports.OrdersModule = OrdersModule = __decorate([
             stores_module_1.StoresModule,
             store_stock_module_1.StoreStockModule,
             store_sales_module_1.StoreSalesModule,
+            wallet_module_1.WalletModule,
         ],
         controllers: [orders_controller_1.OrdersController],
         providers: [order_repository_1.OrderRepository, orders_service_1.OrdersService],

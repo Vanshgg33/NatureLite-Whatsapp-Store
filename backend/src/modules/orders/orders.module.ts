@@ -13,6 +13,7 @@ import { EmailModule } from '../email/email.module';
 import { StoresModule } from '../stores/stores.module';
 import { StoreStockModule } from '../store-stock/store-stock.module';
 import { StoreSalesModule } from '../store-sales/store-sales.module';
+import { WalletModule } from '../wallet/wallet.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { StoreSalesModule } from '../store-sales/store-sales.module';
     StoresModule,
     StoreStockModule,
     StoreSalesModule,
+    WalletModule,
   ],
   controllers: [OrdersController],
   providers: [OrderRepository, OrdersService],

@@ -50,7 +50,7 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
       productId: product._id,
       name: product.name,
       slug: product.slug,
-      image: product.images[0] || '',
+      image: product.images?.[0] || '',
       price: currentPrice,
       compareAtPrice: comparePrice,
       variantSku: selectedVariant || undefined,
@@ -77,12 +77,14 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
   };
 
   const nextImage = () => {
-    setSelectedImageIndex((prev) => (prev + 1) % product.images.length);
+    setSelectedImageIndex((prev) =>
+      product.images.length === 0 ? 0 : (prev + 1) % product.images.length
+    );
   };
 
   const prevImage = () => {
-    setSelectedImageIndex(
-      (prev) => (prev - 1 + product.images.length) % product.images.length
+    setSelectedImageIndex((prev) =>
+      product.images.length === 0 ? 0 : (prev - 1 + product.images.length) % product.images.length
     );
   };
 

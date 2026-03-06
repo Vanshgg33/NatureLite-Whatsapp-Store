@@ -90,6 +90,12 @@ export class RefreshTokenDto {
   refreshToken: string;
 }
 
+export class LogoutDto {
+  @IsString()
+  @IsOptional()
+  refreshToken?: string;
+}
+
 export class ChangePasswordDto {
   @IsString()
   @IsNotEmpty()
@@ -111,6 +117,7 @@ export interface AuthResponse {
     phone?: string;
     name?: string;
     role: string;
+    departmentType?: 'packing' | 'billing' | 'delivery';
     storeId?: string;
     storeName?: string;
   };

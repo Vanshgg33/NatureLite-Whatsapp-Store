@@ -28,7 +28,7 @@ __decorate([
     __metadata("design:type", String)
 ], AdminUser.prototype, "password", void 0);
 __decorate([
-    (0, mongoose_1.Prop)({ unique: true }),
+    (0, mongoose_1.Prop)({ unique: true, sparse: true }),
     __metadata("design:type", String)
 ], AdminUser.prototype, "phone", void 0);
 __decorate([
@@ -39,6 +39,10 @@ __decorate([
     (0, mongoose_1.Prop)({ default: 'admin' }),
     __metadata("design:type", String)
 ], AdminUser.prototype, "role", void 0);
+__decorate([
+    (0, mongoose_1.Prop)({ enum: ['packing', 'billing', 'delivery'], required: false }),
+    __metadata("design:type", String)
+], AdminUser.prototype, "departmentType", void 0);
 __decorate([
     (0, mongoose_1.Prop)({ default: true }),
     __metadata("design:type", Boolean)

@@ -40,6 +40,10 @@ export class UsersService {
     return this.userRepository.findOneByPhone(phone);
   }
 
+  /**
+   * Same phone is treated as the same user (used for guest checkout and OTP login).
+   * If a guest later registers with the same phone, they get the same account.
+   */
   async findOrCreateByPhone(phone: string): Promise<User> {
     let user = await this.userRepository.findOneByPhone(phone);
     if (!user) {

@@ -130,6 +130,19 @@ export class Order {
   @Prop()
   couponCode?: string;
 
+  /**
+   * Wallet amount used for this order, in paise.
+   */
+  @Prop({ default: 0 })
+  walletUsed: number;
+
+  /**
+   * Amount sent to online payment gateway (e.g. Razorpay), in paise.
+   * Useful when combining wallet + prepaid.
+   */
+  @Prop({ default: 0 })
+  paymentGatewayAmount: number;
+
   @Prop({ default: 0 })
   shippingCharge: number;
 
@@ -167,10 +180,34 @@ export class Order {
   deliveredAt?: Date;
 
   @Prop()
+  packedAt?: Date;
+
+  @Prop()
+  packedBy?: string;
+
+  @Prop()
+  billedAt?: Date;
+
+  @Prop()
+  billedBy?: string;
+
+  @Prop()
+  outForDeliveryAt?: Date;
+
+  @Prop()
   cancelledAt?: Date;
 
   @Prop()
   cancelReason?: string;
+
+  @Prop()
+  returnRequestedAt?: Date;
+
+  @Prop()
+  returnRequestReason?: string;
+
+  @Prop()
+  returnRequestStatus?: 'requested' | 'approved' | 'rejected' | 'completed';
 
   @Prop()
   invoiceUrl?: string;

@@ -32,6 +32,8 @@ import { StoresModule } from './modules/stores/stores.module';
 import { StoreStockModule } from './modules/store-stock/store-stock.module';
 import { StoreSalesModule } from './modules/store-sales/store-sales.module';
 import { RemindersModule } from './modules/reminders/reminders.module';
+import { WishlistModule } from './modules/wishlist/wishlist.module';
+import { WalletModule } from './modules/wallet/wallet.module';
 
 @Module({
   imports: [
@@ -80,6 +82,8 @@ import { RemindersModule } from './modules/reminders/reminders.module';
     StoreStockModule,
     StoreSalesModule,
     RemindersModule,
+    WishlistModule,
+    WalletModule,
   ],
   providers: [
     {

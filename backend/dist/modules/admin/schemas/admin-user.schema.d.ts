@@ -9,6 +9,7 @@ export declare class AdminUser {
     phone?: string;
     store?: Types.ObjectId;
     role: AdminRole;
+    departmentType?: 'packing' | 'billing' | 'delivery';
     isActive: boolean;
     lastLoginAt?: Date;
     lastLoginIp?: string;

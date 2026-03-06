@@ -22,6 +22,7 @@ import {
   Receipt,
   Building2,
   MapPin,
+  KeyRound,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -44,6 +45,7 @@ const superadminOnlyNavigation = [
   { name: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
   { name: 'Stores Dashboard', href: '/admin/stores/dashboard', icon: Building2 },
   { name: 'Manage Stores', href: '/admin/stores', icon: MapPin },
+  { name: 'Logins', href: '/admin/logins', icon: KeyRound },
   { name: 'WhatsApp', href: '/admin/whatsapp', icon: MessageCircle },
   { name: 'Campaigns', href: '/admin/campaigns', icon: Megaphone },
   { name: 'Feedback', href: '/admin/feedback', icon: MessageSquare },

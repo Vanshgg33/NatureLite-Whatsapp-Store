@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { Types } from 'mongoose';
+import { Types, ClientSession } from 'mongoose';
 import { StoreStock } from './schemas/store-stock.schema';
 import { StoreStockRepository } from './repositories/store-stock.repository';
 import { SetStoreStockDto, BulkSetStockDto, StockQueryDto } from './dto/store-stock.dto';
@@ -74,6 +74,7 @@ export class StoreStockService {
     productId: string,
     quantity: number,
     variantSku?: string,
+    session?: ClientSession,
   ): Promise<void> {
     const storeObjId = parseObjectId(storeId, 'storeId');
     const productObjId = parseObjectId(productId, 'productId');
@@ -84,6 +85,7 @@ export class StoreStockService {
         productObjId,
         variantSku,
         quantity,
+        session,
       );
       if (result.modifiedCount === 0) {
         throw new BadRequestException(`Insufficient store stock for variant ${variantSku}`);
@@ -93,6 +95,7 @@ export class StoreStockService {
         storeObjId,
         productObjId,
         quantity,
+        session,
       );
       if (result.modifiedCount === 0) {
         throw new BadRequestException('Insufficient store stock for this product');

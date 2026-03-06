@@ -19,56 +19,69 @@ const uuid_1 = require("uuid");
 const admin_user_repository_1 = require("../admin/repositories/admin-user.repository");
 const user_repository_1 = require("../users/repositories/user.repository");
 const store_repository_1 = require("../stores/repositories/store.repository");
+const refresh_token_repository_1 = require("./repositories/refresh-token.repository");
 const objectid_util_1 = require("../../common/utils/objectid.util");
 let AuthService = AuthService_1 = class AuthService {
-    constructor(adminUserRepository, userRepository, storeRepository, jwtService, configService) {
+    constructor(adminUserRepository, userRepository, storeRepository, refreshTokenRepository, jwtService, configService) {
         this.adminUserRepository = adminUserRepository;
         this.userRepository = userRepository;
         this.storeRepository = storeRepository;
+        this.refreshTokenRepository = refreshTokenRepository;
         this.jwtService = jwtService;
         this.configService = configService;
         this.logger = new common_1.Logger(AuthService_1.name);
-        this.refreshTokens = new Map();
+        this.otpStore = new Map();
+        this.otpRateLimit = new Map();
     }
     generateTokens(payload) {
         const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
         const refreshToken = (0, uuid_1.v4)();
-        this.refreshTokens.set(refreshToken, {
-            userId: payload.sub,
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        const data = {
+            token: refreshToken,
+            userId: (0, objectid_util_1.parseObjectId)(payload.sub, 'userId'),
             role: payload.role,
-            storeId: payload.storeId,
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            expiresAt,
+        };
+        if (payload.storeId) {
+            data.storeId = (0, objectid_util_1.parseObjectId)(payload.storeId, 'storeId');
+        }
+        this.refreshTokenRepository.create(data).catch((err) => {
+            this.logger.warn(`Failed to persist refresh token: ${err.message}`);
         });
         return { accessToken, refreshToken };
     }
     async refreshAccessToken(refreshToken) {
-        const stored = this.refreshTokens.get(refreshToken);
-        if (!stored || stored.expiresAt < new Date()) {
-            this.refreshTokens.delete(refreshToken);
+        const tokenDoc = await this.refreshTokenRepository.findOne({ token: refreshToken });
+        if (!tokenDoc || tokenDoc.expiresAt < new Date()) {
+            if (tokenDoc?._id) {
+                await this.refreshTokenRepository.deleteOne({ _id: tokenDoc._id });
+            }
             throw new common_1.UnauthorizedException('Invalid or expired refresh token');
         }
-        this.refreshTokens.delete(refreshToken);
+        await this.refreshTokenRepository.deleteOne({ _id: tokenDoc._id });
         let user;
         let phone = '';
-        if (stored.role === 'customer') {
-            user = await this.userRepository.findByIdString(stored.userId);
+        if (tokenDoc.role === 'customer') {
+            user = await this.userRepository.findByIdString(tokenDoc.userId.toString());
             if (!user || user.isBlocked) {
                 throw new common_1.UnauthorizedException('User account is not active');
             }
             phone = user.phone || '';
         }
         else {
-            user = await this.adminUserRepository.findByIdString(stored.userId);
+            user = await this.adminUserRepository.findByIdString(tokenDoc.userId.toString());
             if (!user || !user.isActive) {
                 throw new common_1.UnauthorizedException('Admin account is not active');
             }
             phone = user.phone || '';
         }
         const payload = {
-            sub: stored.userId,
+            sub: tokenDoc.userId.toString(),
             phone,
-            role: stored.role,
-            storeId: stored.storeId,
+            role: tokenDoc.role,
+            storeId: tokenDoc.storeId ? tokenDoc.storeId.toString() : undefined,
+            departmentType: tokenDoc.role !== 'customer' ? user.departmentType : undefined,
         };
         const tokens = this.generateTokens(payload);
         return {
@@ -79,8 +92,8 @@ let AuthService = AuthService_1 = class AuthService {
                 email: user.email,
                 phone: user.phone,
                 name: user.name,
-                role: stored.role,
-                storeId: stored.storeId,
+                role: tokenDoc.role,
+                storeId: tokenDoc.storeId ? tokenDoc.storeId.toString() : undefined,
             },
         };
     }
@@ -120,6 +133,7 @@ let AuthService = AuthService_1 = class AuthService {
             phone: admin.phone || '',
             role: admin.role,
             storeId,
+            departmentType: admin.departmentType,
         };
         const tokens = this.generateTokens(payload);
         return {
@@ -129,6 +143,7 @@ let AuthService = AuthService_1 = class AuthService {
                 email: admin.email,
                 name: admin.name,
                 role: admin.role,
+                departmentType: admin.departmentType,
                 storeId,
                 storeName,
             },
@@ -145,7 +160,7 @@ let AuthService = AuthService_1 = class AuthService {
             email: dto.email.toLowerCase(),
             password: hashedPassword,
             phone: dto.phone,
-            role: dto.role || 'admin',
+            role: 'admin',
         };
         if (dto.storeId) {
             adminData.store = (0, objectid_util_1.parseObjectId)(dto.storeId, 'storeId');
@@ -163,6 +178,7 @@ let AuthService = AuthService_1 = class AuthService {
             phone: admin.phone || '',
             role: admin.role,
             storeId,
+            departmentType: admin.departmentType,
         };
         const tokens = this.generateTokens(payload);
         return {
@@ -172,14 +188,27 @@ let AuthService = AuthService_1 = class AuthService {
                 email: admin.email,
                 name: admin.name,
                 role: admin.role,
+                departmentType: admin.departmentType,
                 storeId,
                 storeName,
             },
         };
     }
     async customerLogin(dto) {
-        if (dto.otp !== '123456' && process.env.NODE_ENV === 'production') {
-            throw new common_1.UnauthorizedException('Invalid OTP');
+        const stored = this.otpStore.get(dto.phone);
+        const devBypass = dto.otp === '123456' && process.env.NODE_ENV !== 'production';
+        if (!devBypass) {
+            if (!stored) {
+                throw new common_1.UnauthorizedException('Invalid or expired OTP. Please request a new one.');
+            }
+            if (Date.now() > stored.expiresAt) {
+                this.otpStore.delete(dto.phone);
+                throw new common_1.UnauthorizedException('OTP has expired. Please request a new one.');
+            }
+            if (stored.otp !== dto.otp) {
+                throw new common_1.UnauthorizedException('Invalid OTP');
+            }
+            this.otpStore.delete(dto.phone);
         }
         let user = await this.userRepository.findOneByPhone(dto.phone);
         if (!user) {
@@ -283,6 +312,17 @@ let AuthService = AuthService_1 = class AuthService {
         };
     }
     async sendOtp(phone) {
+        const now = Date.now();
+        const lastSent = this.otpRateLimit.get(phone);
+        if (lastSent != null && now - lastSent < AuthService_1.OTP_RATE_LIMIT_MS) {
+            const waitSec = Math.ceil((AuthService_1.OTP_RATE_LIMIT_MS - (now - lastSent)) / 1000);
+            throw new common_1.BadRequestException(`Please wait ${waitSec} seconds before requesting another OTP.`);
+        }
+        const otp = process.env.NODE_ENV === 'production'
+            ? String(Math.floor(100000 + Math.random() * 900000))
+            : '123456';
+        this.otpStore.set(phone, { otp, expiresAt: now + AuthService_1.OTP_TTL_MS });
+        this.otpRateLimit.set(phone, now);
         this.logger.log(`Sending OTP to ${phone}`);
         return {
             success: true,
@@ -316,6 +356,12 @@ let AuthService = AuthService_1 = class AuthService {
         }
         return payload;
     }
+    async revokeRefreshTokensForUser(refreshToken) {
+        const tokenDoc = await this.refreshTokenRepository.findOne({ token: refreshToken });
+        if (tokenDoc) {
+            await this.refreshTokenRepository.deleteManyByUserId(tokenDoc.userId);
+        }
+    }
     async getProfile(userId, role) {
         if (role === 'customer') {
             const user = await this.userRepository.findByIdString(userId);
@@ -336,11 +382,14 @@ let AuthService = AuthService_1 = class AuthService {
     }
 };
 exports.AuthService = AuthService;
+AuthService.OTP_TTL_MS = 5 * 60 * 1000;
+AuthService.OTP_RATE_LIMIT_MS = 60 * 1000;
 exports.AuthService = AuthService = AuthService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [admin_user_repository_1.AdminUserRepository,
         user_repository_1.UserRepository,
         store_repository_1.StoreRepository,
+        refresh_token_repository_1.RefreshTokenRepository,
         jwt_1.JwtService,
         config_1.ConfigService])
 ], AuthService);

@@ -20,12 +20,23 @@ const jwt_auth_guard_1 = require("../../common/guards/jwt-auth.guard");
 const roles_guard_1 = require("../../common/guards/roles.guard");
 const roles_decorator_1 = require("../../common/decorators/roles.decorator");
 const current_user_decorator_1 = require("../../common/decorators/current-user.decorator");
+const public_decorator_1 = require("../../common/decorators/public.decorator");
+const throttler_1 = require("@nestjs/throttler");
+function getOrderUserId(order) {
+    const u = order.user;
+    if (u && typeof u === 'object' && u._id != null)
+        return u._id.toString();
+    return u.toString();
+}
 let OrdersController = class OrdersController {
     constructor(ordersService) {
         this.ordersService = ordersService;
     }
     async create(userId, dto) {
         return this.ordersService.create(userId, dto);
+    }
+    async createGuest(dto) {
+        return this.ordersService.createGuestOrder(dto);
     }
     async findAll(query) {
         return this.ordersService.findAll(query);
@@ -41,33 +52,48 @@ let OrdersController = class OrdersController {
     }
     async findByOrderNumber(orderNumber, user) {
         const order = await this.ordersService.findByOrderNumber(orderNumber);
-        if (user.role === 'customer' && order.user.toString() !== user.sub) {
+        if (user.role === 'customer' && getOrderUserId(order) !== user.sub) {
             throw new common_1.ForbiddenException('You do not have access to this order');
         }
         return order;
     }
     async findOne(id, user) {
         const order = await this.ordersService.findById(id);
-        if (user.role === 'customer' && order.user.toString() !== user.sub) {
+        if (user.role === 'customer' && getOrderUserId(order) !== user.sub) {
             throw new common_1.ForbiddenException('You do not have access to this order');
         }
         return order;
     }
-    async updateStatus(id, dto, adminId) {
-        dto.updatedBy = adminId;
-        return this.ordersService.updateStatus(id, dto);
+    async updateStatus(id, dto, user) {
+        dto.updatedBy = user.sub;
+        return this.ordersService.updateStatus(id, dto, user.departmentType);
     }
     async updatePaymentStatus(id, dto) {
         return this.ordersService.updatePaymentStatus(id, dto);
     }
+    async updateDeliveryWorkflow(id, dto, user) {
+        return this.ordersService.updateDeliveryWorkflow(id, dto, user.sub, user.departmentType);
+    }
     async cancelOrder(id, dto, user) {
         if (user.role === 'customer') {
             const order = await this.ordersService.findById(id);
-            if (order.user.toString() !== user.sub) {
+            if (getOrderUserId(order) !== user.sub) {
                 throw new common_1.ForbiddenException('You do not have access to this order');
             }
         }
         return this.ordersService.cancelOrder(id, dto, user.sub);
+    }
+    async requestReturn(id, reason, userId) {
+        return this.ordersService.requestReturn(userId, id, reason);
+    }
+    async approveReturn(id) {
+        return this.ordersService.approveReturn(id);
+    }
+    async rejectReturn(id) {
+        return this.ordersService.rejectReturn(id);
+    }
+    async completeReturn(id) {
+        return this.ordersService.completeReturn(id);
     }
     async addNote(id, dto) {
         return this.ordersService.addNote(id, dto);
@@ -91,6 +117,16 @@ __decorate([
     __metadata("design:paramtypes", [String, order_dto_1.CreateOrderDto]),
     __metadata("design:returntype", Promise)
 ], OrdersController.prototype, "create", null);
+__decorate([
+    (0, public_decorator_1.Public)(),
+    (0, common_1.UseGuards)(throttler_1.ThrottlerGuard),
+    (0, throttler_1.Throttle)({ default: { limit: 10, ttl: 60000 } }),
+    (0, common_1.Post)('guest'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [order_dto_1.GuestCreateOrderDto]),
+    __metadata("design:returntype", Promise)
+], OrdersController.prototype, "createGuest", null);
 __decorate([
     (0, common_1.Get)(),
     (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
@@ -148,9 +184,9 @@ __decorate([
     (0, roles_decorator_1.Roles)('admin', 'superadmin'),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Body)()),
-    __param(2, (0, current_user_decorator_1.CurrentUser)('sub')),
+    __param(2, (0, current_user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, order_dto_1.UpdateOrderStatusDto, String]),
+    __metadata("design:paramtypes", [String, order_dto_1.UpdateOrderStatusDto, Object]),
     __metadata("design:returntype", Promise)
 ], OrdersController.prototype, "updateStatus", null);
 __decorate([
@@ -164,6 +200,17 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], OrdersController.prototype, "updatePaymentStatus", null);
 __decorate([
+    (0, common_1.Put)(':id/delivery-workflow'),
+    (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
+    (0, roles_decorator_1.Roles)('admin', 'superadmin'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, order_dto_1.UpdateDeliveryWorkflowDto, Object]),
+    __metadata("design:returntype", Promise)
+], OrdersController.prototype, "updateDeliveryWorkflow", null);
+__decorate([
     (0, common_1.Post)(':id/cancel'),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Body)()),
@@ -172,6 +219,42 @@ __decorate([
     __metadata("design:paramtypes", [String, order_dto_1.CancelOrderDto, Object]),
     __metadata("design:returntype", Promise)
 ], OrdersController.prototype, "cancelOrder", null);
+__decorate([
+    (0, common_1.Post)(':id/request-return'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)('reason')),
+    __param(2, (0, current_user_decorator_1.CurrentUser)('sub')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String]),
+    __metadata("design:returntype", Promise)
+], OrdersController.prototype, "requestReturn", null);
+__decorate([
+    (0, common_1.Post)(':id/return/approve'),
+    (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
+    (0, roles_decorator_1.Roles)('admin', 'superadmin'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], OrdersController.prototype, "approveReturn", null);
+__decorate([
+    (0, common_1.Post)(':id/return/reject'),
+    (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
+    (0, roles_decorator_1.Roles)('admin', 'superadmin'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], OrdersController.prototype, "rejectReturn", null);
+__decorate([
+    (0, common_1.Post)(':id/return/complete'),
+    (0, common_1.UseGuards)(roles_guard_1.RolesGuard),
+    (0, roles_decorator_1.Roles)('admin', 'superadmin'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], OrdersController.prototype, "completeReturn", null);
 __decorate([
     (0, common_1.Post)(':id/notes'),
     (0, common_1.UseGuards)(roles_guard_1.RolesGuard),

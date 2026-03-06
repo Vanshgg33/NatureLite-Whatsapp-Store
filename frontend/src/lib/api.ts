@@ -3,6 +3,7 @@ import {
   ApiResponse,
   AuthResponse,
   User,
+  type AdminUser,
   Product,
   Category,
   Order,
@@ -31,6 +32,7 @@ import {
   OrdersByStatus,
   CartResponse,
   CreateOrderDto,
+  GuestCreateOrderDto,
   ReorderDto,
   AddAddressDto,
   UpdateAddressDto,
@@ -50,6 +52,9 @@ import {
   StoreDashboardStats,
   MultiStoreRevenueData,
   Reminder,
+  WishlistResponse,
+  WalletBalance,
+  WalletTransaction,
 } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
@@ -141,11 +146,13 @@ class ApiClient {
             }
           }
 
-          // No refresh token or refresh failed
+          // No refresh token or refresh failed — redirect to appropriate login
           if (typeof window !== 'undefined') {
-            const isAdminPage = window.location.pathname.startsWith('/admin');
-            if (isAdminPage) {
+            const path = window.location.pathname;
+            if (path.startsWith('/admin')) {
               window.location.href = '/admin-login';
+            } else if (path.startsWith('/department')) {
+              window.location.href = '/department-login';
             }
           }
         }
@@ -176,8 +183,8 @@ class ApiClient {
   }
 
   async logout(): Promise<void> {
-    // Call backend to clear the httpOnly cookie
-    await this.client.post('/auth/logout');
+    const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('customer-refresh-token') : null;
+    await this.client.post('/auth/logout', refreshToken ? { refreshToken } : {});
   }
 
   async getProfile(): Promise<User> {
@@ -187,6 +194,47 @@ class ApiClient {
 
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
     await this.client.post('/auth/change-password', { currentPassword, newPassword });
+  }
+
+  // ==================== ADMIN USERS (LOGINS) ====================
+  async getAdminUsers(): Promise<AdminUser[]> {
+    const response = await this.client.get<ApiResponse<AdminUser[]>>('/admin/users');
+    return response.data.data;
+  }
+
+  async createAdminUser(data: {
+    name: string;
+    email: string;
+    password: string;
+    phone?: string;
+    role?: 'admin' | 'superadmin';
+    departmentType?: 'packing' | 'billing' | 'delivery';
+  }): Promise<AdminUser> {
+    const response = await this.client.post<ApiResponse<AdminUser>>('/admin/users', data);
+    return response.data.data;
+  }
+
+  async updateAdminUser(
+    id: string,
+    data: {
+      name?: string;
+      phone?: string;
+      role?: 'admin' | 'superadmin';
+      isActive?: boolean;
+      permissions?: string[];
+      departmentType?: 'packing' | 'billing' | 'delivery';
+    }
+  ): Promise<AdminUser> {
+    const response = await this.client.put<ApiResponse<AdminUser>>(`/admin/users/${id}`, data);
+    return response.data.data;
+  }
+
+  async resetAdminUserPassword(id: string, password: string): Promise<void> {
+    await this.client.put(`/admin/users/${id}/reset-password`, { password });
+  }
+
+  async deleteAdminUser(id: string): Promise<void> {
+    await this.client.delete(`/admin/users/${id}`);
   }
 
   // ==================== CUSTOMER AUTH ====================
@@ -262,6 +310,11 @@ class ApiClient {
   // ==================== CUSTOMER ORDERS ====================
   async createOrder(data: CreateOrderDto): Promise<Order> {
     const response = await this.client.post<ApiResponse<Order>>('/orders', data);
+    return response.data.data;
+  }
+
+  async createGuestOrder(data: GuestCreateOrderDto): Promise<Order> {
+    const response = await this.client.post<ApiResponse<Order>>('/orders/guest', data);
     return response.data.data;
   }
 
@@ -451,6 +504,9 @@ class ApiClient {
     sortOrder?: 'asc' | 'desc';
     customerId?: string;
     userId?: string;
+    forPacking?: boolean;
+    forBilling?: boolean;
+    forDelivery?: boolean;
   }): Promise<PaginatedResponse<Order>> {
     const { customerId, userId, ...rest } = params;
     const query = { ...rest, userId: userId ?? customerId };
@@ -499,6 +555,13 @@ class ApiClient {
     return response.data.data;
   }
 
+  async requestReturn(id: string, reason: string): Promise<Order> {
+    const response = await this.client.post<ApiResponse<Order>>(`/orders/${id}/request-return`, {
+      reason,
+    });
+    return response.data.data;
+  }
+
   async addOrderNote(id: string, note: string): Promise<Order> {
     const response = await this.client.post<ApiResponse<Order>>(`/orders/${id}/notes`, { note });
     return response.data.data;
@@ -511,6 +574,19 @@ class ApiClient {
 
   async updateOrderPriorityTags(id: string, tags: string[]): Promise<Order> {
     const response = await this.client.put<ApiResponse<Order>>(`/orders/${id}/priority-tags`, { tags });
+    return response.data.data;
+  }
+
+  async updateDeliveryWorkflow(
+    id: string,
+    data: {
+      status: 'delivery_done' | 'customer_ringing' | 'customer_cancelled' | 'customer_tomorrow';
+      paymentMethod?: 'cash' | 'upi';
+      paymentProofUrl?: string;
+      note?: string;
+    }
+  ): Promise<Order> {
+    const response = await this.client.put<ApiResponse<Order>>(`/orders/${id}/delivery-workflow`, data);
     return response.data.data;
   }
 
@@ -1000,6 +1076,66 @@ class ApiClient {
     return response.data.data;
   }
 
+  // ==================== WISHLIST ====================
+  async getWishlist(): Promise<WishlistResponse> {
+    const response = await this.client.get<ApiResponse<WishlistResponse>>('/wishlist');
+    return response.data.data;
+  }
+
+  async addToWishlist(productId: string): Promise<WishlistResponse> {
+    const response = await this.client.post<ApiResponse<WishlistResponse>>('/wishlist/items', {
+      productId,
+    });
+    return response.data.data;
+  }
+
+  async removeFromWishlist(productId: string): Promise<WishlistResponse> {
+    const response = await this.client.delete<ApiResponse<WishlistResponse>>(
+      `/wishlist/items/${productId}`,
+    );
+    return response.data.data;
+  }
+
+  async clearWishlist(): Promise<WishlistResponse> {
+    const response = await this.client.delete<ApiResponse<WishlistResponse>>('/wishlist');
+    return response.data.data;
+  }
+
+  // ==================== WALLET ====================
+  async getWallet(): Promise<WalletBalance> {
+    const response = await this.client.get<ApiResponse<WalletBalance>>('/wallet');
+    return response.data.data;
+  }
+
+  async getWalletTransactions(): Promise<WalletTransaction[]> {
+    const response = await this.client.get<ApiResponse<{ transactions: WalletTransaction[] }>>(
+      '/wallet/transactions',
+    );
+    return response.data.data.transactions;
+  }
+
+  async adminGetWallet(userId: string): Promise<WalletBalance & { transactions: WalletTransaction[] }> {
+    const response = await this.client.get<
+      ApiResponse<WalletBalance & { transactions: WalletTransaction[] }>
+    >(`/admin/wallet/${userId}`);
+    return response.data.data;
+  }
+
+  async adminCreditWallet(userId: string, amount: number, note?: string): Promise<WalletBalance> {
+    const response = await this.client.post<ApiResponse<WalletBalance>>(
+      `/admin/wallet/${userId}/credit`,
+      { amount, note },
+    );
+    return response.data.data;
+  }
+
+  async adminDebitWallet(userId: string, amount: number, note?: string): Promise<WalletBalance> {
+    const response = await this.client.post<ApiResponse<WalletBalance>>(
+      `/admin/wallet/${userId}/debit`,
+      { amount, note },
+    );
+    return response.data.data;
+  }
 }
 
 export const api = new ApiClient();

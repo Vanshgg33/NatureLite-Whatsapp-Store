@@ -8,6 +8,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthModule = void 0;
 const common_1 = require("@nestjs/common");
+const mongoose_1 = require("@nestjs/mongoose");
 const jwt_1 = require("@nestjs/jwt");
 const passport_1 = require("@nestjs/passport");
 const config_1 = require("@nestjs/config");
@@ -17,6 +18,8 @@ const jwt_strategy_1 = require("./strategies/jwt.strategy");
 const admin_module_1 = require("../admin/admin.module");
 const users_module_1 = require("../users/users.module");
 const stores_module_1 = require("../stores/stores.module");
+const refresh_token_schema_1 = require("./schemas/refresh-token.schema");
+const refresh_token_repository_1 = require("./repositories/refresh-token.repository");
 let AuthModule = class AuthModule {
 };
 exports.AuthModule = AuthModule;
@@ -37,9 +40,10 @@ exports.AuthModule = AuthModule = __decorate([
             admin_module_1.AdminModule,
             users_module_1.UsersModule,
             stores_module_1.StoresModule,
+            mongoose_1.MongooseModule.forFeature([{ name: refresh_token_schema_1.RefreshToken.name, schema: refresh_token_schema_1.RefreshTokenSchema }]),
         ],
         controllers: [auth_controller_1.AuthController],
-        providers: [auth_service_1.AuthService, jwt_strategy_1.JwtStrategy],
+        providers: [auth_service_1.AuthService, jwt_strategy_1.JwtStrategy, refresh_token_repository_1.RefreshTokenRepository],
         exports: [auth_service_1.AuthService, jwt_strategy_1.JwtStrategy, passport_1.PassportModule],
     })
 ], AuthModule);

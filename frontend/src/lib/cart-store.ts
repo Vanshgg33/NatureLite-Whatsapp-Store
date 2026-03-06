@@ -84,7 +84,7 @@ export const useCartStore = create<CartState>()(
             await api.addToCart(item.productId, quantity, item.variantSku);
           } catch (error) {
             console.error('Failed to sync cart with server:', error);
-            // Cart is still updated locally
+            await get().syncWithServer();
           }
         }
       },
@@ -104,6 +104,7 @@ export const useCartStore = create<CartState>()(
             await api.removeFromCart(productId, variantSku);
           } catch (error) {
             console.error('Failed to sync cart removal with server:', error);
+            await get().syncWithServer();
           }
         }
       },
@@ -129,6 +130,7 @@ export const useCartStore = create<CartState>()(
             await api.updateCartItem(productId, quantity, variantSku);
           } catch (error) {
             console.error('Failed to sync cart update with server:', error);
+            await get().syncWithServer();
           }
         }
       },
@@ -222,6 +224,27 @@ export const useCartStore = create<CartState>()(
                 console.error('Failed to sync item to server:', e);
               }
             }
+
+            // If guest had a locally-applied coupon, try to apply it server-side after login
+            const { couponCode, discount, discountType } = get();
+            if (couponCode && discount > 0 && discountType === 'fixed') {
+              try {
+                const updated = await api.applyCartCoupon(couponCode);
+                set({
+                  couponCode: updated.couponCode || couponCode,
+                  discount: updated.discount,
+                  discountType: updated.discount > 0 ? 'fixed' : null,
+                });
+              } catch (e) {
+                console.error('Failed to sync coupon to server:', e);
+                // If server rejects the coupon, clear it to avoid inconsistent totals
+                set({
+                  couponCode: null,
+                  discount: 0,
+                  discountType: null,
+                });
+              }
+            }
           } else if (serverCart.items.length > 0) {
             // Server has items, use server state
             // Convert server cart items to local format
@@ -284,9 +307,8 @@ export const useCartStore = create<CartState>()(
       getTotal: () => {
         const state = get();
         const subtotal = state.getSubtotal();
-        const gst = state.getGstTotal();
         const discount = state.getDiscountAmount();
-        return subtotal + gst - discount;
+        return subtotal - discount;
       },
 
       getItemCount: () => {

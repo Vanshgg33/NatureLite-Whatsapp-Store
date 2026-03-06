@@ -110,7 +110,7 @@ export default function SocialProofSection() {
             <div className="flex items-center justify-center gap-3">
               <div className="w-12 h-12 rounded-full bg-brand-green/15 flex items-center justify-center">
                 <span className="text-brand-green font-semibold text-lg">
-                  {testimonial.name[0]}
+                  {(testimonial.name || '?').charAt(0).toUpperCase()}
                 </span>
               </div>
               <div className="text-left">

@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ChangePasswordDto = exports.RefreshTokenDto = exports.SendOtpDto = exports.CustomerEmailLoginDto = exports.CustomerRegisterDto = exports.CustomerLoginDto = exports.AdminRegisterDto = exports.AdminLoginDto = void 0;
+exports.ChangePasswordDto = exports.LogoutDto = exports.RefreshTokenDto = exports.SendOtpDto = exports.CustomerEmailLoginDto = exports.CustomerRegisterDto = exports.CustomerLoginDto = exports.AdminRegisterDto = exports.AdminLoginDto = void 0;
 const class_validator_1 = require("class-validator");
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^()_\-+=])[A-Za-z\d@$!%*?&#^()_\-+=]{8,}$/;
 const PASSWORD_MESSAGE = 'Password must be at least 8 characters with uppercase, lowercase, number, and special character';
@@ -124,6 +124,14 @@ __decorate([
     (0, class_validator_1.IsNotEmpty)(),
     __metadata("design:type", String)
 ], RefreshTokenDto.prototype, "refreshToken", void 0);
+class LogoutDto {
+}
+exports.LogoutDto = LogoutDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], LogoutDto.prototype, "refreshToken", void 0);
 class ChangePasswordDto {
 }
 exports.ChangePasswordDto = ChangePasswordDto;

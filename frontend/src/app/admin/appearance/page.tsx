@@ -213,8 +213,8 @@ export default function AppearancePage() {
   };
 
   const handleAddBanner = () => {
-    if (!editingBanner.headline) {
-      toast({ title: 'Headline is required', variant: 'destructive' });
+    if (!editingBanner.headline?.trim()) {
+      toast({ title: 'Name is required', variant: 'destructive' });
       return;
     }
     const newBanner = { ...editingBanner, id: generateId() };
@@ -569,7 +569,7 @@ export default function AppearancePage() {
                 </Button>
               </div>
               <CardDescription>
-                Manage hero banners on your homepage. The first active banner will be displayed.
+                Homepage hero banner: image (displayed full, no blur) and optional name. First active banner is shown.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -601,9 +601,6 @@ export default function AppearancePage() {
                         <p className="text-sm font-medium truncate">
                           {banner.headline || 'Untitled'}
                         </p>
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">
-                          {banner.subtitle || 'No subtitle'}
-                        </p>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <button
@@ -629,8 +626,7 @@ export default function AppearancePage() {
               ) : !showBannerForm ? (
                 <div className="py-8 text-center text-muted-foreground text-sm">
                   <ImageIcon className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                  <p>No banners yet. The default 3D hero will be shown.</p>
-                  <p className="text-xs mt-1">Add a banner to customize your hero section.</p>
+                  <p>No banners yet. Add a banner (image + name) to display on the homepage hero.</p>
                 </div>
               ) : null}
 
@@ -650,7 +646,7 @@ export default function AppearancePage() {
                   {/* Image upload */}
                   <div>
                     <label className="text-sm font-medium mb-1.5 block">
-                      Banner Image (optional)
+                      Banner Image
                     </label>
                     {editingBanner.imageUrl ? (
                       <div className="relative inline-block group">
@@ -698,70 +694,23 @@ export default function AppearancePage() {
                       </>
                     )}
                     <p className="text-xs text-muted-foreground mt-1.5">
-                      Replaces the 3D model when set. Recommended: 1200x800px
+                      Displayed full (no blur). Recommended: 1200×600px or wider
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-sm font-medium mb-1.5 block">Headline *</label>
-                      <Input
-                        value={editingBanner.headline}
-                        onChange={(e) =>
-                          setEditingBanner((prev) => ({
-                            ...prev,
-                            headline: e.target.value,
-                          }))
-                        }
-                        placeholder="Summer Sale - Up to 50% Off"
-                        className="rounded-xl"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium mb-1.5 block">Subtitle</label>
-                      <Input
-                        value={editingBanner.subtitle}
-                        onChange={(e) =>
-                          setEditingBanner((prev) => ({
-                            ...prev,
-                            subtitle: e.target.value,
-                          }))
-                        }
-                        placeholder="Fresh organic products delivered to your door"
-                        className="rounded-xl"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-sm font-medium mb-1.5 block">CTA Button Text</label>
-                      <Input
-                        value={editingBanner.ctaText}
-                        onChange={(e) =>
-                          setEditingBanner((prev) => ({
-                            ...prev,
-                            ctaText: e.target.value,
-                          }))
-                        }
-                        placeholder="Shop Now"
-                        className="rounded-xl"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium mb-1.5 block">CTA Link</label>
-                      <Input
-                        value={editingBanner.ctaLink}
-                        onChange={(e) =>
-                          setEditingBanner((prev) => ({
-                            ...prev,
-                            ctaLink: e.target.value,
-                          }))
-                        }
-                        placeholder="/products"
-                        className="rounded-xl"
-                      />
-                    </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">Name</label>
+                    <Input
+                      value={editingBanner.headline}
+                      onChange={(e) =>
+                        setEditingBanner((prev) => ({
+                          ...prev,
+                          headline: e.target.value,
+                        }))
+                      }
+                      placeholder="e.g. Summer Sale"
+                      className="rounded-xl"
+                    />
                   </div>
 
                   <div className="flex gap-3">

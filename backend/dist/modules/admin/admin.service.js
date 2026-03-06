@@ -34,12 +34,24 @@ let AdminService = class AdminService {
         if (existing) {
             throw new common_1.BadRequestException('Email already exists');
         }
+        if (data.phone?.trim()) {
+            const existingPhone = await this.adminUserRepository.findOneByPhone(data.phone.trim());
+            if (existingPhone) {
+                throw new common_1.ConflictException('Phone number already registered');
+            }
+        }
         const hashedPassword = await bcrypt.hash(data.password, 10);
-        const admin = await this.adminUserRepository.create({
-            ...data,
+        const payload = {
+            name: data.name,
             email: data.email.toLowerCase(),
             password: hashedPassword,
-        });
+            role: data.role || 'admin',
+            departmentType: data.departmentType,
+        };
+        if (data.phone?.trim()) {
+            payload.phone = data.phone.trim();
+        }
+        const admin = await this.adminUserRepository.create(payload);
         const result = admin.toObject();
         delete result.password;
         return result;

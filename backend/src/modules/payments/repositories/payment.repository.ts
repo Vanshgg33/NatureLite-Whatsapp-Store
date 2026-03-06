@@ -37,6 +37,10 @@ export class PaymentRepository extends BaseRepository<PaymentDocument> {
       .exec();
   }
 
+  async findOneByOrder(orderId: Types.ObjectId): Promise<PaymentDocument | null> {
+    return this.model.findOne({ order: orderId }).sort({ createdAt: -1 }).exec();
+  }
+
   async findOneByOrderAndStatus(
     orderId: Types.ObjectId,
     status: string,

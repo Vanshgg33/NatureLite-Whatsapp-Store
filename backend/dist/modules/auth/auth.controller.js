@@ -14,6 +14,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthController = void 0;
 const common_1 = require("@nestjs/common");
+const throttler_1 = require("@nestjs/throttler");
 const config_1 = require("@nestjs/config");
 const auth_service_1 = require("./auth.service");
 const auth_dto_1 = require("./dto/auth.dto");
@@ -76,7 +77,10 @@ let AuthController = class AuthController {
         this.setAuthCookie(res, result.accessToken);
         return result;
     }
-    async logout(res) {
+    async logout(body, res) {
+        if (body?.refreshToken) {
+            await this.authService.revokeRefreshTokensForUser(body.refreshToken);
+        }
         this.clearAuthCookie(res);
         return { message: 'Logged out successfully' };
     }
@@ -139,6 +143,8 @@ __decorate([
 ], AuthController.prototype, "customerEmailLogin", null);
 __decorate([
     (0, public_decorator_1.Public)(),
+    (0, common_1.UseGuards)(throttler_1.ThrottlerGuard),
+    (0, throttler_1.Throttle)({ default: { limit: 5, ttl: 60000 } }),
     (0, common_1.Post)('customer/send-otp'),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     __param(0, (0, common_1.Body)()),
@@ -160,9 +166,10 @@ __decorate([
     (0, public_decorator_1.Public)(),
     (0, common_1.Post)('logout'),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
-    __param(0, (0, common_1.Res)({ passthrough: true })),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Res)({ passthrough: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [auth_dto_1.LogoutDto, Object]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "logout", null);
 __decorate([

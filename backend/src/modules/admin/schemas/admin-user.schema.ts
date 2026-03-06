@@ -18,7 +18,7 @@ export class AdminUser {
   @Prop({ required: true })
   password: string;
 
-  @Prop({ unique: true })
+  @Prop({ unique: true, sparse: true })
   phone?: string;
 
   @Prop({ type: Types.ObjectId, ref: 'Store' })
@@ -26,6 +26,9 @@ export class AdminUser {
 
   @Prop({ default: 'admin' })
   role: AdminRole;
+
+  @Prop({ enum: ['packing', 'billing', 'delivery'], required: false })
+  departmentType?: 'packing' | 'billing' | 'delivery';
 
   @Prop({ default: true })
   isActive: boolean;

@@ -29,6 +29,9 @@ export declare class SendOtpDto {
 export declare class RefreshTokenDto {
     refreshToken: string;
 }
+export declare class LogoutDto {
+    refreshToken?: string;
+}
 export declare class ChangePasswordDto {
     currentPassword: string;
     newPassword: string;
@@ -42,6 +45,7 @@ export interface AuthResponse {
         phone?: string;
         name?: string;
         role: string;
+        departmentType?: 'packing' | 'billing' | 'delivery';
         storeId?: string;
         storeName?: string;
     };

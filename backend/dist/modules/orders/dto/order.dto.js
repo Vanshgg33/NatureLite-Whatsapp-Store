@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ReorderDto = exports.OrderQueryDto = exports.UpdateShippingDto = exports.AddOrderNoteDto = exports.CancelOrderDto = exports.UpdatePaymentStatusDto = exports.UpdateOrderStatusDto = exports.CreateOrderDto = exports.OrderItemDto = exports.ShippingAddressDto = void 0;
+exports.GuestCreateOrderDto = exports.RequestReturnDto = exports.UpdateDeliveryWorkflowDto = exports.ReorderDto = exports.OrderQueryDto = exports.UpdateShippingDto = exports.AddOrderNoteDto = exports.CancelOrderDto = exports.UpdatePaymentStatusDto = exports.UpdateOrderStatusDto = exports.CreateOrderDto = exports.OrderItemDto = exports.ShippingAddressDto = void 0;
 const class_validator_1 = require("class-validator");
 const class_transformer_1 = require("class-transformer");
 class ShippingAddressDto {
@@ -102,6 +102,12 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
 ], CreateOrderDto.prototype, "notes", void 0);
+__decorate([
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.Min)(0),
+    __metadata("design:type", Number)
+], CreateOrderDto.prototype, "walletAmount", void 0);
 class UpdateOrderStatusDto {
 }
 exports.UpdateOrderStatusDto = UpdateOrderStatusDto;
@@ -236,6 +242,18 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
 ], OrderQueryDto.prototype, "sortOrder", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Boolean)
+], OrderQueryDto.prototype, "forPacking", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Boolean)
+], OrderQueryDto.prototype, "forBilling", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Boolean)
+], OrderQueryDto.prototype, "forDelivery", void 0);
 class ReorderDto {
 }
 exports.ReorderDto = ReorderDto;
@@ -250,4 +268,83 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", ShippingAddressDto)
 ], ReorderDto.prototype, "shippingAddress", void 0);
+class UpdateDeliveryWorkflowDto {
+}
+exports.UpdateDeliveryWorkflowDto = UpdateDeliveryWorkflowDto;
+__decorate([
+    (0, class_validator_1.IsEnum)(['delivery_done', 'customer_ringing', 'customer_cancelled', 'customer_tomorrow']),
+    __metadata("design:type", String)
+], UpdateDeliveryWorkflowDto.prototype, "status", void 0);
+__decorate([
+    (0, class_validator_1.IsEnum)(['cash', 'upi']),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], UpdateDeliveryWorkflowDto.prototype, "paymentMethod", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], UpdateDeliveryWorkflowDto.prototype, "paymentProofUrl", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], UpdateDeliveryWorkflowDto.prototype, "note", void 0);
+class RequestReturnDto {
+}
+exports.RequestReturnDto = RequestReturnDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    __metadata("design:type", String)
+], RequestReturnDto.prototype, "reason", void 0);
+class GuestCreateOrderDto {
+}
+exports.GuestCreateOrderDto = GuestCreateOrderDto;
+__decorate([
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.ValidateNested)({ each: true }),
+    (0, class_transformer_1.Type)(() => OrderItemDto),
+    __metadata("design:type", Array)
+], GuestCreateOrderDto.prototype, "items", void 0);
+__decorate([
+    (0, class_validator_1.ValidateNested)(),
+    (0, class_transformer_1.Type)(() => ShippingAddressDto),
+    __metadata("design:type", ShippingAddressDto)
+], GuestCreateOrderDto.prototype, "shippingAddress", void 0);
+__decorate([
+    (0, class_validator_1.IsEnum)(['cod', 'prepaid', 'upi', 'card', 'netbanking', 'wallet']),
+    __metadata("design:type", String)
+], GuestCreateOrderDto.prototype, "paymentMethod", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], GuestCreateOrderDto.prototype, "couponCode", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], GuestCreateOrderDto.prototype, "notes", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    __metadata("design:type", String)
+], GuestCreateOrderDto.prototype, "phone", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], GuestCreateOrderDto.prototype, "email", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], GuestCreateOrderDto.prototype, "name", void 0);
+__decorate([
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.Min)(0),
+    __metadata("design:type", Number)
+], GuestCreateOrderDto.prototype, "walletAmount", void 0);
 //# sourceMappingURL=order.dto.js.map

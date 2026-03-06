@@ -34,6 +34,13 @@ let RolesGuard = class RolesGuard {
         if (!hasRole) {
             throw new common_1.ForbiddenException(`Access denied. Required roles: ${requiredRoles.join(', ')}`);
         }
+        if (requiredRoles.includes('admin') && user.departmentType) {
+            const handlerName = context.getHandler().name;
+            const allowedDepartmentHandlers = ['findAll', 'updateStatus', 'updateDeliveryWorkflow', 'findOne', 'findByOrderNumber'];
+            if (!allowedDepartmentHandlers.includes(handlerName)) {
+                throw new common_1.ForbiddenException('Department staff cannot access this area. Use the department portal.');
+            }
+        }
         return true;
     }
 };

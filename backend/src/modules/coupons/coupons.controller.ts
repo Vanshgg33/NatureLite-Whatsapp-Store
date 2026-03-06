@@ -40,8 +40,10 @@ export class CouponsController {
     return this.couponsService.findAll(query);
   }
 
+  // Public-facing list of active coupons (used on storefront promo bar).
+  // Does not expose sensitive usage stats.
   @Get('active')
-  @Roles('admin', 'superadmin')
+  @Public()
   async getActiveCoupons(): Promise<Coupon[]> {
     return this.couponsService.getActiveCoupons();
   }

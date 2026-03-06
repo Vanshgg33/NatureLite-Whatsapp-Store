@@ -11,6 +11,7 @@ export declare class AdminService {
         password: string;
         phone?: string;
         role?: 'admin' | 'superadmin';
+        departmentType?: 'packing' | 'billing' | 'delivery';
     }): Promise<AdminUser>;
     update(id: string, data: {
         name?: string;
@@ -18,6 +19,7 @@ export declare class AdminService {
         role?: 'admin' | 'superadmin';
         isActive?: boolean;
         permissions?: string[];
+        departmentType?: 'packing' | 'billing' | 'delivery';
     }): Promise<AdminUser>;
     resetPassword(id: string, newPassword: string): Promise<void>;
     deactivate(id: string): Promise<AdminUser>;

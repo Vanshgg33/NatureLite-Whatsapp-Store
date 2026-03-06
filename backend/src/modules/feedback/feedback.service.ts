@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Feedback } from './schemas/feedback.schema';
 import { FeedbackRepository } from './repositories/feedback.repository';
 import {
@@ -8,12 +8,33 @@ import {
   FeedbackQueryDto,
 } from './dto/feedback.dto';
 import { parseObjectIdOptional, parseObjectId } from '@/common/utils/objectid.util';
+import { OrderRepository } from '../orders/repositories/order.repository';
 
 @Injectable()
 export class FeedbackService {
-  constructor(private readonly feedbackRepository: FeedbackRepository) {}
+  constructor(
+    private readonly feedbackRepository: FeedbackRepository,
+    private readonly orderRepository: OrderRepository,
+  ) {}
 
   async create(userId: string, dto: CreateFeedbackDto): Promise<Feedback> {
+    const userObjId = parseObjectId(userId, 'userId');
+
+    // For product reviews, require at least one delivered order containing the product
+    if (dto.type === 'product_review' && dto.productId) {
+      const productObjId = parseObjectId(dto.productId, 'productId');
+      const orderModel = this.orderRepository.getModel();
+      const hasDeliveredOrder = await orderModel.exists({
+        user: userObjId,
+        status: 'delivered',
+        'items.product': productObjId,
+      });
+
+      if (!hasDeliveredOrder) {
+        throw new BadRequestException('You can only review products you have received as part of a delivered order.');
+      }
+    }
+
     const data = {
       user: parseObjectId(userId, 'userId'),
       type: dto.type,
@@ -23,6 +44,10 @@ export class FeedbackService {
       message: dto.message,
       images: dto.images || [],
       isPublic: dto.type === 'product_review',
+      metadata:
+        dto.type === 'product_review'
+          ? { verifiedPurchase: true }
+          : {},
     };
     return this.feedbackRepository.create(data as Partial<Feedback>) as Promise<Feedback>;
   }

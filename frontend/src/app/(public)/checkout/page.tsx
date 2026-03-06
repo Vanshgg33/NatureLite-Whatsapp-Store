@@ -17,7 +17,13 @@ import { useCustomerStore } from '@/lib/customer-store';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
-import type { PaymentMethod, CreateOrderDto } from '@/types';
+import type { PaymentMethod, CreateOrderDto, GuestCreateOrderDto, WalletBalance } from '@/types';
+
+type RazorpayCheckoutResponse = {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+};
 
 const checkoutSchema = z.object({
   name: z.string().min(2, 'Name is required'),
@@ -28,6 +34,7 @@ const checkoutSchema = z.object({
   state: z.string().min(2, 'State is required'),
   pincode: z.string().min(6, 'Valid pincode is required'),
   landmark: z.string().optional(),
+  saveAddress: z.boolean().optional(),
 });
 
 type CheckoutFormData = z.infer<typeof checkoutSchema>;
@@ -38,6 +45,17 @@ const paymentMethods: { id: PaymentMethod; name: string; icon: typeof Banknote; 
   { id: 'card', name: 'Credit/Debit Card', icon: CreditCard, description: 'Visa, Mastercard, RuPay' },
 ];
 
+// Basic pincode → city/state helper for serviceable areas
+const PINCODE_CITY_STATE: { prefix: string; city: string; state: string }[] = [
+  // Raipur
+  { prefix: '492', city: 'Raipur', state: 'Chhattisgarh' },
+  // Bhilai / Durg
+  { prefix: '490', city: 'Bhilai', state: 'Chhattisgarh' },
+  { prefix: '491', city: 'Durg', state: 'Chhattisgarh' },
+  // Bilaspur
+  { prefix: '495', city: 'Bilaspur', state: 'Chhattisgarh' },
+];
+
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, getSubtotal, getGstTotal, getDiscountAmount, getTotal, clearCart } = useCartStore();
@@ -46,6 +64,8 @@ export default function CheckoutPage() {
   const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>('cod');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [useWallet, setUseWallet] = useState(false);
+  const [walletAmount, setWalletAmount] = useState(0);
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -60,6 +80,13 @@ export default function CheckoutPage() {
     defaultShippingCharge: publicSettings?.store?.defaultShippingCharge ?? 50,
   };
 
+  const { data: wallet }: { data: WalletBalance | undefined } = useQuery({
+    queryKey: ['wallet-balance'],
+    queryFn: () => api.getWallet(),
+    enabled: isAuthenticated,
+    staleTime: 60 * 1000,
+  });
+
   const {
     register,
     handleSubmit,
@@ -67,6 +94,9 @@ export default function CheckoutPage() {
     setValue,
   } = useForm<CheckoutFormData>({
     resolver: zodResolver(checkoutSchema),
+    defaultValues: {
+      saveAddress: true,
+    },
   });
 
   // Pre-fill form with customer data
@@ -86,6 +116,18 @@ export default function CheckoutPage() {
     }
   }, [customer, setValue]);
 
+  const handlePincodeBlur = (value: string) => {
+    const trimmed = value.trim();
+    if (trimmed.length < 3) return;
+
+    const match = PINCODE_CITY_STATE.find((entry) => trimmed.startsWith(entry.prefix));
+    if (!match) return;
+
+    // Only auto-fill if fields are empty to avoid overwriting user edits
+    setValue('city', (current) => current || match.city);
+    setValue('state', (current) => current || match.state);
+  };
+
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -95,44 +137,80 @@ export default function CheckoutPage() {
   };
 
   const onSubmit = async (data: CheckoutFormData) => {
-    // Check if user is authenticated
-    if (!isAuthenticated) {
-      toast({
-        title: 'Login Required',
-        description: 'Please login to place an order.',
-        variant: 'destructive',
-      });
-      router.push('/login');
-      return;
-    }
-
     setIsSubmitting(true);
     try {
-      // Build order data
-      const orderData: CreateOrderDto = {
-        items: items.map((item) => ({
-          productId: item.productId,
-          variantSku: item.variantSku,
-          quantity: item.quantity,
-        })),
-        shippingAddress: {
-          name: data.name,
-          phone: data.phone,
-          street: data.street,
-          city: data.city,
-          state: data.state,
-          pincode: data.pincode,
-          landmark: data.landmark,
-        },
-        paymentMethod: selectedPayment === 'cod' ? 'cod' : 'razorpay',
-        couponCode: useCartStore.getState().couponCode || undefined,
+      // Common order payload pieces
+      const baseItems = items.map((item) => ({
+        productId: item.productId,
+        variantSku: item.variantSku,
+        quantity: item.quantity,
+      }));
+
+      const baseShipping = {
+        name: data.name,
+        phone: data.phone,
+        street: data.street,
+        city: data.city,
+        state: data.state,
+        pincode: data.pincode,
+        landmark: data.landmark,
       };
 
-      // Create order via API
-      const order = await api.createOrder(orderData);
+      const paymentMethod: PaymentMethod =
+        selectedPayment === 'cod' ? 'cod' : 'prepaid';
 
-      // If not COD, initiate Razorpay payment
-      if (selectedPayment !== 'cod') {
+      const couponCode = useCartStore.getState().couponCode || undefined;
+
+      let order;
+
+      const appliedWalletAmount =
+        isAuthenticated && useWallet && wallet
+          ? Math.min(walletAmount || 0, wallet.balance, total)
+          : 0;
+
+      if (isAuthenticated) {
+        const orderData: CreateOrderDto = {
+          items: baseItems,
+          shippingAddress: baseShipping,
+          paymentMethod,
+          couponCode,
+          walletAmount: appliedWalletAmount > 0 ? appliedWalletAmount : undefined,
+        };
+
+        // Optionally save shipping address back to account
+        if (data.saveAddress) {
+          try {
+            await api.addAddress({
+              label: 'Home',
+              street: data.street,
+              city: data.city,
+              state: data.state,
+              pincode: data.pincode,
+              landmark: data.landmark,
+              isDefault: false,
+            });
+          } catch {
+            // Non-blocking: ignore failures here, user still places order
+          }
+        }
+
+        order = await api.createOrder(orderData);
+      } else {
+        const guestOrderData: GuestCreateOrderDto = {
+          items: baseItems,
+          shippingAddress: baseShipping,
+          paymentMethod,
+          couponCode,
+          phone: data.phone,
+          email: data.email,
+          name: data.name,
+        };
+
+        order = await api.createGuestOrder(guestOrderData);
+      }
+
+      // If not COD, initiate Razorpay payment (only when some amount remains to be paid online)
+      if (selectedPayment !== 'cod' && amountToPayNow > 0) {
         try {
           const paymentData = await api.createPaymentOrder(order._id);
 
@@ -143,7 +221,7 @@ export default function CheckoutPage() {
             name: 'Naturelite Store',
             description: `Order #${order.orderNumber}`,
             order_id: paymentData.razorpayOrderId,
-            handler: async (response: any) => {
+            handler: async (response: RazorpayCheckoutResponse) => {
               try {
                 await api.verifyPayment({
                   razorpay_order_id: response.razorpay_order_id,
@@ -152,7 +230,11 @@ export default function CheckoutPage() {
                 });
                 clearCart();
                 toast({ title: 'Payment successful! Order confirmed.' });
-                router.push(`/account/orders/${order._id}`);
+                if (isAuthenticated) {
+                  router.push(`/account/orders/${order._id}`);
+                } else {
+                  router.push('/');
+                }
               } catch {
                 toast({
                   title: 'Payment verification failed',
@@ -171,10 +253,14 @@ export default function CheckoutPage() {
               ondismiss: () => {
                 toast({
                   title: 'Payment cancelled',
-                  description: 'Your order has been created. You can pay later from order details.',
+                  description: 'Your order has been created. You can pay later.',
                 });
                 setIsSubmitting(false);
-                router.push(`/account/orders/${order._id}`);
+                if (isAuthenticated) {
+                  router.push(`/account/orders/${order._id}`);
+                } else {
+                  router.push('/');
+                }
               },
             },
           };
@@ -185,24 +271,43 @@ export default function CheckoutPage() {
         } catch {
           toast({
             title: 'Payment gateway error',
-            description: 'Order created but payment could not be initiated. Please try again from order details.',
+            description: 'Order created but payment could not be initiated. Please try again later.',
             variant: 'destructive',
           });
-          router.push(`/account/orders/${order._id}`);
+          if (isAuthenticated) {
+            router.push(`/account/orders/${order._id}`);
+          } else {
+            router.push('/');
+          }
           return;
         }
       }
 
-      // COD flow
+      // COD or fully wallet-paid flow
       toast({
         title: 'Order placed successfully!',
         description: `Order #${order.orderNumber} has been created. You will receive a confirmation shortly.`,
       });
 
       clearCart();
-      router.push(`/account/orders/${order._id}`);
+      if (isAuthenticated) {
+        router.push(`/account/orders/${order._id}`);
+      } else {
+        router.push('/');
+      }
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to place order. Please try again.';
+      let errorMessage = 'Failed to place order. Please try again.';
+      if (error && typeof error === 'object' && 'response' in error) {
+        const ax = error as { response?: { data?: { message?: string } } };
+        const msg = ax.response?.data?.message ?? '';
+        if (typeof msg === 'string' && /insufficient wallet balance/i.test(msg)) {
+          errorMessage = 'Wallet balance may have changed. Please review the amount and try again.';
+        } else if (msg) {
+          errorMessage = msg;
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
       toast({
         title: 'Error',
         description: errorMessage,
@@ -243,8 +348,17 @@ export default function CheckoutPage() {
   const subtotal = getSubtotal();
   const gst = getGstTotal();
   const discount = getDiscountAmount();
-  const shipping = subtotal >= shippingSettings.freeShippingThreshold ? 0 : shippingSettings.defaultShippingCharge;
-  const total = getTotal() + shipping;
+  const baseTotal = getTotal(); // subtotal - discount
+  const shipping =
+    subtotal >= shippingSettings.freeShippingThreshold ? 0 : shippingSettings.defaultShippingCharge;
+  // Order total should include GST + shipping
+  const total = baseTotal + gst + shipping;
+
+  const maxWalletUsable =
+    isAuthenticated && wallet ? Math.min(wallet.balance, total) : 0;
+  const effectiveWalletAmount =
+    isAuthenticated && useWallet ? Math.min(walletAmount || 0, maxWalletUsable) : 0;
+  const amountToPayNow = total - effectiveWalletAmount;
 
   return (
     <div className="min-h-screen pt-20 bg-brand-cream">
@@ -362,7 +476,9 @@ export default function CheckoutPage() {
                       Pincode *
                     </label>
                     <Input
-                      {...register('pincode')}
+                      {...register('pincode', {
+                        onBlur: (e) => handlePincodeBlur(e.target.value),
+                      })}
                       className={cn(errors.pincode && 'border-brand-error')}
                     />
                     {errors.pincode && (
@@ -412,6 +528,17 @@ export default function CheckoutPage() {
                     <Input {...register('landmark')} />
                   </div>
                 </div>
+
+                <label className="flex items-center gap-2 mt-4 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    {...register('saveAddress')}
+                    className="w-4 h-4 rounded border-brand-border text-brand-mustard focus:ring-brand-mustard"
+                  />
+                  <span className="font-body text-sm text-brand-text">
+                    Save this address to my account
+                  </span>
+                </label>
               </motion.div>
 
               {/* Payment Method */}
@@ -513,12 +640,77 @@ export default function CheckoutPage() {
                       {shipping === 0 ? 'Free' : formatPrice(shipping)}
                     </span>
                   </div>
+                  {isAuthenticated && wallet && (
+                    <>
+                      <div className="flex justify-between items-center pt-3 border-t border-dashed border-brand-border">
+                        <div className="flex flex-col">
+                          <span className="font-body text-sm text-brand-charcoal">
+                            Wallet balance
+                          </span>
+                          <span className="font-body text-xs text-brand-muted">
+                            Available: {formatPrice(wallet.balance)}
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-end gap-2">
+                          <label className="inline-flex items-center gap-2 text-xs text-brand-text cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={useWallet}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setUseWallet(checked);
+                                if (checked) {
+                                  const autoAmount = Math.min(wallet.balance, total);
+                                  setWalletAmount(autoAmount);
+                                } else {
+                                  setWalletAmount(0);
+                                }
+                              }}
+                              className="w-4 h-4 rounded border-brand-border text-brand-mustard focus:ring-brand-mustard"
+                            />
+                            <span>Use wallet</span>
+                          </label>
+                          {useWallet && (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                min={0}
+                                max={wallet.balance}
+                                step={1}
+                                value={walletAmount || ''}
+                                onChange={(e) => {
+                                  const value = Number(e.target.value || 0);
+                                  setWalletAmount(
+                                    Number.isNaN(value)
+                                      ? 0
+                                      : Math.max(0, Math.min(value, wallet.balance, total)),
+                                  );
+                                }}
+                                className="h-8 w-24 text-right text-sm"
+                              />
+                              <span className="text-xs text-brand-muted">
+                                Max {formatPrice(maxWalletUsable)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {useWallet && effectiveWalletAmount > 0 && (
+                        <div className="flex justify-between font-body text-sm">
+                          <span className="text-brand-green">Wallet applied</span>
+                          <span className="text-brand-green">
+                            -{formatPrice(effectiveWalletAmount)}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
                   <div className="flex justify-between pt-3 border-t border-brand-border">
                     <span className="font-display text-lg font-semibold text-brand-charcoal">
-                      Total
+                      To pay now
                     </span>
                     <span className="font-display text-xl font-bold text-brand-charcoal">
-                      {formatPrice(total)}
+                      {formatPrice(amountToPayNow)}
                     </span>
                   </div>
                 </div>

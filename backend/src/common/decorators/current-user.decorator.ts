@@ -6,6 +6,8 @@ export interface JwtPayload {
   phone: string;
   role: 'customer' | 'admin' | 'superadmin';
   storeId?: string;
+  /** Set for department staff (packing/billing/delivery); they must not access admin-only routes */
+  departmentType?: 'packing' | 'billing' | 'delivery';
   iat?: number;
   exp?: number;
 }

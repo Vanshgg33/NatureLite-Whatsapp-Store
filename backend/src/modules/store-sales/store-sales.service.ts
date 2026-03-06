@@ -285,6 +285,11 @@ export class StoreSalesService {
     return updated!;
   }
 
+  async voidByLinkedOrder(orderId: string, reason: string): Promise<void> {
+    const orderIdObj = parseObjectId(orderId, 'orderId');
+    await this.storeSaleRepository.voidByLinkedOrder(orderIdObj, reason);
+  }
+
   async getSaleStats(
     storeId: string,
     startDate: Date,

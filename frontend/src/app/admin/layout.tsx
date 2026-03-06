@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { Menu } from 'lucide-react';
 import { Sidebar } from '@/components/layout/sidebar';
 import { useAdminAuthStore } from '@/lib/admin-store';
@@ -14,16 +14,34 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const { isAuthenticated } = useAdminAuthStore();
+  const pathname = usePathname();
+  const { isAuthenticated, user } = useAdminAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) {
       router.push('/admin-login');
+      return;
     }
-  }, [isAuthenticated, router]);
 
-  if (!isAuthenticated) {
+    if (user?.departmentType) {
+      if (user.departmentType === 'packing' && !pathname.startsWith('/department/packing')) {
+        router.replace('/department/packing');
+      } else if (
+        user.departmentType === 'billing' &&
+        !pathname.startsWith('/department/billing')
+      ) {
+        router.replace('/department/billing');
+      } else if (
+        user.departmentType === 'delivery' &&
+        !pathname.startsWith('/department/delivery')
+      ) {
+        router.replace('/department/delivery');
+      }
+    }
+  }, [isAuthenticated, user, pathname, router]);
+
+  if (!isAuthenticated || user?.departmentType) {
     return null;
   }
 

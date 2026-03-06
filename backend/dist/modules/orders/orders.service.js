@@ -27,9 +27,10 @@ const settings_service_1 = require("../settings/settings.service");
 const stores_service_1 = require("../stores/stores.service");
 const store_stock_service_1 = require("../store-stock/store-stock.service");
 const store_sales_service_1 = require("../store-sales/store-sales.service");
+const wallet_service_1 = require("../wallet/wallet.service");
 const objectid_util_1 = require("../../common/utils/objectid.util");
 let OrdersService = OrdersService_1 = class OrdersService {
-    constructor(orderRepository, connection, cartService, productsService, usersService, couponsService, emailService, settingsService, storesService, storeStockService, storeSalesService) {
+    constructor(orderRepository, connection, cartService, productsService, usersService, couponsService, emailService, settingsService, storesService, storeStockService, storeSalesService, walletService) {
         this.orderRepository = orderRepository;
         this.connection = connection;
         this.cartService = cartService;
@@ -41,6 +42,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
         this.storesService = storesService;
         this.storeStockService = storeStockService;
         this.storeSalesService = storeSalesService;
+        this.walletService = walletService;
         this.logger = new common_1.Logger(OrdersService_1.name);
     }
     async create(userId, dto) {
@@ -102,6 +104,12 @@ let OrdersService = OrdersService_1 = class OrdersService {
             else {
                 throw new common_1.BadRequestException('Either cartId or items must be provided');
             }
+            const pincode = dto.shippingAddress?.pincode;
+            const SERVICEABLE_PINCODE_PREFIXES = ['492', '490', '491', '495'];
+            if (!pincode ||
+                !SERVICEABLE_PINCODE_PREFIXES.some((prefix) => pincode.startsWith(prefix))) {
+                throw new common_1.BadRequestException('We currently do not deliver to this pincode.');
+            }
             let discount = 0;
             if (dto.couponCode) {
                 const validation = await this.couponsService.validateCoupon({
@@ -127,7 +135,22 @@ let OrdersService = OrdersService_1 = class OrdersService {
             }
             const gstTotal = orderItems.reduce((sum, item) => sum + item.gstAmount, 0);
             const shippingCharge = subtotal >= freeShippingThreshold ? 0 : defaultShippingCharge;
-            const total = subtotal - discount + shippingCharge;
+            const totalBeforeWallet = subtotal - discount + shippingCharge;
+            let walletUsedPaise = 0;
+            let paymentGatewayAmountPaise = Math.round(totalBeforeWallet * 100);
+            if (dto.walletAmount && dto.walletAmount > 0) {
+                if (dto.paymentMethod !== 'prepaid') {
+                    throw new common_1.BadRequestException('Wallet amount can only be used with prepaid payment method');
+                }
+                const requestedPaise = Math.round(dto.walletAmount * 100);
+                const walletBalancePaise = await this.walletService.getBalance(userId);
+                walletUsedPaise = Math.min(requestedPaise, walletBalancePaise, paymentGatewayAmountPaise);
+                if (walletUsedPaise > 0) {
+                    await this.walletService.debit(userId, walletUsedPaise, 'order_payment', { tentativeTotal: totalBeforeWallet }, session);
+                    paymentGatewayAmountPaise -= walletUsedPaise;
+                }
+            }
+            const total = totalBeforeWallet;
             const orderNumber = await this.generateOrderNumber();
             const savedOrder = await this.orderRepository.createWithSession({
                 orderNumber,
@@ -140,6 +163,8 @@ let OrdersService = OrdersService_1 = class OrdersService {
                 couponCode: dto.couponCode,
                 shippingCharge,
                 gstTotal,
+                walletUsed: walletUsedPaise,
+                paymentGatewayAmount: paymentGatewayAmountPaise,
                 total,
                 notes: dto.notes,
                 timeline: [
@@ -153,7 +178,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
             const mainStore = await this.storesService.findMainStore();
             const mainStoreId = mainStore._id.toString();
             for (const item of orderItems) {
-                await this.storeStockService.decrementStock(mainStoreId, item.product.toString(), item.quantity, item.variantSku);
+                await this.storeStockService.decrementStock(mainStoreId, item.product.toString(), item.quantity, item.variantSku, session);
                 await this.productsService.incrementTotalSold(item.product.toString(), item.quantity);
             }
             if (dto.cartId) {
@@ -208,11 +233,42 @@ let OrdersService = OrdersService_1 = class OrdersService {
         const userObjId = (0, objectid_util_1.parseObjectId)(userId, 'userId');
         return this.orderRepository.findUserOrders(userObjId, limit);
     }
-    async updateStatus(id, dto) {
+    async createGuestOrder(dto) {
+        const user = await this.usersService.findOrCreateByPhone(dto.phone);
+        const updates = {};
+        if (dto.name && !user.name)
+            updates.name = dto.name;
+        if (dto.email && !user.email)
+            updates.email = dto.email;
+        if (Object.keys(updates).length > 0) {
+            await this.usersService.update(user._id.toString(), updates);
+        }
+        const createDto = {
+            items: dto.items,
+            shippingAddress: dto.shippingAddress,
+            paymentMethod: dto.paymentMethod,
+            couponCode: dto.couponCode,
+            notes: dto.notes,
+            walletAmount: dto.walletAmount,
+        };
+        return this.create(user._id.toString(), createDto);
+    }
+    async updateStatus(id, dto, departmentType) {
         const idObj = (0, objectid_util_1.parseObjectId)(id, 'id');
         const order = await this.orderRepository.findById(idObj);
         if (!order) {
             throw new common_1.NotFoundException('Order not found');
+        }
+        if (departmentType) {
+            if (departmentType === 'packing' && (dto.status !== 'shipped' || order.status !== 'processing')) {
+                throw new common_1.BadRequestException('Packing can only mark orders as shipped from processing.');
+            }
+            if (departmentType === 'billing' && (dto.status !== 'out_for_delivery' || order.status !== 'shipped')) {
+                throw new common_1.BadRequestException('Billing can only set status to out for delivery from shipped.');
+            }
+            if (departmentType === 'delivery') {
+                throw new common_1.BadRequestException('Delivery staff must use the delivery workflow endpoint, not status update.');
+            }
         }
         const allowedNext = OrdersService_1.VALID_TRANSITIONS[order.status] || [];
         if (!allowedNext.includes(dto.status)) {
@@ -226,7 +282,19 @@ let OrdersService = OrdersService_1 = class OrdersService {
         };
         order.status = dto.status;
         order.timeline.push(timelineEntry);
-        if (dto.status === 'delivered') {
+        if (dto.status === 'shipped') {
+            order.packedAt = new Date();
+            if (dto.updatedBy)
+                order.packedBy = dto.updatedBy;
+        }
+        else if (dto.status === 'out_for_delivery') {
+            order.outForDeliveryAt = new Date();
+            if (dto.updatedBy) {
+                order.billedAt = new Date();
+                order.billedBy = dto.updatedBy;
+            }
+        }
+        else if (dto.status === 'delivered') {
             order.deliveredAt = new Date();
         }
         const savedOrder = await order.save();
@@ -262,6 +330,54 @@ let OrdersService = OrdersService_1 = class OrdersService {
         order.timeline.push(timelineEntry);
         return order.save();
     }
+    async updateDeliveryWorkflow(id, dto, updatedBy, departmentType) {
+        if (departmentType && departmentType !== 'delivery') {
+            throw new common_1.BadRequestException('Only delivery staff can update delivery workflow.');
+        }
+        const idObj = (0, objectid_util_1.parseObjectId)(id, 'id');
+        const order = await this.orderRepository.findById(idObj);
+        if (!order) {
+            throw new common_1.NotFoundException('Order not found');
+        }
+        const metadata = order.metadata || {};
+        const existingWorkflow = (metadata.deliveryWorkflow || {});
+        const workflow = {
+            ...existingWorkflow,
+            status: dto.status,
+            paymentMethod: dto.paymentMethod,
+            paymentProofUrl: dto.paymentProofUrl,
+            note: dto.note,
+            updatedBy,
+            updatedAt: new Date(),
+        };
+        metadata.deliveryWorkflow = workflow;
+        order.metadata = metadata;
+        if (dto.status === 'delivery_done') {
+            if (order.paymentStatus !== 'paid') {
+                if (order.paymentMethod === 'cod') {
+                    order.paymentStatus = 'paid';
+                }
+                else {
+                    throw new common_1.BadRequestException('Cannot mark as delivered: payment is not yet paid. Complete payment or reconcile first.');
+                }
+            }
+            order.status = 'delivered';
+            order.deliveredAt = new Date();
+        }
+        const timelineEntry = {
+            status: dto.status,
+            message: dto.note ||
+                `Delivery status updated to ${dto.status.replace(/_/g, ' ')}`.trim(),
+            timestamp: new Date(),
+            updatedBy,
+            metadata: {
+                paymentMethod: dto.paymentMethod,
+                paymentProofUrl: dto.paymentProofUrl,
+            },
+        };
+        order.timeline.push(timelineEntry);
+        return order.save();
+    }
     async cancelOrder(id, dto, cancelledBy) {
         const idObj = (0, objectid_util_1.parseObjectId)(id, 'id');
         const order = await this.orderRepository.findById(idObj);
@@ -282,6 +398,12 @@ let OrdersService = OrdersService_1 = class OrdersService {
         };
         order.timeline.push(timelineEntry);
         const savedOrder = await order.save();
+        try {
+            await this.storeSalesService.voidByLinkedOrder(id, 'order_cancelled');
+        }
+        catch (voidErr) {
+            this.logger.warn(`Failed to void store sale for cancelled order: ${voidErr.message}`);
+        }
         try {
             const user = await this.usersService.findById(order.user.toString());
             if (user?.email) {
@@ -332,12 +454,116 @@ let OrdersService = OrdersService_1 = class OrdersService {
         }
         return order;
     }
+    async requestReturn(userId, id, reason) {
+        const idObj = (0, objectid_util_1.parseObjectId)(id, 'id');
+        const order = await this.orderRepository.findById(idObj);
+        if (!order) {
+            throw new common_1.NotFoundException('Order not found');
+        }
+        if (order.user.toString() !== userId) {
+            throw new common_1.BadRequestException('You do not have access to this order');
+        }
+        if (order.status !== 'delivered' || order.paymentStatus !== 'paid') {
+            throw new common_1.BadRequestException('Return can only be requested for delivered and paid orders');
+        }
+        if (order.returnRequestStatus && order.returnRequestStatus !== 'rejected') {
+            throw new common_1.BadRequestException('Return request already submitted for this order');
+        }
+        if (order.deliveredAt) {
+            const deliveredAt = order.deliveredAt.getTime();
+            const now = Date.now();
+            const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+            if (now - deliveredAt > sevenDaysMs) {
+                throw new common_1.BadRequestException('Return window has expired for this order');
+            }
+        }
+        order.returnRequestedAt = new Date();
+        order.returnRequestReason = reason;
+        order.returnRequestStatus = 'requested';
+        const timelineEntry = {
+            status: order.status,
+            message: `Customer requested return: ${reason}`,
+            timestamp: new Date(),
+        };
+        order.timeline.push(timelineEntry);
+        const savedOrder = await order.save();
+        try {
+            const user = await this.usersService.findById(order.user.toString());
+            if (user?.email) {
+                this.emailService.sendOrderCancelled?.(savedOrder.toObject(), user.email);
+            }
+        }
+        catch (emailError) {
+            this.logger.warn(`Failed to send return request email: ${emailError.message}`);
+        }
+        return savedOrder;
+    }
+    async approveReturn(id) {
+        const idObj = (0, objectid_util_1.parseObjectId)(id, 'id');
+        const order = await this.orderRepository.findById(idObj);
+        if (!order)
+            throw new common_1.NotFoundException('Order not found');
+        if (order.returnRequestStatus !== 'requested') {
+            throw new common_1.BadRequestException('Return request must be in requested state to approve');
+        }
+        order.returnRequestStatus = 'approved';
+        order.timeline.push({
+            status: order.status,
+            message: 'Return approved by admin',
+            timestamp: new Date(),
+        });
+        return order.save();
+    }
+    async rejectReturn(id) {
+        const idObj = (0, objectid_util_1.parseObjectId)(id, 'id');
+        const order = await this.orderRepository.findById(idObj);
+        if (!order)
+            throw new common_1.NotFoundException('Order not found');
+        if (order.returnRequestStatus !== 'requested') {
+            throw new common_1.BadRequestException('Return request must be in requested state to reject');
+        }
+        order.returnRequestStatus = 'rejected';
+        order.timeline.push({
+            status: order.status,
+            message: 'Return request rejected by admin',
+            timestamp: new Date(),
+        });
+        return order.save();
+    }
+    async completeReturn(id) {
+        const idObj = (0, objectid_util_1.parseObjectId)(id, 'id');
+        const order = await this.orderRepository.findById(idObj);
+        if (!order)
+            throw new common_1.NotFoundException('Order not found');
+        if (order.returnRequestStatus !== 'approved') {
+            throw new common_1.BadRequestException('Return must be approved before marking complete');
+        }
+        order.returnRequestStatus = 'completed';
+        order.status = 'returned';
+        order.timeline.push({
+            status: 'returned',
+            message: 'Return completed',
+            timestamp: new Date(),
+        });
+        return order.save();
+    }
     async reorder(userId, dto) {
         (0, objectid_util_1.parseObjectId)(userId, 'userId');
         const orderIdObj = (0, objectid_util_1.parseObjectId)(dto.orderId, 'orderId');
         const originalOrder = await this.orderRepository.findById(orderIdObj);
         if (!originalOrder) {
             throw new common_1.NotFoundException('Original order not found');
+        }
+        const mainStore = await this.storesService.findMainStore();
+        const mainStoreId = mainStore._id.toString();
+        for (const item of originalOrder.items) {
+            const storeStock = await this.storeStockService.getStockForStoreProduct(mainStoreId, item.product.toString());
+            const available = item.variantSku
+                ? (storeStock?.variantStocks?.find((v) => v.variantSku === item.variantSku)?.stock ?? 0)
+                : (storeStock?.stock ?? 0);
+            if (item.quantity > available) {
+                throw new common_1.BadRequestException(`Insufficient stock for "${item.name}"${item.variantSku ? ` (${item.variantSku})` : ''}. Available: ${available}. Reduce quantity or remove from reorder.`);
+            }
         }
         const items = originalOrder.items.map((item) => ({
             productId: item.product.toString(),
@@ -378,8 +604,8 @@ let OrdersService = OrdersService_1 = class OrdersService {
 };
 exports.OrdersService = OrdersService;
 OrdersService.VALID_TRANSITIONS = {
-    pending: ['confirmed', 'cancelled'],
-    confirmed: ['processing', 'cancelled'],
+    pending: ['confirmed', 'cancelled', 'shipped'],
+    confirmed: ['processing', 'cancelled', 'shipped'],
     processing: ['shipped', 'cancelled'],
     shipped: ['out_for_delivery', 'delivered', 'returned'],
     out_for_delivery: ['delivered', 'returned'],
@@ -401,6 +627,7 @@ exports.OrdersService = OrdersService = OrdersService_1 = __decorate([
         settings_service_1.SettingsService,
         stores_service_1.StoresService,
         store_stock_service_1.StoreStockService,
-        store_sales_service_1.StoreSalesService])
+        store_sales_service_1.StoreSalesService,
+        wallet_service_1.WalletService])
 ], OrdersService);
 //# sourceMappingURL=orders.service.js.map

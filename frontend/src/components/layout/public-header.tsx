@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingBag, User, Menu, X, Search } from 'lucide-react';
+import { ShoppingBag, User, Menu, X, Search, Heart, ShieldCheck, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCartStore } from '@/lib/cart-store';
 import { useCustomerStore } from '@/lib/customer-store';
+import { useWishlistStore } from '@/lib/wishlist-store';
 
 const navigation = [
   { name: 'Home', href: '/' },
@@ -23,6 +24,7 @@ export function PublicHeader() {
   const [hasMounted, setHasMounted] = useState(false);
   const itemCount = useCartStore((state) => state.getItemCount());
   const isAuthenticated = useCustomerStore((state) => state.isAuthenticated);
+  const wishlistCount = useWishlistStore((state) => state.items.length);
 
   useEffect(() => {
     setHasMounted(true);
@@ -48,10 +50,10 @@ export function PublicHeader() {
     <>
       <header
         className={cn(
-          'fixed top-0 left-0 right-0 z-50 transition-all duration-300',
+          'w-full transition-all duration-300',
           isScrolled
             ? 'bg-white/95 backdrop-blur-md shadow-sm'
-            : 'bg-transparent'
+            : 'bg-white'
         )}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
@@ -74,7 +76,7 @@ export function PublicHeader() {
             </Link>
 
             {/* Desktop Navigation */}
-            <div className="hidden md:flex items-center gap-8">
+            <div className="hidden md:flex items-center gap-6">
               {navigation.map((item) => {
                 const isActive = pathname === item.href;
                 return (
@@ -98,6 +100,12 @@ export function PublicHeader() {
                   </Link>
                 );
               })}
+              <span className="inline-flex items-center gap-1 text-brand-muted text-xs font-medium hidden lg:inline">
+                <ShieldCheck className="w-3.5 h-3.5" /> Secure
+              </span>
+              <span className="inline-flex items-center gap-1 text-brand-muted text-xs font-medium hidden lg:inline">
+                <RefreshCw className="w-3.5 h-3.5" /> Free returns
+              </span>
             </div>
 
             {/* Actions */}
@@ -114,6 +122,31 @@ export function PublicHeader() {
                 aria-label="Search products"
               >
                 <Search className="w-5 h-5" />
+              </Link>
+
+              {/* Wishlist */}
+              <Link
+                href="/wishlist"
+                className={cn(
+                  'relative p-2.5 rounded-full transition-colors duration-300 hidden sm:inline-flex',
+                  useDarkTheme
+                    ? 'text-white/70 hover:text-white hover:bg-white/10'
+                    : 'text-brand-brown-light hover:text-brand-charcoal hover:bg-brand-cream'
+                )}
+                aria-label="Wishlist"
+              >
+                <Heart className="w-5 h-5" />
+                {hasMounted && wishlistCount > 0 && (
+                  <motion.span
+                    key={wishlistCount}
+                    className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-brand-terracotta text-white text-xs font-medium rounded-full flex items-center justify-center"
+                    initial={{ scale: 1.5 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 15 }}
+                  >
+                    {wishlistCount > 9 ? '9+' : wishlistCount}
+                  </motion.span>
+                )}
               </Link>
 
               {/* Cart */}

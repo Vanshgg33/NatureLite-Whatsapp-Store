@@ -170,7 +170,7 @@ export default function StoreStockPage() {
                           <div className="flex items-center gap-3">
                             {item.productImages?.[0] ? (
                               <img
-                                src={item.productImages[0]}
+                                src={item.productImages?.[0] as string}
                                 alt=""
                                 className="h-10 w-10 rounded-lg object-cover"
                               />

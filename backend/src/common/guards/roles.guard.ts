@@ -32,6 +32,15 @@ export class RolesGuard implements CanActivate {
       );
     }
 
+    // Department staff may only access specific order workflow endpoints; other admin routes are forbidden
+    if (requiredRoles.includes('admin') && user.departmentType) {
+      const handlerName = context.getHandler().name;
+      const allowedDepartmentHandlers = ['findAll', 'updateStatus', 'updateDeliveryWorkflow', 'findOne', 'findByOrderNumber'];
+      if (!allowedDepartmentHandlers.includes(handlerName)) {
+        throw new ForbiddenException('Department staff cannot access this area. Use the department portal.');
+      }
+    }
+
     return true;
   }
 }

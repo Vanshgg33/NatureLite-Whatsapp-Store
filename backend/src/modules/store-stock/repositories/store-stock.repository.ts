@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model, Types, ClientSession } from 'mongoose';
 import { StoreStock, StoreStockDocument } from '../schemas/store-stock.schema';
 import { BaseRepository } from '@/common/repository/base.repository';
 import { StockQueryDto } from '../dto/store-stock.dto';
@@ -139,6 +139,7 @@ export class StoreStockRepository extends BaseRepository<StoreStockDocument> {
     productId: Types.ObjectId,
     variantSku: string,
     quantity: number,
+    session?: ClientSession,
   ): Promise<{ modifiedCount: number }> {
     const result = await this.model.updateOne(
       {
@@ -148,6 +149,7 @@ export class StoreStockRepository extends BaseRepository<StoreStockDocument> {
         'variantStocks.stock': { $gte: quantity },
       },
       { $inc: { 'variantStocks.$.stock': -quantity } },
+      { session },
     ).exec();
     return { modifiedCount: result.modifiedCount };
   }
@@ -156,10 +158,12 @@ export class StoreStockRepository extends BaseRepository<StoreStockDocument> {
     storeId: Types.ObjectId,
     productId: Types.ObjectId,
     quantity: number,
+    session?: ClientSession,
   ): Promise<{ modifiedCount: number }> {
     const result = await this.model.updateOne(
       { store: storeId, product: productId, stock: { $gte: quantity } },
       { $inc: { stock: -quantity } },
+      { session },
     ).exec();
     return { modifiedCount: result.modifiedCount };
   }

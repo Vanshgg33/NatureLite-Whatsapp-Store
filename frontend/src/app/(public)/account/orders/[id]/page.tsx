@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Loader2,
   AlertTriangle,
+  CreditCard,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,6 +33,13 @@ import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
 import { useCartStore } from '@/lib/cart-store';
 import { cn } from '@/lib/utils';
+import type { Order } from '@/types';
+
+type RazorpayCheckoutResponse = {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+};
 
 const statusSteps = [
   { key: 'pending', label: 'Order Placed' },
@@ -55,8 +63,11 @@ export default function OrderDetailPage() {
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [isReordering, setIsReordering] = useState(false);
+  const [isPaying, setIsPaying] = useState(false);
+  const [showReturnDialog, setShowReturnDialog] = useState(false);
+  const [returnReason, setReturnReason] = useState('');
 
-  const { data: order, isLoading } = useQuery({
+  const { data: order, isLoading } = useQuery<Order | undefined>({
     queryKey: ['order', orderId],
     queryFn: () => api.getOrder(orderId),
   });
@@ -77,6 +88,27 @@ export default function OrderDetailPage() {
       toast({
         title: 'Cancellation Failed',
         description: 'Could not cancel order. Please try again or contact support.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const returnMutation = useMutation({
+    mutationFn: (reason: string) => api.requestReturn(orderId, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['order', orderId] });
+      queryClient.invalidateQueries({ queryKey: ['my-orders'] });
+      setShowReturnDialog(false);
+      setReturnReason('');
+      toast({
+        title: 'Return requested',
+        description: 'Your return request has been submitted.',
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Return request failed',
+        description: 'Could not submit return request. Please try again or contact support.',
         variant: 'destructive',
       });
     },
@@ -119,6 +151,54 @@ export default function OrderDetailPage() {
       });
     } finally {
       setIsReordering(false);
+    }
+  };
+
+  const handlePayNow = async () => {
+    if (!order || order.paymentStatus === 'paid' || order.paymentMethod !== 'prepaid') return;
+
+    setIsPaying(true);
+    try {
+      const paymentData = await api.createPaymentOrder(order._id);
+      const options = {
+        key: paymentData.keyId,
+        amount: paymentData.amount,
+        currency: paymentData.currency,
+        name: 'Naturelite Store',
+        description: `Order #${order.orderNumber}`,
+        order_id: paymentData.razorpayOrderId,
+        handler: async (response: RazorpayCheckoutResponse) => {
+          try {
+            await api.verifyPayment({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            });
+            toast({ title: 'Payment successful! Order confirmed.' });
+            queryClient.invalidateQueries({ queryKey: ['order', orderId] });
+            queryClient.invalidateQueries({ queryKey: ['my-orders'] });
+          } catch {
+            toast({
+              title: 'Payment verification failed',
+              description: 'Please contact support if amount was deducted.',
+              variant: 'destructive',
+            });
+          } finally {
+            setIsPaying(false);
+          }
+        },
+        theme: { color: '#D4A574' },
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.open();
+    } catch {
+      toast({
+        title: 'Payment gateway error',
+        description: 'Could not initiate payment. Please try again later.',
+        variant: 'destructive',
+      });
+      setIsPaying(false);
     }
   };
 
@@ -167,6 +247,11 @@ export default function OrderDetailPage() {
   const currentStepIndex = statusSteps.findIndex((s) => s.key === order.status);
   const canCancel = cancellableStatuses.includes(order.status);
   const canReorder = order.status === 'delivered' || order.status === 'cancelled';
+  const canPayNow = order.paymentMethod === 'prepaid' && order.paymentStatus !== 'paid';
+  const canRequestReturn =
+    order.status === 'delivered' &&
+    order.paymentStatus === 'paid' &&
+    (!order.returnRequestStatus || order.returnRequestStatus === 'rejected');
 
   return (
     <div className="space-y-6">
@@ -206,8 +291,30 @@ export default function OrderDetailPage() {
           </span>
         </div>
 
+        {canPayNow && (
+          <div className="mt-4 flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>Payment pending. Use Pay now to complete payment and confirm your order.</span>
+          </div>
+        )}
+
         {/* Action Buttons */}
-        <div className="flex gap-3 mt-4">
+        <div className="flex flex-wrap gap-3 mt-4">
+          {canPayNow && (
+            <Button
+              variant="outline"
+              onClick={handlePayNow}
+              disabled={isPaying}
+              className="border-brand-mustard text-brand-mustard hover:bg-brand-mustard/5"
+            >
+              {isPaying ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <CreditCard className="w-4 h-4 mr-2" />
+              )}
+              Pay now
+            </Button>
+          )}
           {canReorder && (
             <Button
               onClick={handleReorder}
@@ -230,6 +337,16 @@ export default function OrderDetailPage() {
             >
               <XCircle className="w-4 h-4 mr-2" />
               Cancel Order
+            </Button>
+          )}
+          {canRequestReturn && (
+            <Button
+              variant="outline"
+              onClick={() => setShowReturnDialog(true)}
+              className="border-brand-terracotta text-brand-terracotta hover:bg-brand-terracotta/5"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Request Return
             </Button>
           )}
         </div>
@@ -436,6 +553,18 @@ export default function OrderDetailPage() {
                 <span className="text-brand-muted">GST</span>
                 <span>{formatPrice(order.gstTotal)}</span>
               </div>
+              {typeof order.walletUsed === 'number' && order.walletUsed > 0 && (
+                <div className="flex justify-between text-brand-green">
+                  <span>Wallet used</span>
+                  <span>-{formatPrice(order.walletUsed / 100)}</span>
+                </div>
+              )}
+              {typeof order.paymentGatewayAmount === 'number' && order.paymentGatewayAmount > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-brand-muted">Paid online</span>
+                  <span>{formatPrice(order.paymentGatewayAmount / 100)}</span>
+                </div>
+              )}
               <div className="pt-2 border-t border-brand-border flex justify-between font-display font-bold text-lg">
                 <span>Total</span>
                 <span>{formatPrice(order.total)}</span>
@@ -511,6 +640,55 @@ export default function OrderDetailPage() {
                 </>
               ) : (
                 'Cancel Order'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Request Return Dialog */}
+      <Dialog open={showReturnDialog} onOpenChange={setShowReturnDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-brand-terracotta" />
+              Request Return
+            </DialogTitle>
+            <DialogDescription>
+              Tell us why you want to return this order. Our team will review your request and get back
+              to you.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <label className="font-body text-sm text-brand-text mb-1.5 block">
+              Reason for return
+            </label>
+            <Input
+              value={returnReason}
+              onChange={(e) => setReturnReason(e.target.value)}
+              placeholder="e.g., Item damaged, Wrong product received"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowReturnDialog(false)}
+              disabled={returnMutation.isPending}
+            >
+              Close
+            </Button>
+            <Button
+              onClick={() => returnMutation.mutate(returnReason)}
+              disabled={returnMutation.isPending || !returnReason.trim()}
+              className="bg-brand-terracotta hover:bg-brand-terracotta/90 text-white"
+            >
+              {returnMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                'Submit Request'
               )}
             </Button>
           </DialogFooter>

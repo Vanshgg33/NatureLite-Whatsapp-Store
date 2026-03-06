@@ -38,6 +38,8 @@ const stores_module_1 = require("./modules/stores/stores.module");
 const store_stock_module_1 = require("./modules/store-stock/store-stock.module");
 const store_sales_module_1 = require("./modules/store-sales/store-sales.module");
 const reminders_module_1 = require("./modules/reminders/reminders.module");
+const wishlist_module_1 = require("./modules/wishlist/wishlist.module");
+const wallet_module_1 = require("./modules/wallet/wallet.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -86,6 +88,8 @@ exports.AppModule = AppModule = __decorate([
             store_stock_module_1.StoreStockModule,
             store_sales_module_1.StoreSalesModule,
             reminders_module_1.RemindersModule,
+            wishlist_module_1.WishlistModule,
+            wallet_module_1.WalletModule,
         ],
         providers: [
             {

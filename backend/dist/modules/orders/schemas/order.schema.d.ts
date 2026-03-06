@@ -69,6 +69,8 @@ export declare class Order {
     subtotal: number;
     discount: number;
     couponCode?: string;
+    walletUsed: number;
+    paymentGatewayAmount: number;
     shippingCharge: number;
     gstTotal: number;
     total: number;
@@ -81,8 +83,16 @@ export declare class Order {
     trackingUrl?: string;
     expectedDeliveryDate?: Date;
     deliveredAt?: Date;
+    packedAt?: Date;
+    packedBy?: string;
+    billedAt?: Date;
+    billedBy?: string;
+    outForDeliveryAt?: Date;
     cancelledAt?: Date;
     cancelReason?: string;
+    returnRequestedAt?: Date;
+    returnRequestReason?: string;
+    returnRequestStatus?: 'requested' | 'approved' | 'rejected' | 'completed';
     invoiceUrl?: string;
     metadata: Record<string, unknown>;
     createdAt: Date;

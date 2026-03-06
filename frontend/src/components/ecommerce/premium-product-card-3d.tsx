@@ -72,7 +72,7 @@ export function PremiumProductCard3D({
         productId: product._id,
         name: product.name,
         slug: product.slug,
-        image: product.images[0] || '',
+        image: product.images?.[0] || '',
         price: product.price,
         compareAtPrice: product.compareAtPrice,
         gstPercentage: product.gstPercentage || 5,
@@ -141,7 +141,7 @@ export function PremiumProductCard3D({
               style={{ translateZ: 20 }}
             >
               <Image
-                src={product.images[0] || '/images/placeholder-product.jpg'}
+                src={product.images?.[0] || '/images/placeholder-product.jpg'}
                 alt={product.name}
                 fill
                 className="object-cover transition-transform duration-700 group-hover:scale-110"

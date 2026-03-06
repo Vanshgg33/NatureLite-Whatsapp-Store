@@ -22,18 +22,46 @@ export default function CartPage() {
     setMounted(true);
   }, []);
 
-  // Fetch cross-sell products (only on mount, not on every quantity change)
+  // Fetch cross-sell products (category-aware, only when cart has items)
   const itemCount = items.length;
   useEffect(() => {
     if (!mounted || itemCount === 0) return;
-    const cartProductIds = items.map((i) => i.productId);
-    api
-      .getProducts({ limit: 8, sortBy: 'totalSold', sortOrder: 'desc' })
-      .then((res) => {
+
+    const fetchCrossSell = async () => {
+      try {
+        const cartProductIds = items.map((i) => i.productId);
+        const firstItem = items[0];
+        let categoryId: string | undefined;
+
+        // Try to infer category from the first cart product
+        try {
+          const product = await api.getProduct(firstItem.productId);
+          if (typeof product.category === 'string') {
+            categoryId = product.category;
+          } else if (product.category && typeof product.category === 'object') {
+            // @ts-expect-error category may be populated
+            categoryId = product.category._id || product.category.id;
+          }
+        } catch {
+          // Fallback: ignore category and use generic top sellers
+        }
+
+        const res = await api.getProducts({
+          limit: 12,
+          sortBy: 'totalSold',
+          sortOrder: 'desc',
+          isActive: true,
+          category: categoryId,
+        });
+
         const filtered = res.items.filter((p: Product) => !cartProductIds.includes(p._id));
         setCrossSellProducts(filtered.slice(0, 4));
-      })
-      .catch(() => {});
+      } catch {
+        // Ignore cross-sell errors
+      }
+    };
+
+    fetchCrossSell();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted, itemCount]);
 

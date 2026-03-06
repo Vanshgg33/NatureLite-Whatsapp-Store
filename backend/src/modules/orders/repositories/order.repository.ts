@@ -36,12 +36,23 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
       endDate,
       sortBy = 'createdAt',
       sortOrder = 'desc',
+      forPacking,
+      forBilling,
+      forDelivery,
     } = query;
     const filter: Record<string, unknown> = {};
     if (isValidObjectIdString(userId)) {
       filter.user = parseObjectId(userId, 'userId');
     }
-    if (status) filter.status = status;
+    if (forPacking) {
+      filter.status = { $in: ['pending', 'confirmed', 'processing'] };
+    } else if (forBilling) {
+      filter.status = 'shipped';
+    } else if (forDelivery) {
+      filter.status = 'out_for_delivery';
+    } else if (status) {
+      filter.status = status;
+    }
     if (paymentStatus) filter.paymentStatus = paymentStatus;
     const searchOr = buildSearchOrFilter(search, ['orderNumber', 'shippingAddress.name', 'shippingAddress.phone']);
     if (searchOr.length) filter.$or = searchOr;

@@ -32,6 +32,8 @@ export function CartItem({ item, variant = 'default' }: CartItemProps) {
     removeItem(item.productId, item.variantSku);
   };
 
+  const nameInitial = (item.name || '?').charAt(0).toUpperCase();
+
   if (variant === 'compact') {
     return (
       <div className="flex gap-3 py-3 border-b border-brand-border last:border-0">
@@ -49,7 +51,7 @@ export function CartItem({ item, variant = 'default' }: CartItemProps) {
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <span className="font-display text-xl text-brand-brown/20">
-                {item.name[0]}
+                {nameInitial}
               </span>
             </div>
           )}
@@ -89,7 +91,7 @@ export function CartItem({ item, variant = 'default' }: CartItemProps) {
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <span className="font-display text-3xl text-brand-brown/20">
-              {item.name[0]}
+              {nameInitial}
             </span>
           </div>
         )}

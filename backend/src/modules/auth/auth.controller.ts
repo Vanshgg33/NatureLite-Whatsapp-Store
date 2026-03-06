@@ -8,6 +8,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
@@ -20,6 +21,7 @@ import {
   SendOtpDto,
   ChangePasswordDto,
   RefreshTokenDto,
+  LogoutDto,
   AuthResponse,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
@@ -113,6 +115,8 @@ export class AuthController {
   }
 
   @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('customer/send-otp')
   @HttpCode(HttpStatus.OK)
   async sendOtp(
@@ -137,8 +141,12 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout(
+    @Body() body: LogoutDto,
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ message: string }> {
+    if (body?.refreshToken) {
+      await this.authService.revokeRefreshTokensForUser(body.refreshToken);
+    }
     this.clearAuthCookie(res);
     return { message: 'Logged out successfully' };
   }

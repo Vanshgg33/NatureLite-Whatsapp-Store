@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException, Logger } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
@@ -6,6 +6,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { AdminUserRepository } from '../admin/repositories/admin-user.repository';
 import { UserRepository } from '../users/repositories/user.repository';
 import { StoreRepository } from '../stores/repositories/store.repository';
+import { RefreshTokenRepository } from './repositories/refresh-token.repository';
+import { RefreshToken } from './schemas/refresh-token.schema';
 import {
   AdminLoginDto,
   AdminRegisterDto,
@@ -21,12 +23,12 @@ import { parseObjectId } from '@/common/utils/objectid.util';
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  private refreshTokens = new Map<string, { userId: string; role: string; storeId?: string; expiresAt: Date }>();
 
   constructor(
     private readonly adminUserRepository: AdminUserRepository,
     private readonly userRepository: UserRepository,
     private readonly storeRepository: StoreRepository,
+    private readonly refreshTokenRepository: RefreshTokenRepository,
     private jwtService: JwtService,
     private configService: ConfigService,
   ) {}
@@ -34,35 +36,45 @@ export class AuthService {
   private generateTokens(payload: JwtPayload): { accessToken: string; refreshToken: string } {
     const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
     const refreshToken = uuidv4();
-    this.refreshTokens.set(refreshToken, {
-      userId: payload.sub,
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const data: Partial<RefreshToken> = {
+      token: refreshToken,
+      userId: parseObjectId(payload.sub, 'userId'),
       role: payload.role,
-      storeId: payload.storeId,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      expiresAt,
+    };
+    if (payload.storeId) {
+      data.storeId = parseObjectId(payload.storeId, 'storeId');
+    }
+    // Fire-and-forget; failures will surface on refresh attempt
+    this.refreshTokenRepository.create(data).catch((err) => {
+      this.logger.warn(`Failed to persist refresh token: ${err.message}`);
     });
     return { accessToken, refreshToken };
   }
 
   async refreshAccessToken(refreshToken: string): Promise<AuthResponse> {
-    const stored = this.refreshTokens.get(refreshToken);
+    const tokenDoc = await this.refreshTokenRepository.findOne({ token: refreshToken });
 
-    if (!stored || stored.expiresAt < new Date()) {
-      this.refreshTokens.delete(refreshToken);
+    if (!tokenDoc || tokenDoc.expiresAt < new Date()) {
+      if (tokenDoc?._id) {
+        await this.refreshTokenRepository.deleteOne({ _id: tokenDoc._id });
+      }
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
-    this.refreshTokens.delete(refreshToken);
+    await this.refreshTokenRepository.deleteOne({ _id: tokenDoc._id });
 
     let user: any;
     let phone = '';
-    if (stored.role === 'customer') {
-      user = await this.userRepository.findByIdString(stored.userId);
+    if (tokenDoc.role === 'customer') {
+      user = await this.userRepository.findByIdString(tokenDoc.userId.toString());
       if (!user || user.isBlocked) {
         throw new UnauthorizedException('User account is not active');
       }
       phone = user.phone || '';
     } else {
-      user = await this.adminUserRepository.findByIdString(stored.userId);
+      user = await this.adminUserRepository.findByIdString(tokenDoc.userId.toString());
       if (!user || !user.isActive) {
         throw new UnauthorizedException('Admin account is not active');
       }
@@ -70,10 +82,11 @@ export class AuthService {
     }
 
     const payload: JwtPayload = {
-      sub: stored.userId,
+      sub: tokenDoc.userId.toString(),
       phone,
-      role: stored.role as JwtPayload['role'],
-      storeId: stored.storeId,
+      role: tokenDoc.role as JwtPayload['role'],
+      storeId: tokenDoc.storeId ? tokenDoc.storeId.toString() : undefined,
+      departmentType: tokenDoc.role !== 'customer' ? (user as any).departmentType : undefined,
     };
 
     const tokens = this.generateTokens(payload);
@@ -86,8 +99,8 @@ export class AuthService {
         email: user.email,
         phone: user.phone,
         name: user.name,
-        role: stored.role,
-        storeId: stored.storeId,
+        role: tokenDoc.role,
+        storeId: tokenDoc.storeId ? tokenDoc.storeId.toString() : undefined,
       },
     };
   }
@@ -138,6 +151,7 @@ export class AuthService {
       phone: admin.phone || '',
       role: admin.role,
       storeId,
+      departmentType: admin.departmentType,
     };
 
     const tokens = this.generateTokens(payload);
@@ -149,6 +163,7 @@ export class AuthService {
         email: admin.email,
         name: admin.name,
         role: admin.role,
+        departmentType: admin.departmentType,
         storeId,
         storeName,
       },
@@ -164,12 +179,13 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
+    // Public registration never allows superadmin; only existing superadmins can create superadmins via admin panel
     const adminData: any = {
       name: dto.name,
       email: dto.email.toLowerCase(),
       password: hashedPassword,
       phone: dto.phone,
-      role: dto.role || 'admin',
+      role: 'admin',
     };
     if ((dto as any).storeId) {
       adminData.store = parseObjectId((dto as any).storeId, 'storeId');
@@ -189,6 +205,7 @@ export class AuthService {
       phone: admin.phone || '',
       role: admin.role,
       storeId,
+      departmentType: admin.departmentType,
     };
 
     const tokens = this.generateTokens(payload);
@@ -200,15 +217,34 @@ export class AuthService {
         email: admin.email,
         name: admin.name,
         role: admin.role,
+        departmentType: admin.departmentType,
         storeId,
         storeName,
       },
     };
   }
 
+  /** In-memory OTP store: phone -> { otp, expiresAt }. Rate limit: lastSentAt per phone. */
+  private readonly otpStore = new Map<string, { otp: string; expiresAt: number }>();
+  private readonly otpRateLimit = new Map<string, number>();
+  private static readonly OTP_TTL_MS = 5 * 60 * 1000;
+  private static readonly OTP_RATE_LIMIT_MS = 60 * 1000;
+
   async customerLogin(dto: CustomerLoginDto): Promise<AuthResponse> {
-    if (dto.otp !== '123456' && process.env.NODE_ENV === 'production') {
-      throw new UnauthorizedException('Invalid OTP');
+    const stored = this.otpStore.get(dto.phone);
+    const devBypass = dto.otp === '123456' && process.env.NODE_ENV !== 'production';
+    if (!devBypass) {
+      if (!stored) {
+        throw new UnauthorizedException('Invalid or expired OTP. Please request a new one.');
+      }
+      if (Date.now() > stored.expiresAt) {
+        this.otpStore.delete(dto.phone);
+        throw new UnauthorizedException('OTP has expired. Please request a new one.');
+      }
+      if (stored.otp !== dto.otp) {
+        throw new UnauthorizedException('Invalid OTP');
+      }
+      this.otpStore.delete(dto.phone);
     }
 
     let user = await this.userRepository.findOneByPhone(dto.phone);
@@ -341,6 +377,19 @@ export class AuthService {
   }
 
   async sendOtp(phone: string): Promise<{ success: boolean; message: string }> {
+    const now = Date.now();
+    const lastSent = this.otpRateLimit.get(phone);
+    if (lastSent != null && now - lastSent < AuthService.OTP_RATE_LIMIT_MS) {
+      const waitSec = Math.ceil((AuthService.OTP_RATE_LIMIT_MS - (now - lastSent)) / 1000);
+      throw new BadRequestException(`Please wait ${waitSec} seconds before requesting another OTP.`);
+    }
+
+    const otp = process.env.NODE_ENV === 'production'
+      ? String(Math.floor(100000 + Math.random() * 900000))
+      : '123456';
+    this.otpStore.set(phone, { otp, expiresAt: now + AuthService.OTP_TTL_MS });
+    this.otpRateLimit.set(phone, now);
+
     this.logger.log(`Sending OTP to ${phone}`);
     return {
       success: true,
@@ -383,6 +432,17 @@ export class AuthService {
     }
 
     return payload;
+  }
+
+  /**
+   * Revoke all refresh tokens for the user identified by the given refresh token.
+   * Call this on logout when the client sends its refresh token so sessions are fully terminated.
+   */
+  async revokeRefreshTokensForUser(refreshToken: string): Promise<void> {
+    const tokenDoc = await this.refreshTokenRepository.findOne({ token: refreshToken });
+    if (tokenDoc) {
+      await this.refreshTokenRepository.deleteManyByUserId(tokenDoc.userId);
+    }
   }
 
   async getProfile(userId: string, role: string): Promise<any> {

@@ -24,6 +24,11 @@ export class AdminUserRepository extends BaseRepository<AdminUserDocument> {
     return this.model.findOne({ email: email.toLowerCase() }).exec();
   }
 
+  async findOneByPhone(phone: string): Promise<AdminUserDocument | null> {
+    if (!phone || !phone.trim()) return null;
+    return this.model.findOne({ phone: phone.trim() }).exec();
+  }
+
   async findByIdAndUpdateExcludePassword(
     id: Types.ObjectId,
     update: Record<string, unknown>,

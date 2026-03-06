@@ -131,9 +131,9 @@ export default function ProductsPage() {
                       return (
                       <TableRow key={product._id}>
                         <TableCell>
-                          {product.images[0] ? (
+                          {product.images?.[0] ? (
                             <Image
-                              src={product.images[0]}
+                              src={product.images?.[0] as string}
                               alt={product.name}
                               width={40}
                               height={40}

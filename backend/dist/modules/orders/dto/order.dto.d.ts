@@ -20,6 +20,7 @@ export declare class CreateOrderDto {
     paymentMethod: PaymentMethod;
     couponCode?: string;
     notes?: string;
+    walletAmount?: number;
 }
 export declare class UpdateOrderStatusDto {
     status: OrderStatus;
@@ -54,8 +55,31 @@ export declare class OrderQueryDto {
     endDate?: string;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
+    forPacking?: boolean;
+    forBilling?: boolean;
+    forDelivery?: boolean;
 }
 export declare class ReorderDto {
     orderId: string;
     shippingAddress?: ShippingAddressDto;
+}
+export declare class UpdateDeliveryWorkflowDto {
+    status: 'delivery_done' | 'customer_ringing' | 'customer_cancelled' | 'customer_tomorrow';
+    paymentMethod?: 'cash' | 'upi';
+    paymentProofUrl?: string;
+    note?: string;
+}
+export declare class RequestReturnDto {
+    reason: string;
+}
+export declare class GuestCreateOrderDto {
+    items: OrderItemDto[];
+    shippingAddress: ShippingAddressDto;
+    paymentMethod: PaymentMethod;
+    couponCode?: string;
+    notes?: string;
+    phone: string;
+    email?: string;
+    name?: string;
+    walletAmount?: number;
 }

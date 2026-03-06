@@ -8,6 +8,7 @@ interface AdminUser {
   role: 'admin' | 'superadmin' | 'customer';
   storeId?: string;
   storeName?: string;
+  departmentType?: 'packing' | 'billing' | 'delivery';
 }
 
 interface AdminAuthState {

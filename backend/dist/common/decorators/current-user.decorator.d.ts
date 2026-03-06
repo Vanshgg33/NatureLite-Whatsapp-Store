@@ -3,6 +3,7 @@ export interface JwtPayload {
     phone: string;
     role: 'customer' | 'admin' | 'superadmin';
     storeId?: string;
+    departmentType?: 'packing' | 'billing' | 'delivery';
     iat?: number;
     exp?: number;
 }
