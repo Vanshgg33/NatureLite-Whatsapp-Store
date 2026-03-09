@@ -292,7 +292,7 @@ export default function StoreStockPage() {
                 if (!editItem) return;
                 updateStockMutation.mutate({
                   storeId: selectedStoreId,
-                  productId: typeof editItem.product === 'string' ? editItem.product : (editItem.product as any)._id,
+                  productId: typeof editItem.product === 'string' ? editItem.product : (editItem.product as { _id: string })._id,
                   stock: parseInt(editStock),
                   lowStockThreshold: parseInt(editThreshold),
                 });

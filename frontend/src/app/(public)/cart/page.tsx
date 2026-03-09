@@ -10,7 +10,7 @@ import { CartSummary } from '@/components/ecommerce/cart-summary';
 import { PremiumProductCardCompact } from '@/components/ecommerce/premium-product-card';
 import { useCartStore, useSyncCartOnAuth } from '@/lib/cart-store';
 import { api } from '@/lib/api';
-import { Product } from '@/types';
+import { Product, Category } from '@/types';
 
 export default function CartPage() {
   const items = useCartStore((state) => state.items);
@@ -45,8 +45,7 @@ export default function CartPage() {
           if (typeof product.category === 'string') {
             categoryId = product.category;
           } else if (product.category && typeof product.category === 'object') {
-            // @ts-expect-error category may be populated
-            categoryId = product.category._id || product.category.id;
+            categoryId = (product.category as Category)._id;
           }
         } catch {
           // Fallback: ignore category and use generic top sellers

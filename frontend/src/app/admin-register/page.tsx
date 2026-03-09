@@ -46,8 +46,9 @@ export default function AdminRegisterPage() {
         role: response.user.role,
       });
       router.push('/admin/dashboard');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Registration failed. Please try again.');
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setError(msg || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }

@@ -7,15 +7,19 @@ import { Button } from '@/components/ui/button';
 interface HeaderProps {
   title: string;
   description?: string;
+  icon?: React.ReactNode;
   action?: React.ReactNode;
 }
 
-export function Header({ title, description, action }: HeaderProps) {
+export function Header({ title, description, icon, action }: HeaderProps) {
   return (
     <header className="flex h-14 md:h-16 flex-col sm:flex-row sm:items-center justify-between gap-3 border-b bg-white px-4 sm:px-6 py-3 sm:py-0">
-      <div className="min-w-0">
-        <h1 className="text-lg sm:text-xl font-semibold text-gray-900 truncate">{title}</h1>
-        {description && <p className="text-xs sm:text-sm text-gray-500 truncate">{description}</p>}
+      <div className="min-w-0 flex items-center gap-2">
+        {icon}
+        <div>
+          <h1 className="text-lg sm:text-xl font-semibold text-gray-900 truncate">{title}</h1>
+          {description && <p className="text-xs sm:text-sm text-gray-500 truncate">{description}</p>}
+        </div>
       </div>
 
       <div className="flex items-center gap-2 sm:gap-4 shrink-0">

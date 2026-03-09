@@ -25,6 +25,7 @@ export interface AdminUser {
   role: 'admin' | 'superadmin';
   isActive: boolean;
   store?: string;
+  departmentType?: 'packing' | 'billing' | 'delivery';
   permissions: string[];
   createdAt: string;
   updatedAt: string;
@@ -673,6 +674,68 @@ export interface Store {
   updatedAt: string;
 }
 
+export interface UpdateStoreDto {
+  name?: string;
+  address?: string;
+  phone?: string;
+  isActive?: boolean;
+}
+
+// ==================== FEEDBACK TYPES ====================
+export type FeedbackType = 'product_review' | 'order_feedback' | 'general' | 'complaint' | 'suggestion';
+export type FeedbackStatus = 'pending' | 'acknowledged' | 'resolved' | 'closed' | 'dismissed';
+
+export interface Feedback {
+  _id: string;
+  user: User | string;
+  order?: string;
+  product?: Product | string;
+  type: FeedbackType;
+  rating?: number;
+  message: string;
+  images: string[];
+  status: FeedbackStatus;
+  adminResponse?: string;
+  respondedAt?: string;
+  respondedBy?: string;
+  isPublic: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductReview {
+  _id: string;
+  user: { name?: string };
+  userId?: { name?: string };
+  rating?: number;
+  message: string;
+  adminResponse?: string;
+  createdAt: string;
+}
+
+// ==================== RAZORPAY ====================
+export interface RazorpayCheckoutResponse {
+  razorpay_payment_id: string;
+  razorpay_order_id: string;
+  razorpay_signature: string;
+}
+
+declare global {
+  interface Window {
+    Razorpay: new (options: {
+      key: string;
+      amount: number;
+      currency: string;
+      name: string;
+      description?: string;
+      order_id?: string;
+      handler: (response: RazorpayCheckoutResponse) => void | Promise<void>;
+      theme?: { color?: string };
+      modal?: { ondismiss?: () => void };
+    }) => { open: () => void };
+  }
+}
+
 export interface VariantStockEntry {
   variantSku: string;
   stock: number;
@@ -845,4 +908,19 @@ export interface MultiStoreRevenueData {
   storeId: string;
   storeName: string;
   data: { date: string; revenue: number; sales: number }[];
+}
+
+// ==================== AUDIT TYPES ====================
+export interface AuditLog {
+  _id: string;
+  action: string;
+  performedBy: string;
+  performedByName?: string;
+  targetId?: string;
+  targetModel?: string;
+  previousValues?: Record<string, unknown>;
+  newValues?: Record<string, unknown>;
+  description?: string;
+  ipAddress?: string;
+  createdAt: string;
 }

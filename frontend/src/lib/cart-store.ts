@@ -222,23 +222,18 @@ export const useCartStore = create<CartState>()(
             // Server has items, use server state
             // Convert server cart items to local format
             const items: CartItem[] = serverCart.items.map((item) => {
-              const productObj = item.product as unknown as {
-                id?: string;
-                _id?: string;
-                name?: string;
-                slug?: string;
-                image?: string;
-              };
+              type ProductRef = string | { id?: string; _id?: string; name?: string; slug?: string; image?: string };
+              const productObj = item.product as ProductRef;
               const productId =
-                typeof item.product === 'string'
-                  ? item.product
+                typeof productObj === 'string'
+                  ? productObj
                   : productObj.id || productObj._id || '';
 
               return {
                 productId,
-                name: productObj.name || '',
-                slug: productObj.slug || '',
-                image: productObj.image || '',
+                name: (typeof productObj === 'object' ? productObj.name : undefined) || '',
+                slug: (typeof productObj === 'object' ? productObj.slug : undefined) || '',
+                image: (typeof productObj === 'object' ? productObj.image : undefined) || '',
                 price: item.price,
                 quantity: item.quantity,
                 variantSku: item.variantSku,

@@ -97,7 +97,7 @@ export default function BillingDashboardPage() {
                   <Button
                     size="sm"
                     className="flex-1 flex items-center justify-center gap-2"
-                    disabled={markBilled.isLoading}
+                    disabled={markBilled.isPending}
                     onClick={() => markBilled.mutate(order._id)}
                   >
                     <CheckCircle2 className="h-4 w-4" />

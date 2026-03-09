@@ -192,7 +192,7 @@ export default function AdminLoginsPage() {
               type="submit"
               size="sm"
               className="w-full"
-              disabled={createUser.isLoading}
+              disabled={createUser.isPending}
             >
               <Plus className="h-4 w-4 mr-1" />
               Create login

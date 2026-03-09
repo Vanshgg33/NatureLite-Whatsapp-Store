@@ -237,10 +237,11 @@ function ChangePasswordCard() {
       setNewPassword('');
       setConfirmPassword('');
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
+      const msg = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
       toast({
         title: 'Failed to change password',
-        description: error?.response?.data?.message || 'Please check your current password',
+        description: msg || 'Please check your current password',
         variant: 'destructive',
       });
     },

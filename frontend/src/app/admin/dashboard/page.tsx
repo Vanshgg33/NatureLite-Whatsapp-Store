@@ -51,6 +51,7 @@ import {
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { formatCurrency, formatDate, getStatusColor, getProductTotalStock, getStoreItemTotalStock } from '@/lib/utils';
+import type { RevenueDataPoint, Reminder, StoreSale, StoreStockItem, Product } from '@/types';
 
 const TOOLTIP_STYLE = {
   backgroundColor: '#fff',
@@ -73,7 +74,7 @@ const STATUS_COLORS: Record<string, string> = {
   refunded: '#6B7280',
 };
 
-function CenterLabel({ viewBox, total }: { viewBox?: any; total: number }) {
+function CenterLabel({ viewBox, total }: { viewBox?: { cx?: number; cy?: number }; total: number }) {
   if (!viewBox) return null;
   const { cx, cy } = viewBox;
   return (
@@ -151,10 +152,10 @@ export default function DashboardPage() {
     const half = Math.floor(revenueData.length / 2);
     const recent = revenueData.slice(half);
     const older = revenueData.slice(0, half);
-    const recentRev = recent.reduce((s: number, d: any) => s + d.revenue, 0);
-    const olderRev = older.reduce((s: number, d: any) => s + d.revenue, 0);
-    const recentOrd = recent.reduce((s: number, d: any) => s + d.orders, 0);
-    const olderOrd = older.reduce((s: number, d: any) => s + d.orders, 0);
+    const recentRev = recent.reduce((s: number, d: RevenueDataPoint) => s + d.revenue, 0);
+    const olderRev = older.reduce((s: number, d: RevenueDataPoint) => s + d.revenue, 0);
+    const recentOrd = recent.reduce((s: number, d: RevenueDataPoint) => s + d.orders, 0);
+    const olderOrd = older.reduce((s: number, d: RevenueDataPoint) => s + d.orders, 0);
     return {
       revenueChange: olderRev > 0 ? ((recentRev - olderRev) / olderRev) * 100 : 0,
       ordersChange: olderOrd > 0 ? ((recentOrd - olderOrd) / olderOrd) * 100 : 0,
@@ -243,8 +244,8 @@ export default function DashboardPage() {
 
   const pieTotal = pieData.reduce((s, d) => s + d.value, 0);
 
-  const totalRevenue14d = revenueData?.reduce((s: number, d: any) => s + d.revenue, 0) || 0;
-  const totalOrders14d = revenueData?.reduce((s: number, d: any) => s + d.orders, 0) || 0;
+  const totalRevenue14d = revenueData?.reduce((s: number, d: RevenueDataPoint) => s + d.revenue, 0) || 0;
+  const totalOrders14d = revenueData?.reduce((s: number, d: RevenueDataPoint) => s + d.orders, 0) || 0;
   const avgOrderValue = totalOrders14d > 0 ? totalRevenue14d / totalOrders14d : 0;
 
   const greeting = (() => {
@@ -327,7 +328,7 @@ export default function DashboardPage() {
               Reminders (due within 24 hours)
             </h3>
             <div className="space-y-2">
-              {dueReminders.map((r: any) => (
+              {dueReminders.map((r: Reminder) => (
                 <Card key={r._id} className="rounded-xl border-amber-200 bg-amber-50/50">
                   <CardContent className="py-4 px-4 flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
@@ -481,7 +482,7 @@ export default function DashboardPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {storeStats.recentSales.slice(0, 5).map((sale: any) => (
+                        {storeStats.recentSales.slice(0, 5).map((sale: StoreSale) => (
                           <TableRow key={sale._id} className="hover:bg-muted/30">
                             <TableCell className="font-medium text-sm">{sale.saleNumber}</TableCell>
                             <TableCell>
@@ -530,12 +531,12 @@ export default function DashboardPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      {storeStats.lowStockProducts.slice(0, 6).map((p: any) => (
+                      {storeStats.lowStockProducts.slice(0, 6).map((p: StoreStockItem) => (
                         <div
                           key={p._id}
                           className="flex items-center justify-between p-2 rounded-xl bg-red-50/50"
                         >
-                          <span className="text-sm truncate flex-1 pr-2">{p.productName || p.name}</span>
+                          <span className="text-sm truncate flex-1 pr-2">{p.productName}</span>
                           <Badge variant="destructive" className="rounded-lg text-xs">
                             {getStoreItemTotalStock(p)} left
                           </Badge>
@@ -798,7 +799,7 @@ export default function DashboardPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    {lowStockProducts.slice(0, 4).map((p: any) => (
+                    {lowStockProducts.slice(0, 4).map((p: Product) => (
                       <div
                         key={p._id}
                         className="flex items-center justify-between p-2 rounded-xl bg-red-50/50"

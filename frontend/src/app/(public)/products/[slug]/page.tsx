@@ -17,6 +17,7 @@ import { useCustomerStore } from '@/lib/customer-store';
 import { useToast } from '@/components/ui/use-toast';
 import { api } from '@/lib/api';
 import { cn, getProductTotalStock } from '@/lib/utils';
+import type { ProductReview } from '@/types';
 import { useWishlistStore } from '@/lib/wishlist-store';
 import dynamic from 'next/dynamic';
 
@@ -390,7 +391,7 @@ export default function ProductDetailPage() {
               <div className="flex items-center gap-1">
                 {[...Array(5)].map((_, i) => {
                   const avgRating = reviews && reviews.length > 0
-                    ? reviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / reviews.length
+                    ? reviews.reduce((sum: number, r: ProductReview) => sum + (r.rating || 0), 0) / reviews.length
                     : 0;
                   return (
                     <Star
@@ -407,7 +408,7 @@ export default function ProductDetailPage() {
               </div>
               <span className="font-body text-sm text-brand-muted">
                 {reviews && reviews.length > 0
-                  ? `${(reviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / reviews.length).toFixed(1)} (${reviews.length} review${reviews.length !== 1 ? 's' : ''})`
+                  ? `${(reviews.reduce((sum: number, r: ProductReview) => sum + (r.rating || 0), 0) / reviews.length).toFixed(1)} (${reviews.length} review${reviews.length !== 1 ? 's' : ''})`
                   : 'No reviews yet'}
               </span>
             </div>
@@ -664,7 +665,7 @@ export default function ProductDetailPage() {
           {/* Reviews List */}
           {reviews && reviews.length > 0 ? (
             <div className="space-y-4">
-              {reviews.map((review: any) => (
+              {reviews.map((review: ProductReview) => (
                 <div
                   key={review._id}
                   className="bg-white rounded-2xl p-6 shadow-brand-sm"
@@ -684,7 +685,7 @@ export default function ProductDetailPage() {
                       ))}
                     </div>
                     <span className="font-body text-sm font-medium text-brand-charcoal">
-                      {review.userId?.name || 'Customer'}
+                      {review.user?.name ?? review.userId?.name ?? 'Customer'}
                     </span>
                     <span className="font-body text-xs text-brand-muted">
                       {new Date(review.createdAt).toLocaleDateString()}

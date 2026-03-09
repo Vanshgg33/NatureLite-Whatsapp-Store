@@ -55,13 +55,18 @@ import {
   WishlistResponse,
   WalletBalance,
   WalletTransaction,
+  Feedback,
+  ProductReview,
+  AuditLog,
 } from '@/types';
 
-// Backend API base URL. In production this should be set via NEXT_PUBLIC_API_URL.
-// In development, if not set, we fall back to window.location.origin + /api/v1.
+// Backend API base URL. Set via NEXT_PUBLIC_API_URL in .env.local
+// Fallback: deployed backend when env missing, or localhost when running backend locally
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== 'undefined' ? `${window.location.origin}/api/v1` : '');
+  (typeof window !== 'undefined'
+    ? 'https://store-phi-lemon.vercel.app/api/v1'
+    : 'https://store-phi-lemon.vercel.app/api/v1');
 
 class ApiClient {
   private client: AxiosInstance;
@@ -668,7 +673,7 @@ class ApiClient {
   async updateSettings(key: 'whatsapp', updates: Partial<WhatsAppSettings>): Promise<WhatsAppSettings>;
   async updateSettings(key: 'appearance', updates: Partial<AppearanceSettings>): Promise<AppearanceSettings>;
   async updateSettings(key: 'banners', updates: Partial<BannerSettings>): Promise<BannerSettings>;
-  async updateSettings(key: string, updates: Record<string, unknown>): Promise<StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings> {
+  async updateSettings(key: string, updates: Partial<StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings>): Promise<StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings> {
     const response = await this.client.put<ApiResponse<StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings>>(`/settings/${key}/update`, updates);
     return response.data.data;
   }
@@ -862,39 +867,39 @@ class ApiClient {
     rating?: number;
     message: string;
     images?: string[];
-  }): Promise<any> {
-    const response = await this.client.post<ApiResponse<any>>('/feedback', data);
+  }): Promise<Feedback> {
+    const response = await this.client.post<ApiResponse<Feedback>>('/feedback', data);
     return response.data.data;
   }
 
-  async getProductReviews(productId: string): Promise<any[]> {
-    const response = await this.client.get<ApiResponse<any[]>>(`/feedback/product/${productId}`);
+  async getProductReviews(productId: string): Promise<ProductReview[]> {
+    const response = await this.client.get<ApiResponse<ProductReview[]>>(`/feedback/product/${productId}`);
     return response.data.data;
   }
 
-  async getMyFeedback(): Promise<any[]> {
-    const response = await this.client.get<ApiResponse<any[]>>('/feedback/my');
+  async getMyFeedback(): Promise<Feedback[]> {
+    const response = await this.client.get<ApiResponse<Feedback[]>>('/feedback/my');
     return response.data.data;
   }
 
-  async getAllFeedback(params?: { page?: number; limit?: number; type?: string; status?: string }): Promise<PaginatedResponse<any>> {
-    const response = await this.client.get<ApiResponse<PaginatedResponse<any>>>('/feedback', { params });
+  async getAllFeedback(params?: { page?: number; limit?: number; type?: string; status?: string }): Promise<PaginatedResponse<Feedback>> {
+    const response = await this.client.get<ApiResponse<PaginatedResponse<Feedback>>>('/feedback', { params });
     return response.data.data;
   }
 
-  async respondToFeedback(id: string, response: string): Promise<any> {
-    const res = await this.client.put<ApiResponse<any>>(`/feedback/${id}/respond`, { response });
+  async respondToFeedback(id: string, response: string): Promise<Feedback> {
+    const res = await this.client.put<ApiResponse<Feedback>>(`/feedback/${id}/respond`, { response });
     return res.data.data;
   }
 
-  async updateFeedbackStatus(id: string, status: string): Promise<any> {
-    const res = await this.client.put<ApiResponse<any>>(`/feedback/${id}/status`, { status });
+  async updateFeedbackStatus(id: string, status: string): Promise<Feedback> {
+    const res = await this.client.put<ApiResponse<Feedback>>(`/feedback/${id}/status`, { status });
     return res.data.data;
   }
 
   // ==================== AUDIT ====================
-  async getAuditLogs(params?: { page?: number; limit?: number; action?: string }): Promise<PaginatedResponse<any>> {
-    const response = await this.client.get<ApiResponse<PaginatedResponse<any>>>('/audit', { params });
+  async getAuditLogs(params?: { page?: number; limit?: number; action?: string }): Promise<PaginatedResponse<AuditLog>> {
+    const response = await this.client.get<ApiResponse<PaginatedResponse<AuditLog>>>('/audit', { params });
     return response.data.data;
   }
 

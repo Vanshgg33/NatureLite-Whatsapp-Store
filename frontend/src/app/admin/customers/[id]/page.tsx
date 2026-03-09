@@ -153,13 +153,12 @@ export default function CustomerDetailPage() {
       if (d >= day30) last30++;
       if (d >= day60) last60++;
       if (d >= day90) last90++;
-      (o.items || []).forEach(
-        (item: { name?: string; product?: { name?: string }; quantity: number }) => {
-          const name = item.name || (item.product as { name?: string })?.name || 'Unknown';
-          if (!productCount[name]) productCount[name] = { name, quantity: 0 };
-          productCount[name].quantity += item.quantity || 0;
-        },
-      );
+      (o.items || []).forEach((item) => {
+        const product = item.product as { name?: string } | undefined;
+        const name = item.name || product?.name || 'Unknown';
+        if (!productCount[name]) productCount[name] = { name, quantity: 0 };
+        productCount[name].quantity += item.quantity || 0;
+      });
     });
     const mostBought = Object.values(productCount)
       .sort((a, b) => b.quantity - a.quantity)

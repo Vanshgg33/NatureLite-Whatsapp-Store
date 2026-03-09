@@ -29,7 +29,16 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
-import type { StoreRevenueToday, StoreStockSummary, MonthOverMonthData, TopSellingProduct, TopCustomer } from '@/types';
+import type {
+  StoreRevenueToday,
+  StoreStockSummary,
+  MonthOverMonthData,
+  TopSellingProduct,
+  TopCustomer,
+  MultiStoreRevenueData,
+} from '@/types';
+
+type RevenueChartPoint = { date: string } & Record<string, number | string>;
 
 const STORE_COLORS: Record<string, string> = {
   raipur: '#16a34a',
@@ -96,10 +105,10 @@ export default function StoresDashboardPage() {
 
   // Build chart data from revenue comparison
   const chartData = (() => {
-    const dateMap = new Map<string, any>();
-    revenueComparison.forEach((storeData: any) => {
+    const dateMap = new Map<string, RevenueChartPoint>();
+    revenueComparison.forEach((storeData: MultiStoreRevenueData) => {
       const code = stores.find((s) => s._id === storeData.storeId)?.code || storeData.storeId;
-      storeData.data?.forEach((point: any) => {
+      storeData.data?.forEach((point: { date: string; revenue: number; sales: number }) => {
         if (!dateMap.has(point.date)) {
           dateMap.set(point.date, { date: point.date });
         }

@@ -19,11 +19,7 @@ import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 import type { PaymentMethod, CreateOrderDto, GuestCreateOrderDto, WalletBalance } from '@/types';
 
-type RazorpayCheckoutResponse = {
-  razorpay_order_id: string;
-  razorpay_payment_id: string;
-  razorpay_signature: string;
-};
+import type { RazorpayCheckoutResponse } from '@/types';
 
 const checkoutSchema = z.object({
   name: z.string().min(2, 'Name is required'),
@@ -285,7 +281,7 @@ export default function CheckoutPage() {
             },
           };
 
-          const rzp = new (window as any).Razorpay(options);
+          const rzp = new window.Razorpay(options);
           rzp.open();
           return; // Don't clear cart yet - wait for payment handler
         } catch {

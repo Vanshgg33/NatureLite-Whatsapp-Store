@@ -26,7 +26,8 @@ export function BarcodeScanCard({ onProductFound, disabled }: BarcodeScanCardPro
   const [lookupSuccess, setLookupSuccess] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const html5QrCodeRef = useRef<any>(null);
+  type ScannerInstance = { isScanning?: boolean | (() => boolean); stop?: () => Promise<void> | void };
+  const html5QrCodeRef = useRef<ScannerInstance | null>(null);
 
   const handleLookup = useCallback(async (code: string) => {
     const trimmed = String(code).trim().replace(/\D/g, '');
@@ -79,8 +80,12 @@ export function BarcodeScanCard({ onProductFound, disabled }: BarcodeScanCardPro
 
   const stopCamera = useCallback(() => {
     const scanner = html5QrCodeRef.current;
-    if (scanner?.isScanning?.()) {
-      scanner.stop().catch(() => {});
+    const isScanning = scanner?.isScanning !== undefined
+      ? (typeof scanner.isScanning === 'function' ? scanner.isScanning() : scanner.isScanning)
+      : false;
+    if (isScanning && scanner?.stop) {
+      const result = scanner.stop();
+      if (result && typeof result.catch === 'function') result.catch(() => {});
     }
     html5QrCodeRef.current = null;
     setShowCamera(false);

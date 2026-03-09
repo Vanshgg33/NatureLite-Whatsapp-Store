@@ -20,22 +20,29 @@ async function createApp() {
   app.use(cookieParser());
   app.use(mongoSanitize());
 
+  // CORS: support comma-separated FRONTEND_URL for multiple origins (e.g. prod + localhost)
+  const frontendUrl = configService.get<string>('frontendUrl') || '';
+  const allowedOrigins = frontendUrl
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
   // CSRF protection - validate Origin header on mutating requests
-  const configuredOrigin = configService.get<string>('frontendUrl');
-  const allowedOrigin =
-    configuredOrigin && configuredOrigin.length > 0 ? configuredOrigin : undefined;
   app.use((req: any, res: any, next: any) => {
     if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
       const origin = req.headers.origin || req.headers.referer;
-      if (allowedOrigin && origin && !origin.startsWith(allowedOrigin)) {
-        return res.status(403).json({ message: 'CSRF validation failed' });
+      if (allowedOrigins.length > 0 && origin) {
+        const isAllowed = allowedOrigins.some((o) => origin.startsWith(o));
+        if (!isAllowed) {
+          return res.status(403).json({ message: 'CSRF validation failed' });
+        }
       }
     }
     next();
   });
 
   app.enableCors({
-    origin: allowedOrigin || true,
+    origin: allowedOrigins.length > 0 ? allowedOrigins : true,
     credentials: true,
   });
 
