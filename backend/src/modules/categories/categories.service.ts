@@ -3,8 +3,8 @@ import { Types } from 'mongoose';
 import { Category } from './schemas/category.schema';
 import { CategoryRepository } from './repositories/category.repository';
 import { CreateCategoryDto, UpdateCategoryDto, CategoryQueryDto } from './dto/category.dto';
-import { PaginatedResult } from '@/common/types/pagination.types';
-import { parseObjectId, parseObjectIdOptional, isValidObjectIdString } from '@/common/utils/objectid.util';
+import { PaginatedResult } from '../../common/types/pagination.types';
+import { parseObjectId, parseObjectIdOptional, isValidObjectIdString } from '../../common/utils/objectid.util';
 
 @Injectable()
 export class CategoriesService {

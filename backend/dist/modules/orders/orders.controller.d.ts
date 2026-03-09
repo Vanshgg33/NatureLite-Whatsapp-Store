@@ -1,8 +1,8 @@
 import { OrdersService } from './orders.service';
 import { CreateOrderDto, UpdateOrderStatusDto, UpdatePaymentStatusDto, CancelOrderDto, AddOrderNoteDto, UpdateShippingDto, OrderQueryDto, ReorderDto, UpdateDeliveryWorkflowDto, GuestCreateOrderDto } from './dto/order.dto';
 import { Order } from './schemas/order.schema';
-import { JwtPayload } from '@/common/decorators/current-user.decorator';
-import { PaginatedResult } from '@/common/types/pagination.types';
+import { JwtPayload } from '../../common/decorators/current-user.decorator';
+import { PaginatedResult } from '../../common/types/pagination.types';
 export declare class OrdersController {
     private readonly ordersService;
     constructor(ordersService: OrdersService);

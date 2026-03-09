@@ -4,8 +4,8 @@ const core_1 = require("@nestjs/core");
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const helmet_1 = require("helmet");
-const cookieParser = require("cookie-parser");
-const mongoSanitize = require("express-mongo-sanitize");
+const cookie_parser_1 = require("cookie-parser");
+const express_mongo_sanitize_1 = require("express-mongo-sanitize");
 const app_module_1 = require("./app.module");
 async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule, {
@@ -13,20 +13,23 @@ async function bootstrap() {
     });
     const configService = app.get(config_1.ConfigService);
     app.use((0, helmet_1.default)());
-    app.use(cookieParser());
-    app.use(mongoSanitize());
-    const allowedOrigin = configService.get('frontendUrl') || 'http://localhost:3001';
+    app.use((0, cookie_parser_1.default)());
+    app.use((0, express_mongo_sanitize_1.default)());
+    const configuredOrigin = configService.get('frontendUrl');
+    const allowedOrigin = configuredOrigin && configuredOrigin.length > 0
+        ? configuredOrigin
+        : undefined;
     app.use((req, res, next) => {
         if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
             const origin = req.headers.origin || req.headers.referer;
-            if (origin && !origin.startsWith(allowedOrigin)) {
+            if (allowedOrigin && origin && !origin.startsWith(allowedOrigin)) {
                 return res.status(403).json({ message: 'CSRF validation failed' });
             }
         }
         next();
     });
     app.enableCors({
-        origin: allowedOrigin,
+        origin: allowedOrigin || true,
         credentials: true,
     });
     app.setGlobalPrefix(configService.get('app.apiPrefix') || 'api/v1');

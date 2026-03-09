@@ -5,7 +5,7 @@ import { PaymentRepository } from './repositories/payment.repository';
 import { OrderRepository } from '../orders/repositories/order.repository';
 import { WalletService } from '../wallet/wallet.service';
 import { StoreSalesService } from '../store-sales/store-sales.service';
-import { parseObjectId } from '@/common/utils/objectid.util';
+import { parseObjectId } from '../../common/utils/objectid.util';
 
 @Injectable()
 export class PaymentsService {

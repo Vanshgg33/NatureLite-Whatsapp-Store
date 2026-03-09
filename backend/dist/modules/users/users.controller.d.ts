@@ -1,7 +1,7 @@
 import { UsersService } from './users.service';
 import { CreateUserDto, UpdateUserDto, AddAddressDto, UpdateAddressDto, UserQueryDto } from './dto/user.dto';
 import { User } from './schemas/user.schema';
-import { PaginatedResult } from '@/common/types/pagination.types';
+import { PaginatedResult } from '../../common/types/pagination.types';
 export declare class UsersController {
     private readonly usersService;
     constructor(usersService: UsersService);

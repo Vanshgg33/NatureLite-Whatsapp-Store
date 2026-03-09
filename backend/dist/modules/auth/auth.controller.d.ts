@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { AdminLoginDto, AdminRegisterDto, CustomerLoginDto, CustomerRegisterDto, CustomerEmailLoginDto, SendOtpDto, ChangePasswordDto, RefreshTokenDto, LogoutDto, AuthResponse } from './dto/auth.dto';
-import { JwtPayload } from '@/common/decorators/current-user.decorator';
+import { JwtPayload } from '../../common/decorators/current-user.decorator';
 export declare class AuthController {
     private readonly authService;
     private readonly configService;

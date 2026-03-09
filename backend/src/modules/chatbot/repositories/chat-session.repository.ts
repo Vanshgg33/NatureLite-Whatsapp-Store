@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { ChatSession, ChatSessionDocument } from '../schemas/chat-session.schema';
-import { BaseRepository } from '@/common/repository/base.repository';
+import { BaseRepository } from '../../../common/repository/base.repository';
 
 @Injectable()
 export class ChatSessionRepository extends BaseRepository<ChatSessionDocument> {

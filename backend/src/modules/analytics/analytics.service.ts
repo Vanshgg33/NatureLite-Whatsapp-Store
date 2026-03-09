@@ -10,7 +10,7 @@ import { StoreSaleRepository } from '../store-sales/repositories/store-sale.repo
 import { StoreStockRepository } from '../store-stock/repositories/store-stock.repository';
 import { StoreRepository } from '../stores/repositories/store.repository';
 import { AnalyticsSnapshot, SnapshotPeriod } from './schemas/analytics-snapshot.schema';
-import { parseObjectId } from '@/common/utils/objectid.util';
+import { parseObjectId } from '../../common/utils/objectid.util';
 
 @Injectable()
 export class AnalyticsService {

@@ -1,7 +1,7 @@
 import { Coupon } from './schemas/coupon.schema';
 import { CouponRepository } from './repositories/coupon.repository';
 import { CreateCouponDto, UpdateCouponDto, ValidateCouponDto, CouponQueryDto } from './dto/coupon.dto';
-import { PaginatedResult } from '@/common/types/pagination.types';
+import { PaginatedResult } from '../../common/types/pagination.types';
 export interface CouponValidationResult {
     valid: boolean;
     message: string;

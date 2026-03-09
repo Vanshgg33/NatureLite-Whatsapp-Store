@@ -1,7 +1,7 @@
 import { User } from './schemas/user.schema';
 import { UserRepository } from './repositories/user.repository';
 import { CreateUserDto, UpdateUserDto, AddAddressDto, UpdateAddressDto, UserQueryDto } from './dto/user.dto';
-import { PaginatedResult } from '@/common/types/pagination.types';
+import { PaginatedResult } from '../../common/types/pagination.types';
 export declare class UsersService {
     private readonly userRepository;
     constructor(userRepository: UserRepository);

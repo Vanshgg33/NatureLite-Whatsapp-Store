@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { ReminderRepository } from './repositories/reminder.repository';
 import { StoreRepository } from '../stores/repositories/store.repository';
-import { parseObjectId } from '@/common/utils/objectid.util';
+import { parseObjectId } from '../../common/utils/objectid.util';
 
 @Injectable()
 export class RemindersService {

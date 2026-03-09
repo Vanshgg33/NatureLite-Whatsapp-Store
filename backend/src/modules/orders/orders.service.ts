@@ -25,8 +25,8 @@ import {
   UpdateDeliveryWorkflowDto,
   GuestCreateOrderDto,
 } from './dto/order.dto';
-import { PaginatedResult } from '@/common/types/pagination.types';
-import { parseObjectId } from '@/common/utils/objectid.util';
+import { PaginatedResult } from '../../common/types/pagination.types';
+import { parseObjectId } from '../../common/utils/objectid.util';
 
 @Injectable()
 export class OrdersService {

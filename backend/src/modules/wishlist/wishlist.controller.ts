@@ -8,8 +8,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { WishlistService } from './wishlist.service';
-import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
-import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AddToWishlistDto, WishlistResponse } from './dto/wishlist.dto';
 
 @Controller('wishlist')

@@ -7,7 +7,7 @@ import {
   UpdateFeedbackStatusDto,
   FeedbackQueryDto,
 } from './dto/feedback.dto';
-import { parseObjectIdOptional, parseObjectId } from '@/common/utils/objectid.util';
+import { parseObjectIdOptional, parseObjectId } from '../../common/utils/objectid.util';
 import { OrderRepository } from '../orders/repositories/order.repository';
 
 @Injectable()

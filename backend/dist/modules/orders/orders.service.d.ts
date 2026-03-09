@@ -12,7 +12,7 @@ import { StoreStockService } from '../store-stock/store-stock.service';
 import { StoreSalesService } from '../store-sales/store-sales.service';
 import { WalletService } from '../wallet/wallet.service';
 import { CreateOrderDto, UpdateOrderStatusDto, UpdatePaymentStatusDto, CancelOrderDto, AddOrderNoteDto, UpdateShippingDto, OrderQueryDto, ReorderDto, UpdateDeliveryWorkflowDto, GuestCreateOrderDto } from './dto/order.dto';
-import { PaginatedResult } from '@/common/types/pagination.types';
+import { PaginatedResult } from '../../common/types/pagination.types';
 export declare class OrdersService {
     private readonly orderRepository;
     private connection;

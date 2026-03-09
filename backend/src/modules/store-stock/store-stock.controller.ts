@@ -1,9 +1,9 @@
 import { Controller, Get, Put, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { StoreStockService } from './store-stock.service';
 import { SetStoreStockDto, BulkSetStockDto, StockQueryDto } from './dto/store-stock.dto';
-import { Roles } from '@/common/decorators/roles.decorator';
-import { RolesGuard } from '@/common/guards/roles.guard';
-import { StoreGuard } from '@/common/guards/store.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { StoreGuard } from '../../common/guards/store.guard';
 
 @Controller('store-stock')
 @UseGuards(RolesGuard, StoreGuard)

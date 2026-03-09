@@ -13,7 +13,7 @@ import {
   WebhookPayload,
   WhatsAppMessage,
 } from './dto/whatsapp.dto';
-import { WhatsAppConfig } from '@/config/configuration';
+import { WhatsAppConfig } from '../../config/configuration';
 
 interface WhatsAppApiResponse {
   messaging_product: string;

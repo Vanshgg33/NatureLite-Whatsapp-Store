@@ -5,7 +5,7 @@ import {
   WalletTransaction,
   WalletTransactionDocument,
 } from '../schemas/wallet-transaction.schema';
-import { BaseRepository } from '@/common/repository/base.repository';
+import { BaseRepository } from '../../../common/repository/base.repository';
 
 @Injectable()
 export class WalletTransactionRepository extends BaseRepository<WalletTransactionDocument> {

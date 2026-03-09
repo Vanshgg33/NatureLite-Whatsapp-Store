@@ -7,8 +7,8 @@ import {
   ProductQueryDto,
   UpdateStockDto,
 } from './dto/product.dto';
-import { PaginatedResult } from '@/common/types/pagination.types';
-import { isValidObjectIdString, parseObjectId } from '@/common/utils/objectid.util';
+import { PaginatedResult } from '../../common/types/pagination.types';
+import { isValidObjectIdString, parseObjectId } from '../../common/utils/objectid.util';
 import { StoreStockService } from '../store-stock/store-stock.service';
 import { StoresService } from '../stores/stores.service';
 import { ProductRepository } from './repositories/product.repository';

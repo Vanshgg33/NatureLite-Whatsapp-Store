@@ -10,7 +10,7 @@ import {
   AddToWishlistDto,
   WishlistResponse,
 } from './dto/wishlist.dto';
-import { parseObjectId } from '@/common/utils/objectid.util';
+import { parseObjectId } from '../../common/utils/objectid.util';
 
 @Injectable()
 export class WishlistService {

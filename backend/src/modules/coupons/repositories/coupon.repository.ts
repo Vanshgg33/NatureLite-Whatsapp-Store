@@ -2,10 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Coupon, CouponDocument } from '../schemas/coupon.schema';
-import { BaseRepository } from '@/common/repository/base.repository';
+import { BaseRepository } from '../../../common/repository/base.repository';
 import { CouponQueryDto } from '../dto/coupon.dto';
-import { PaginatedResult, paginate } from '@/common/types/pagination.types';
-import { buildSearchOrFilter } from '@/common/utils/query.util';
+import { PaginatedResult, paginate } from '../../../common/types/pagination.types';
+import { buildSearchOrFilter } from '../../../common/utils/query.util';
 
 @Injectable()
 export class CouponRepository extends BaseRepository<CouponDocument> {

@@ -17,8 +17,8 @@ import {
   AuthResponse,
   ChangePasswordDto,
 } from './dto/auth.dto';
-import { JwtPayload } from '@/common/decorators/current-user.decorator';
-import { parseObjectId } from '@/common/utils/objectid.util';
+import { JwtPayload } from '../../common/decorators/current-user.decorator';
+import { parseObjectId } from '../../common/utils/objectid.util';
 
 @Injectable()
 export class AuthService {

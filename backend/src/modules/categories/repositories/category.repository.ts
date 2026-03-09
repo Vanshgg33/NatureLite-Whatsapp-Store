@@ -2,10 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Category, CategoryDocument } from '../schemas/category.schema';
-import { BaseRepository } from '@/common/repository/base.repository';
+import { BaseRepository } from '../../../common/repository/base.repository';
 import { CreateCategoryDto, UpdateCategoryDto, CategoryQueryDto } from '../dto/category.dto';
-import { paginate } from '@/common/types/pagination.types';
-import { parseObjectId, parseObjectIdOptional, isValidObjectIdString } from '@/common/utils/objectid.util';
+import { paginate } from '../../../common/types/pagination.types';
+import { parseObjectId, parseObjectIdOptional, isValidObjectIdString } from '../../../common/utils/objectid.util';
 
 @Injectable()
 export class CategoryRepository extends BaseRepository<CategoryDocument> {

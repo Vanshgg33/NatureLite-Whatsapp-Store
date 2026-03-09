@@ -1,7 +1,7 @@
 import { CouponsService, CouponValidationResult } from './coupons.service';
 import { CreateCouponDto, UpdateCouponDto, ValidateCouponDto, CouponQueryDto } from './dto/coupon.dto';
 import { Coupon } from './schemas/coupon.schema';
-import { PaginatedResult } from '@/common/types/pagination.types';
+import { PaginatedResult } from '../../common/types/pagination.types';
 export declare class CouponsController {
     private readonly couponsService;
     constructor(couponsService: CouponsService);

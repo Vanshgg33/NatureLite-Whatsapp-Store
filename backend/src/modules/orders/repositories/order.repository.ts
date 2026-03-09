@@ -2,11 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, ClientSession, PipelineStage } from 'mongoose';
 import { Order, OrderDocument, OrderStatus } from '../schemas/order.schema';
-import { BaseRepository } from '@/common/repository/base.repository';
+import { BaseRepository } from '../../../common/repository/base.repository';
 import { OrderQueryDto } from '../dto/order.dto';
-import { PaginatedResult, paginate } from '@/common/types/pagination.types';
-import { buildCreatedAtFilter, buildSearchOrFilter } from '@/common/utils/query.util';
-import { parseObjectId, isValidObjectIdString } from '@/common/utils/objectid.util';
+import { PaginatedResult, paginate } from '../../../common/types/pagination.types';
+import { buildCreatedAtFilter, buildSearchOrFilter } from '../../../common/utils/query.util';
+import { parseObjectId, isValidObjectIdString } from '../../../common/utils/objectid.util';
 
 @Injectable()
 export class OrderRepository extends BaseRepository<OrderDocument> {

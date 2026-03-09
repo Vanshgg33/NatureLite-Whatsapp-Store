@@ -4,7 +4,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import { AuthService } from '../auth.service';
-import { JwtPayload } from '@/common/decorators/current-user.decorator';
+import { JwtPayload } from '../../../common/decorators/current-user.decorator';
 
 // Extract JWT from cookie
 const cookieExtractor = (req: Request): string | null => {

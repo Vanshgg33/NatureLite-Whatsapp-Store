@@ -1,7 +1,7 @@
 import { CategoriesService } from './categories.service';
 import { CreateCategoryDto, UpdateCategoryDto, CategoryQueryDto } from './dto/category.dto';
 import { Category } from './schemas/category.schema';
-import { PaginatedResult } from '@/common/types/pagination.types';
+import { PaginatedResult } from '../../common/types/pagination.types';
 export declare class CategoriesController {
     private readonly categoriesService;
     constructor(categoriesService: CategoriesService);

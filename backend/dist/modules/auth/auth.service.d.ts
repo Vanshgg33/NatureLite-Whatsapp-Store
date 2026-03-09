@@ -5,7 +5,7 @@ import { UserRepository } from '../users/repositories/user.repository';
 import { StoreRepository } from '../stores/repositories/store.repository';
 import { RefreshTokenRepository } from './repositories/refresh-token.repository';
 import { AdminLoginDto, AdminRegisterDto, CustomerLoginDto, CustomerRegisterDto, CustomerEmailLoginDto, AuthResponse, ChangePasswordDto } from './dto/auth.dto';
-import { JwtPayload } from '@/common/decorators/current-user.decorator';
+import { JwtPayload } from '../../common/decorators/current-user.decorator';
 export declare class AuthService {
     private readonly adminUserRepository;
     private readonly userRepository;

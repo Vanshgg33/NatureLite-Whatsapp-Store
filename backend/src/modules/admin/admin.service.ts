@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, ConflictException }
 import * as bcrypt from 'bcrypt';
 import { AdminUser } from './schemas/admin-user.schema';
 import { AdminUserRepository } from './repositories/admin-user.repository';
-import { parseObjectId } from '@/common/utils/objectid.util';
+import { parseObjectId } from '../../common/utils/objectid.util';
 
 @Injectable()
 export class AdminService {

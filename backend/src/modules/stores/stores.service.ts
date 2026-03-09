@@ -8,7 +8,7 @@ import { CreateStoreDto, UpdateStoreDto } from './dto/store.dto';
 import { StoreRepository } from './repositories/store.repository';
 import { ProductRepository } from '../products/repositories/product.repository';
 import { StoreStockService } from '../store-stock/store-stock.service';
-import { parseObjectId } from '@/common/utils/objectid.util';
+import { parseObjectId } from '../../common/utils/objectid.util';
 
 @Injectable()
 export class StoresService implements OnModuleInit {

@@ -12,11 +12,11 @@ import {
 import { CategoriesService } from './categories.service';
 import { CreateCategoryDto, UpdateCategoryDto, CategoryQueryDto } from './dto/category.dto';
 import { Category } from './schemas/category.schema';
-import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
-import { RolesGuard } from '@/common/guards/roles.guard';
-import { Roles } from '@/common/decorators/roles.decorator';
-import { Public } from '@/common/decorators/public.decorator';
-import { PaginatedResult } from '@/common/types/pagination.types';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { Public } from '../../common/decorators/public.decorator';
+import { PaginatedResult } from '../../common/types/pagination.types';
 
 @Controller('categories')
 export class CategoriesController {

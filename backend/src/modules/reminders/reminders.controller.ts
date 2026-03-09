@@ -1,9 +1,9 @@
 import { Controller, Get, Post, Param, UseGuards } from '@nestjs/common';
 import { RemindersService } from './reminders.service';
-import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
-import { RolesGuard } from '@/common/guards/roles.guard';
-import { Roles } from '@/common/decorators/roles.decorator';
-import { CurrentUser, JwtPayload } from '@/common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { StoresService } from '../stores/stores.service';
 
 @Controller('reminders')

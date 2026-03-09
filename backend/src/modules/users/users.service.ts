@@ -8,8 +8,8 @@ import {
   UpdateAddressDto,
   UserQueryDto,
 } from './dto/user.dto';
-import { PaginatedResult } from '@/common/types/pagination.types';
-import { parseObjectId } from '@/common/utils/objectid.util';
+import { PaginatedResult } from '../../common/types/pagination.types';
+import { parseObjectId } from '../../common/utils/objectid.util';
 
 @Injectable()
 export class UsersService {

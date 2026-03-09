@@ -2,11 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { StoreSale, StoreSaleDocument } from '../schemas/store-sale.schema';
-import { BaseRepository } from '@/common/repository/base.repository';
+import { BaseRepository } from '../../../common/repository/base.repository';
 import { SaleQueryDto } from '../dto/store-sale.dto';
-import { PaginatedResult, paginate } from '@/common/types/pagination.types';
-import { buildCreatedAtFilter, buildSearchOrFilter } from '@/common/utils/query.util';
-import { parseObjectId } from '@/common/utils/objectid.util';
+import { PaginatedResult, paginate } from '../../../common/types/pagination.types';
+import { buildCreatedAtFilter, buildSearchOrFilter } from '../../../common/utils/query.util';
+import { parseObjectId } from '../../../common/utils/objectid.util';
 import { PipelineStage } from 'mongoose';
 
 @Injectable()

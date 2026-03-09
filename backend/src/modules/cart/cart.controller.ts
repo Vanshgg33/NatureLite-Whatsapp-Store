@@ -16,8 +16,8 @@ import {
   ApplyCouponDto,
   CartResponse,
 } from './dto/cart.dto';
-import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
-import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @Controller('cart')
 @UseGuards(JwtAuthGuard)

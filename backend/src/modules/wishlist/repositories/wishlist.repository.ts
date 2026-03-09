@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Wishlist, WishlistDocument } from '../schemas/wishlist.schema';
-import { BaseRepository } from '@/common/repository/base.repository';
+import { BaseRepository } from '../../../common/repository/base.repository';
 
 @Injectable()
 export class WishlistRepository extends BaseRepository<WishlistDocument> {

@@ -2,11 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Product, ProductDocument } from '../schemas/product.schema';
-import { BaseRepository } from '@/common/repository/base.repository';
+import { BaseRepository } from '../../../common/repository/base.repository';
 import { ProductQueryDto } from '../dto/product.dto';
-import { paginate, PaginationOptions } from '@/common/types/pagination.types';
-import { buildSearchOrFilter } from '@/common/utils/query.util';
-import { isValidObjectIdString, parseObjectId } from '@/common/utils/objectid.util';
+import { paginate, PaginationOptions } from '../../../common/types/pagination.types';
+import { buildSearchOrFilter } from '../../../common/utils/query.util';
+import { isValidObjectIdString, parseObjectId } from '../../../common/utils/objectid.util';
 
 @Injectable()
 export class ProductRepository extends BaseRepository<ProductDocument> {

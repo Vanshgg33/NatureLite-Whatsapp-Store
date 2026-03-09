@@ -1,7 +1,7 @@
 import { ProductsService } from './products.service';
 import { CreateProductDto, UpdateProductDto, ProductQueryDto, UpdateStockDto } from './dto/product.dto';
 import { Product } from './schemas/product.schema';
-import { PaginatedResult } from '@/common/types/pagination.types';
+import { PaginatedResult } from '../../common/types/pagination.types';
 export declare class ProductsController {
     private readonly productsService;
     constructor(productsService: ProductsService);

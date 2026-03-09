@@ -25,11 +25,11 @@ import {
   LogoutDto,
   AuthResponse,
 } from './dto/auth.dto';
-import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
-import { RolesGuard } from '@/common/guards/roles.guard';
-import { CurrentUser, JwtPayload } from '@/common/decorators/current-user.decorator';
-import { Roles } from '@/common/decorators/roles.decorator';
-import { Public } from '@/common/decorators/public.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { Public } from '../../common/decorators/public.decorator';
 
 @Controller('auth')
 export class AuthController {

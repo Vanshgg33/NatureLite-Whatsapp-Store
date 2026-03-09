@@ -4,7 +4,7 @@ import { WalletRepository } from './repositories/wallet.repository';
 import { WalletTransactionRepository } from './repositories/wallet-transaction.repository';
 import { WalletDocument } from './schemas/wallet.schema';
 import { WalletTransactionType } from './schemas/wallet-transaction.schema';
-import { parseObjectId } from '@/common/utils/objectid.util';
+import { parseObjectId } from '../../common/utils/objectid.util';
 
 @Injectable()
 export class WalletService {

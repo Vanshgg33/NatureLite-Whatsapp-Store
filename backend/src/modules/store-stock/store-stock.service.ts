@@ -3,8 +3,8 @@ import { Types, ClientSession } from 'mongoose';
 import { StoreStock } from './schemas/store-stock.schema';
 import { StoreStockRepository } from './repositories/store-stock.repository';
 import { SetStoreStockDto, BulkSetStockDto, StockQueryDto } from './dto/store-stock.dto';
-import { PaginatedResult } from '@/common/types/pagination.types';
-import { parseObjectId } from '@/common/utils/objectid.util';
+import { PaginatedResult } from '../../common/types/pagination.types';
+import { parseObjectId } from '../../common/utils/objectid.util';
 
 @Injectable()
 export class StoreStockService {
