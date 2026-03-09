@@ -135,7 +135,7 @@ let OrdersService = OrdersService_1 = class OrdersService {
             }
             const gstTotal = orderItems.reduce((sum, item) => sum + item.gstAmount, 0);
             const shippingCharge = subtotal >= freeShippingThreshold ? 0 : defaultShippingCharge;
-            const totalBeforeWallet = subtotal - discount + shippingCharge;
+            const totalBeforeWallet = subtotal - discount + gstTotal + shippingCharge;
             let walletUsedPaise = 0;
             let paymentGatewayAmountPaise = Math.round(totalBeforeWallet * 100);
             if (dto.walletAmount && dto.walletAmount > 0) {

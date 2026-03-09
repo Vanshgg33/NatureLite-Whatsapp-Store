@@ -62,7 +62,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1
 class ApiClient {
   private client: AxiosInstance;
   private isRefreshing = false;
-  private failedQueue: Array<{ resolve: (token: string) => void; reject: (error: unknown) => void }> = [];
+  private refreshPromise: Promise<void> | null = null;
 
   constructor() {
     this.client = axios.create({
@@ -70,22 +70,9 @@ class ApiClient {
       headers: {
         'Content-Type': 'application/json',
       },
-      withCredentials: true, // Send cookies with every request
+      // Rely on HttpOnly cookies for auth (access + refresh)
+      withCredentials: true,
     });
-
-    // Request interceptor to add customer token
-    this.client.interceptors.request.use(
-      (config) => {
-        if (typeof window !== 'undefined') {
-          const customerToken = localStorage.getItem('customer-token');
-          if (customerToken && !config.headers.Authorization) {
-            config.headers.Authorization = `Bearer ${customerToken}`;
-          }
-        }
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
 
     // Response interceptor with refresh token retry
     this.client.interceptors.response.use(
@@ -94,59 +81,31 @@ class ApiClient {
         const originalRequest = error.config as typeof error.config & { _retry?: boolean };
 
         if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
-          // Try refreshing the token
-          const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('customer-refresh-token') : null;
+          originalRequest._retry = true;
 
-          if (refreshToken) {
-            if (this.isRefreshing) {
-              // Queue this request until refresh completes
-              return new Promise((resolve, reject) => {
-                this.failedQueue.push({ resolve, reject });
-              }).then((token) => {
-                if (originalRequest.headers) {
-                  originalRequest.headers.Authorization = `Bearer ${token}`;
-                }
-                return this.client(originalRequest);
-              });
-            }
-
-            originalRequest._retry = true;
+          if (!this.isRefreshing) {
             this.isRefreshing = true;
-
-            try {
-              const response = await axios.post(`${API_URL}/auth/refresh`, { refreshToken }, { withCredentials: true });
-              const data = response.data.data;
-              const newAccessToken = data.accessToken;
-              const newRefreshToken = data.refreshToken;
-
-              localStorage.setItem('customer-token', newAccessToken);
-              if (newRefreshToken) {
-                localStorage.setItem('customer-refresh-token', newRefreshToken);
-              }
-
-              // Retry all queued requests
-              this.failedQueue.forEach((req) => req.resolve(newAccessToken));
-              this.failedQueue = [];
-
-              if (originalRequest.headers) {
-                originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
-              }
-              return this.client(originalRequest);
-            } catch (refreshError) {
-              this.failedQueue.forEach((req) => req.reject(refreshError));
-              this.failedQueue = [];
-
-              // Refresh failed - clear tokens
-              if (typeof window !== 'undefined') {
-                localStorage.removeItem('customer-token');
-                localStorage.removeItem('customer-refresh-token');
-              }
-            } finally {
-              this.isRefreshing = false;
-            }
+            this.refreshPromise = axios
+              .post(`${API_URL}/auth/refresh`, {}, { withCredentials: true })
+              .then(() => {
+                // New cookies set by backend
+              })
+              .finally(() => {
+                this.isRefreshing = false;
+                this.refreshPromise = null;
+              });
           }
 
-          // No refresh token or refresh failed — redirect to appropriate login
+          try {
+            if (this.refreshPromise) {
+              await this.refreshPromise;
+            }
+            return this.client(originalRequest);
+          } catch {
+            // Refresh failed — fall through to redirect
+          }
+
+          // Refresh failed — redirect to appropriate login
           if (typeof window !== 'undefined') {
             const path = window.location.pathname;
             if (path.startsWith('/admin')) {
@@ -183,8 +142,7 @@ class ApiClient {
   }
 
   async logout(): Promise<void> {
-    const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('customer-refresh-token') : null;
-    await this.client.post('/auth/logout', refreshToken ? { refreshToken } : {});
+    await this.client.post('/auth/logout', {});
   }
 
   async getProfile(): Promise<User> {

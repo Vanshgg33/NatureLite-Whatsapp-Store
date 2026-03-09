@@ -26,6 +26,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { MediaModule } from './modules/media/media.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { InteraktModule } from './modules/interakt/interakt.module';
 import { EmailModule } from './modules/email/email.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { StoresModule } from './modules/stores/stores.module';
@@ -76,6 +77,7 @@ import { WalletModule } from './modules/wallet/wallet.module';
     MediaModule,
     AuditModule,
     PaymentsModule,
+    InteraktModule,
     EmailModule,
     FeedbackModule,
     StoresModule,

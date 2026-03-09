@@ -8,12 +8,13 @@ import { Button } from '@/components/ui/button';
 import { CartItem } from '@/components/ecommerce/cart-item';
 import { CartSummary } from '@/components/ecommerce/cart-summary';
 import { PremiumProductCardCompact } from '@/components/ecommerce/premium-product-card';
-import { useCartStore } from '@/lib/cart-store';
+import { useCartStore, useSyncCartOnAuth } from '@/lib/cart-store';
 import { api } from '@/lib/api';
 import { Product } from '@/types';
 
 export default function CartPage() {
   const items = useCartStore((state) => state.items);
+  const syncCart = useSyncCartOnAuth();
   const [mounted, setMounted] = useState(false);
   const [crossSellProducts, setCrossSellProducts] = useState<Product[]>([]);
 
@@ -21,6 +22,11 @@ export default function CartPage() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Always sync cart from server when page mounts (for logged-in users)
+  useEffect(() => {
+    syncCart();
+  }, [syncCart]);
 
   // Fetch cross-sell products (category-aware, only when cart has items)
   const itemCount = items.length;

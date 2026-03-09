@@ -87,13 +87,6 @@ export default function LoginPage() {
     try {
       const response = await api.customerEmailLogin(email, password);
 
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('customer-token', response.accessToken);
-        if (response.refreshToken) {
-          localStorage.setItem('customer-refresh-token', response.refreshToken);
-        }
-      }
-
       // Set initial customer data from auth response
       setCustomer({
         id: response.user.id,
@@ -155,13 +148,6 @@ export default function LoginPage() {
 
     try {
       const response = await api.customerLogin(phone, otp);
-
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('customer-token', response.accessToken);
-        if (response.refreshToken) {
-          localStorage.setItem('customer-refresh-token', response.refreshToken);
-        }
-      }
 
       // Set initial customer data from auth response
       setCustomer({

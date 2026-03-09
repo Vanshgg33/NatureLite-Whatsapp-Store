@@ -12,7 +12,7 @@ import { ArrowLeft, CreditCard, Banknote, Smartphone, ShieldCheck, Check, Shoppi
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CartItem } from '@/components/ecommerce/cart-item';
-import { useCartStore } from '@/lib/cart-store';
+import { useCartStore, useSyncCartOnAuth } from '@/lib/cart-store';
 import { useCustomerStore } from '@/lib/customer-store';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
@@ -59,6 +59,7 @@ const PINCODE_CITY_STATE: { prefix: string; city: string; state: string }[] = [
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, getSubtotal, getGstTotal, getDiscountAmount, getTotal, clearCart } = useCartStore();
+  const syncCart = useSyncCartOnAuth();
   const { customer, isAuthenticated } = useCustomerStore();
   const { toast } = useToast();
   const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>('cod');
@@ -69,6 +70,11 @@ export default function CheckoutPage() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Ensure cart is synced from server for logged-in users when checkout loads
+  useEffect(() => {
+    syncCart();
+  }, [syncCart]);
 
   const { data: publicSettings } = useQuery({
     queryKey: ['public-settings'],
@@ -92,6 +98,7 @@ export default function CheckoutPage() {
     handleSubmit,
     formState: { errors },
     setValue,
+    getValues,
   } = useForm<CheckoutFormData>({
     resolver: zodResolver(checkoutSchema),
     defaultValues: {
@@ -124,8 +131,15 @@ export default function CheckoutPage() {
     if (!match) return;
 
     // Only auto-fill if fields are empty to avoid overwriting user edits
-    setValue('city', (current) => current || match.city);
-    setValue('state', (current) => current || match.state);
+    const currentCity = (getValues('city') || '').trim();
+    const currentState = (getValues('state') || '').trim();
+
+    if (!currentCity) {
+      setValue('city', match.city);
+    }
+    if (!currentState) {
+      setValue('state', match.state);
+    }
   };
 
   const formatPrice = (price: number) => {
@@ -140,11 +154,17 @@ export default function CheckoutPage() {
     setIsSubmitting(true);
     try {
       // Common order payload pieces
-      const baseItems = items.map((item) => ({
-        productId: item.productId,
-        variantSku: item.variantSku,
-        quantity: item.quantity,
-      }));
+      const baseItems = items
+        .filter((item) => !!item.productId)
+        .map((item) => ({
+          productId: item.productId,
+          variantSku: item.variantSku,
+          quantity: item.quantity,
+        }));
+
+      if (baseItems.length === 0) {
+        throw new Error('Your cart seems empty or invalid. Please add the product again and try checkout.');
+      }
 
       const baseShipping = {
         name: data.name,

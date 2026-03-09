@@ -32,6 +32,7 @@ const settings_module_1 = require("./modules/settings/settings.module");
 const media_module_1 = require("./modules/media/media.module");
 const audit_module_1 = require("./modules/audit/audit.module");
 const payments_module_1 = require("./modules/payments/payments.module");
+const interakt_module_1 = require("./modules/interakt/interakt.module");
 const email_module_1 = require("./modules/email/email.module");
 const feedback_module_1 = require("./modules/feedback/feedback.module");
 const stores_module_1 = require("./modules/stores/stores.module");
@@ -82,6 +83,7 @@ exports.AppModule = AppModule = __decorate([
             media_module_1.MediaModule,
             audit_module_1.AuditModule,
             payments_module_1.PaymentsModule,
+            interakt_module_1.InteraktModule,
             email_module_1.EmailModule,
             feedback_module_1.FeedbackModule,
             stores_module_1.StoresModule,

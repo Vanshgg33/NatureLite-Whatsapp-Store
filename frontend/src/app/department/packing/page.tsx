@@ -1,8 +1,9 @@
 'use client';
 
 import { useMemo } from 'react';
+import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Package, CheckCircle2 } from 'lucide-react';
+import { Package, CheckCircle2, ArrowRight } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { useToast } from '@/components/ui/use-toast';
@@ -105,15 +106,23 @@ export default function PackingDashboardPage() {
 
                 <p className="text-xs text-gray-400">Placed {formatDate(order.createdAt)}</p>
 
-                <Button
-                  size="sm"
-                  className="w-full mt-1 flex items-center justify-center gap-2"
-                  disabled={markPacked.isLoading}
-                  onClick={() => markPacked.mutate(order._id)}
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  Mark as packed
-                </Button>
+                <div className="flex gap-2 mt-1">
+                  <Button
+                    size="sm"
+                    className="flex-1 flex items-center justify-center gap-2"
+                    disabled={markPacked.isLoading}
+                    onClick={() => markPacked.mutate(order._id)}
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Mark as packed
+                  </Button>
+                  <Link href={`/department/order/${order._id}`}>
+                    <Button size="sm" variant="outline" className="flex items-center justify-center gap-1">
+                      Open
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </Link>
+                </div>
               </CardContent>
             </Card>
           ))}

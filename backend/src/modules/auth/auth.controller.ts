@@ -4,12 +4,13 @@ import {
   Body,
   Get,
   Res,
+  Req,
   UseGuards,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import {
@@ -37,20 +38,31 @@ export class AuthController {
     private readonly configService: ConfigService,
   ) {}
 
-  private setAuthCookie(res: Response, token: string): void {
+  private setAuthCookies(res: Response, accessToken: string, refreshToken: string): void {
     const isProduction = this.configService.get<string>('app.nodeEnv') === 'production';
 
-    res.cookie('access_token', token, {
+    res.cookie('access_token', accessToken, {
       httpOnly: true,
       secure: isProduction,
       sameSite: isProduction ? 'strict' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       path: '/',
     });
+    res.cookie('refresh_token', refreshToken, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'strict' : 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/',
+    });
   }
 
   private clearAuthCookie(res: Response): void {
     res.clearCookie('access_token', {
+      httpOnly: true,
+      path: '/',
+    });
+    res.clearCookie('refresh_token', {
       httpOnly: true,
       path: '/',
     });
@@ -64,7 +76,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthResponse> {
     const result = await this.authService.adminLogin(dto);
-    this.setAuthCookie(res, result.accessToken);
+    this.setAuthCookies(res, result.accessToken, result.refreshToken);
     return result;
   }
 
@@ -75,7 +87,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthResponse> {
     const result = await this.authService.adminRegister(dto);
-    this.setAuthCookie(res, result.accessToken);
+    this.setAuthCookies(res, result.accessToken, result.refreshToken);
     return result;
   }
 
@@ -87,7 +99,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthResponse> {
     const result = await this.authService.customerLogin(dto);
-    this.setAuthCookie(res, result.accessToken);
+    this.setAuthCookies(res, result.accessToken, result.refreshToken);
     return result;
   }
 
@@ -98,7 +110,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthResponse> {
     const result = await this.authService.customerRegister(dto);
-    this.setAuthCookie(res, result.accessToken);
+    this.setAuthCookies(res, result.accessToken, result.refreshToken);
     return result;
   }
 
@@ -110,7 +122,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthResponse> {
     const result = await this.authService.customerEmailLogin(dto);
-    this.setAuthCookie(res, result.accessToken);
+    this.setAuthCookies(res, result.accessToken, result.refreshToken);
     return result;
   }
 
@@ -130,10 +142,13 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async refreshToken(
     @Body() dto: RefreshTokenDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthResponse> {
-    const result = await this.authService.refreshAccessToken(dto.refreshToken);
-    this.setAuthCookie(res, result.accessToken);
+    const tokenFromCookie = (req.cookies?.refresh_token as string | undefined) || undefined;
+    const refreshToken = dto.refreshToken || tokenFromCookie;
+    const result = await this.authService.refreshAccessToken(refreshToken);
+    this.setAuthCookies(res, result.accessToken, result.refreshToken);
     return result;
   }
 
@@ -142,10 +157,13 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async logout(
     @Body() body: LogoutDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ message: string }> {
-    if (body?.refreshToken) {
-      await this.authService.revokeRefreshTokensForUser(body.refreshToken);
+    const tokenFromCookie = (req.cookies?.refresh_token as string | undefined) || undefined;
+    const refreshToken = body?.refreshToken || tokenFromCookie;
+    if (refreshToken) {
+      await this.authService.revokeRefreshTokensForUser(refreshToken);
     }
     this.clearAuthCookie(res);
     return { message: 'Logged out successfully' };

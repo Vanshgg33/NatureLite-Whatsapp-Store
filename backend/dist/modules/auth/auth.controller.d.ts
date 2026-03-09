@@ -1,4 +1,4 @@
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { AdminLoginDto, AdminRegisterDto, CustomerLoginDto, CustomerRegisterDto, CustomerEmailLoginDto, SendOtpDto, ChangePasswordDto, RefreshTokenDto, LogoutDto, AuthResponse } from './dto/auth.dto';
@@ -7,7 +7,7 @@ export declare class AuthController {
     private readonly authService;
     private readonly configService;
     constructor(authService: AuthService, configService: ConfigService);
-    private setAuthCookie;
+    private setAuthCookies;
     private clearAuthCookie;
     adminLogin(dto: AdminLoginDto, res: Response): Promise<AuthResponse>;
     adminRegister(dto: AdminRegisterDto, res: Response): Promise<AuthResponse>;
@@ -18,8 +18,8 @@ export declare class AuthController {
         success: boolean;
         message: string;
     }>;
-    refreshToken(dto: RefreshTokenDto, res: Response): Promise<AuthResponse>;
-    logout(body: LogoutDto, res: Response): Promise<{
+    refreshToken(dto: RefreshTokenDto, req: Request, res: Response): Promise<AuthResponse>;
+    logout(body: LogoutDto, req: Request, res: Response): Promise<{
         message: string;
     }>;
     changePassword(userId: string, dto: ChangePasswordDto): Promise<{

@@ -28,9 +28,16 @@ let AuthController = class AuthController {
         this.authService = authService;
         this.configService = configService;
     }
-    setAuthCookie(res, token) {
+    setAuthCookies(res, accessToken, refreshToken) {
         const isProduction = this.configService.get('app.nodeEnv') === 'production';
-        res.cookie('access_token', token, {
+        res.cookie('access_token', accessToken, {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? 'strict' : 'lax',
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+            path: '/',
+        });
+        res.cookie('refresh_token', refreshToken, {
             httpOnly: true,
             secure: isProduction,
             sameSite: isProduction ? 'strict' : 'lax',
@@ -43,43 +50,51 @@ let AuthController = class AuthController {
             httpOnly: true,
             path: '/',
         });
+        res.clearCookie('refresh_token', {
+            httpOnly: true,
+            path: '/',
+        });
     }
     async adminLogin(dto, res) {
         const result = await this.authService.adminLogin(dto);
-        this.setAuthCookie(res, result.accessToken);
+        this.setAuthCookies(res, result.accessToken, result.refreshToken);
         return result;
     }
     async adminRegister(dto, res) {
         const result = await this.authService.adminRegister(dto);
-        this.setAuthCookie(res, result.accessToken);
+        this.setAuthCookies(res, result.accessToken, result.refreshToken);
         return result;
     }
     async customerLogin(dto, res) {
         const result = await this.authService.customerLogin(dto);
-        this.setAuthCookie(res, result.accessToken);
+        this.setAuthCookies(res, result.accessToken, result.refreshToken);
         return result;
     }
     async customerRegister(dto, res) {
         const result = await this.authService.customerRegister(dto);
-        this.setAuthCookie(res, result.accessToken);
+        this.setAuthCookies(res, result.accessToken, result.refreshToken);
         return result;
     }
     async customerEmailLogin(dto, res) {
         const result = await this.authService.customerEmailLogin(dto);
-        this.setAuthCookie(res, result.accessToken);
+        this.setAuthCookies(res, result.accessToken, result.refreshToken);
         return result;
     }
     async sendOtp(dto) {
         return this.authService.sendOtp(dto.phone);
     }
-    async refreshToken(dto, res) {
-        const result = await this.authService.refreshAccessToken(dto.refreshToken);
-        this.setAuthCookie(res, result.accessToken);
+    async refreshToken(dto, req, res) {
+        const tokenFromCookie = req.cookies?.refresh_token || undefined;
+        const refreshToken = dto.refreshToken || tokenFromCookie;
+        const result = await this.authService.refreshAccessToken(refreshToken);
+        this.setAuthCookies(res, result.accessToken, result.refreshToken);
         return result;
     }
-    async logout(body, res) {
-        if (body?.refreshToken) {
-            await this.authService.revokeRefreshTokensForUser(body.refreshToken);
+    async logout(body, req, res) {
+        const tokenFromCookie = req.cookies?.refresh_token || undefined;
+        const refreshToken = body?.refreshToken || tokenFromCookie;
+        if (refreshToken) {
+            await this.authService.revokeRefreshTokensForUser(refreshToken);
         }
         this.clearAuthCookie(res);
         return { message: 'Logged out successfully' };
@@ -157,9 +172,10 @@ __decorate([
     (0, common_1.Post)('refresh'),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     __param(0, (0, common_1.Body)()),
-    __param(1, (0, common_1.Res)({ passthrough: true })),
+    __param(1, (0, common_1.Req)()),
+    __param(2, (0, common_1.Res)({ passthrough: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [auth_dto_1.RefreshTokenDto, Object]),
+    __metadata("design:paramtypes", [auth_dto_1.RefreshTokenDto, Object, Object]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "refreshToken", null);
 __decorate([
@@ -167,9 +183,10 @@ __decorate([
     (0, common_1.Post)('logout'),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     __param(0, (0, common_1.Body)()),
-    __param(1, (0, common_1.Res)({ passthrough: true })),
+    __param(1, (0, common_1.Req)()),
+    __param(2, (0, common_1.Res)({ passthrough: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [auth_dto_1.LogoutDto, Object]),
+    __metadata("design:paramtypes", [auth_dto_1.LogoutDto, Object, Object]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "logout", null);
 __decorate([

@@ -143,10 +143,6 @@ export const useCustomerStore = create<CustomerAuthState>()(
       },
 
       logout: () => {
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('customer-token');
-          localStorage.removeItem('customer-refresh-token');
-        }
         set({
           customer: null,
           isAuthenticated: false,

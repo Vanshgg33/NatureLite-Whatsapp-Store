@@ -11,8 +11,8 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ChangePasswordDto = exports.LogoutDto = exports.RefreshTokenDto = exports.SendOtpDto = exports.CustomerEmailLoginDto = exports.CustomerRegisterDto = exports.CustomerLoginDto = exports.AdminRegisterDto = exports.AdminLoginDto = void 0;
 const class_validator_1 = require("class-validator");
-const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^()_\-+=])[A-Za-z\d@$!%*?&#^()_\-+=]{8,}$/;
-const PASSWORD_MESSAGE = 'Password must be at least 8 characters with uppercase, lowercase, number, and special character';
+const PASSWORD_REGEX = /./;
+const PASSWORD_MESSAGE = 'Password does not meet requirements';
 class AdminLoginDto {
 }
 exports.AdminLoginDto = AdminLoginDto;
@@ -43,8 +43,7 @@ __decorate([
 __decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsNotEmpty)(),
-    (0, class_validator_1.MinLength)(8),
-    (0, class_validator_1.Matches)(PASSWORD_REGEX, { message: PASSWORD_MESSAGE }),
+    (0, class_validator_1.MinLength)(6),
     __metadata("design:type", String)
 ], AdminRegisterDto.prototype, "password", void 0);
 __decorate([
@@ -86,8 +85,7 @@ __decorate([
 __decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsNotEmpty)(),
-    (0, class_validator_1.MinLength)(8),
-    (0, class_validator_1.Matches)(PASSWORD_REGEX, { message: PASSWORD_MESSAGE }),
+    (0, class_validator_1.MinLength)(6),
     __metadata("design:type", String)
 ], CustomerRegisterDto.prototype, "password", void 0);
 __decorate([
@@ -143,8 +141,7 @@ __decorate([
 __decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsNotEmpty)(),
-    (0, class_validator_1.MinLength)(8),
-    (0, class_validator_1.Matches)(PASSWORD_REGEX, { message: PASSWORD_MESSAGE }),
+    (0, class_validator_1.MinLength)(6),
     __metadata("design:type", String)
 ], ChangePasswordDto.prototype, "newPassword", void 0);
 //# sourceMappingURL=auth.dto.js.map

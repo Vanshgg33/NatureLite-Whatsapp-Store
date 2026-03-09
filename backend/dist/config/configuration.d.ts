@@ -32,6 +32,12 @@ export interface RazorpayConfig {
     keySecret: string;
     webhookSecret: string;
 }
+export interface InteraktConfig {
+    apiKey: string;
+}
+export interface RazorpayXConfig {
+    accountNumber: string;
+}
 export interface SmtpConfig {
     host: string;
     port: number;
@@ -48,6 +54,8 @@ export interface Configuration {
     cloudinary: CloudinaryConfig;
     throttle: ThrottleConfig;
     razorpay: RazorpayConfig;
+    interakt?: InteraktConfig;
+    razorpayX?: RazorpayXConfig;
     smtp: SmtpConfig;
     frontendUrl: string;
 }

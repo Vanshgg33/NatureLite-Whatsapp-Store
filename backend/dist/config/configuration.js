@@ -31,9 +31,15 @@ exports.default = () => ({
         limit: parseInt(process.env.THROTTLE_LIMIT || '100', 10),
     },
     razorpay: {
-        keyId: process.env.RAZORPAY_KEY_ID || '',
-        keySecret: process.env.RAZORPAY_KEY_SECRET || '',
+        keyId: process.env.RAZORPAY_KEY_ID || process.env.razorpay_key || '',
+        keySecret: process.env.RAZORPAY_KEY_SECRET || process.env.razorpay_secret || '',
         webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
+    },
+    interakt: {
+        apiKey: process.env.INTERAKT_API_KEY || process.env.interakt_api_key || '',
+    },
+    razorpayX: {
+        accountNumber: process.env.RAZORPAYX_ACCOUNT_NUMBER || process.env.razorpayX_account_number || '',
     },
     smtp: {
         host: process.env.SMTP_HOST || 'smtp.gmail.com',

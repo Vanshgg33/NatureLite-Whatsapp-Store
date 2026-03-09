@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import { api } from './api';
 
 export interface CartItem {
@@ -42,15 +41,8 @@ interface CartState {
   getItemByProductId: (productId: string, variantSku?: string) => CartItem | undefined;
 }
 
-// Helper to check if user is authenticated
-const isAuthenticated = (): boolean => {
-  if (typeof window === 'undefined') return false;
-  return !!localStorage.getItem('customer-token');
-};
-
 export const useCartStore = create<CartState>()(
-  persist(
-    (set, get) => ({
+  (set, get) => ({
       items: [],
       couponCode: null,
       discount: 0,
@@ -78,14 +70,13 @@ export const useCartStore = create<CartState>()(
           };
         });
 
-        // Sync with server if authenticated
-        if (isAuthenticated()) {
-          try {
-            await api.addToCart(item.productId, quantity, item.variantSku);
-          } catch (error) {
-            console.error('Failed to sync cart with server:', error);
-            await get().syncWithServer();
-          }
+        // Attempt to sync with server; ignore 401 for guests
+        try {
+          await api.addToCart(item.productId, quantity, item.variantSku);
+        } catch (error) {
+          console.error('Failed to sync cart with server:', error);
+          // For authenticated users, try to resync full cart
+          await get().syncWithServer();
         }
       },
 
@@ -98,14 +89,11 @@ export const useCartStore = create<CartState>()(
           ),
         }));
 
-        // Sync with server if authenticated
-        if (isAuthenticated()) {
-          try {
-            await api.removeFromCart(productId, variantSku);
-          } catch (error) {
-            console.error('Failed to sync cart removal with server:', error);
-            await get().syncWithServer();
-          }
+        try {
+          await api.removeFromCart(productId, variantSku);
+        } catch (error) {
+          console.error('Failed to sync cart removal with server:', error);
+          await get().syncWithServer();
         }
       },
 
@@ -124,23 +112,15 @@ export const useCartStore = create<CartState>()(
           ),
         }));
 
-        // Sync with server if authenticated
-        if (isAuthenticated()) {
-          try {
-            await api.updateCartItem(productId, quantity, variantSku);
-          } catch (error) {
-            console.error('Failed to sync cart update with server:', error);
-            await get().syncWithServer();
-          }
+        try {
+          await api.updateCartItem(productId, quantity, variantSku);
+        } catch (error) {
+          console.error('Failed to sync cart update with server:', error);
+          await get().syncWithServer();
         }
       },
 
       applyCoupon: async (code: string) => {
-        if (!isAuthenticated()) {
-          // For guests, just validate locally (can't apply server-side)
-          return { success: false, message: 'Please login to apply coupon' };
-        }
-
         set({ isLoading: true });
         try {
           const result = await api.applyCartCoupon(code);
@@ -168,12 +148,10 @@ export const useCartStore = create<CartState>()(
           discountType: null,
         });
 
-        if (isAuthenticated()) {
-          try {
-            await api.removeCartCoupon();
-          } catch (error) {
-            console.error('Failed to remove coupon from server:', error);
-          }
+        try {
+          await api.removeCartCoupon();
+        } catch (error) {
+          console.error('Failed to remove coupon from server:', error);
         }
       },
 
@@ -193,21 +171,16 @@ export const useCartStore = create<CartState>()(
           discountType: null,
         });
 
-        if (isAuthenticated()) {
-          try {
-            await api.clearCart();
-          } catch (error) {
-            console.error('Failed to clear server cart:', error);
-          }
+        try {
+          await api.clearCart();
+          // Ensure local state matches server after clear
+          await get().syncWithServer();
+        } catch (error) {
+          console.error('Failed to clear server cart:', error);
         }
       },
 
       syncWithServer: async () => {
-        if (!isAuthenticated()) {
-          set({ isSynced: false });
-          return;
-        }
-
         set({ isLoading: true });
         try {
           const serverCart = await api.getCart();
@@ -248,16 +221,30 @@ export const useCartStore = create<CartState>()(
           } else if (serverCart.items.length > 0) {
             // Server has items, use server state
             // Convert server cart items to local format
-            const items: CartItem[] = serverCart.items.map((item) => ({
-              productId: typeof item.product === 'string' ? item.product : item.product._id,
-              name: item.name,
-              slug: '', // Will need to be fetched or stored in cart
-              image: item.image || '',
-              price: item.price,
-              quantity: item.quantity,
-              variantSku: item.variantSku,
-              gstPercentage: 5, // Default GST
-            }));
+            const items: CartItem[] = serverCart.items.map((item) => {
+              const productObj = item.product as unknown as {
+                id?: string;
+                _id?: string;
+                name?: string;
+                slug?: string;
+                image?: string;
+              };
+              const productId =
+                typeof item.product === 'string'
+                  ? item.product
+                  : productObj.id || productObj._id || '';
+
+              return {
+                productId,
+                name: productObj.name || '',
+                slug: productObj.slug || '',
+                image: productObj.image || '',
+                price: item.price,
+                quantity: item.quantity,
+                variantSku: item.variantSku,
+                gstPercentage: 5, // Default GST
+              };
+            });
 
             set({
               items,
@@ -323,11 +310,7 @@ export const useCartStore = create<CartState>()(
             item.productId === productId && item.variantSku === variantSku
         );
       },
-    }),
-    {
-      name: 'cart-storage',
-    }
-  )
+    })
 );
 
 // Hook to sync cart when auth state changes

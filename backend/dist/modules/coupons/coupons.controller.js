@@ -69,7 +69,7 @@ __decorate([
 ], CouponsController.prototype, "findAll", null);
 __decorate([
     (0, common_1.Get)('active'),
-    (0, roles_decorator_1.Roles)('admin', 'superadmin'),
+    (0, public_decorator_1.Public)(),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
