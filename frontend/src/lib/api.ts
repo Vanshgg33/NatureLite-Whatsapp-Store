@@ -57,7 +57,11 @@ import {
   WalletTransaction,
 } from '@/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
+// Backend API base URL. In production this should be set via NEXT_PUBLIC_API_URL.
+// In development, if not set, we fall back to window.location.origin + /api/v1.
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined' ? `${window.location.origin}/api/v1` : '');
 
 class ApiClient {
   private client: AxiosInstance;

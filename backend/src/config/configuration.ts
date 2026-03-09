@@ -119,5 +119,6 @@ export default (): Configuration => ({
     pass: process.env.SMTP_PASS || '',
     from: process.env.SMTP_FROM || 'Naturelite Store <noreply@naturelite.com>',
   },
-  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3001',
+  // Frontend URL used for CORS/CSRF checks. Must be set explicitly in env.
+  frontendUrl: process.env.FRONTEND_URL || '',
 });

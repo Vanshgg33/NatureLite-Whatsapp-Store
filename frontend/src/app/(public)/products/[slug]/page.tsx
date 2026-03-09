@@ -192,8 +192,8 @@ export default function ProductDetailPage() {
 
   const images = product.images.length > 0 ? product.images : [null];
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:8001';
-  const productUrl = `${siteUrl}/products/${product.slug}`;
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  const productUrl = siteUrl ? `${siteUrl}/products/${product.slug}` : `/products/${product.slug}`;
   const productJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Product',

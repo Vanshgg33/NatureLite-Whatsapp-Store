@@ -7,7 +7,7 @@ export async function generateMetadata({
 }: {
   params: ProductPageParams;
 }): Promise<Metadata> {
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
+  const apiBase = process.env.NEXT_PUBLIC_API_URL;
   try {
     const res = await fetch(
       `${apiBase}/products/slug/${encodeURIComponent(params.slug)}`,
@@ -27,8 +27,10 @@ export async function generateMetadata({
 
     const image =
       Array.isArray(product.images) && product.images.length > 0 ? product.images[0] : undefined;
-    const urlBase = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:8001';
-    const url = `${urlBase}/products/${product.slug || params.slug}`;
+    const urlBase = process.env.NEXT_PUBLIC_SITE_URL;
+    const url = urlBase
+      ? `${urlBase}/products/${product.slug || params.slug}`
+      : `/products/${product.slug || params.slug}`;
 
     return {
       title,

@@ -20,12 +20,15 @@ async function bootstrap() {
   app.use(mongoSanitize());
 
   // CSRF protection - validate Origin header on mutating requests
-  const allowedOrigin = configService.get<string>('frontendUrl') || 'http://localhost:3001';
+  const configuredOrigin = configService.get<string>('frontendUrl');
+  const allowedOrigin = configuredOrigin && configuredOrigin.length > 0
+    ? configuredOrigin
+    : undefined;
   app.use((req: any, res: any, next: any) => {
     if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
       const origin = req.headers.origin || req.headers.referer;
       // Allow requests with no origin (server-to-server, Postman, webhooks)
-      if (origin && !origin.startsWith(allowedOrigin)) {
+      if (allowedOrigin && origin && !origin.startsWith(allowedOrigin)) {
         return res.status(403).json({ message: 'CSRF validation failed' });
       }
     }
@@ -33,7 +36,7 @@ async function bootstrap() {
   });
 
   app.enableCors({
-    origin: allowedOrigin,
+    origin: allowedOrigin || true,
     credentials: true,
   });
 
