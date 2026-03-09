@@ -2,8 +2,8 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
-import * as cookieParser from 'cookie-parser';
-import * as mongoSanitize from 'express-mongo-sanitize';
+import cookieParser from 'cookie-parser';
+import mongoSanitize from 'express-mongo-sanitize';
 import { AppModule } from './app.module';
 
 async function bootstrap() {

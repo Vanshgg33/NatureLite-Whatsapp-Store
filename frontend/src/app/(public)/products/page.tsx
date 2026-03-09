@@ -12,7 +12,9 @@ import { api } from '@/lib/api';
 import { Product, Category } from '@/types';
 import { cn } from '@/lib/utils';
 
-const sortOptions = [
+type SortOption = 'newest' | 'price-asc' | 'price-desc' | 'popular';
+
+const sortOptions: { value: SortOption; label: string }[] = [
   { value: 'newest', label: 'Newest' },
   { value: 'price-asc', label: 'Price: Low to High' },
   { value: 'price-desc', label: 'Price: High to Low' },
@@ -22,7 +24,7 @@ const sortOptions = [
 export default function ProductsPage() {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<'newest' | 'price-asc' | 'price-desc' | 'popular'>('newest');
+  const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [minPrice, setMinPrice] = useState<string>('');
   const [maxPrice, setMaxPrice] = useState<string>('');
   const [inStockOnly, setInStockOnly] = useState(false);
@@ -135,7 +137,7 @@ export default function ProductsPage() {
             <select
               value={sortBy}
               onChange={(e) => {
-                setSortBy(e.target.value);
+                setSortBy(e.target.value as SortOption);
                 setPage(1);
               }}
               className="appearance-none px-4 py-3 pr-10 bg-white border-0 rounded-xl shadow-brand-sm font-body text-brand-charcoal cursor-pointer"
