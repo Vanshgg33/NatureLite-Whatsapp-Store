@@ -127,7 +127,7 @@ export default function SalesPage() {
       setEditPaymentProofUrl(editingSale.paymentProofUrl || null);
       setEditNotes(editingSale.notes || '');
       setEditImages(editingSale.images || []);
-      const items = (editingSale.items || []).map((it: any) => {
+      const items = (editingSale.items || []).map((it: SaleItem) => {
         const productId = typeof it.product === 'object' && it.product
           ? (it.product._id?.toString?.() ?? it.product._id)
           : (it.product ?? '');
@@ -833,7 +833,7 @@ export default function SalesPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-sm font-medium">Sale Type</label>
-                <Select value={saleType} onValueChange={(v: any) => setSaleType(v)}>
+                <Select value={saleType} onValueChange={(v: 'walk_in' | 'delivery') => setSaleType(v)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -1135,7 +1135,7 @@ export default function SalesPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium">Sale Type</label>
-                  <Select value={editSaleType} onValueChange={(v: any) => setEditSaleType(v)}>
+                  <Select value={editSaleType} onValueChange={(v: 'walk_in' | 'delivery' | 'website') => setEditSaleType(v)}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>

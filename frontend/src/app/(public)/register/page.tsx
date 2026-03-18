@@ -21,7 +21,6 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -29,11 +28,6 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
 
     if (password.length < 6) {
       setError('Password must be at least 6 characters');
@@ -49,14 +43,6 @@ export default function RegisterPage() {
         password,
         phone: phone || undefined,
       });
-
-      // Store customer tokens
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('customer-token', response.accessToken);
-        if (response.refreshToken) {
-          localStorage.setItem('customer-refresh-token', response.refreshToken);
-        }
-      }
 
       setCustomer({
         id: response.user.id,
@@ -192,20 +178,6 @@ export default function RegisterPage() {
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
-            </div>
-
-            <div>
-              <label className="font-body text-sm text-brand-text mb-1.5 block">
-                Confirm Password
-              </label>
-              <Input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirm your password"
-                required
-                className="rounded-xl"
-              />
             </div>
 
             <Button

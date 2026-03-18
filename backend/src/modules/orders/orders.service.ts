@@ -12,6 +12,7 @@ import { SettingsService } from '../settings/settings.service';
 import { StoresService } from '../stores/stores.service';
 import { StoreStockService } from '../store-stock/store-stock.service';
 import { StoreSalesService } from '../store-sales/store-sales.service';
+import { WalletService } from '../wallet/wallet.service';
 import {
   CreateOrderDto,
   UpdateOrderStatusDto,
@@ -21,9 +22,11 @@ import {
   UpdateShippingDto,
   OrderQueryDto,
   ReorderDto,
+  UpdateDeliveryWorkflowDto,
+  GuestCreateOrderDto,
 } from './dto/order.dto';
-import { PaginatedResult } from '@/common/types/pagination.types';
-import { parseObjectId } from '@/common/utils/objectid.util';
+import { PaginatedResult } from '../../common/types/pagination.types';
+import { parseObjectId } from '../../common/utils/objectid.util';
 
 @Injectable()
 export class OrdersService {
@@ -41,6 +44,7 @@ export class OrdersService {
     private storesService: StoresService,
     private storeStockService: StoreStockService,
     private storeSalesService: StoreSalesService,
+    private walletService: WalletService,
   ) {}
 
   async create(userId: string, dto: CreateOrderDto): Promise<Order> {
@@ -111,6 +115,16 @@ export class OrdersService {
         throw new BadRequestException('Either cartId or items must be provided');
       }
 
+      // Basic serviceability check by pincode (Raipur, Bhilai, Durg, Bilaspur areas)
+      const pincode = dto.shippingAddress?.pincode;
+      const SERVICEABLE_PINCODE_PREFIXES = ['492', '490', '491', '495']; // Raipur, Bhilai, Durg, Bilaspur
+      if (
+        !pincode ||
+        !SERVICEABLE_PINCODE_PREFIXES.some((prefix) => pincode.startsWith(prefix))
+      ) {
+        throw new BadRequestException('We currently do not deliver to this pincode.');
+      }
+
       let discount = 0;
       if (dto.couponCode) {
         const validation = await this.couponsService.validateCoupon({
@@ -140,7 +154,38 @@ export class OrdersService {
 
       const gstTotal = orderItems.reduce((sum, item) => sum + item.gstAmount, 0);
       const shippingCharge = subtotal >= freeShippingThreshold ? 0 : defaultShippingCharge;
-      const total = subtotal - discount + shippingCharge;
+
+      // Base total before applying wallet (subtotal - discount + GST + shipping)
+      const totalBeforeWallet = subtotal - discount + gstTotal + shippingCharge;
+
+      // Handle wallet usage (amount provided in rupees) — only with prepaid payments
+      let walletUsedPaise = 0;
+      let paymentGatewayAmountPaise = Math.round(totalBeforeWallet * 100);
+
+      if (dto.walletAmount && dto.walletAmount > 0) {
+        if (dto.paymentMethod !== 'prepaid') {
+          throw new BadRequestException(
+            'Wallet amount can only be used with prepaid payment method',
+          );
+        }
+
+        const requestedPaise = Math.round(dto.walletAmount * 100);
+        const walletBalancePaise = await this.walletService.getBalance(userId);
+        walletUsedPaise = Math.min(requestedPaise, walletBalancePaise, paymentGatewayAmountPaise);
+
+        if (walletUsedPaise > 0) {
+          await this.walletService.debit(
+            userId,
+            walletUsedPaise,
+            'order_payment',
+            { tentativeTotal: totalBeforeWallet },
+            session,
+          );
+          paymentGatewayAmountPaise -= walletUsedPaise;
+        }
+      }
+
+      const total = totalBeforeWallet;
 
       const orderNumber = await this.generateOrderNumber();
 
@@ -156,6 +201,8 @@ export class OrdersService {
           couponCode: dto.couponCode,
           shippingCharge,
           gstTotal,
+          walletUsed: walletUsedPaise,
+          paymentGatewayAmount: paymentGatewayAmountPaise,
           total,
           notes: dto.notes,
           timeline: [
@@ -179,6 +226,7 @@ export class OrdersService {
           item.product.toString(),
           item.quantity,
           item.variantSku,
+          session,
         );
         // Keep global totalSold counter updated
         await this.productsService.incrementTotalSold(
@@ -247,9 +295,34 @@ export class OrdersService {
     return this.orderRepository.findUserOrders(userObjId, limit);
   }
 
+  async createGuestOrder(dto: GuestCreateOrderDto): Promise<Order> {
+    // Same phone = same user: find or create by phone (guest identity is tied to phone)
+    const user = await this.usersService.findOrCreateByPhone(dto.phone);
+
+    // Optionally update basic profile info for this user
+    const updates: Record<string, unknown> = {};
+    if (dto.name && !user.name) updates.name = dto.name;
+    if (dto.email && !user.email) updates.email = dto.email;
+    if (Object.keys(updates).length > 0) {
+      await this.usersService.update(user._id.toString(), updates as any);
+    }
+
+    // Reuse existing create logic so pricing, coupons, and stock handling stay consistent
+    const createDto: CreateOrderDto = {
+      items: dto.items,
+      shippingAddress: dto.shippingAddress,
+      paymentMethod: dto.paymentMethod,
+      couponCode: dto.couponCode,
+      notes: dto.notes,
+      walletAmount: dto.walletAmount,
+    };
+
+    return this.create(user._id.toString(), createDto);
+  }
+
   private static readonly VALID_TRANSITIONS: Record<string, string[]> = {
-    pending: ['confirmed', 'cancelled'],
-    confirmed: ['processing', 'cancelled'],
+    pending: ['confirmed', 'cancelled', 'shipped'],
+    confirmed: ['processing', 'cancelled', 'shipped'],
     processing: ['shipped', 'cancelled'],
     shipped: ['out_for_delivery', 'delivered', 'returned'],
     out_for_delivery: ['delivered', 'returned'],
@@ -259,12 +332,28 @@ export class OrdersService {
     refunded: [],
   };
 
-  async updateStatus(id: string, dto: UpdateOrderStatusDto): Promise<Order> {
+  async updateStatus(
+    id: string,
+    dto: UpdateOrderStatusDto,
+    departmentType?: 'packing' | 'billing' | 'delivery',
+  ): Promise<Order> {
     const idObj = parseObjectId(id, 'id');
     const order = await this.orderRepository.findById(idObj);
 
     if (!order) {
       throw new NotFoundException('Order not found');
+    }
+
+    if (departmentType) {
+      if (departmentType === 'packing' && (dto.status !== 'shipped' || order.status !== 'processing')) {
+        throw new BadRequestException('Packing can only mark orders as shipped from processing.');
+      }
+      if (departmentType === 'billing' && (dto.status !== 'out_for_delivery' || order.status !== 'shipped')) {
+        throw new BadRequestException('Billing can only set status to out for delivery from shipped.');
+      }
+      if (departmentType === 'delivery') {
+        throw new BadRequestException('Delivery staff must use the delivery workflow endpoint, not status update.');
+      }
     }
 
     const allowedNext = OrdersService.VALID_TRANSITIONS[order.status] || [];
@@ -284,7 +373,16 @@ export class OrdersService {
     order.status = dto.status;
     order.timeline.push(timelineEntry);
 
-    if (dto.status === 'delivered') {
+    if (dto.status === 'shipped') {
+      order.packedAt = new Date();
+      if (dto.updatedBy) order.packedBy = dto.updatedBy;
+    } else if (dto.status === 'out_for_delivery') {
+      order.outForDeliveryAt = new Date();
+      if (dto.updatedBy) {
+        order.billedAt = new Date();
+        order.billedBy = dto.updatedBy;
+      }
+    } else if (dto.status === 'delivered') {
       order.deliveredAt = new Date();
     }
 
@@ -329,6 +427,71 @@ export class OrdersService {
     return order.save();
   }
 
+  async updateDeliveryWorkflow(
+    id: string,
+    dto: UpdateDeliveryWorkflowDto,
+    updatedBy: string,
+    departmentType?: 'packing' | 'billing' | 'delivery',
+  ): Promise<Order> {
+    if (departmentType && departmentType !== 'delivery') {
+      throw new BadRequestException('Only delivery staff can update delivery workflow.');
+    }
+
+    const idObj = parseObjectId(id, 'id');
+    const order = await this.orderRepository.findById(idObj);
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    const metadata: Record<string, unknown> = order.metadata || {};
+    const existingWorkflow = (metadata.deliveryWorkflow || {}) as Record<string, unknown>;
+
+    const workflow: Record<string, unknown> = {
+      ...existingWorkflow,
+      status: dto.status,
+      paymentMethod: dto.paymentMethod,
+      paymentProofUrl: dto.paymentProofUrl,
+      note: dto.note,
+      updatedBy,
+      updatedAt: new Date(),
+    };
+
+    metadata.deliveryWorkflow = workflow;
+    order.metadata = metadata;
+
+    if (dto.status === 'delivery_done') {
+      if (order.paymentStatus !== 'paid') {
+        if (order.paymentMethod === 'cod') {
+          order.paymentStatus = 'paid';
+        } else {
+          throw new BadRequestException(
+            'Cannot mark as delivered: payment is not yet paid. Complete payment or reconcile first.',
+          );
+        }
+      }
+      order.status = 'delivered';
+      order.deliveredAt = new Date();
+    }
+
+    const timelineEntry: TimelineEntry = {
+      status: dto.status,
+      message:
+        dto.note ||
+        `Delivery status updated to ${dto.status.replace(/_/g, ' ')}`.trim(),
+      timestamp: new Date(),
+      updatedBy,
+      metadata: {
+        paymentMethod: dto.paymentMethod,
+        paymentProofUrl: dto.paymentProofUrl,
+      },
+    };
+
+    order.timeline.push(timelineEntry);
+
+    return order.save();
+  }
+
   async cancelOrder(id: string, dto: CancelOrderDto, cancelledBy?: string): Promise<Order> {
     const idObj = parseObjectId(id, 'id');
     const order = await this.orderRepository.findById(idObj);
@@ -355,6 +518,12 @@ export class OrdersService {
     order.timeline.push(timelineEntry);
 
     const savedOrder = await order.save();
+
+    try {
+      await this.storeSalesService.voidByLinkedOrder(id, 'order_cancelled');
+    } catch (voidErr) {
+      this.logger.warn(`Failed to void store sale for cancelled order: ${voidErr.message}`);
+    }
 
     // Send cancellation email (non-blocking)
     try {
@@ -416,6 +585,116 @@ export class OrdersService {
     return order;
   }
 
+  async requestReturn(userId: string, id: string, reason: string): Promise<Order> {
+    const idObj = parseObjectId(id, 'id');
+    const order = await this.orderRepository.findById(idObj);
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    // Ensure customer owns the order
+    if (order.user.toString() !== userId) {
+      throw new BadRequestException('You do not have access to this order');
+    }
+
+    // Only allow returns for delivered, paid, non-cancelled/refunded orders
+    if (order.status !== 'delivered' || order.paymentStatus !== 'paid') {
+      throw new BadRequestException(
+        'Return can only be requested for delivered and paid orders',
+      );
+    }
+
+    if (order.returnRequestStatus && order.returnRequestStatus !== 'rejected') {
+      throw new BadRequestException('Return request already submitted for this order');
+    }
+
+    // Optional: enforce a simple return window (e.g. 7 days from delivery)
+    if (order.deliveredAt) {
+      const deliveredAt = order.deliveredAt.getTime();
+      const now = Date.now();
+      const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+      if (now - deliveredAt > sevenDaysMs) {
+        throw new BadRequestException('Return window has expired for this order');
+      }
+    }
+
+    order.returnRequestedAt = new Date();
+    order.returnRequestReason = reason;
+    order.returnRequestStatus = 'requested';
+
+    const timelineEntry: TimelineEntry = {
+      status: order.status,
+      message: `Customer requested return: ${reason}`,
+      timestamp: new Date(),
+    };
+
+    order.timeline.push(timelineEntry);
+
+    const savedOrder = await order.save();
+
+    // Optionally notify admin via email (best-effort)
+    try {
+      const user = await this.usersService.findById(order.user.toString());
+      if (user?.email) {
+        this.emailService.sendOrderCancelled?.(savedOrder.toObject(), user.email);
+      }
+    } catch (emailError) {
+      this.logger.warn(`Failed to send return request email: ${emailError.message}`);
+    }
+
+    return savedOrder;
+  }
+
+  async approveReturn(id: string): Promise<Order> {
+    const idObj = parseObjectId(id, 'id');
+    const order = await this.orderRepository.findById(idObj);
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.returnRequestStatus !== 'requested') {
+      throw new BadRequestException('Return request must be in requested state to approve');
+    }
+    order.returnRequestStatus = 'approved';
+    order.timeline.push({
+      status: order.status,
+      message: 'Return approved by admin',
+      timestamp: new Date(),
+    });
+    return order.save();
+  }
+
+  async rejectReturn(id: string): Promise<Order> {
+    const idObj = parseObjectId(id, 'id');
+    const order = await this.orderRepository.findById(idObj);
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.returnRequestStatus !== 'requested') {
+      throw new BadRequestException('Return request must be in requested state to reject');
+    }
+    order.returnRequestStatus = 'rejected';
+    order.timeline.push({
+      status: order.status,
+      message: 'Return request rejected by admin',
+      timestamp: new Date(),
+    });
+    return order.save();
+  }
+
+  async completeReturn(id: string): Promise<Order> {
+    const idObj = parseObjectId(id, 'id');
+    const order = await this.orderRepository.findById(idObj);
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.returnRequestStatus !== 'approved') {
+      throw new BadRequestException('Return must be approved before marking complete');
+    }
+    order.returnRequestStatus = 'completed';
+    order.status = 'returned';
+    order.timeline.push({
+      status: 'returned',
+      message: 'Return completed',
+      timestamp: new Date(),
+    });
+    return order.save();
+  }
+
   async reorder(userId: string, dto: ReorderDto): Promise<Order> {
     parseObjectId(userId, 'userId');
     const orderIdObj = parseObjectId(dto.orderId, 'orderId');
@@ -423,6 +702,24 @@ export class OrdersService {
 
     if (!originalOrder) {
       throw new NotFoundException('Original order not found');
+    }
+
+    const mainStore = await this.storesService.findMainStore();
+    const mainStoreId = mainStore._id.toString();
+
+    for (const item of originalOrder.items) {
+      const storeStock = await this.storeStockService.getStockForStoreProduct(
+        mainStoreId,
+        item.product.toString(),
+      );
+      const available = item.variantSku
+        ? (storeStock?.variantStocks?.find((v) => v.variantSku === item.variantSku)?.stock ?? 0)
+        : (storeStock?.stock ?? 0);
+      if (item.quantity > available) {
+        throw new BadRequestException(
+          `Insufficient stock for "${item.name}"${item.variantSku ? ` (${item.variantSku})` : ''}. Available: ${available}. Reduce quantity or remove from reorder.`,
+        );
+      }
     }
 
     const items = originalOrder.items.map((item) => ({

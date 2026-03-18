@@ -1,20 +1,21 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { User, Package, MapPin, LogOut, Settings } from 'lucide-react';
+import { User, Package, MapPin, LogOut, Settings, Wallet } from 'lucide-react';
 import { useCustomerStore } from '@/lib/customer-store';
 import { cn } from '@/lib/utils';
+import { AccountLoginRequired } from '@/components/account/login-required';
 
 const accountNav = [
   { name: 'Dashboard', href: '/account', icon: User },
   { name: 'Orders', href: '/account/orders', icon: Package },
   { name: 'Addresses', href: '/account/addresses', icon: MapPin },
+  { name: 'Wallet', href: '/account/wallet', icon: Wallet },
 ];
 
 export default function AccountLayout({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
   const pathname = usePathname();
   const { isAuthenticated, customer, logout, setLastVisitedPage } = useCustomerStore();
 
@@ -22,20 +23,9 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
     setLastVisitedPage(pathname);
   }, [pathname, setLastVisitedPage]);
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login');
-    }
-  }, [isAuthenticated, router]);
-
   const handleLogout = () => {
     logout();
-    router.push('/');
   };
-
-  if (!isAuthenticated) {
-    return null;
-  }
 
   return (
     <div className="min-h-screen pt-20 pb-8 sm:pb-12 bg-brand-cream">
@@ -81,19 +71,23 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
                     </Link>
                   );
                 })}
-                <button
-                  onClick={handleLogout}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-body text-sm text-brand-text hover:bg-brand-error/10 hover:text-brand-error transition-colors"
-                >
-                  <LogOut className="w-5 h-5" />
-                  Sign Out
-                </button>
+                {isAuthenticated && (
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-body text-sm text-brand-text hover:bg-brand-error/10 hover:text-brand-error transition-colors"
+                  >
+                    <LogOut className="w-5 h-5" />
+                    Sign Out
+                  </button>
+                )}
               </nav>
             </div>
           </div>
 
           {/* Main Content */}
-          <div className="lg:col-span-3">{children}</div>
+          <div className="lg:col-span-3">
+            {isAuthenticated ? children : <AccountLoginRequired />}
+          </div>
         </div>
       </div>
     </div>

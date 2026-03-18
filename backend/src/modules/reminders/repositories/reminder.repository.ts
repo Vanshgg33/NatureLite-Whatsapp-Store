@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Reminder, ReminderDocument } from '../schemas/reminder.schema';
-import { parseObjectId } from '@/common/utils/objectid.util';
+import { parseObjectId } from '../../../common/utils/objectid.util';
 
 @Injectable()
 export class ReminderRepository {

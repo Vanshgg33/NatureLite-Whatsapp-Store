@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -24,16 +23,12 @@ const statusColors: Record<string, string> = {
 
 export default function OrdersPage() {
   const { customer, isAuthenticated } = useCustomerStore();
-  const [page, setPage] = useState(1);
-  const limit = 10;
 
   const { data: orders = [], isLoading } = useQuery({
-    queryKey: ['my-orders', page],
-    queryFn: () => api.getMyOrders(limit),
+    queryKey: ['my-orders'],
+    queryFn: () => api.getMyOrders(10),
     enabled: isAuthenticated,
   });
-
-  const totalPages = 1; // API returns array, no pagination info - could be enhanced
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -50,6 +45,28 @@ export default function OrdersPage() {
       year: 'numeric',
     });
   };
+
+  if (!isAuthenticated) {
+    return (
+      <motion.div
+        className="bg-white rounded-2xl p-12 shadow-brand-sm text-center"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <h2 className="font-display text-xl font-semibold text-brand-charcoal mb-2">
+          Login to view your orders
+        </h2>
+        <p className="font-body text-brand-muted mb-6">
+          Use the same phone or email you used while placing orders.
+        </p>
+        <Link href="/login">
+          <Button className="bg-brand-mustard hover:bg-brand-mustard-dark text-white">
+            Go to Login
+          </Button>
+        </Link>
+      </motion.div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -162,28 +179,6 @@ export default function OrdersPage() {
         </motion.div>
       ))}
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 pt-4">
-          <Button
-            variant="outline"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-          >
-            Previous
-          </Button>
-          <span className="px-4 font-body text-sm text-brand-muted">
-            Page {page} of {totalPages}
-          </span>
-          <Button
-            variant="outline"
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages}
-          >
-            Next
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

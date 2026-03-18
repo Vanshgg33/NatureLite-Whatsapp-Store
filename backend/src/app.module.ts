@@ -26,12 +26,15 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { MediaModule } from './modules/media/media.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { InteraktModule } from './modules/interakt/interakt.module';
 import { EmailModule } from './modules/email/email.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { StoresModule } from './modules/stores/stores.module';
 import { StoreStockModule } from './modules/store-stock/store-stock.module';
 import { StoreSalesModule } from './modules/store-sales/store-sales.module';
 import { RemindersModule } from './modules/reminders/reminders.module';
+import { WishlistModule } from './modules/wishlist/wishlist.module';
+import { WalletModule } from './modules/wallet/wallet.module';
 
 @Module({
   imports: [
@@ -74,12 +77,15 @@ import { RemindersModule } from './modules/reminders/reminders.module';
     MediaModule,
     AuditModule,
     PaymentsModule,
+    InteraktModule,
     EmailModule,
     FeedbackModule,
     StoresModule,
     StoreStockModule,
     StoreSalesModule,
     RemindersModule,
+    WishlistModule,
+    WalletModule,
   ],
   providers: [
     {

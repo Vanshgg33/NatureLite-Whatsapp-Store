@@ -15,7 +15,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import type { Store } from '@/types';
+import type { Store, UpdateStoreDto } from '@/types';
 
 export default function StoresPage() {
   const queryClient = useQueryClient();
@@ -44,7 +44,7 @@ export default function StoresPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) => api.updateStore(id, data),
+    mutationFn: ({ id, data }: { id: string; data: UpdateStoreDto }) => api.updateStore(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stores'] });
       setEditStore(null);

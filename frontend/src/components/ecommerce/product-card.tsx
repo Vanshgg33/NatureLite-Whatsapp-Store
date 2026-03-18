@@ -9,7 +9,10 @@ import { cn, getProductTotalStock } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useCartStore, CartItem } from '@/lib/cart-store';
 import { useToast } from '@/components/ui/use-toast';
+import { useWishlistStore } from '@/lib/wishlist-store';
 import { Product } from '@/types';
+import { useCustomerStore } from '@/lib/customer-store';
+import { api } from '@/lib/api';
 
 interface ProductCardProps {
   product: Product;
@@ -25,6 +28,9 @@ export function ProductCard({
   const [isHovered, setIsHovered] = useState(false);
   const addItem = useCartStore((state) => state.addItem);
   const { toast } = useToast();
+  const wishlistToggle = useWishlistStore((state) => state.toggle);
+  const isInWishlist = useWishlistStore((state) => state.isInWishlist(product._id));
+  const isAuthenticated = useCustomerStore((state) => state.isAuthenticated);
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -42,7 +48,7 @@ export function ProductCard({
       productId: product._id,
       name: product.name,
       slug: product.slug,
-      image: product.images[0] || '/images/products/placeholder.jpg',
+      image: product.images?.[0] || '/images/products/placeholder.jpg',
       price: product.price,
       compareAtPrice: product.compareAtPrice,
       gstPercentage: product.gstPercentage,
@@ -66,9 +72,9 @@ export function ProductCard({
       <Link href={`/products/${product.slug}`} className="group block">
         <div className="flex gap-4 p-3 rounded-xl bg-white hover:bg-brand-sand/50 transition-colors">
           <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-brand-sand flex-shrink-0">
-            {product.images[0] ? (
+            {product.images?.[0] ? (
               <Image
-                src={product.images[0]}
+                src={product.images?.[0] as string}
                 alt={product.name}
                 fill
                 className="object-cover"
@@ -76,7 +82,7 @@ export function ProductCard({
             ) : (
               <div className="w-full h-full flex items-center justify-center">
                 <span className="font-display text-2xl text-brand-brown/20">
-                  {product.name[0]}
+                  {(product.name || '?').charAt(0).toUpperCase()}
                 </span>
               </div>
             )}
@@ -109,17 +115,18 @@ export function ProductCard({
         <div className="relative bg-white rounded-2xl overflow-hidden shadow-brand-sm transition-all duration-normal group-hover:shadow-brand-lg group-hover:-translate-y-1">
           {/* Image */}
           <div className="relative aspect-square bg-brand-sand">
-            {product.images[0] ? (
+            {product.images?.[0] ? (
               <Image
-                src={product.images[0]}
+                src={product.images?.[0] as string}
                 alt={product.name}
                 fill
                 className="object-cover transition-transform duration-slow group-hover:scale-105"
+                loading={index > 0 ? 'lazy' : 'eager'}
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-brand-mustard/20 to-brand-brown/20">
                 <span className="font-display text-6xl text-brand-brown/20">
-                  {product.name[0]}
+                  {(product.name || '?').charAt(0).toUpperCase()}
                 </span>
               </div>
             )}
@@ -159,9 +166,50 @@ export function ProductCard({
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
+                  (async () => {
+                    try {
+                      const nextInWishlist = !isInWishlist;
+
+                      // Update local wishlist immediately for snappy UI
+                      wishlistToggle({
+                        productId: product._id,
+                        slug: product.slug,
+                        name: product.name,
+                        image: product.images[0],
+                        price: product.price,
+                      });
+
+                      // If authenticated, sync change to server
+                      if (isAuthenticated) {
+                        if (nextInWishlist) {
+                          await api.addToWishlist(product._id);
+                        } else {
+                          await api.removeFromWishlist(product._id);
+                        }
+                      }
+
+                      toast({
+                        title: nextInWishlist ? 'Added to wishlist' : 'Removed from wishlist',
+                        description: `${product.name} has been ${
+                          nextInWishlist ? 'added to' : 'removed from'
+                        } your wishlist.`,
+                      });
+                    } catch {
+                      toast({
+                        title: 'Wishlist update failed',
+                        description: 'Please try again in a moment.',
+                        variant: 'destructive',
+                      });
+                    }
+                  })();
                 }}
               >
-                <Heart className="w-4 h-4 text-brand-text" />
+                <Heart
+                  className={cn(
+                    'w-4 h-4',
+                    isInWishlist ? 'text-brand-mustard fill-brand-mustard' : 'text-brand-text',
+                  )}
+                />
               </button>
               <button
                 className="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center hover:bg-brand-sand transition-colors"

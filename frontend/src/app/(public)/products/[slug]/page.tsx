@@ -1,23 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  ArrowLeft,
-  Star,
-  Truck,
-  ShieldCheck,
-  Leaf,
-  Share2,
-  Heart,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-} from 'lucide-react';
+import { ArrowLeft, Star, Truck, ShieldCheck, Leaf, Share2, Heart, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Box, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { QuantitySelector } from '@/components/ecommerce/quantity-selector';
@@ -28,11 +17,13 @@ import { useCustomerStore } from '@/lib/customer-store';
 import { useToast } from '@/components/ui/use-toast';
 import { api } from '@/lib/api';
 import { cn, getProductTotalStock } from '@/lib/utils';
+import type { ProductReview } from '@/types';
+import { useWishlistStore } from '@/lib/wishlist-store';
 import dynamic from 'next/dynamic';
 
 const Product3DViewer = dynamic(
-  () => import('@/components/three/scenes/Product3DViewer').then(mod => mod.Product3DViewer),
-  { ssr: false }
+  () => import('@/components/three/scenes/Product3DViewer').then((mod) => mod.Product3DViewer),
+  { ssr: false },
 );
 
 export default function ProductDetailPage() {
@@ -53,6 +44,13 @@ export default function ProductDetailPage() {
     queryFn: () => api.getProductBySlug(slug),
   });
 
+  const wishlistToggle = useWishlistStore((state) => state.toggle);
+  const isInWishlist = useWishlistStore((state) =>
+    product ? state.isInWishlist(product._id) : false,
+  );
+
+  const isCustomerAuthenticated = useCustomerStore((state) => state.isAuthenticated);
+
   // Fetch related products (parallel — doesn't depend on product data)
   const { data: relatedProducts } = useQuery({
     queryKey: ['products', 'featured'],
@@ -68,18 +66,29 @@ export default function ProductDetailPage() {
   });
 
   // Auto-select first variant when product loads
-  if (product && product.variants?.length > 0 && !variantAutoSelected) {
-    setSelectedVariant(product.variants[0].sku);
-    setVariantAutoSelected(true);
-  }
+  useEffect(() => {
+    if (product && product.variants?.length > 0 && !variantAutoSelected) {
+      setSelectedVariant(product.variants[0].sku);
+      setVariantAutoSelected(true);
+    }
+  }, [product, variantAutoSelected]);
 
   // Compute current price/stock based on selected variant (same pattern as QuickViewModal)
-  const selectedVariantData = product && selectedVariant
-    ? product.variants.find((v) => v.sku === selectedVariant)
-    : null;
+  const selectedVariantData =
+    product && selectedVariant ? product.variants.find((v) => v.sku === selectedVariant) : null;
   const currentPrice = selectedVariantData?.price || product?.price || 0;
   const comparePrice = selectedVariantData?.compareAtPrice || product?.compareAtPrice;
-  const currentStock = selectedVariantData ? selectedVariantData.stock : (product?.stock || 0);
+  const currentStock = selectedVariantData ? selectedVariantData.stock ?? 0 : product?.stock || 0;
+
+  // Ensure quantity never exceeds available stock
+  useEffect(() => {
+    if (currentStock > 0 && quantity > currentStock) {
+      setQuantity(currentStock);
+    }
+    if (currentStock === 0 && quantity !== 1) {
+      setQuantity(1);
+    }
+  }, [currentStock, quantity]);
 
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [reviewRating, setReviewRating] = useState(5);
@@ -91,7 +100,7 @@ export default function ProductDetailPage() {
     setSubmittingReview(true);
     try {
       await api.createFeedback({
-        type: 'review',
+        type: 'product_review',
         productId: product!._id,
         rating: reviewRating,
         message: reviewMessage,
@@ -184,9 +193,37 @@ export default function ProductDetailPage() {
 
   const images = product.images.length > 0 ? product.images : [null];
 
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  const productUrl = siteUrl ? `${siteUrl}/products/${product.slug}` : `/products/${product.slug}`;
+  const productJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: product.name,
+    image: images.filter(Boolean),
+    description:
+      product.shortDescription ||
+      (typeof product.description === 'string'
+        ? product.description.replace(/<[^>]+>/g, '').slice(0, 200)
+        : undefined),
+    sku: product.sku,
+    offers: {
+      '@type': 'Offer',
+      priceCurrency: 'INR',
+      price: currentPrice,
+      availability:
+        currentStock > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+      url: productUrl,
+    },
+  };
+
   return (
     <div className="min-h-screen pt-20 bg-brand-cream">
       <div className="brand-container py-12">
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
+        />
         {/* Breadcrumb */}
         <Link
           href="/products"
@@ -232,7 +269,7 @@ export default function ProductDetailPage() {
                       ) : (
                         <div className="w-full h-full flex items-center justify-center bg-brand-sand">
                           <span className="font-display text-8xl text-brand-brown/20">
-                            {product.name[0]}
+                            {(product.name || '?').charAt(0).toUpperCase()}
                           </span>
                         </div>
                       )}
@@ -320,6 +357,7 @@ export default function ProductDetailPage() {
                         alt={`${product.name} ${index + 1}`}
                         fill
                         className="object-cover"
+                        loading="lazy"
                       />
                     ) : (
                       <div className="w-full h-full bg-brand-sand" />
@@ -353,7 +391,7 @@ export default function ProductDetailPage() {
               <div className="flex items-center gap-1">
                 {[...Array(5)].map((_, i) => {
                   const avgRating = reviews && reviews.length > 0
-                    ? reviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / reviews.length
+                    ? reviews.reduce((sum: number, r: ProductReview) => sum + (r.rating || 0), 0) / reviews.length
                     : 0;
                   return (
                     <Star
@@ -370,7 +408,7 @@ export default function ProductDetailPage() {
               </div>
               <span className="font-body text-sm text-brand-muted">
                 {reviews && reviews.length > 0
-                  ? `${(reviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / reviews.length).toFixed(1)} (${reviews.length} review${reviews.length !== 1 ? 's' : ''})`
+                  ? `${(reviews.reduce((sum: number, r: ProductReview) => sum + (r.rating || 0), 0) / reviews.length).toFixed(1)} (${reviews.length} review${reviews.length !== 1 ? 's' : ''})`
                   : 'No reviews yet'}
               </span>
             </div>
@@ -448,8 +486,49 @@ export default function ProductDetailPage() {
                 size="lg"
                 className="rounded-xl py-6"
                 aria-label="Add to wishlist"
+                onClick={() => {
+                  (async () => {
+                    try {
+                      const nextInWishlist = !isInWishlist;
+
+                      wishlistToggle({
+                        productId: product._id,
+                        slug: product.slug,
+                        name: product.name,
+                        image: product.images[0],
+                        price: currentPrice,
+                      });
+
+                      if (isCustomerAuthenticated) {
+                        if (nextInWishlist) {
+                          await api.addToWishlist(product._id);
+                        } else {
+                          await api.removeFromWishlist(product._id);
+                        }
+                      }
+
+                      toast({
+                        title: nextInWishlist ? 'Added to wishlist' : 'Removed from wishlist',
+                        description: `${product.name} has been ${
+                          nextInWishlist ? 'added to' : 'removed from'
+                        } your wishlist.`,
+                      });
+                    } catch {
+                      toast({
+                        title: 'Wishlist update failed',
+                        description: 'Please try again in a moment.',
+                        variant: 'destructive',
+                      });
+                    }
+                  })();
+                }}
               >
-                <Heart className="w-5 h-5" />
+                <Heart
+                  className={cn(
+                    'w-5 h-5',
+                    isInWishlist ? 'text-brand-mustard fill-brand-mustard' : 'text-brand-charcoal',
+                  )}
+                />
               </Button>
             </div>
 
@@ -586,7 +665,7 @@ export default function ProductDetailPage() {
           {/* Reviews List */}
           {reviews && reviews.length > 0 ? (
             <div className="space-y-4">
-              {reviews.map((review: any) => (
+              {reviews.map((review: ProductReview) => (
                 <div
                   key={review._id}
                   className="bg-white rounded-2xl p-6 shadow-brand-sm"
@@ -606,7 +685,7 @@ export default function ProductDetailPage() {
                       ))}
                     </div>
                     <span className="font-body text-sm font-medium text-brand-charcoal">
-                      {review.userId?.name || 'Customer'}
+                      {review.user?.name ?? review.userId?.name ?? 'Customer'}
                     </span>
                     <span className="font-body text-xs text-brand-muted">
                       {new Date(review.createdAt).toLocaleDateString()}

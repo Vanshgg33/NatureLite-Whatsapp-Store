@@ -39,6 +39,14 @@ export interface RazorpayConfig {
   webhookSecret: string;
 }
 
+export interface InteraktConfig {
+  apiKey: string;
+}
+
+export interface RazorpayXConfig {
+  accountNumber: string;
+}
+
 export interface SmtpConfig {
   host: string;
   port: number;
@@ -56,6 +64,8 @@ export interface Configuration {
   cloudinary: CloudinaryConfig;
   throttle: ThrottleConfig;
   razorpay: RazorpayConfig;
+  interakt?: InteraktConfig;
+  razorpayX?: RazorpayXConfig;
   smtp: SmtpConfig;
   frontendUrl: string;
 }
@@ -91,9 +101,15 @@ export default (): Configuration => ({
     limit: parseInt(process.env.THROTTLE_LIMIT || '100', 10),
   },
   razorpay: {
-    keyId: process.env.RAZORPAY_KEY_ID || '',
-    keySecret: process.env.RAZORPAY_KEY_SECRET || '',
-    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
+  keyId: process.env.RAZORPAY_KEY_ID || process.env.razorpay_key || '',
+  keySecret: process.env.RAZORPAY_KEY_SECRET || process.env.razorpay_secret || '',
+  webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
+  },
+  interakt: {
+  apiKey: process.env.INTERAKT_API_KEY || process.env.interakt_api_key || '',
+  },
+  razorpayX: {
+  accountNumber: process.env.RAZORPAYX_ACCOUNT_NUMBER || process.env.razorpayX_account_number || '',
   },
   smtp: {
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -103,5 +119,6 @@ export default (): Configuration => ({
     pass: process.env.SMTP_PASS || '',
     from: process.env.SMTP_FROM || 'Naturelite Store <noreply@naturelite.com>',
   },
-  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3001',
+  // Frontend URL used for CORS/CSRF checks. Must be set explicitly in env.
+  frontendUrl: process.env.FRONTEND_URL || '',
 });

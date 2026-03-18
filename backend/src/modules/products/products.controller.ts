@@ -17,11 +17,11 @@ import {
   UpdateStockDto,
 } from './dto/product.dto';
 import { Product } from './schemas/product.schema';
-import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
-import { RolesGuard } from '@/common/guards/roles.guard';
-import { Roles } from '@/common/decorators/roles.decorator';
-import { Public } from '@/common/decorators/public.decorator';
-import { PaginatedResult } from '@/common/types/pagination.types';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { Public } from '../../common/decorators/public.decorator';
+import { PaginatedResult } from '../../common/types/pagination.types';
 
 @Controller('products')
 export class ProductsController {

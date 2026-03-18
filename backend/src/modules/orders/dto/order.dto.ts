@@ -80,6 +80,15 @@ export class CreateOrderDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  /**
+   * Optional wallet amount in rupees the customer wants to apply.
+   * Backend will cap this based on actual wallet balance and payable amount.
+   */
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  walletAmount?: number;
 }
 
 export class UpdateOrderStatusDto {
@@ -180,6 +189,15 @@ export class OrderQueryDto {
   @IsString()
   @IsOptional()
   sortOrder?: 'asc' | 'desc' = 'desc';
+
+  @IsOptional()
+  forPacking?: boolean;
+
+  @IsOptional()
+  forBilling?: boolean;
+
+  @IsOptional()
+  forDelivery?: boolean;
 }
 
 export class ReorderDto {
@@ -191,4 +209,70 @@ export class ReorderDto {
   @Type(() => ShippingAddressDto)
   @IsOptional()
   shippingAddress?: ShippingAddressDto;
+}
+
+export class UpdateDeliveryWorkflowDto {
+  @IsEnum(['delivery_done', 'customer_ringing', 'customer_cancelled', 'customer_tomorrow'])
+  status: 'delivery_done' | 'customer_ringing' | 'customer_cancelled' | 'customer_tomorrow';
+
+  @IsEnum(['cash', 'upi'])
+  @IsOptional()
+  paymentMethod?: 'cash' | 'upi';
+
+  @IsString()
+  @IsOptional()
+  paymentProofUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  note?: string;
+}
+
+export class RequestReturnDto {
+  @IsString()
+  @IsNotEmpty()
+  reason: string;
+}
+
+export class GuestCreateOrderDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OrderItemDto)
+  items: OrderItemDto[];
+
+  @ValidateNested()
+  @Type(() => ShippingAddressDto)
+  shippingAddress: ShippingAddressDto;
+
+  @IsEnum(['cod', 'prepaid', 'upi', 'card', 'netbanking', 'wallet'])
+  paymentMethod: PaymentMethod;
+
+  @IsString()
+  @IsOptional()
+  couponCode?: string;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  phone: string;
+
+  @IsString()
+  @IsOptional()
+  email?: string;
+
+  @IsString()
+  @IsOptional()
+  name?: string;
+
+  /**
+   * Optional wallet amount in rupees the customer wants to apply.
+   * Backend will cap this based on actual wallet balance and payable amount.
+   */
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  walletAmount?: number;
 }

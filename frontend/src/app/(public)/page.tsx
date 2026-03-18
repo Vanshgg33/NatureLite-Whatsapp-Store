@@ -3,30 +3,16 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Leaf } from 'lucide-react';
-import dynamic from 'next/dynamic';
 
 import { api } from '@/lib/api';
 import { Product, Category } from '@/types';
 
-import { FeaturedSection } from '@/components/ecommerce/featured-section';
+import CompactHeroSection from '@/components/sections/CompactHeroSection';
+import HomeShopSection from '@/components/sections/HomeShopSection';
+import OurStorySection from '@/components/sections/OurStorySection';
+import SocialProofSection from '@/components/sections/SocialProofSection';
+import RecencyBlock from '@/components/sections/RecencyBlock';
 import { NewsletterSection } from '@/components/ecommerce/newsletter-section';
-
-const ImmersiveHero = dynamic(
-  () => import('@/components/sections/ImmersiveHeroSection'),
-  { ssr: false }
-);
-const ProductShowcase = dynamic(
-  () => import('@/components/sections/ProductShowcaseSection'),
-  { ssr: false }
-);
-const SocialProof = dynamic(
-  () => import('@/components/sections/SocialProofSection'),
-  { ssr: false }
-);
-const Categories = dynamic(
-  () => import('@/components/sections/CategoriesSection'),
-  { ssr: false }
-);
 
 function LoadingScreen() {
   return (
@@ -49,6 +35,11 @@ function LoadingScreen() {
   );
 }
 
+/**
+ * Home page: psychology layout
+ * - Above fold: compact hero + category pills + product grid (shop first, minimal scroll)
+ * - Below fold: story (3D) → social proof → recency block → newsletter
+ */
 export default function HomePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -57,22 +48,12 @@ export default function HomePage() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [featuredRes, productsRes, categoriesRes] = await Promise.all([
-          api.getFeaturedProducts(8),
-          api.getProducts({ limit: 12, sortBy: 'totalSold', sortOrder: 'desc' }),
+        const [productsRes, categoriesRes] = await Promise.all([
+          api.getProducts({ limit: 32, sortBy: 'totalSold', sortOrder: 'desc' }),
           api.getActiveCategories(),
         ]);
-
-        const allProducts = [...featuredRes, ...productsRes.items];
-        const seen = new Set<string>();
-        const deduped = allProducts.filter(p => {
-          if (seen.has(p._id)) return false;
-          seen.add(p._id);
-          return true;
-        });
-
-        setProducts(deduped);
-        setCategories(categoriesRes);
+        setProducts(productsRes.items || []);
+        setCategories(categoriesRes || []);
       } catch (error) {
         console.error('Failed to fetch homepage data:', error);
       } finally {
@@ -89,30 +70,22 @@ export default function HomePage() {
 
   return (
     <main>
-      {/* S1: Hero — clean white, 3D bottle right, text left */}
-      <ImmersiveHero />
+      {/* 1. Compact hero — one line + CTA (primacy, F-pattern) */}
+      <CompactHeroSection />
 
-      {/* S2: Product Showcase — scroll-driven 3D (dark green) */}
-      <ProductShowcase />
+      {/* 2. Shop above fold — pills + product grid (choice architecture, anchoring, scarcity) */}
+      {products.length > 0 && <HomeShopSection products={products} />}
 
-      {/* S3: Product Grid — light breather */}
-      {products.length > 0 && (
-        <FeaturedSection
-          title="Our Collection"
-          subtitle="Handpicked organic superfoods for your family"
-          products={products}
-          categories={categories}
-          viewAllLink="/products"
-        />
-      )}
+      {/* 3. Story — only when they scroll (3D chapters) */}
+      <OurStorySection />
 
-      {/* S5: Categories — large image grid */}
-      {categories.length > 0 && <Categories categories={categories} />}
+      {/* 4. Social proof — stats + testimonials */}
+      <SocialProofSection />
 
-      {/* S6: Social Proof — stats + testimonial (cream bg) */}
-      <SocialProof />
+      {/* 5. Recency block — last thing before footer (recency effect) */}
+      <RecencyBlock />
 
-      {/* S7: Newsletter */}
+      {/* 6. Newsletter */}
       <NewsletterSection variant="full-width" />
     </main>
   );

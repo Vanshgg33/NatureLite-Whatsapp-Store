@@ -2,11 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { StoreSale, StoreSaleDocument } from '../schemas/store-sale.schema';
-import { BaseRepository } from '@/common/repository/base.repository';
+import { BaseRepository } from '../../../common/repository/base.repository';
 import { SaleQueryDto } from '../dto/store-sale.dto';
-import { PaginatedResult, paginate } from '@/common/types/pagination.types';
-import { buildCreatedAtFilter, buildSearchOrFilter } from '@/common/utils/query.util';
-import { parseObjectId } from '@/common/utils/objectid.util';
+import { PaginatedResult, paginate } from '../../../common/types/pagination.types';
+import { buildCreatedAtFilter, buildSearchOrFilter } from '../../../common/utils/query.util';
+import { parseObjectId } from '../../../common/utils/objectid.util';
 import { PipelineStage } from 'mongoose';
 
 @Injectable()
@@ -78,6 +78,7 @@ export class StoreSaleRepository extends BaseRepository<StoreSaleDocument> {
         $match: {
           store: storeObjId,
           createdAt: { $gte: startDate, $lte: endDate },
+          $or: [{ voidedAt: { $exists: false } }, { voidedAt: null }],
         },
       },
       {
@@ -129,7 +130,12 @@ export class StoreSaleRepository extends BaseRepository<StoreSaleDocument> {
     startDate.setHours(0, 0, 0, 0);
 
     const pipeline: PipelineStage[] = [
-      { $match: { createdAt: { $gte: startDate } } },
+      {
+        $match: {
+          createdAt: { $gte: startDate },
+          $or: [{ voidedAt: { $exists: false } }, { voidedAt: null }],
+        },
+      },
       {
         $group: {
           _id: {
@@ -170,6 +176,20 @@ export class StoreSaleRepository extends BaseRepository<StoreSaleDocument> {
       },
     ];
     return this.aggregate(pipeline);
+  }
+
+  async findOneByLinkedOrder(orderId: Types.ObjectId): Promise<StoreSaleDocument | null> {
+    return this.model.findOne({ linkedOrder: orderId }).exec();
+  }
+
+  async voidByLinkedOrder(orderId: Types.ObjectId, reason: string): Promise<StoreSaleDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        { linkedOrder: orderId, voidedAt: { $exists: false } },
+        { $set: { voidedAt: new Date(), voidedReason: reason } },
+        { new: true },
+      )
+      .exec();
   }
 
   async findOneBySaleNumberPrefix(prefix: string): Promise<StoreSaleDocument | null> {

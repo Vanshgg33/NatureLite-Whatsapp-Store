@@ -8,12 +8,13 @@ import { Button } from '@/components/ui/button';
 import { CartItem } from '@/components/ecommerce/cart-item';
 import { CartSummary } from '@/components/ecommerce/cart-summary';
 import { PremiumProductCardCompact } from '@/components/ecommerce/premium-product-card';
-import { useCartStore } from '@/lib/cart-store';
+import { useCartStore, useSyncCartOnAuth } from '@/lib/cart-store';
 import { api } from '@/lib/api';
-import { Product } from '@/types';
+import { Product, Category } from '@/types';
 
 export default function CartPage() {
   const items = useCartStore((state) => state.items);
+  const syncCart = useSyncCartOnAuth();
   const [mounted, setMounted] = useState(false);
   const [crossSellProducts, setCrossSellProducts] = useState<Product[]>([]);
 
@@ -22,18 +23,50 @@ export default function CartPage() {
     setMounted(true);
   }, []);
 
-  // Fetch cross-sell products (only on mount, not on every quantity change)
+  // Always sync cart from server when page mounts (for logged-in users)
+  useEffect(() => {
+    syncCart();
+  }, [syncCart]);
+
+  // Fetch cross-sell products (category-aware, only when cart has items)
   const itemCount = items.length;
   useEffect(() => {
     if (!mounted || itemCount === 0) return;
-    const cartProductIds = items.map((i) => i.productId);
-    api
-      .getProducts({ limit: 8, sortBy: 'totalSold', sortOrder: 'desc' })
-      .then((res) => {
+
+    const fetchCrossSell = async () => {
+      try {
+        const cartProductIds = items.map((i) => i.productId);
+        const firstItem = items[0];
+        let categoryId: string | undefined;
+
+        // Try to infer category from the first cart product
+        try {
+          const product = await api.getProduct(firstItem.productId);
+          if (typeof product.category === 'string') {
+            categoryId = product.category;
+          } else if (product.category && typeof product.category === 'object') {
+            categoryId = (product.category as Category)._id;
+          }
+        } catch {
+          // Fallback: ignore category and use generic top sellers
+        }
+
+        const res = await api.getProducts({
+          limit: 12,
+          sortBy: 'totalSold',
+          sortOrder: 'desc',
+          isActive: true,
+          category: categoryId,
+        });
+
         const filtered = res.items.filter((p: Product) => !cartProductIds.includes(p._id));
         setCrossSellProducts(filtered.slice(0, 4));
-      })
-      .catch(() => {});
+      } catch {
+        // Ignore cross-sell errors
+      }
+    };
+
+    fetchCrossSell();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted, itemCount]);
 

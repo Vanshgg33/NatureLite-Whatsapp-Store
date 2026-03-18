@@ -17,6 +17,20 @@ export interface User {
   updatedAt: string;
 }
 
+export interface AdminUser {
+  _id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  role: 'admin' | 'superadmin';
+  isActive: boolean;
+  store?: string;
+  departmentType?: 'packing' | 'billing' | 'delivery';
+  permissions: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Address {
   label: string;
   street: string;
@@ -137,7 +151,7 @@ export type OrderStatus =
   | 'refunded';
 
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
-export type PaymentMethod = 'cod' | 'prepaid' | 'upi' | 'card' | 'netbanking' | 'wallet' | 'razorpay';
+export type PaymentMethod = 'cod' | 'prepaid' | 'upi' | 'card' | 'netbanking' | 'wallet';
 
 export interface Order {
   _id: string;
@@ -151,6 +165,10 @@ export interface Order {
   subtotal: number;
   discount: number;
   couponCode?: string;
+  // Wallet + gateway breakdown (amounts are stored in paise on the backend;
+  // divide by 100 before displaying as rupees).
+  walletUsed?: number;
+  paymentGatewayAmount?: number;
   shippingCharge: number;
   gstTotal: number;
   total: number;
@@ -163,8 +181,16 @@ export interface Order {
   trackingUrl?: string;
   expectedDeliveryDate?: string;
   deliveredAt?: string;
+  packedAt?: string;
+  packedBy?: string;
+  billedAt?: string;
+  billedBy?: string;
+  outForDeliveryAt?: string;
   cancelledAt?: string;
   cancelReason?: string;
+  returnRequestedAt?: string;
+  returnRequestReason?: string;
+  returnRequestStatus?: 'requested' | 'approved' | 'rejected' | 'completed';
   createdAt: string;
   updatedAt: string;
 }
@@ -399,6 +425,7 @@ export interface AuthUser {
   role: 'admin' | 'superadmin' | 'customer';
   storeId?: string;
   storeName?: string;
+   departmentType?: 'packing' | 'billing' | 'delivery';
 }
 
 export interface UploadResult {
@@ -541,6 +568,37 @@ export interface CartResponse {
   itemCount: number;
 }
 
+// ==================== WISHLIST TYPES ====================
+export interface WishlistItem {
+  productId: string;
+  slug: string;
+  name: string;
+  image?: string;
+  price: number;
+  addedAt: string;
+}
+
+export interface WishlistResponse {
+  items: WishlistItem[];
+  itemCount: number;
+}
+
+// ==================== WALLET TYPES ====================
+export interface WalletBalance {
+  balance: number; // rupees
+  currency: 'INR';
+}
+
+export interface WalletTransaction {
+  id: string;
+  type: 'credit' | 'debit';
+  amount: number; // rupees
+  reason: string;
+  createdAt: string;
+  orderId?: string;
+  meta?: Record<string, unknown>;
+}
+
 // ==================== ORDER CREATION DTO ====================
 export interface CreateOrderDto {
   items?: { productId: string; variantSku?: string; quantity: number }[];
@@ -549,6 +607,19 @@ export interface CreateOrderDto {
   paymentMethod: PaymentMethod;
   couponCode?: string;
   notes?: string;
+  walletAmount?: number;
+}
+
+export interface GuestCreateOrderDto {
+  items: { productId: string; variantSku?: string; quantity: number }[];
+  shippingAddress: ShippingAddress;
+  paymentMethod: PaymentMethod;
+  couponCode?: string;
+  notes?: string;
+  phone: string;
+  email?: string;
+  name?: string;
+  walletAmount?: number;
 }
 
 export interface ReorderDto {
@@ -601,6 +672,68 @@ export interface Store {
   adminPassword?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface UpdateStoreDto {
+  name?: string;
+  address?: string;
+  phone?: string;
+  isActive?: boolean;
+}
+
+// ==================== FEEDBACK TYPES ====================
+export type FeedbackType = 'product_review' | 'order_feedback' | 'general' | 'complaint' | 'suggestion';
+export type FeedbackStatus = 'pending' | 'acknowledged' | 'resolved' | 'closed' | 'dismissed';
+
+export interface Feedback {
+  _id: string;
+  user: User | string;
+  order?: string;
+  product?: Product | string;
+  type: FeedbackType;
+  rating?: number;
+  message: string;
+  images: string[];
+  status: FeedbackStatus;
+  adminResponse?: string;
+  respondedAt?: string;
+  respondedBy?: string;
+  isPublic: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductReview {
+  _id: string;
+  user: { name?: string };
+  userId?: { name?: string };
+  rating?: number;
+  message: string;
+  adminResponse?: string;
+  createdAt: string;
+}
+
+// ==================== RAZORPAY ====================
+export interface RazorpayCheckoutResponse {
+  razorpay_payment_id: string;
+  razorpay_order_id: string;
+  razorpay_signature: string;
+}
+
+declare global {
+  interface Window {
+    Razorpay: new (options: {
+      key: string;
+      amount: number;
+      currency: string;
+      name: string;
+      description?: string;
+      order_id?: string;
+      handler: (response: RazorpayCheckoutResponse) => void | Promise<void>;
+      theme?: { color?: string };
+      modal?: { ondismiss?: () => void };
+    }) => { open: () => void };
+  }
 }
 
 export interface VariantStockEntry {
@@ -775,4 +908,19 @@ export interface MultiStoreRevenueData {
   storeId: string;
   storeName: string;
   data: { date: string; revenue: number; sales: number }[];
+}
+
+// ==================== AUDIT TYPES ====================
+export interface AuditLog {
+  _id: string;
+  action: string;
+  performedBy: string;
+  performedByName?: string;
+  targetId?: string;
+  targetModel?: string;
+  previousValues?: Record<string, unknown>;
+  newValues?: Record<string, unknown>;
+  description?: string;
+  ipAddress?: string;
+  createdAt: string;
 }

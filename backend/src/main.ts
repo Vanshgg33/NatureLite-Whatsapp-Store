@@ -2,11 +2,14 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
-import * as cookieParser from 'cookie-parser';
-import * as mongoSanitize from 'express-mongo-sanitize';
 import { AppModule } from './app.module';
 
-async function bootstrap() {
+const cookieParser = require('cookie-parser');
+const mongoSanitize = require('express-mongo-sanitize');
+
+let cachedServer: any;
+
+async function createApp() {
   const app = await NestFactory.create(AppModule, {
     rawBody: true,
   });
@@ -15,25 +18,31 @@ async function bootstrap() {
 
   app.use(helmet());
   app.use(cookieParser());
-
-  // NoSQL injection prevention - strips $ and . from req.body/query/params
   app.use(mongoSanitize());
 
+  // CORS: support comma-separated FRONTEND_URL for multiple origins (e.g. prod + localhost)
+  const frontendUrl = configService.get<string>('frontendUrl') || '';
+  const allowedOrigins = frontendUrl
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
   // CSRF protection - validate Origin header on mutating requests
-  const allowedOrigin = configService.get<string>('frontendUrl') || 'http://localhost:3001';
   app.use((req: any, res: any, next: any) => {
     if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
       const origin = req.headers.origin || req.headers.referer;
-      // Allow requests with no origin (server-to-server, Postman, webhooks)
-      if (origin && !origin.startsWith(allowedOrigin)) {
-        return res.status(403).json({ message: 'CSRF validation failed' });
+      if (allowedOrigins.length > 0 && origin) {
+        const isAllowed = allowedOrigins.some((o) => origin.startsWith(o));
+        if (!isAllowed) {
+          return res.status(403).json({ message: 'CSRF validation failed' });
+        }
       }
     }
     next();
   });
 
   app.enableCors({
-    origin: allowedOrigin,
+    origin: allowedOrigins.length > 0 ? allowedOrigins : true,
     credentials: true,
   });
 
@@ -50,12 +59,28 @@ async function bootstrap() {
     }),
   );
 
-  const port = configService.get<number>('app.port') || 3000;
-
-  await app.listen(port);
-
-  console.log(`Application is running on: http://localhost:${port}`);
-  console.log(`API Prefix: ${configService.get<string>('app.apiPrefix')}`);
+  await app.init();
+  return { app, configService };
 }
 
-bootstrap();
+// Vercel serverless: export handler for each request
+export default async function handler(req: any, res: any) {
+  if (!cachedServer) {
+    const { app, configService } = await createApp();
+    cachedServer = app.getHttpAdapter().getInstance();
+    console.log(
+      `Nest initialized (serverless). API: ${configService.get<string>('app.apiPrefix')}`,
+    );
+  }
+  return cachedServer(req, res);
+}
+
+// Local dev: run HTTP server
+if (!process.env.VERCEL) {
+  (async () => {
+    const { app, configService } = await createApp();
+    const port = configService.get<number>('app.port');
+    await app.listen(port);
+    
+  })();
+}

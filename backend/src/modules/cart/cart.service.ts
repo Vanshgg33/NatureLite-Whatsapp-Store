@@ -4,7 +4,7 @@ import { CartRepository } from './repositories/cart.repository';
 import { ProductsService } from '../products/products.service';
 import { CouponsService } from '../coupons/coupons.service';
 import { AddToCartDto, UpdateCartItemDto, CartResponse } from './dto/cart.dto';
-import { parseObjectId } from '@/common/utils/objectid.util';
+import { parseObjectId } from '../../common/utils/objectid.util';
 
 @Injectable()
 export class CartService {

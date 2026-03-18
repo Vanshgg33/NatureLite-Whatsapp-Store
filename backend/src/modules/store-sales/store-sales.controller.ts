@@ -1,10 +1,10 @@
 import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { StoreSalesService } from './store-sales.service';
 import { CreateStoreSaleDto, UpdateStoreSaleDto, SaleQueryDto } from './dto/store-sale.dto';
-import { Roles } from '@/common/decorators/roles.decorator';
-import { RolesGuard } from '@/common/guards/roles.guard';
-import { StoreGuard } from '@/common/guards/store.guard';
-import { CurrentUser, JwtPayload } from '@/common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { StoreGuard } from '../../common/guards/store.guard';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 
 @Controller('store-sales')
 @UseGuards(RolesGuard, StoreGuard)

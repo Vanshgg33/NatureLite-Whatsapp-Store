@@ -2,8 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Payment, PaymentDocument } from '../schemas/payment.schema';
-import { BaseRepository } from '@/common/repository/base.repository';
-import { parseObjectId } from '@/common/utils/objectid.util';
+import { BaseRepository } from '../../../common/repository/base.repository';
+import { parseObjectId } from '../../../common/utils/objectid.util';
 
 @Injectable()
 export class PaymentRepository extends BaseRepository<PaymentDocument> {
@@ -35,6 +35,10 @@ export class PaymentRepository extends BaseRepository<PaymentDocument> {
     return this.model
       .findOneAndUpdate({ gatewayOrderId }, update, { new: true })
       .exec();
+  }
+
+  async findOneByOrder(orderId: Types.ObjectId): Promise<PaymentDocument | null> {
+    return this.model.findOne({ order: orderId }).sort({ createdAt: -1 }).exec();
   }
 
   async findOneByOrderAndStatus(

@@ -26,7 +26,8 @@ export default function ProductsPage() {
   });
 
   // Normalize response: backend returns { items, total, ... }; handle alternate shapes
-  const items = Array.isArray(rawData?.items) ? rawData.items : Array.isArray((rawData as any)?.data) ? (rawData as any).data : [];
+  const raw = rawData as { items?: Product[]; data?: Product[] } | undefined;
+  const items = Array.isArray(raw?.items) ? raw.items : Array.isArray(raw?.data) ? raw.data : [];
   const data = rawData
     ? {
         ...rawData,
@@ -131,9 +132,9 @@ export default function ProductsPage() {
                       return (
                       <TableRow key={product._id}>
                         <TableCell>
-                          {product.images[0] ? (
+                          {product.images?.[0] ? (
                             <Image
-                              src={product.images[0]}
+                              src={product.images?.[0] as string}
                               alt={product.name}
                               width={40}
                               height={40}

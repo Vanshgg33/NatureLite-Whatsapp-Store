@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { z } from 'zod';
 import { motion } from 'framer-motion';
 import { MapPin, Plus, Edit2, Trash2, Check, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,19 @@ import { Address } from '@/types';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 
+const addressSchema = z.object({
+  label: z.string().optional(),
+  street: z.string().min(5, 'Street address is required'),
+  city: z.string().min(2, 'City is required'),
+  state: z.string().min(2, 'State is required'),
+  pincode: z
+    .string()
+    .min(6, 'Valid pincode is required')
+    .regex(/^[0-9]+$/, 'Pincode must be numeric'),
+  landmark: z.string().optional(),
+  isDefault: z.boolean().optional(),
+});
+
 export default function AddressesPage() {
   const { customer, addAddress, updateAddress, removeAddress, setDefaultAddress, setCustomer } = useCustomerStore();
   const defaultAddress = useDefaultAddress();
@@ -18,6 +32,7 @@ export default function AddressesPage() {
   const [isAdding, setIsAdding] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Partial<Record<keyof z.infer<typeof addressSchema>, string>>>({});
   const [formData, setFormData] = useState<Partial<Address>>({
     label: '',
     street: '',
@@ -30,16 +45,36 @@ export default function AddressesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrors({});
+
+    const parsed = addressSchema.safeParse(formData);
+    if (!parsed.success) {
+      const fieldErrors: Partial<Record<keyof z.infer<typeof addressSchema>, string>> = {};
+      for (const issue of parsed.error.issues) {
+        const path = issue.path[0] as keyof z.infer<typeof addressSchema>;
+        if (!fieldErrors[path]) {
+          fieldErrors[path] = issue.message;
+        }
+      }
+      setErrors(fieldErrors);
+      toast({
+        title: 'Please fix the highlighted fields',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsSubmitting(true);
 
+    const safe = parsed.data;
     const address: Address = {
-      label: formData.label || 'Home',
-      street: formData.street || '',
-      city: formData.city || '',
-      state: formData.state || '',
-      pincode: formData.pincode || '',
-      landmark: formData.landmark,
-      isDefault: formData.isDefault || false,
+      label: safe.label || 'Home',
+      street: safe.street,
+      city: safe.city,
+      state: safe.state,
+      pincode: safe.pincode,
+      landmark: safe.landmark,
+      isDefault: safe.isDefault || false,
     };
 
     try {
@@ -172,8 +207,11 @@ export default function AddressesPage() {
                   value={formData.pincode}
                   onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
                   placeholder="302001"
-                  required
+                  className={cn(errors.pincode && 'border-brand-error')}
                 />
+                {errors.pincode && (
+                  <p className="text-xs text-brand-error mt-1">{errors.pincode}</p>
+                )}
               </div>
             </div>
             <div>
@@ -184,8 +222,11 @@ export default function AddressesPage() {
                 value={formData.street}
                 onChange={(e) => setFormData({ ...formData, street: e.target.value })}
                 placeholder="House/Flat No., Building, Street"
-                required
+                className={cn(errors.street && 'border-brand-error')}
               />
+              {errors.street && (
+                <p className="text-xs text-brand-error mt-1">{errors.street}</p>
+              )}
             </div>
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
@@ -196,8 +237,11 @@ export default function AddressesPage() {
                   value={formData.city}
                   onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                   placeholder="City"
-                  required
+                  className={cn(errors.city && 'border-brand-error')}
                 />
+                {errors.city && (
+                  <p className="text-xs text-brand-error mt-1">{errors.city}</p>
+                )}
               </div>
               <div>
                 <label className="font-body text-sm text-brand-text mb-1.5 block">
@@ -207,8 +251,11 @@ export default function AddressesPage() {
                   value={formData.state}
                   onChange={(e) => setFormData({ ...formData, state: e.target.value })}
                   placeholder="State"
-                  required
+                  className={cn(errors.state && 'border-brand-error')}
                 />
+                {errors.state && (
+                  <p className="text-xs text-brand-error mt-1">{errors.state}</p>
+                )}
               </div>
             </div>
             <div>

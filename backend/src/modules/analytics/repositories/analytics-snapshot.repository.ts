@@ -6,7 +6,7 @@ import {
   AnalyticsSnapshotDocument,
   SnapshotPeriod,
 } from '../schemas/analytics-snapshot.schema';
-import { BaseRepository } from '@/common/repository/base.repository';
+import { BaseRepository } from '../../../common/repository/base.repository';
 
 @Injectable()
 export class AnalyticsSnapshotRepository extends BaseRepository<AnalyticsSnapshotDocument> {

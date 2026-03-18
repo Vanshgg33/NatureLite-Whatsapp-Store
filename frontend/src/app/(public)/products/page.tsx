@@ -12,7 +12,9 @@ import { api } from '@/lib/api';
 import { Product, Category } from '@/types';
 import { cn } from '@/lib/utils';
 
-const sortOptions = [
+type SortOption = 'newest' | 'price-asc' | 'price-desc' | 'popular';
+
+const sortOptions: { value: SortOption; label: string }[] = [
   { value: 'newest', label: 'Newest' },
   { value: 'price-asc', label: 'Price: Low to High' },
   { value: 'price-desc', label: 'Price: High to Low' },
@@ -22,7 +24,10 @@ const sortOptions = [
 export default function ProductsPage() {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState('newest');
+  const [sortBy, setSortBy] = useState<SortOption>('newest');
+  const [minPrice, setMinPrice] = useState<string>('');
+  const [maxPrice, setMaxPrice] = useState<string>('');
+  const [inStockOnly, setInStockOnly] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [page, setPage] = useState(1);
 
@@ -34,15 +39,38 @@ export default function ProductsPage() {
 
   // Fetch products
   const { data: productsData, isLoading } = useQuery({
-    queryKey: ['products', page, search, selectedCategory, sortBy],
-    queryFn: () =>
-      api.getProducts({
+    queryKey: ['products', page, search, selectedCategory, sortBy, minPrice, maxPrice, inStockOnly],
+    queryFn: () => {
+      let sortField: string | undefined;
+      let sortOrder: 'asc' | 'desc' | undefined;
+
+      if (sortBy === 'newest') {
+        sortField = 'createdAt';
+        sortOrder = 'desc';
+      } else if (sortBy === 'price-asc') {
+        sortField = 'price';
+        sortOrder = 'asc';
+      } else if (sortBy === 'price-desc') {
+        sortField = 'price';
+        sortOrder = 'desc';
+      } else if (sortBy === 'popular') {
+        sortField = 'totalSold';
+        sortOrder = 'desc';
+      }
+
+      return api.getProducts({
         page,
         limit: 12,
         search: search || undefined,
         category: selectedCategory || undefined,
         isActive: true,
-      }),
+        inStock: inStockOnly || undefined,
+        minPrice: minPrice ? Number(minPrice) : undefined,
+        maxPrice: maxPrice ? Number(maxPrice) : undefined,
+        sortBy: sortField,
+        sortOrder,
+      });
+    },
   });
 
   const products = productsData?.items || [];
@@ -52,10 +80,19 @@ export default function ProductsPage() {
     setSearch('');
     setSelectedCategory(null);
     setSortBy('newest');
+    setMinPrice('');
+    setMaxPrice('');
+    setInStockOnly(false);
     setPage(1);
   };
 
-  const hasActiveFilters = search || selectedCategory || sortBy !== 'newest';
+  const hasActiveFilters =
+    !!search ||
+    !!selectedCategory ||
+    sortBy !== 'newest' ||
+    !!minPrice ||
+    !!maxPrice ||
+    inStockOnly;
 
   return (
     <div className="min-h-screen pt-20 bg-brand-cream">
@@ -100,7 +137,7 @@ export default function ProductsPage() {
             <select
               value={sortBy}
               onChange={(e) => {
-                setSortBy(e.target.value);
+                setSortBy(e.target.value as SortOption);
                 setPage(1);
               }}
               className="appearance-none px-4 py-3 pr-10 bg-white border-0 rounded-xl shadow-brand-sm font-body text-brand-charcoal cursor-pointer"
@@ -202,6 +239,51 @@ export default function ProductsPage() {
                     </div>
                   </div>
 
+                  <div className="mb-6">
+                    <h4 className="font-body text-sm font-medium text-brand-muted uppercase tracking-wider mb-3">
+                      Price range
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        placeholder="Min"
+                        value={minPrice}
+                        onChange={(e) => {
+                          setMinPrice(e.target.value);
+                          setPage(1);
+                        }}
+                        className="h-10"
+                      />
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        placeholder="Max"
+                        value={maxPrice}
+                        onChange={(e) => {
+                          setMaxPrice(e.target.value);
+                          setPage(1);
+                        }}
+                        className="h-10"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mb-4">
+                    <label className="inline-flex items-center gap-2 font-body text-sm text-brand-text">
+                      <input
+                        type="checkbox"
+                        checked={inStockOnly}
+                        onChange={(e) => {
+                          setInStockOnly(e.target.checked);
+                          setPage(1);
+                        }}
+                        className="rounded border-brand-sand text-brand-mustard focus:ring-brand-mustard"
+                      />
+                      In stock only
+                    </label>
+                  </div>
+
                   {hasActiveFilters && (
                     <Button
                       variant="outline"
@@ -270,6 +352,49 @@ export default function ProductsPage() {
                     {category.name}
                   </button>
                 ))}
+              </div>
+
+              <div className="mt-8 border-t pt-6 space-y-4">
+                <h4 className="font-display text-sm font-semibold text-brand-charcoal">
+                  Price range
+                </h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    placeholder="Min"
+                    value={minPrice}
+                    onChange={(e) => {
+                      setMinPrice(e.target.value);
+                      setPage(1);
+                    }}
+                    className="h-10"
+                  />
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    placeholder="Max"
+                    value={maxPrice}
+                    onChange={(e) => {
+                      setMaxPrice(e.target.value);
+                      setPage(1);
+                    }}
+                    className="h-10"
+                  />
+                </div>
+
+                <label className="inline-flex items-center gap-2 font-body text-sm text-brand-text">
+                  <input
+                    type="checkbox"
+                    checked={inStockOnly}
+                    onChange={(e) => {
+                      setInStockOnly(e.target.checked);
+                      setPage(1);
+                    }}
+                    className="rounded border-brand-sand text-brand-mustard focus:ring-brand-mustard"
+                  />
+                  In stock only
+                </label>
               </div>
             </div>
           </aside>

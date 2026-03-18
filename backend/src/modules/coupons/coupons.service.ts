@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { parseObjectId, parseObjectIdArray } from '@/common/utils/objectid.util';
+import { parseObjectId, parseObjectIdArray } from '../../common/utils/objectid.util';
 import { Coupon } from './schemas/coupon.schema';
 import { CouponRepository } from './repositories/coupon.repository';
 import {
@@ -8,7 +8,7 @@ import {
   ValidateCouponDto,
   CouponQueryDto,
 } from './dto/coupon.dto';
-import { PaginatedResult } from '@/common/types/pagination.types';
+import { PaginatedResult } from '../../common/types/pagination.types';
 
 export interface CouponValidationResult {
   valid: boolean;

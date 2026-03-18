@@ -127,7 +127,7 @@ export function ProductShowcase() {
                     {/* Placeholder - replace with actual images */}
                     <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-brand-mustard/20 to-brand-brown/20">
                       <span className="font-display text-6xl text-brand-brown/20">
-                        {product.name[0]}
+                        {(product.name || '?').charAt(0).toUpperCase()}
                       </span>
                     </div>
 

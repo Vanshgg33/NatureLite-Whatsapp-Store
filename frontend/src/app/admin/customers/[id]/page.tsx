@@ -16,6 +16,7 @@ import {
   TrendingUp,
   Star,
   Clock,
+  Wallet as WalletIcon,
 } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { api } from '@/lib/api';
@@ -46,8 +47,9 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { useState } from 'react';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, getStatusColor } from '@/lib/utils';
 import { Order } from '@/types';
 
 export default function CustomerDetailPage() {
@@ -56,6 +58,8 @@ export default function CustomerDetailPage() {
   const queryClient = useQueryClient();
   const [blockDialogOpen, setBlockDialogOpen] = useState(false);
   const [blockReason, setBlockReason] = useState('');
+  const [walletAmountInput, setWalletAmountInput] = useState('');
+  const [walletNoteInput, setWalletNoteInput] = useState('');
 
   const { data: customer, isLoading } = useQuery({
     queryKey: ['customer', params.id],
@@ -66,6 +70,11 @@ export default function CustomerDetailPage() {
     queryKey: ['customer-orders', params.id],
     queryFn: () => api.getOrders({ userId: params.id as string, limit: 50, page: 1 }),
     enabled: !!params.id,
+  });
+
+  const { data: walletSummary, refetch: refetchWallet } = useQuery({
+    queryKey: ['customer-wallet', params.id],
+    queryFn: () => api.adminGetWallet(params.id as string),
   });
 
   const blockMutation = useMutation({
@@ -83,6 +92,87 @@ export default function CustomerDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['customer', params.id] });
     },
   });
+
+  const creditWalletMutation = useMutation({
+    mutationFn: () =>
+      api.adminCreditWallet(
+        params.id as string,
+        Number(walletAmountInput || 0),
+        walletNoteInput || undefined,
+      ),
+    onSuccess: () => {
+      setWalletAmountInput('');
+      setWalletNoteInput('');
+      refetchWallet();
+    },
+  });
+
+  const debitWalletMutation = useMutation({
+    mutationFn: () =>
+      api.adminDebitWallet(
+        params.id as string,
+        Number(walletAmountInput || 0),
+        walletNoteInput || undefined,
+      ),
+    onSuccess: () => {
+      setWalletAmountInput('');
+      setWalletNoteInput('');
+      refetchWallet();
+    },
+  });
+
+  const orders = ordersData?.items || [];
+
+  const {
+    avgOrderValue,
+    lastOrderDate,
+    ordersLast30Days,
+    ordersLast60Days,
+    ordersLast90Days,
+    mostBoughtItems,
+  } = useMemo(() => {
+    const now = new Date();
+    const day30 = new Date(now);
+    day30.setDate(day30.getDate() - 30);
+    const day60 = new Date(now);
+    day60.setDate(day60.getDate() - 60);
+    const day90 = new Date(now);
+    day90.setDate(day90.getDate() - 90);
+
+    const totalOrders = customer?.totalOrders ?? 0;
+    const totalSpent = customer?.totalSpent ?? 0;
+    const avg = totalOrders > 0 ? totalSpent / totalOrders : 0;
+    const last = orders.length > 0 ? new Date(orders[0].createdAt) : null;
+
+    let last30 = 0,
+      last60 = 0,
+      last90 = 0;
+    const productCount: Record<string, { name: string; quantity: number }> = {};
+    orders.forEach((o: Order) => {
+      const d = new Date(o.createdAt);
+      if (d >= day30) last30++;
+      if (d >= day60) last60++;
+      if (d >= day90) last90++;
+      (o.items || []).forEach((item) => {
+        const product = item.product as { name?: string } | undefined;
+        const name = item.name || product?.name || 'Unknown';
+        if (!productCount[name]) productCount[name] = { name, quantity: 0 };
+        productCount[name].quantity += item.quantity || 0;
+      });
+    });
+    const mostBought = Object.values(productCount)
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 10);
+
+    return {
+      avgOrderValue: avg,
+      lastOrderDate: last,
+      ordersLast30Days: last30,
+      ordersLast60Days: last60,
+      ordersLast90Days: last90,
+      mostBoughtItems: mostBought,
+    };
+  }, [customer?.totalOrders, customer?.totalSpent, orders]);
 
   if (isLoading) {
     return (
@@ -102,61 +192,6 @@ export default function CustomerDetailPage() {
       </div>
     );
   }
-
-  const orders = ordersData?.items || [];
-
-  const { avgOrderValue, lastOrderDate, ordersLast30Days, ordersLast60Days, ordersLast90Days, mostBoughtItems } = useMemo(() => {
-    const now = new Date();
-    const day30 = new Date(now);
-    day30.setDate(day30.getDate() - 30);
-    const day60 = new Date(now);
-    day60.setDate(day60.getDate() - 60);
-    const day90 = new Date(now);
-    day90.setDate(day90.getDate() - 90);
-
-    const totalOrders = customer?.totalOrders ?? 0;
-    const totalSpent = customer?.totalSpent ?? 0;
-    const avg = totalOrders > 0 ? totalSpent / totalOrders : 0;
-    const last = orders.length > 0 ? new Date(orders[0].createdAt) : null;
-
-    let last30 = 0, last60 = 0, last90 = 0;
-    const productCount: Record<string, { name: string; quantity: number }> = {};
-    orders.forEach((o: Order) => {
-      const d = new Date(o.createdAt);
-      if (d >= day30) last30++;
-      if (d >= day60) last60++;
-      if (d >= day90) last90++;
-      (o.items || []).forEach((item: { name?: string; product?: { name?: string }; quantity: number }) => {
-        const name = item.name || (item.product as { name?: string })?.name || 'Unknown';
-        if (!productCount[name]) productCount[name] = { name, quantity: 0 };
-        productCount[name].quantity += item.quantity || 0;
-      });
-    });
-    const mostBought = Object.values(productCount)
-      .sort((a, b) => b.quantity - a.quantity)
-      .slice(0, 10);
-
-    return {
-      avgOrderValue: avg,
-      lastOrderDate: last,
-      ordersLast30Days: last30,
-      ordersLast60Days: last60,
-      ordersLast90Days: last90,
-      mostBoughtItems: mostBought,
-    };
-  }, [customer?.totalOrders, customer?.totalSpent, orders]);
-
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      pending: 'bg-yellow-100 text-yellow-800',
-      confirmed: 'bg-blue-100 text-blue-800',
-      processing: 'bg-purple-100 text-purple-800',
-      shipped: 'bg-indigo-100 text-indigo-800',
-      delivered: 'bg-green-100 text-green-800',
-      cancelled: 'bg-red-100 text-red-800',
-    };
-    return colors[status] || 'bg-gray-100 text-gray-800';
-  };
 
   return (
     <div>
@@ -335,6 +370,109 @@ export default function CustomerDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Wallet */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <WalletIcon className="h-5 w-5" />
+            Wallet
+          </CardTitle>
+          <CardDescription>
+            Store credits for this customer (used at checkout).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">Current balance</p>
+              <p className="text-2xl font-bold">
+                ₹{(walletSummary?.balance ?? 0).toLocaleString()}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col md:flex-row gap-3 items-start md:items-end">
+            <div className="flex-1 space-y-2">
+              <Label>Amount (₹)</Label>
+              <Input
+                type="number"
+                min={1}
+                value={walletAmountInput}
+                onChange={(e) => setWalletAmountInput(e.target.value)}
+                placeholder="Enter amount"
+              />
+            </div>
+            <div className="flex-1 space-y-2">
+              <Label>Note (optional)</Label>
+              <Input
+                value={walletNoteInput}
+                onChange={(e) => setWalletNoteInput(e.target.value)}
+                placeholder="Reason, e.g. refund for order #1234"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                disabled={
+                  !walletAmountInput ||
+                  Number(walletAmountInput) <= 0 ||
+                  creditWalletMutation.isPending
+                }
+                onClick={() => creditWalletMutation.mutate()}
+              >
+                {creditWalletMutation.isPending ? 'Crediting...' : 'Credit'}
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={
+                  !walletAmountInput ||
+                  Number(walletAmountInput) <= 0 ||
+                  debitWalletMutation.isPending
+                }
+                onClick={() => debitWalletMutation.mutate()}
+              >
+                {debitWalletMutation.isPending ? 'Debiting...' : 'Debit'}
+              </Button>
+            </div>
+          </div>
+          {walletSummary?.transactions && walletSummary.transactions.length > 0 && (
+            <div className="mt-4 space-y-2">
+              <p className="text-xs text-muted-foreground">Recent wallet activity</p>
+              <div className="max-h-48 overflow-y-auto space-y-2">
+                {walletSummary.transactions.map((tx) => (
+                  <div
+                    key={tx.id}
+                    className="flex items-center justify-between text-xs border rounded-md px-3 py-2"
+                  >
+                    <div className="space-y-0.5">
+                      <p className="font-medium capitalize">
+                        {tx.reason.replace(/_/g, ' ')}
+                      </p>
+                      <p className="text-muted-foreground">
+                        {new Date(tx.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p
+                        className={
+                          tx.type === 'credit' ? 'text-emerald-600 font-semibold' : 'text-red-600 font-semibold'
+                        }
+                      >
+                        {tx.type === 'credit' ? '+' : '-'}₹{tx.amount.toLocaleString()}
+                      </p>
+                      {tx.orderId && (
+                        <p className="text-muted-foreground">
+                          Order #{tx.orderId.slice(-4)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Most Bought Items */}
       {mostBoughtItems.length > 0 && (

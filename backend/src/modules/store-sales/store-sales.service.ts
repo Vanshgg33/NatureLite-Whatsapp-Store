@@ -7,8 +7,8 @@ import { ProductRepository } from '../products/repositories/product.repository';
 import { StoreStockService } from '../store-stock/store-stock.service';
 import { ProductsService } from '../products/products.service';
 import { CreateStoreSaleDto, UpdateStoreSaleDto, SaleQueryDto } from './dto/store-sale.dto';
-import { PaginatedResult } from '@/common/types/pagination.types';
-import { parseObjectId } from '@/common/utils/objectid.util';
+import { PaginatedResult } from '../../common/types/pagination.types';
+import { parseObjectId } from '../../common/utils/objectid.util';
 import { RemindersService } from '../reminders/reminders.service';
 
 @Injectable()
@@ -283,6 +283,11 @@ export class StoreSalesService {
 
     const updated = await this.storeSaleRepository.findByIdAndUpdate(id, { $set: updateData });
     return updated!;
+  }
+
+  async voidByLinkedOrder(orderId: string, reason: string): Promise<void> {
+    const orderIdObj = parseObjectId(orderId, 'orderId');
+    await this.storeSaleRepository.voidByLinkedOrder(orderIdObj, reason);
   }
 
   async getSaleStats(

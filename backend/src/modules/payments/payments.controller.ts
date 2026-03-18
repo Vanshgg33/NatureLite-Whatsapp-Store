@@ -1,8 +1,8 @@
 import { Controller, Post, Body, Param, Headers, UseGuards, Req } from '@nestjs/common';
-import { RolesGuard } from '@/common/guards/roles.guard';
-import { Roles } from '@/common/decorators/roles.decorator';
-import { CurrentUser, JwtPayload } from '@/common/decorators/current-user.decorator';
-import { Public } from '@/common/decorators/public.decorator';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
+import { Public } from '../../common/decorators/public.decorator';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentOrderDto, VerifyPaymentDto, InitiateRefundDto } from './dto/payment.dto';
 

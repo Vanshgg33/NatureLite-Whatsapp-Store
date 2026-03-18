@@ -1,7 +1,7 @@
 import { IsString, IsNotEmpty, IsEmail, MinLength, IsOptional, IsEnum, Matches } from 'class-validator';
 
-const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^()_\-+=])[A-Za-z\d@$!%*?&#^()_\-+=]{8,}$/;
-const PASSWORD_MESSAGE = 'Password must be at least 8 characters with uppercase, lowercase, number, and special character';
+const PASSWORD_REGEX = /./; // no-op placeholder (not used for customers/admins anymore)
+const PASSWORD_MESSAGE = 'Password does not meet requirements';
 
 export class AdminLoginDto {
   @IsEmail()
@@ -25,8 +25,7 @@ export class AdminRegisterDto {
 
   @IsString()
   @IsNotEmpty()
-  @MinLength(8)
-  @Matches(PASSWORD_REGEX, { message: PASSWORD_MESSAGE })
+  @MinLength(6)
   password: string;
 
   @IsString()
@@ -59,8 +58,7 @@ export class CustomerRegisterDto {
 
   @IsString()
   @IsNotEmpty()
-  @MinLength(8)
-  @Matches(PASSWORD_REGEX, { message: PASSWORD_MESSAGE })
+  @MinLength(6)
   password: string;
 
   @IsString()
@@ -90,6 +88,12 @@ export class RefreshTokenDto {
   refreshToken: string;
 }
 
+export class LogoutDto {
+  @IsString()
+  @IsOptional()
+  refreshToken?: string;
+}
+
 export class ChangePasswordDto {
   @IsString()
   @IsNotEmpty()
@@ -97,8 +101,7 @@ export class ChangePasswordDto {
 
   @IsString()
   @IsNotEmpty()
-  @MinLength(8)
-  @Matches(PASSWORD_REGEX, { message: PASSWORD_MESSAGE })
+  @MinLength(6)
   newPassword: string;
 }
 
@@ -111,6 +114,7 @@ export interface AuthResponse {
     phone?: string;
     name?: string;
     role: string;
+    departmentType?: 'packing' | 'billing' | 'delivery';
     storeId?: string;
     storeName?: string;
   };

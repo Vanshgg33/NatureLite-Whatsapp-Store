@@ -18,11 +18,11 @@ import {
   UserQueryDto,
 } from './dto/user.dto';
 import { User } from './schemas/user.schema';
-import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
-import { RolesGuard } from '@/common/guards/roles.guard';
-import { Roles } from '@/common/decorators/roles.decorator';
-import { CurrentUser } from '@/common/decorators/current-user.decorator';
-import { PaginatedResult } from '@/common/types/pagination.types';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { PaginatedResult } from '../../common/types/pagination.types';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)

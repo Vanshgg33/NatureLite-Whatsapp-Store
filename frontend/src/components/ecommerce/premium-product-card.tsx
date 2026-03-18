@@ -15,12 +15,21 @@ interface PremiumProductCardProps {
   product: Product;
   index?: number;
   onQuickView?: (product: Product) => void;
+  /** Show "Most popular" badge (psychology: primacy/decoy) */
+  showMostPopular?: boolean;
+  /** Show "Only X left" scarcity (overrides default low-stock logic when true) */
+  showOnlyXLeft?: boolean;
+  /** Tighter layout for grids (smaller image, less padding) */
+  compact?: boolean;
 }
 
 export function PremiumProductCard({
   product,
   index = 0,
   onQuickView,
+  showMostPopular = false,
+  showOnlyXLeft: forceShowOnlyXLeft,
+  compact = false,
 }: PremiumProductCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isWishlisted, setIsWishlisted] = useState(false);
@@ -57,7 +66,7 @@ export function PremiumProductCard({
       productId: product._id,
       name: product.name,
       slug: product.slug,
-      image: product.images[0] || '',
+      image: product.images?.[0] || '',
       price: product.price,
       compareAtPrice: product.compareAtPrice,
       gstPercentage: product.gstPercentage || 5,
@@ -69,7 +78,7 @@ export function PremiumProductCard({
       setShowSuccess(true);
       // Trigger flying animation
       if (flyAnimation && addToCartBtnRef.current) {
-        flyAnimation.triggerFlyAnimation(product.images[0] || '', addToCartBtnRef.current.getBoundingClientRect());
+        flyAnimation.triggerFlyAnimation(product.images?.[0] || '', addToCartBtnRef.current.getBoundingClientRect());
       }
       toast({
         title: 'Added to cart',
@@ -119,11 +128,15 @@ export function PremiumProductCard({
       <Link href={`/products/${product.slug}`} className="block">
         {/* Card Container */}
         <div className={cn(
-          "relative bg-white rounded-3xl overflow-hidden transition-all duration-500 hover:shadow-brand-xl",
+          "relative bg-white overflow-hidden transition-all duration-500 hover:shadow-brand-xl",
+          compact ? "rounded-2xl" : "rounded-3xl",
           product.isFeatured && "ring-2 ring-brand-mustard/60 shadow-[0_0_20px_-5px_rgba(212,165,116,0.3)]"
         )}>
           {/* Image Container */}
-          <div className="relative aspect-square overflow-hidden bg-brand-cream">
+          <div className={cn(
+            "relative overflow-hidden bg-brand-cream",
+            compact ? "aspect-[4/3]" : "aspect-square"
+          )}>
             {/* Loading skeleton */}
             {!imageLoaded && (
               <div className="absolute inset-0 bg-gradient-to-br from-brand-cream to-brand-sand animate-pulse" />
@@ -136,7 +149,7 @@ export function PremiumProductCard({
               transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
             >
               <Image
-                src={product.images[0] || '/images/placeholder-product.jpg'}
+                src={product.images?.[0] || '/images/placeholder-product.jpg'}
                 alt={product.name}
                 fill
                 className={`object-cover transition-opacity duration-500 ${
@@ -148,7 +161,7 @@ export function PremiumProductCard({
             </motion.div>
 
             {/* Secondary image on hover */}
-            {product.images[1] && (
+            {product.images?.[1] && (
               <motion.div
                 className="absolute inset-0"
                 initial={{ opacity: 0 }}
@@ -156,7 +169,7 @@ export function PremiumProductCard({
                 transition={{ duration: 0.3 }}
               >
                 <Image
-                  src={product.images[1]}
+                  src={product.images?.[1] as string}
                   alt={`${product.name} alternate`}
                   fill
                   className="object-cover"
@@ -166,12 +179,25 @@ export function PremiumProductCard({
             )}
 
             {/* Badges - max 3 visible, priority ordered */}
-            <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
+            <div className={cn("absolute left-4 flex flex-col z-10", compact ? "top-2 gap-1" : "top-4 gap-2")}>
               {(() => {
                 const badges: React.ReactNode[] = [];
                 const totalStock = getProductTotalStock(product);
-                const isLowStock = totalStock <= (product.lowStockThreshold || 5) && totalStock > 0;
+                const isLowStock = forceShowOnlyXLeft ?? (totalStock <= (product.lowStockThreshold || 5) && totalStock > 0);
                 const isBestSeller = product.totalSold > 50;
+                if (showMostPopular && badges.length < 3) {
+                  badges.push(
+                    <motion.span
+                      key="most-popular"
+                      className={cn("bg-brand-mustard text-white font-semibold rounded-full", compact ? "px-2 py-0.5 text-[10px]" : "px-3 py-1 text-xs")}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.1 }}
+                    >
+                      Most popular
+                    </motion.span>
+                  );
+                }
                 const isTrending = product.viewCount > 100;
 
                 // Priority: Staff Pick > Low Stock > Best Seller > Trending > New > Discount
@@ -179,7 +205,7 @@ export function PremiumProductCard({
                   badges.push(
                     <motion.span
                       key="staff-pick"
-                      className="px-3 py-1 bg-gradient-to-r from-brand-mustard to-brand-mustard-dark text-white text-xs font-semibold rounded-full flex items-center gap-1 shadow-sm"
+                      className={cn("bg-gradient-to-r from-brand-mustard to-brand-mustard-dark text-white font-semibold rounded-full flex items-center gap-1 shadow-sm", compact ? "px-2 py-0.5 text-[10px]" : "px-3 py-1 text-xs")}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.15 }}
@@ -193,7 +219,7 @@ export function PremiumProductCard({
                   badges.push(
                     <motion.span
                       key="low-stock"
-                      className="px-3 py-1 bg-brand-terracotta text-white text-xs font-medium rounded-full flex items-center gap-1 animate-pulse-soft"
+                      className={cn("bg-brand-terracotta text-white font-medium rounded-full flex items-center gap-1 animate-pulse-soft", compact ? "px-2 py-0.5 text-[10px]" : "px-3 py-1 text-xs")}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.2 }}
@@ -206,7 +232,7 @@ export function PremiumProductCard({
                   badges.push(
                     <motion.span
                       key="best-seller"
-                      className="px-3 py-1 bg-brand-charcoal text-white text-xs font-medium rounded-full flex items-center gap-1"
+                      className={cn("bg-brand-charcoal text-white font-medium rounded-full flex items-center gap-1", compact ? "px-2 py-0.5 text-[10px]" : "px-3 py-1 text-xs")}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.25 }}
@@ -220,7 +246,7 @@ export function PremiumProductCard({
                   badges.push(
                     <motion.span
                       key="trending"
-                      className="px-3 py-1 bg-brand-green/90 text-white text-xs font-medium rounded-full flex items-center gap-1"
+                      className={cn("bg-brand-green/90 text-white font-medium rounded-full flex items-center gap-1", compact ? "px-2 py-0.5 text-[10px]" : "px-3 py-1 text-xs")}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.3 }}
@@ -234,7 +260,7 @@ export function PremiumProductCard({
                   badges.push(
                     <motion.span
                       key="new"
-                      className="px-3 py-1 bg-brand-green text-white text-xs font-medium rounded-full flex items-center gap-1"
+                      className={cn("bg-brand-green text-white font-medium rounded-full flex items-center gap-1", compact ? "px-2 py-0.5 text-[10px]" : "px-3 py-1 text-xs")}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.35 }}
@@ -248,7 +274,7 @@ export function PremiumProductCard({
                   badges.push(
                     <motion.span
                       key="discount"
-                      className="px-3 py-1 bg-brand-terracotta text-white text-xs font-medium rounded-full"
+                      className={cn("bg-brand-terracotta text-white font-medium rounded-full", compact ? "px-2 py-0.5 text-[10px]" : "px-3 py-1 text-xs")}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.4 }}
@@ -262,7 +288,7 @@ export function PremiumProductCard({
             </div>
 
             {/* Action Buttons */}
-            <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
+            <div className={cn("absolute right-4 flex flex-col z-10", compact ? "top-2 gap-1" : "top-4 gap-2")}>
               {/* Wishlist Button with heart burst */}
               <div className="relative">
                 <motion.button
@@ -328,7 +354,7 @@ export function PremiumProductCard({
             <AnimatePresence>
               {isHovered && getProductTotalStock(product) > 0 && (
                 <motion.div
-                  className="absolute bottom-0 left-0 right-0 p-4"
+                  className={cn("absolute bottom-0 left-0 right-0", compact ? "p-2" : "p-4")}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 20 }}
@@ -339,7 +365,8 @@ export function PremiumProductCard({
                     onClick={handleAddToCart}
                     disabled={isAddingToCart || showSuccess}
                     className={cn(
-                      "w-full py-3 rounded-2xl font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-90",
+                      "w-full font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-90",
+                      compact ? "py-2 rounded-xl text-sm" : "py-3 rounded-2xl",
                       showSuccess
                         ? "bg-brand-green text-white"
                         : "bg-brand-charcoal text-white hover:bg-brand-green"
@@ -385,47 +412,48 @@ export function PremiumProductCard({
           </div>
 
           {/* Product Info */}
-          <div className="p-5">
+          <div className={compact ? "p-3" : "p-5"}>
             {/* Category */}
             {typeof product.category === 'object' && product.category?.name && (
-              <span className="text-xs text-brand-muted uppercase tracking-wider">
+              <span className={cn("text-brand-muted uppercase tracking-wider", compact ? "text-[10px]" : "text-xs")}>
                 {product.category.name}
               </span>
             )}
 
             {/* Product Name */}
-            <h3 className="font-display text-lg font-semibold text-brand-charcoal mt-1 line-clamp-2 group-hover:text-brand-green transition-colors">
+            <h3 className={cn("font-display font-semibold text-brand-charcoal line-clamp-2 group-hover:text-brand-green transition-colors", compact ? "text-sm mt-0.5" : "text-lg mt-1")}>
               {product.name}
             </h3>
 
             {/* Rating */}
-            <div className="flex items-center gap-2 mt-2">
+            <div className={cn("flex items-center gap-2", compact ? "mt-1" : "mt-2")}>
               <div className="flex items-center">
                 {[...Array(5)].map((_, i) => (
                   <Star
                     key={i}
-                    className={`w-4 h-4 ${
+                    className={cn(
+                      compact ? "w-3 h-3" : "w-4 h-4",
                       i < Math.floor(rating)
-                        ? 'fill-brand-mustard text-brand-mustard'
+                        ? "fill-brand-mustard text-brand-mustard"
                         : i < rating
-                        ? 'fill-brand-mustard/50 text-brand-mustard'
-                        : 'text-brand-border'
-                    }`}
+                          ? "fill-brand-mustard/50 text-brand-mustard"
+                          : "text-brand-border"
+                    )}
                   />
                 ))}
               </div>
-              <span className="text-sm text-brand-muted">
+              <span className={cn("text-brand-muted", compact ? "text-xs" : "text-sm")}>
                 ({reviewCount})
               </span>
             </div>
 
             {/* Price */}
-            <div className="flex items-center gap-3 mt-3">
-              <span className="font-display text-xl font-bold text-brand-charcoal">
+            <div className={cn("flex items-center gap-2", compact ? "mt-1.5" : "mt-3 gap-3")}>
+              <span className={cn("font-display font-bold text-brand-charcoal", compact ? "text-base" : "text-xl")}>
                 ₹{product.price.toLocaleString()}
               </span>
               {product.compareAtPrice && product.compareAtPrice > product.price && (
-                <span className="text-sm text-brand-muted line-through">
+                <span className={cn("text-brand-muted line-through", compact ? "text-xs" : "text-sm")}>
                   ₹{product.compareAtPrice.toLocaleString()}
                 </span>
               )}
@@ -433,8 +461,8 @@ export function PremiumProductCard({
 
             {/* Quick variant indicator */}
             {product.variants && product.variants.length > 0 && (
-              <div className="flex items-center gap-2 mt-3">
-                <span className="text-xs text-brand-muted">
+              <div className={cn("flex items-center gap-2", compact ? "mt-1.5" : "mt-3")}>
+                <span className={cn("text-brand-muted", compact ? "text-[10px]" : "text-xs")}>
                   {product.variants.length} variants
                 </span>
                 <div className="flex -space-x-1">

@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
+import type { Feedback } from '@/types';
 
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800',
@@ -121,7 +122,7 @@ export default function FeedbackPage() {
           </Card>
         ) : (
           <div className="space-y-3">
-            {feedbackItems.map((item: any) => (
+            {feedbackItems.map((item: Feedback) => (
               <Card key={item._id}>
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-4">
@@ -140,7 +141,7 @@ export default function FeedbackPage() {
                                 key={i}
                                 className={cn(
                                   'h-3 w-3',
-                                  i < item.rating
+                                  i < (item.rating ?? 0)
                                     ? 'fill-yellow-400 text-yellow-400'
                                     : 'text-gray-300'
                                 )}
@@ -154,8 +155,8 @@ export default function FeedbackPage() {
                       </div>
                       <p className="text-sm">{item.message}</p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        By: {item.userId?.name || item.userId?.email || 'Unknown'}
-                        {item.orderId && ` | Order: ${item.orderId}`}
+                        By: {typeof item.user === 'object' && item.user ? (item.user.name ?? item.user.email ?? 'Unknown') : 'Unknown'}
+                        {item.order && ` | Order: ${typeof item.order === 'string' ? item.order : (item.order as { orderNumber?: string }).orderNumber ?? ''}`}
                       </p>
 
                       {/* Admin Response */}

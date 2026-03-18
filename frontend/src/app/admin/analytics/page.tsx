@@ -37,6 +37,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { formatCurrency, getProductTotalStock } from '@/lib/utils';
+import type { RevenueDataPoint, ProductAnalytics, OrderAnalytics, Product, CustomerAnalytics } from '@/types';
 
 const TOOLTIP_STYLE = {
   backgroundColor: '#fff',
@@ -90,10 +91,10 @@ export default function AnalyticsPage() {
     const half = Math.floor(revenueData.length / 2);
     const recent = revenueData.slice(half);
     const older = revenueData.slice(0, half);
-    const recentRev = recent.reduce((s: number, d: any) => s + d.revenue, 0);
-    const olderRev = older.reduce((s: number, d: any) => s + d.revenue, 0);
-    const recentOrd = recent.reduce((s: number, d: any) => s + d.orders, 0);
-    const olderOrd = older.reduce((s: number, d: any) => s + d.orders, 0);
+    const recentRev = recent.reduce((s: number, d: RevenueDataPoint) => s + d.revenue, 0);
+    const olderRev = older.reduce((s: number, d: RevenueDataPoint) => s + d.revenue, 0);
+    const recentOrd = recent.reduce((s: number, d: RevenueDataPoint) => s + d.orders, 0);
+    const olderOrd = older.reduce((s: number, d: RevenueDataPoint) => s + d.orders, 0);
     return {
       revenueChange: olderRev > 0 ? ((recentRev - olderRev) / olderRev) * 100 : 0,
       ordersChange: olderOrd > 0 ? ((recentOrd - olderOrd) / olderOrd) * 100 : 0,
@@ -104,8 +105,8 @@ export default function AnalyticsPage() {
   const avgOrderTrend = useMemo(() => {
     if (!revenueData) return [];
     return revenueData
-      .filter((d: any) => d.orders > 0)
-      .map((d: any) => ({
+      .filter((d: RevenueDataPoint) => d.orders > 0)
+      .map((d: RevenueDataPoint) => ({
         date: d.date,
         aov: Math.round(d.revenue / d.orders),
       }));
@@ -120,9 +121,9 @@ export default function AnalyticsPage() {
   }
 
   const totalRevenue =
-    revenueData?.reduce((sum: number, day: any) => sum + day.revenue, 0) || 0;
+    revenueData?.reduce((sum: number, day: RevenueDataPoint) => sum + day.revenue, 0) || 0;
   const totalOrders =
-    revenueData?.reduce((sum: number, day: any) => sum + day.orders, 0) || 0;
+    revenueData?.reduce((sum: number, day: RevenueDataPoint) => sum + day.orders, 0) || 0;
   const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
   const summaryCards = [
@@ -161,7 +162,7 @@ export default function AnalyticsPage() {
   ];
 
   const topSellingBarData =
-    productAnalytics?.topSelling?.slice(0, 6).map((p: any) => ({
+    productAnalytics?.topSelling?.slice(0, 6).map((p: { product?: Product; name?: string; _id?: string; sold?: number; totalSold?: number; count?: number; revenue?: number }) => ({
       name:
         ((p.product?.name || p.name || p._id || '') as string).length > 20
           ? ((p.product?.name || p.name || p._id || '') as string).slice(0, 20) + '…'
@@ -171,7 +172,7 @@ export default function AnalyticsPage() {
     })) || [];
 
   const paymentMethodData =
-    orderAnalytics?.ordersByPaymentMethod?.map((pm: any) => ({
+    orderAnalytics?.ordersByPaymentMethod?.map((pm: { method?: string; _id?: string; count?: number }) => ({
       name: (pm.method || pm._id || 'Unknown')
         .replace(/_/g, ' ')
         .replace(/\b\w/g, (l: string) => l.toUpperCase()),
@@ -527,7 +528,7 @@ export default function AnalyticsPage() {
                           dataKey="value"
                           stroke="none"
                         >
-                          {paymentMethodData.map((_: any, index: number) => (
+                          {paymentMethodData.map((_, index: number) => (
                             <Cell
                               key={index}
                               fill={PAYMENT_COLORS[index % PAYMENT_COLORS.length]}
@@ -641,7 +642,7 @@ export default function AnalyticsPage() {
                       </h4>
                     </div>
                     <div className="space-y-1.5">
-                      {lowStockProducts.slice(0, 4).map((p: any) => (
+                      {lowStockProducts.slice(0, 4).map((p: Product) => (
                         <div
                           key={p._id}
                           className="flex items-center justify-between p-2.5 rounded-xl bg-red-50/50"
@@ -731,9 +732,10 @@ export default function AnalyticsPage() {
                           <div className="space-y-2">
                             {customerAnalytics.topCustomers
                               .slice(0, 5)
-                              .map((c: any, i: number) => {
-                                const name =
+                              .map((c: { customer?: { name?: string }; name?: string; email?: string; _id?: string; totalSpent?: number; orderCount?: number }, i: number) => {
+                                const rawName =
                                   c.customer?.name || c.name || c.email || c._id || '?';
+                                const name = String(rawName);
                                 const spent = c.totalSpent || 0;
                                 const orders = c.orderCount || 0;
                                 return (
@@ -743,7 +745,7 @@ export default function AnalyticsPage() {
                                   >
                                     <div className="flex items-center gap-3 min-w-0">
                                       <div className="h-8 w-8 rounded-full bg-brand-green/10 flex items-center justify-center text-xs font-bold text-brand-green flex-shrink-0">
-                                        {name[0].toUpperCase()}
+                                        {name.charAt(0).toUpperCase()}
                                       </div>
                                       <div className="min-w-0">
                                         <p className="text-sm font-medium truncate">{name}</p>

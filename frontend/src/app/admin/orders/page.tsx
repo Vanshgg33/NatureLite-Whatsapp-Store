@@ -131,7 +131,7 @@ export default function OrdersPage() {
                           {formatDate(order.createdAt)}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Link href={`/orders/${order._id}`}>
+                          <Link href={`/admin/orders/${order._id}`}>
                             <Button variant="ghost" size="icon" aria-label="View order">
                               <Eye className="h-4 w-4" />
                             </Button>

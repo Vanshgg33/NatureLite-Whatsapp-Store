@@ -1,8 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AdminUser } from './schemas/admin-user.schema';
 import { AdminUserRepository } from './repositories/admin-user.repository';
-import { parseObjectId } from '@/common/utils/objectid.util';
+import { parseObjectId } from '../../common/utils/objectid.util';
 
 @Injectable()
 export class AdminService {
@@ -27,19 +27,34 @@ export class AdminService {
     password: string;
     phone?: string;
     role?: 'admin' | 'superadmin';
+    departmentType?: 'packing' | 'billing' | 'delivery';
   }): Promise<AdminUser> {
     const existing = await this.adminUserRepository.findOneByEmail(data.email.toLowerCase());
     if (existing) {
       throw new BadRequestException('Email already exists');
     }
 
+    if (data.phone?.trim()) {
+      const existingPhone = await this.adminUserRepository.findOneByPhone(data.phone.trim());
+      if (existingPhone) {
+        throw new ConflictException('Phone number already registered');
+      }
+    }
+
     const hashedPassword = await bcrypt.hash(data.password, 10);
 
-    const admin = await this.adminUserRepository.create({
-      ...data,
+    const payload: Partial<AdminUser> = {
+      name: data.name,
       email: data.email.toLowerCase(),
       password: hashedPassword,
-    } as Partial<AdminUser>);
+      role: data.role || 'admin',
+      departmentType: data.departmentType,
+    };
+    if (data.phone?.trim()) {
+      payload.phone = data.phone.trim();
+    }
+
+    const admin = await this.adminUserRepository.create(payload);
 
     const result = admin.toObject() as any;
     delete result.password;
@@ -54,6 +69,7 @@ export class AdminService {
       role?: 'admin' | 'superadmin';
       isActive?: boolean;
       permissions?: string[];
+      departmentType?: 'packing' | 'billing' | 'delivery';
     },
   ): Promise<AdminUser> {
     const idObj = parseObjectId(id, 'id');

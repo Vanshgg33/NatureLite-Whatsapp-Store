@@ -3,7 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { PaymentRepository } from './repositories/payment.repository';
 import { OrderRepository } from '../orders/repositories/order.repository';
-import { parseObjectId } from '@/common/utils/objectid.util';
+import { WalletService } from '../wallet/wallet.service';
+import { StoreSalesService } from '../store-sales/store-sales.service';
+import { parseObjectId } from '../../common/utils/objectid.util';
 
 @Injectable()
 export class PaymentsService {
@@ -14,6 +16,8 @@ export class PaymentsService {
     private readonly paymentRepository: PaymentRepository,
     private readonly orderRepository: OrderRepository,
     private configService: ConfigService,
+    private readonly walletService: WalletService,
+    private readonly storeSalesService: StoreSalesService,
   ) {
     const keyId = this.configService.get<string>('razorpay.keyId');
     const keySecret = this.configService.get<string>('razorpay.keySecret');
@@ -54,8 +58,18 @@ export class PaymentsService {
       throw new BadRequestException('Order already paid');
     }
 
+    // Prefer paymentGatewayAmount (already in paise) when combining wallet + online.
+    const amountPaise =
+      typeof (order as any).paymentGatewayAmount === 'number' && (order as any).paymentGatewayAmount > 0
+        ? (order as any).paymentGatewayAmount
+        : Math.round(order.total * 100);
+
+    if (amountPaise <= 0) {
+      throw new BadRequestException('No online payment required for this order');
+    }
+
     const razorpayOrder = await this.razorpay.orders.create({
-      amount: Math.round(order.total * 100),
+      amount: amountPaise,
       currency: 'INR',
       receipt: order.orderNumber,
       notes: { orderId, userId },
@@ -64,7 +78,7 @@ export class PaymentsService {
     await this.paymentRepository.createOne({
       order: orderIdObj,
       user: userObjId,
-      amount: order.total,
+      amount: amountPaise / 100,
       gateway: 'razorpay',
       status: 'initiated',
       gatewayOrderId: razorpayOrder.id,
@@ -94,6 +108,14 @@ export class PaymentsService {
       throw new BadRequestException('Invalid payment signature');
     }
 
+    const existingPayment = await this.paymentRepository.findOneByGatewayOrderId(data.razorpay_order_id);
+    if (existingPayment) {
+      const order = await this.orderRepository.findById(existingPayment.order);
+      if (order?.status === 'cancelled') {
+        throw new BadRequestException('Order is cancelled; payment cannot be applied');
+      }
+    }
+
     const payment = await this.paymentRepository.findOneAndUpdateByGatewayOrderId(
       data.razorpay_order_id,
       {
@@ -109,7 +131,7 @@ export class PaymentsService {
 
     await this.orderRepository.findByIdAndUpdate(payment.order, {
       paymentStatus: 'paid',
-      paymentMethod: 'razorpay',
+      paymentMethod: 'prepaid',
       $push: {
         timeline: {
           status: 'confirmed',
@@ -141,11 +163,28 @@ export class PaymentsService {
       const razorpayPaymentId = payload.payment.entity.id;
       const razorpayOrderId = payload.payment.entity.order_id;
 
-      await this.paymentRepository.findOneAndUpdateByGatewayOrderId(razorpayOrderId, {
+      const payment = await this.paymentRepository.findOneAndUpdateByGatewayOrderId(razorpayOrderId, {
         status: 'success',
         gatewayPaymentId: razorpayPaymentId,
         gatewayResponse: payload.payment.entity,
       });
+
+      if (payment) {
+        const order = await this.orderRepository.findById(payment.order);
+        if (order && order.paymentStatus !== 'paid' && order.status !== 'cancelled') {
+          await this.orderRepository.findByIdAndUpdate(payment.order, {
+            paymentStatus: 'paid',
+            paymentMethod: 'prepaid',
+            $push: {
+              timeline: {
+                status: 'confirmed',
+                message: 'Payment received (webhook)',
+                timestamp: new Date(),
+              },
+            },
+          });
+        }
+      }
     } else if (event === 'payment.failed') {
       const razorpayOrderId = payload.payment.entity.order_id;
 
@@ -172,8 +211,12 @@ export class PaymentsService {
     }
 
     const orderIdObj = parseObjectId(orderId, 'orderId');
-    const payment = await this.paymentRepository.findOneByOrderAndStatus(orderIdObj, 'success');
+    const anyPayment = await this.paymentRepository.findOneByOrder(orderIdObj);
+    if (anyPayment && ((anyPayment as any).status === 'refunded' || (anyPayment as any).refundId)) {
+      throw new BadRequestException('This order has already been refunded');
+    }
 
+    const payment = await this.paymentRepository.findOneByOrderAndStatus(orderIdObj, 'success');
     if (!payment) {
       throw new NotFoundException('No successful payment found for this order');
     }
@@ -193,8 +236,23 @@ export class PaymentsService {
       refundReason: reason,
     });
 
+    // Also restore any wallet portion used on this order when doing a full refund
+    const order = await this.orderRepository.findById(orderIdObj);
+    if (order && !amount && typeof (order as any).walletUsed === 'number' && (order as any).walletUsed > 0) {
+      const walletUsedPaise = (order as any).walletUsed as number;
+      if (walletUsedPaise > 0) {
+        await this.walletService.credit(
+          payment.user.toString(),
+          walletUsedPaise,
+          'order_refund',
+          { orderId: orderIdObj },
+        );
+      }
+    }
+
     await this.orderRepository.findByIdAndUpdate(payment.order, {
       paymentStatus: 'refunded',
+      status: 'refunded',
       $push: {
         timeline: {
           status: 'refunded',
@@ -203,6 +261,12 @@ export class PaymentsService {
         },
       },
     });
+
+    try {
+      await this.storeSalesService.voidByLinkedOrder(orderId, 'order_refunded');
+    } catch (voidErr) {
+      this.logger.warn(`Failed to void store sale for refunded order: ${voidErr.message}`);
+    }
 
     return { refundId: refund.id, amount: refundAmount };
   }

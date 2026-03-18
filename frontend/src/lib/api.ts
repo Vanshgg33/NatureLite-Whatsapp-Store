@@ -3,6 +3,7 @@ import {
   ApiResponse,
   AuthResponse,
   User,
+  type AdminUser,
   Product,
   Category,
   Order,
@@ -31,6 +32,7 @@ import {
   OrdersByStatus,
   CartResponse,
   CreateOrderDto,
+  GuestCreateOrderDto,
   ReorderDto,
   AddAddressDto,
   UpdateAddressDto,
@@ -50,14 +52,26 @@ import {
   StoreDashboardStats,
   MultiStoreRevenueData,
   Reminder,
+  WishlistResponse,
+  WalletBalance,
+  WalletTransaction,
+  Feedback,
+  ProductReview,
+  AuditLog,
 } from '@/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
+// Backend API base URL. Set via NEXT_PUBLIC_API_URL in .env.local
+// Fallback: deployed backend when env missing, or localhost when running backend locally
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined'
+    ? 'https://store-phi-lemon.vercel.app/api/v1'
+    : 'https://store-phi-lemon.vercel.app/api/v1');
 
 class ApiClient {
   private client: AxiosInstance;
   private isRefreshing = false;
-  private failedQueue: Array<{ resolve: (token: string) => void; reject: (error: unknown) => void }> = [];
+  private refreshPromise: Promise<void> | null = null;
 
   constructor() {
     this.client = axios.create({
@@ -65,22 +79,9 @@ class ApiClient {
       headers: {
         'Content-Type': 'application/json',
       },
-      withCredentials: true, // Send cookies with every request
+      // Rely on HttpOnly cookies for auth (access + refresh)
+      withCredentials: true,
     });
-
-    // Request interceptor to add customer token
-    this.client.interceptors.request.use(
-      (config) => {
-        if (typeof window !== 'undefined') {
-          const customerToken = localStorage.getItem('customer-token');
-          if (customerToken && !config.headers.Authorization) {
-            config.headers.Authorization = `Bearer ${customerToken}`;
-          }
-        }
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
 
     // Response interceptor with refresh token retry
     this.client.interceptors.response.use(
@@ -89,63 +90,37 @@ class ApiClient {
         const originalRequest = error.config as typeof error.config & { _retry?: boolean };
 
         if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
-          // Try refreshing the token
-          const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('customer-refresh-token') : null;
+          originalRequest._retry = true;
 
-          if (refreshToken) {
-            if (this.isRefreshing) {
-              // Queue this request until refresh completes
-              return new Promise((resolve, reject) => {
-                this.failedQueue.push({ resolve, reject });
-              }).then((token) => {
-                if (originalRequest.headers) {
-                  originalRequest.headers.Authorization = `Bearer ${token}`;
-                }
-                return this.client(originalRequest);
-              });
-            }
-
-            originalRequest._retry = true;
+          if (!this.isRefreshing) {
             this.isRefreshing = true;
-
-            try {
-              const response = await axios.post(`${API_URL}/auth/refresh`, { refreshToken }, { withCredentials: true });
-              const data = response.data.data;
-              const newAccessToken = data.accessToken;
-              const newRefreshToken = data.refreshToken;
-
-              localStorage.setItem('customer-token', newAccessToken);
-              if (newRefreshToken) {
-                localStorage.setItem('customer-refresh-token', newRefreshToken);
-              }
-
-              // Retry all queued requests
-              this.failedQueue.forEach((req) => req.resolve(newAccessToken));
-              this.failedQueue = [];
-
-              if (originalRequest.headers) {
-                originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
-              }
-              return this.client(originalRequest);
-            } catch (refreshError) {
-              this.failedQueue.forEach((req) => req.reject(refreshError));
-              this.failedQueue = [];
-
-              // Refresh failed - clear tokens
-              if (typeof window !== 'undefined') {
-                localStorage.removeItem('customer-token');
-                localStorage.removeItem('customer-refresh-token');
-              }
-            } finally {
-              this.isRefreshing = false;
-            }
+            this.refreshPromise = axios
+              .post(`${API_URL}/auth/refresh`, {}, { withCredentials: true })
+              .then(() => {
+                // New cookies set by backend
+              })
+              .finally(() => {
+                this.isRefreshing = false;
+                this.refreshPromise = null;
+              });
           }
 
-          // No refresh token or refresh failed
+          try {
+            if (this.refreshPromise) {
+              await this.refreshPromise;
+            }
+            return this.client(originalRequest);
+          } catch {
+            // Refresh failed — fall through to redirect
+          }
+
+          // Refresh failed — redirect to appropriate login
           if (typeof window !== 'undefined') {
-            const isAdminPage = window.location.pathname.startsWith('/admin');
-            if (isAdminPage) {
+            const path = window.location.pathname;
+            if (path.startsWith('/admin')) {
               window.location.href = '/admin-login';
+            } else if (path.startsWith('/department')) {
+              window.location.href = '/department-login';
             }
           }
         }
@@ -176,8 +151,7 @@ class ApiClient {
   }
 
   async logout(): Promise<void> {
-    // Call backend to clear the httpOnly cookie
-    await this.client.post('/auth/logout');
+    await this.client.post('/auth/logout', {});
   }
 
   async getProfile(): Promise<User> {
@@ -187,6 +161,47 @@ class ApiClient {
 
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
     await this.client.post('/auth/change-password', { currentPassword, newPassword });
+  }
+
+  // ==================== ADMIN USERS (LOGINS) ====================
+  async getAdminUsers(): Promise<AdminUser[]> {
+    const response = await this.client.get<ApiResponse<AdminUser[]>>('/admin/users');
+    return response.data.data;
+  }
+
+  async createAdminUser(data: {
+    name: string;
+    email: string;
+    password: string;
+    phone?: string;
+    role?: 'admin' | 'superadmin';
+    departmentType?: 'packing' | 'billing' | 'delivery';
+  }): Promise<AdminUser> {
+    const response = await this.client.post<ApiResponse<AdminUser>>('/admin/users', data);
+    return response.data.data;
+  }
+
+  async updateAdminUser(
+    id: string,
+    data: {
+      name?: string;
+      phone?: string;
+      role?: 'admin' | 'superadmin';
+      isActive?: boolean;
+      permissions?: string[];
+      departmentType?: 'packing' | 'billing' | 'delivery';
+    }
+  ): Promise<AdminUser> {
+    const response = await this.client.put<ApiResponse<AdminUser>>(`/admin/users/${id}`, data);
+    return response.data.data;
+  }
+
+  async resetAdminUserPassword(id: string, password: string): Promise<void> {
+    await this.client.put(`/admin/users/${id}/reset-password`, { password });
+  }
+
+  async deleteAdminUser(id: string): Promise<void> {
+    await this.client.delete(`/admin/users/${id}`);
   }
 
   // ==================== CUSTOMER AUTH ====================
@@ -262,6 +277,11 @@ class ApiClient {
   // ==================== CUSTOMER ORDERS ====================
   async createOrder(data: CreateOrderDto): Promise<Order> {
     const response = await this.client.post<ApiResponse<Order>>('/orders', data);
+    return response.data.data;
+  }
+
+  async createGuestOrder(data: GuestCreateOrderDto): Promise<Order> {
+    const response = await this.client.post<ApiResponse<Order>>('/orders/guest', data);
     return response.data.data;
   }
 
@@ -451,6 +471,9 @@ class ApiClient {
     sortOrder?: 'asc' | 'desc';
     customerId?: string;
     userId?: string;
+    forPacking?: boolean;
+    forBilling?: boolean;
+    forDelivery?: boolean;
   }): Promise<PaginatedResponse<Order>> {
     const { customerId, userId, ...rest } = params;
     const query = { ...rest, userId: userId ?? customerId };
@@ -499,6 +522,13 @@ class ApiClient {
     return response.data.data;
   }
 
+  async requestReturn(id: string, reason: string): Promise<Order> {
+    const response = await this.client.post<ApiResponse<Order>>(`/orders/${id}/request-return`, {
+      reason,
+    });
+    return response.data.data;
+  }
+
   async addOrderNote(id: string, note: string): Promise<Order> {
     const response = await this.client.post<ApiResponse<Order>>(`/orders/${id}/notes`, { note });
     return response.data.data;
@@ -511,6 +541,19 @@ class ApiClient {
 
   async updateOrderPriorityTags(id: string, tags: string[]): Promise<Order> {
     const response = await this.client.put<ApiResponse<Order>>(`/orders/${id}/priority-tags`, { tags });
+    return response.data.data;
+  }
+
+  async updateDeliveryWorkflow(
+    id: string,
+    data: {
+      status: 'delivery_done' | 'customer_ringing' | 'customer_cancelled' | 'customer_tomorrow';
+      paymentMethod?: 'cash' | 'upi';
+      paymentProofUrl?: string;
+      note?: string;
+    }
+  ): Promise<Order> {
+    const response = await this.client.put<ApiResponse<Order>>(`/orders/${id}/delivery-workflow`, data);
     return response.data.data;
   }
 
@@ -630,7 +673,7 @@ class ApiClient {
   async updateSettings(key: 'whatsapp', updates: Partial<WhatsAppSettings>): Promise<WhatsAppSettings>;
   async updateSettings(key: 'appearance', updates: Partial<AppearanceSettings>): Promise<AppearanceSettings>;
   async updateSettings(key: 'banners', updates: Partial<BannerSettings>): Promise<BannerSettings>;
-  async updateSettings(key: string, updates: Record<string, unknown>): Promise<StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings> {
+  async updateSettings(key: string, updates: Partial<StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings>): Promise<StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings> {
     const response = await this.client.put<ApiResponse<StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings>>(`/settings/${key}/update`, updates);
     return response.data.data;
   }
@@ -824,39 +867,39 @@ class ApiClient {
     rating?: number;
     message: string;
     images?: string[];
-  }): Promise<any> {
-    const response = await this.client.post<ApiResponse<any>>('/feedback', data);
+  }): Promise<Feedback> {
+    const response = await this.client.post<ApiResponse<Feedback>>('/feedback', data);
     return response.data.data;
   }
 
-  async getProductReviews(productId: string): Promise<any[]> {
-    const response = await this.client.get<ApiResponse<any[]>>(`/feedback/product/${productId}`);
+  async getProductReviews(productId: string): Promise<ProductReview[]> {
+    const response = await this.client.get<ApiResponse<ProductReview[]>>(`/feedback/product/${productId}`);
     return response.data.data;
   }
 
-  async getMyFeedback(): Promise<any[]> {
-    const response = await this.client.get<ApiResponse<any[]>>('/feedback/my');
+  async getMyFeedback(): Promise<Feedback[]> {
+    const response = await this.client.get<ApiResponse<Feedback[]>>('/feedback/my');
     return response.data.data;
   }
 
-  async getAllFeedback(params?: { page?: number; limit?: number; type?: string; status?: string }): Promise<PaginatedResponse<any>> {
-    const response = await this.client.get<ApiResponse<PaginatedResponse<any>>>('/feedback', { params });
+  async getAllFeedback(params?: { page?: number; limit?: number; type?: string; status?: string }): Promise<PaginatedResponse<Feedback>> {
+    const response = await this.client.get<ApiResponse<PaginatedResponse<Feedback>>>('/feedback', { params });
     return response.data.data;
   }
 
-  async respondToFeedback(id: string, response: string): Promise<any> {
-    const res = await this.client.put<ApiResponse<any>>(`/feedback/${id}/respond`, { response });
+  async respondToFeedback(id: string, response: string): Promise<Feedback> {
+    const res = await this.client.put<ApiResponse<Feedback>>(`/feedback/${id}/respond`, { response });
     return res.data.data;
   }
 
-  async updateFeedbackStatus(id: string, status: string): Promise<any> {
-    const res = await this.client.put<ApiResponse<any>>(`/feedback/${id}/status`, { status });
+  async updateFeedbackStatus(id: string, status: string): Promise<Feedback> {
+    const res = await this.client.put<ApiResponse<Feedback>>(`/feedback/${id}/status`, { status });
     return res.data.data;
   }
 
   // ==================== AUDIT ====================
-  async getAuditLogs(params?: { page?: number; limit?: number; action?: string }): Promise<PaginatedResponse<any>> {
-    const response = await this.client.get<ApiResponse<PaginatedResponse<any>>>('/audit', { params });
+  async getAuditLogs(params?: { page?: number; limit?: number; action?: string }): Promise<PaginatedResponse<AuditLog>> {
+    const response = await this.client.get<ApiResponse<PaginatedResponse<AuditLog>>>('/audit', { params });
     return response.data.data;
   }
 
@@ -1000,6 +1043,66 @@ class ApiClient {
     return response.data.data;
   }
 
+  // ==================== WISHLIST ====================
+  async getWishlist(): Promise<WishlistResponse> {
+    const response = await this.client.get<ApiResponse<WishlistResponse>>('/wishlist');
+    return response.data.data;
+  }
+
+  async addToWishlist(productId: string): Promise<WishlistResponse> {
+    const response = await this.client.post<ApiResponse<WishlistResponse>>('/wishlist/items', {
+      productId,
+    });
+    return response.data.data;
+  }
+
+  async removeFromWishlist(productId: string): Promise<WishlistResponse> {
+    const response = await this.client.delete<ApiResponse<WishlistResponse>>(
+      `/wishlist/items/${productId}`,
+    );
+    return response.data.data;
+  }
+
+  async clearWishlist(): Promise<WishlistResponse> {
+    const response = await this.client.delete<ApiResponse<WishlistResponse>>('/wishlist');
+    return response.data.data;
+  }
+
+  // ==================== WALLET ====================
+  async getWallet(): Promise<WalletBalance> {
+    const response = await this.client.get<ApiResponse<WalletBalance>>('/wallet');
+    return response.data.data;
+  }
+
+  async getWalletTransactions(): Promise<WalletTransaction[]> {
+    const response = await this.client.get<ApiResponse<{ transactions: WalletTransaction[] }>>(
+      '/wallet/transactions',
+    );
+    return response.data.data.transactions;
+  }
+
+  async adminGetWallet(userId: string): Promise<WalletBalance & { transactions: WalletTransaction[] }> {
+    const response = await this.client.get<
+      ApiResponse<WalletBalance & { transactions: WalletTransaction[] }>
+    >(`/admin/wallet/${userId}`);
+    return response.data.data;
+  }
+
+  async adminCreditWallet(userId: string, amount: number, note?: string): Promise<WalletBalance> {
+    const response = await this.client.post<ApiResponse<WalletBalance>>(
+      `/admin/wallet/${userId}/credit`,
+      { amount, note },
+    );
+    return response.data.data;
+  }
+
+  async adminDebitWallet(userId: string, amount: number, note?: string): Promise<WalletBalance> {
+    const response = await this.client.post<ApiResponse<WalletBalance>>(
+      `/admin/wallet/${userId}/debit`,
+      { amount, note },
+    );
+    return response.data.data;
+  }
 }
 
 export const api = new ApiClient();

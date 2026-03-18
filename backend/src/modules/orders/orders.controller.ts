@@ -1,13 +1,13 @@
 import {
+  Body,
   Controller,
+  ForbiddenException,
   Get,
   Post,
   Put,
-  Body,
   Param,
   Query,
   UseGuards,
-  ForbiddenException,
 } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import {
@@ -19,13 +19,24 @@ import {
   UpdateShippingDto,
   OrderQueryDto,
   ReorderDto,
+  UpdateDeliveryWorkflowDto,
+  GuestCreateOrderDto,
 } from './dto/order.dto';
 import { Order } from './schemas/order.schema';
-import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
-import { RolesGuard } from '@/common/guards/roles.guard';
-import { Roles } from '@/common/decorators/roles.decorator';
-import { CurrentUser, JwtPayload } from '@/common/decorators/current-user.decorator';
-import { PaginatedResult } from '@/common/types/pagination.types';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
+import { PaginatedResult } from '../../common/types/pagination.types';
+import { Public } from '../../common/decorators/public.decorator';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+
+/** Get order owner id whether user ref is populated or raw ObjectId. */
+function getOrderUserId(order: Order): string {
+  const u = order.user as { _id?: { toString(): string }; toString?: () => string };
+  if (u && typeof u === 'object' && u._id != null) return u._id.toString();
+  return (u as unknown as { toString(): string }).toString();
+}
 
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
@@ -38,6 +49,14 @@ export class OrdersController {
     @Body() dto: CreateOrderDto,
   ): Promise<Order> {
     return this.ordersService.create(userId, dto);
+  }
+
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Post('guest')
+  async createGuest(@Body() dto: GuestCreateOrderDto): Promise<Order> {
+    return this.ordersService.createGuestOrder(dto);
   }
 
   @Get()
@@ -85,7 +104,7 @@ export class OrdersController {
   ): Promise<Order> {
     const order = await this.ordersService.findByOrderNumber(orderNumber);
 
-    if (user.role === 'customer' && order.user.toString() !== user.sub) {
+    if (user.role === 'customer' && getOrderUserId(order) !== user.sub) {
       throw new ForbiddenException('You do not have access to this order');
     }
 
@@ -99,7 +118,7 @@ export class OrdersController {
   ): Promise<Order> {
     const order = await this.ordersService.findById(id);
 
-    if (user.role === 'customer' && order.user.toString() !== user.sub) {
+    if (user.role === 'customer' && getOrderUserId(order) !== user.sub) {
       throw new ForbiddenException('You do not have access to this order');
     }
 
@@ -112,10 +131,10 @@ export class OrdersController {
   async updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateOrderStatusDto,
-    @CurrentUser('sub') adminId: string,
+    @CurrentUser() user: JwtPayload,
   ): Promise<Order> {
-    dto.updatedBy = adminId;
-    return this.ordersService.updateStatus(id, dto);
+    dto.updatedBy = user.sub;
+    return this.ordersService.updateStatus(id, dto, user.departmentType);
   }
 
   @Put(':id/payment-status')
@@ -128,6 +147,17 @@ export class OrdersController {
     return this.ordersService.updatePaymentStatus(id, dto);
   }
 
+  @Put(':id/delivery-workflow')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  async updateDeliveryWorkflow(
+    @Param('id') id: string,
+    @Body() dto: UpdateDeliveryWorkflowDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<Order> {
+    return this.ordersService.updateDeliveryWorkflow(id, dto, user.sub, user.departmentType);
+  }
+
   @Post(':id/cancel')
   async cancelOrder(
     @Param('id') id: string,
@@ -136,12 +166,42 @@ export class OrdersController {
   ): Promise<Order> {
     if (user.role === 'customer') {
       const order = await this.ordersService.findById(id);
-      if (order.user.toString() !== user.sub) {
+      if (getOrderUserId(order) !== user.sub) {
         throw new ForbiddenException('You do not have access to this order');
       }
     }
 
     return this.ordersService.cancelOrder(id, dto, user.sub);
+  }
+
+  @Post(':id/request-return')
+  async requestReturn(
+    @Param('id') id: string,
+    @Body('reason') reason: string,
+    @CurrentUser('sub') userId: string,
+  ): Promise<Order> {
+    return this.ordersService.requestReturn(userId, id, reason);
+  }
+
+  @Post(':id/return/approve')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  async approveReturn(@Param('id') id: string): Promise<Order> {
+    return this.ordersService.approveReturn(id);
+  }
+
+  @Post(':id/return/reject')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  async rejectReturn(@Param('id') id: string): Promise<Order> {
+    return this.ordersService.rejectReturn(id);
+  }
+
+  @Post(':id/return/complete')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  async completeReturn(@Param('id') id: string): Promise<Order> {
+    return this.ordersService.completeReturn(id);
   }
 
   @Post(':id/notes')

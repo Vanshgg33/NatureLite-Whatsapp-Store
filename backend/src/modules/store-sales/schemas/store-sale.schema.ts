@@ -83,6 +83,13 @@ export class StoreSale {
   @Prop({ type: Types.ObjectId, ref: 'Order' })
   linkedOrder?: Types.ObjectId;
 
+  /** When set, this sale is excluded from revenue/stats (order cancelled or refunded) */
+  @Prop()
+  voidedAt?: Date;
+
+  @Prop()
+  voidedReason?: string;
+
   @Prop({ type: Object, default: {} })
   metadata: Record<string, unknown>;
 

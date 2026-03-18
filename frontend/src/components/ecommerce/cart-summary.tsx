@@ -32,6 +32,7 @@ export function CartSummary({
     applyCoupon,
     removeCoupon,
   } = useCartStore();
+  const items = useCartStore((state) => state.items);
 
   const [couponInput, setCouponInput] = useState('');
   const [isValidating, setIsValidating] = useState(false);
@@ -53,7 +54,7 @@ export function CartSummary({
   const subtotal = getSubtotal();
   const gst = getGstTotal();
   const discountAmount = getDiscountAmount();
-  const total = getTotal();
+  const baseTotal = getTotal(); // subtotal - discount
 
   const { data: publicSettings } = useQuery({
     queryKey: ['public-settings'],
@@ -68,6 +69,8 @@ export function CartSummary({
   const freeShippingThreshold = shippingSettings.freeShippingThreshold;
   const shippingCost = subtotal >= freeShippingThreshold ? 0 : shippingSettings.defaultShippingCharge;
   const amountToFreeShipping = freeShippingThreshold - subtotal;
+  // Order total should include GST + shipping
+  const totalWithGst = baseTotal + gst;
 
   const handleApplyCoupon = async () => {
     if (!couponInput.trim()) return;
@@ -255,6 +258,11 @@ export function CartSummary({
           <p className="font-body text-xs text-brand-muted mt-1.5 text-right">
             {Math.round((subtotal / freeShippingThreshold) * 100)}% there
           </p>
+          {amountToFreeShipping > 0 && amountToFreeShipping <= freeShippingThreshold * 0.15 && items.length > 0 && (
+            <p className="font-body text-xs text-brand-text mt-1.5">
+              Tip: adding a couple more items will likely unlock free shipping on this order.
+            </p>
+          )}
         </div>
       ) : subtotal > 0 ? (
         <motion.div
@@ -310,7 +318,7 @@ export function CartSummary({
               Total
             </span>
             <span className="font-display text-xl font-bold text-brand-charcoal">
-              {formatPrice(total + shippingCost)}
+            {formatPrice(totalWithGst + shippingCost)}
             </span>
           </div>
         </div>

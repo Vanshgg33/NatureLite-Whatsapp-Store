@@ -1,8 +1,8 @@
 import { Controller, Get, Post, Put, Param, Body, UseGuards } from '@nestjs/common';
 import { StoresService } from './stores.service';
 import { CreateStoreDto, UpdateStoreDto, ResetStorePasswordDto } from './dto/store.dto';
-import { Roles } from '@/common/decorators/roles.decorator';
-import { RolesGuard } from '@/common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { RolesGuard } from '../../common/guards/roles.guard';
 
 @Controller('stores')
 @UseGuards(RolesGuard)

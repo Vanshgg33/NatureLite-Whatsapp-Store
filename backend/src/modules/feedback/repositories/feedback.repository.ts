@@ -2,10 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Feedback, FeedbackDocument } from '../schemas/feedback.schema';
-import { BaseRepository } from '@/common/repository/base.repository';
-import { paginate } from '@/common/types/pagination.types';
+import { BaseRepository } from '../../../common/repository/base.repository';
+import { paginate } from '../../../common/types/pagination.types';
 import { FeedbackQueryDto } from '../dto/feedback.dto';
-import { parseObjectId, isValidObjectIdString } from '@/common/utils/objectid.util';
+import { parseObjectId, isValidObjectIdString } from '../../../common/utils/objectid.util';
 
 @Injectable()
 export class FeedbackRepository extends BaseRepository<FeedbackDocument> {
