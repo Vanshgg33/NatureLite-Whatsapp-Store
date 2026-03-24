@@ -38,12 +38,26 @@ export class WhatsAppController {
   @Public()
   @Get('webhook')
   verifyWebhook(
+    @Req() req: Request,
     @Query('hub.mode') mode: string,
     @Query('hub.verify_token') token: string,
     @Query('hub.challenge') challenge: string,
     @Res() res: Response,
   ): void {
-    const result = this.whatsappService.verifyWebhook(mode, token, challenge);
+    const rawQuery = req.originalUrl.split('?')[1] || '';
+    const params = new URLSearchParams(rawQuery);
+
+    const normalizedMode = mode || params.get('hub.mode') || params.get('hub_mode') || '';
+    const normalizedToken =
+      token || params.get('hub.verify_token') || params.get('hub_verify_token') || '';
+    const normalizedChallenge =
+      challenge || params.get('hub.challenge') || params.get('hub_challenge') || '';
+
+    const result = this.whatsappService.verifyWebhook(
+      normalizedMode,
+      normalizedToken,
+      normalizedChallenge,
+    );
 
     if (result) {
       res.status(200).send(result);
@@ -56,7 +70,7 @@ export class WhatsAppController {
   @Post('webhook')
   async handleWebhook(
     @Req() req: RawBodyRequest<Request>,
-    @Body() body: WebhookPayload,
+    @Body() body: WebhookPayload | Record<string, unknown>,
     @Res() res: Response,
   ): Promise<void> {
     const signature = req.headers['x-hub-signature-256'] as string;

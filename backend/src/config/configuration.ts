@@ -14,10 +14,12 @@ export interface JwtConfig {
 }
 
 export interface WhatsAppConfig {
+  provider: 'meta' | '360dialog_sandbox';
   apiUrl: string;
   phoneNumberId: string;
   businessAccountId: string;
   accessToken: string;
+  d360ApiKey: string;
   webhookVerifyToken: string;
   appSecret: string;
 }
@@ -77,17 +79,24 @@ export default (): Configuration => ({
     apiPrefix: process.env.API_PREFIX || 'api/v1',
   },
   database: {
-    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/whatsapp-store',
+    uri:
+      process.env.MONGODB_URI ||
+      process.env.MONGODB_URL ||
+      'mongodb://localhost:27017/whatsapp-store',
   },
   jwt: {
     secret: process.env.JWT_SECRET || 'default-secret-change-me',
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   },
   whatsapp: {
+    provider:
+      (process.env.WHATSAPP_PROVIDER as 'meta' | '360dialog_sandbox') ||
+      'meta',
     apiUrl: process.env.WHATSAPP_API_URL || 'https://graph.facebook.com/v18.0',
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
     businessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
     accessToken: process.env.WHATSAPP_ACCESS_TOKEN || '',
+    d360ApiKey: process.env.WHATSAPP_D360_API_KEY || '',
     webhookVerifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '',
     appSecret: process.env.WHATSAPP_APP_SECRET || '',
   },

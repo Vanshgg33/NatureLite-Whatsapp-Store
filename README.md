@@ -277,6 +277,20 @@ The chatbot uses a state-based flow engine:
    - message_deliveries
    - message_reads
 
+## 360dialog Sandbox Setup
+
+If you want to run the full system against 360dialog Sandbox API, follow the dedicated step-by-step guide:
+
+- `backend/360DIALOG_SANDBOX_SETUP.md`
+
+It includes:
+
+- provider-mode environment configuration
+- webhook registration with `POST /v1/configs/webhook`
+- ngrok/local tunnel setup
+- inbound and outbound test commands
+- sandbox limitations and troubleshooting
+
 ## Production Deployment
 
 ### Backend

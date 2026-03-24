@@ -21,29 +21,73 @@ interface WhatsAppApiResponse {
   messages?: Array<{ id: string }>;
 }
 
+interface FlatWebhookPayload {
+  contacts?: Array<{
+    profile?: { name?: string };
+    wa_id?: string;
+  }>;
+  messages?: NonNullable<WebhookPayload['entry'][0]['changes'][0]['value']['messages']>;
+  statuses?: WebhookPayload['entry'][0]['changes'][0]['value']['statuses'];
+}
+
 @Injectable()
 export class WhatsAppService {
   private readonly logger = new Logger(WhatsAppService.name);
   private readonly httpClient: AxiosInstance;
   private readonly config: WhatsAppConfig;
+  private readonly is360DialogSandbox: boolean;
 
   constructor(
     private readonly messageLogRepository: MessageLogRepository,
     private configService: ConfigService,
   ) {
     this.config = this.configService.get<WhatsAppConfig>('whatsapp')!;
+    this.is360DialogSandbox = this.config.provider === '360dialog_sandbox';
+
+    const normalizedApiUrl = this.config.apiUrl.replace(/\/$/, '');
+
+    const baseURL = this.is360DialogSandbox
+      ? `${normalizedApiUrl}/v1`
+      : `${normalizedApiUrl}/${this.config.phoneNumberId}`;
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (this.is360DialogSandbox) {
+      headers['D360-API-KEY'] = this.config.d360ApiKey;
+    } else {
+      headers.Authorization = `Bearer ${this.config.accessToken}`;
+    }
 
     this.httpClient = axios.create({
-      baseURL: `${this.config.apiUrl}/${this.config.phoneNumberId}`,
-      headers: {
-        Authorization: `Bearer ${this.config.accessToken}`,
-        'Content-Type': 'application/json',
-      },
+      baseURL,
+      headers,
     });
+
+    this.logger.log(
+      `WhatsApp provider initialized: ${this.is360DialogSandbox ? '360dialog sandbox' : 'meta cloud api'}`,
+    );
   }
 
   verifyWebhook(mode: string, token: string, challenge: string): string | null {
-    if (mode === 'subscribe' && token === this.config.webhookVerifyToken) {
+    const normalizeToken = (value?: string): string => {
+      if (!value) return '';
+
+      const trimmed = value.trim().replace(/^['\"]|['\"]$/g, '');
+      const prefixedKey = 'WHATSAPP_WEBHOOK_VERIFY_TOKEN=';
+
+      if (trimmed.startsWith(prefixedKey)) {
+        return trimmed.slice(prefixedKey.length).trim();
+      }
+
+      return trimmed;
+    };
+
+    const expectedToken = normalizeToken(this.config.webhookVerifyToken);
+    const incomingToken = normalizeToken(token);
+
+    if (mode === 'subscribe' && incomingToken === expectedToken && expectedToken) {
       this.logger.log('Webhook verified successfully');
       return challenge;
     }
@@ -52,6 +96,11 @@ export class WhatsAppService {
   }
 
   verifySignature(payload: string, signature: string): boolean {
+    if (!this.config.appSecret) {
+      // 360dialog sandbox does not provide an app secret signature workflow.
+      return true;
+    }
+
     const expectedSignature = crypto
       .createHmac('sha256', this.config.appSecret)
       .update(payload)
@@ -60,36 +109,66 @@ export class WhatsAppService {
     return `sha256=${expectedSignature}` === signature;
   }
 
-  async processWebhook(payload: WebhookPayload): Promise<WhatsAppMessage[]> {
+  async processWebhook(payload: WebhookPayload | FlatWebhookPayload): Promise<WhatsAppMessage[]> {
     const messages: WhatsAppMessage[] = [];
 
-    for (const entry of payload.entry) {
-      for (const change of entry.changes) {
-        if (change.field !== 'messages') continue;
+    const changes = this.extractWebhookChanges(payload);
 
-        const value = change.value;
+    for (const change of changes) {
+      if (change.field !== 'messages') continue;
 
-        if (value.statuses) {
-          for (const status of value.statuses) {
-            await this.updateMessageStatus(status.id, status.status, status.timestamp);
-          }
+      const value = change.value;
+
+      if (value.statuses) {
+        for (const status of value.statuses) {
+          await this.updateMessageStatus(status.id, status.status, status.timestamp);
         }
+      }
 
-        if (value.messages) {
-          for (const msg of value.messages) {
-            const contactName = value.contacts?.[0]?.profile?.name;
+      if (value.messages) {
+        for (const msg of value.messages) {
+          const contactName = value.contacts?.[0]?.profile?.name;
 
-            const whatsappMessage = this.parseInboundMessage(msg, contactName);
-            if (whatsappMessage) {
-              await this.logMessage(whatsappMessage, 'inbound');
-              messages.push(whatsappMessage);
-            }
+          const whatsappMessage = this.parseInboundMessage(msg, contactName);
+          if (whatsappMessage) {
+            await this.logMessage(whatsappMessage, 'inbound');
+            messages.push(whatsappMessage);
           }
         }
       }
     }
 
     return messages;
+  }
+
+  private extractWebhookChanges(
+    payload: WebhookPayload | FlatWebhookPayload,
+  ): Array<WebhookPayload['entry'][0]['changes'][0]> {
+    const asCloudPayload = payload as WebhookPayload;
+    if (Array.isArray(asCloudPayload.entry)) {
+      return asCloudPayload.entry.flatMap((entry) => entry.changes || []);
+    }
+
+    const asFlatPayload = payload as FlatWebhookPayload;
+    if (asFlatPayload.messages || asFlatPayload.statuses) {
+      return [
+        {
+          field: 'messages',
+          value: {
+            messaging_product: 'whatsapp',
+            metadata: {
+              display_phone_number: '',
+              phone_number_id: '',
+            },
+            contacts: asFlatPayload.contacts as Array<{ profile: { name: string }; wa_id: string }> | undefined,
+            messages: asFlatPayload.messages,
+            statuses: asFlatPayload.statuses,
+          },
+        },
+      ];
+    }
+
+    return [];
   }
 
   private parseInboundMessage(
@@ -395,6 +474,11 @@ export class WhatsAppService {
   }
 
   async getMediaUrl(mediaId: string): Promise<string | null> {
+    if (this.is360DialogSandbox) {
+      this.logger.warn('Media retrieval is not available in 360dialog sandbox mode');
+      return null;
+    }
+
     try {
       const response = await this.httpClient.get<{ url: string }>(`/${mediaId}`);
       return response.data.url;
