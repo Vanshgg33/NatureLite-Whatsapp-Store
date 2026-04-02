@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Query,
+  Param,
   Req,
   Res,
   UseGuards,
@@ -155,7 +156,7 @@ export class WhatsAppController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   async getMessageLogs(
-    @Query('phone') phone: string,
+    @Param('phone') phone: string,
     @Query('limit') limit?: string,
   ): Promise<unknown[]> {
     return this.whatsappService.getMessageLogs(

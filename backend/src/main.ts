@@ -1,13 +1,45 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { WhatsAppConfig } from './config/configuration';
 
 const cookieParser = require('cookie-parser');
 const mongoSanitize = require('express-mongo-sanitize');
 
+const logger = new Logger('Bootstrap');
+
 let cachedServer: any;
+
+function validateProductionConfig(configService: ConfigService): void {
+  const nodeEnv = configService.get<string>('app.nodeEnv');
+  if (nodeEnv !== 'production') {
+    return;
+  }
+
+  const jwtSecret = configService.get<string>('jwt.secret') || '';
+  const frontendUrl = configService.get<string>('frontendUrl') || '';
+  const whatsapp = configService.get<WhatsAppConfig>('whatsapp');
+
+  const errors: string[] = [];
+
+  if (!frontendUrl.trim()) {
+    errors.push('FRONTEND_URL is required in production.');
+  }
+
+  if (!jwtSecret || jwtSecret === 'default-secret-change-me') {
+    errors.push('JWT_SECRET must be set to a strong non-default value in production.');
+  }
+
+  if (whatsapp?.provider === '360dialog_sandbox') {
+    logger.warn('WHATSAPP_PROVIDER is set to 360dialog_sandbox in production. This should be used for testing only.');
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Production configuration validation failed: ${errors.join(' ')}`);
+  }
+}
 
 async function createApp() {
   const app = await NestFactory.create(AppModule, {
@@ -15,6 +47,7 @@ async function createApp() {
   });
 
   const configService = app.get(ConfigService);
+  validateProductionConfig(configService);
 
   app.use(helmet());
   app.use(cookieParser());
@@ -68,7 +101,7 @@ export default async function handler(req: any, res: any) {
   if (!cachedServer) {
     const { app, configService } = await createApp();
     cachedServer = app.getHttpAdapter().getInstance();
-    console.log(
+    logger.log(
       `Nest initialized (serverless). API: ${configService.get<string>('app.apiPrefix')}`,
     );
   }

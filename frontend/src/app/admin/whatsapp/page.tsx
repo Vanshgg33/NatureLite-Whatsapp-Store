@@ -106,35 +106,40 @@ export default function WhatsAppPage() {
                   </div>
                 ) : messages && messages.length > 0 ? (
                   [...messages].reverse().map((msg, i) => (
+                    (() => {
+                      const isOutbound = msg.direction === 'outbound' || msg.direction === 'outgoing';
+                      const isInbound = msg.direction === 'inbound' || msg.direction === 'incoming';
+
+                      return (
                     <div
                       key={i}
                       className={cn(
                         'flex',
-                        msg.direction === 'outgoing' ? 'justify-end' : 'justify-start'
+                        isOutbound ? 'justify-end' : 'justify-start'
                       )}
                     >
                       <div
                         className={cn(
                           'max-w-[70%] rounded-lg px-4 py-2 shadow-sm',
-                          msg.direction === 'outgoing'
+                          isOutbound
                             ? 'bg-primary text-white'
                             : 'bg-white border'
                         )}
                       >
                         <div className="flex items-center gap-1.5 mb-1">
-                          {msg.direction === 'incoming' ? (
+                          {isInbound ? (
                             <User className="h-3 w-3" />
                           ) : (
                             <Bot className="h-3 w-3" />
                           )}
                           <span className="text-xs opacity-70">
-                            {msg.direction === 'incoming' ? 'Customer' : 'Store'}
+                            {isInbound ? 'Customer' : 'Store'}
                           </span>
                         </div>
                         <p className="text-sm whitespace-pre-wrap">{msg.content?.text || msg.content?.templateName || '[Media]'}</p>
                         <p className={cn(
                           'text-xs mt-1',
-                          msg.direction === 'outgoing' ? 'text-white/60' : 'text-muted-foreground'
+                          isOutbound ? 'text-white/60' : 'text-muted-foreground'
                         )}>
                           {formatTime(msg.createdAt)}
                           {msg.status && (
@@ -145,6 +150,8 @@ export default function WhatsAppPage() {
                         </p>
                       </div>
                     </div>
+                      );
+                    })()
                   ))
                 ) : (
                   <div className="flex items-center justify-center h-full text-muted-foreground">

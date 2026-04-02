@@ -307,7 +307,7 @@ export interface MessageLog {
   _id: string;
   messageId: string;
   phone: string;
-  direction: 'incoming' | 'outgoing';
+  direction: 'incoming' | 'outgoing' | 'inbound' | 'outbound';
   type: string;
   content: MessageContent;
   status: 'sent' | 'delivered' | 'read' | 'failed';

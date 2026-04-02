@@ -60,13 +60,9 @@ import {
   AuditLog,
 } from '@/types';
 
-// Backend API base URL. Set via NEXT_PUBLIC_API_URL in .env.local
-// Fallback: deployed backend when env missing, or localhost when running backend locally
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== 'undefined'
-    ? 'https://store-phi-lemon.vercel.app/api/v1'
-    : 'https://store-phi-lemon.vercel.app/api/v1');
+// Backend API base URL. Set via NEXT_PUBLIC_API_URL in environment.
+// Local fallback helps development if env is missing.
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7001/api/v1';
 
 class ApiClient {
   private client: AxiosInstance;

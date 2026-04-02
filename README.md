@@ -293,6 +293,11 @@ It includes:
 
 ## Production Deployment
 
+Before go-live, complete:
+
+- `PRODUCTION_CHECKLIST.md`
+- `STAGED_ROLLOUT_PLAN.md`
+
 ### Backend
 ```bash
 cd backend

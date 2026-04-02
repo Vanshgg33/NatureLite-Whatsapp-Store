@@ -18,7 +18,10 @@ const sourceSans = Source_Sans_3({
   variable: '--font-source-sans',
 });
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:8001';
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: {
     default: 'Purity Foods | Traditional Wood-Pressed Oils & Bilona Ghee',
     template: '%s | Purity Foods',
