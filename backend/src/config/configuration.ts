@@ -14,7 +14,7 @@ export interface JwtConfig {
 }
 
 export interface WhatsAppConfig {
-  provider: 'meta' | '360dialog_sandbox';
+  provider: 'meta' | '360dialog' | '360dialog_sandbox';
   apiUrl: string;
   phoneNumberId: string;
   businessAccountId: string;
@@ -90,7 +90,7 @@ export default (): Configuration => ({
   },
   whatsapp: {
     provider:
-      (process.env.WHATSAPP_PROVIDER as 'meta' | '360dialog_sandbox') ||
+      (process.env.WHATSAPP_PROVIDER as 'meta' | '360dialog' | '360dialog_sandbox') ||
       'meta',
     apiUrl: process.env.WHATSAPP_API_URL || 'https://graph.facebook.com/v18.0',
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',

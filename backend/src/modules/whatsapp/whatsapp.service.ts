@@ -35,18 +35,20 @@ export class WhatsAppService {
   private readonly logger = new Logger(WhatsAppService.name);
   private readonly httpClient: AxiosInstance;
   private readonly config: WhatsAppConfig;
-  private readonly is360DialogSandbox: boolean;
+  private readonly is360DialogProvider: boolean;
 
   constructor(
     private readonly messageLogRepository: MessageLogRepository,
     private configService: ConfigService,
   ) {
     this.config = this.configService.get<WhatsAppConfig>('whatsapp')!;
-    this.is360DialogSandbox = this.config.provider === '360dialog_sandbox';
+    this.is360DialogProvider =
+      this.config.provider === '360dialog' ||
+      this.config.provider === '360dialog_sandbox';
 
     const normalizedApiUrl = this.config.apiUrl.replace(/\/$/, '');
 
-    const baseURL = this.is360DialogSandbox
+    const baseURL = this.is360DialogProvider
       ? `${normalizedApiUrl}/v1`
       : `${normalizedApiUrl}/${this.config.phoneNumberId}`;
 
@@ -54,7 +56,7 @@ export class WhatsAppService {
       'Content-Type': 'application/json',
     };
 
-    if (this.is360DialogSandbox) {
+    if (this.is360DialogProvider) {
       headers['D360-API-KEY'] = this.config.d360ApiKey;
     } else {
       headers.Authorization = `Bearer ${this.config.accessToken}`;
@@ -66,7 +68,7 @@ export class WhatsAppService {
     });
 
     this.logger.log(
-      `WhatsApp provider initialized: ${this.is360DialogSandbox ? '360dialog sandbox' : 'meta cloud api'}`,
+      `WhatsApp provider initialized: ${this.config.provider}`,
     );
   }
 
@@ -97,7 +99,7 @@ export class WhatsAppService {
 
   verifySignature(payload: string, signature: string): boolean {
     if (!this.config.appSecret) {
-      // 360dialog sandbox does not provide an app secret signature workflow.
+      // 360dialog modes may not provide app-secret signature verification.
       return true;
     }
 
@@ -474,8 +476,8 @@ export class WhatsAppService {
   }
 
   async getMediaUrl(mediaId: string): Promise<string | null> {
-    if (this.is360DialogSandbox) {
-      this.logger.warn('Media retrieval is not available in 360dialog sandbox mode');
+    if (this.is360DialogProvider) {
+      this.logger.warn('Media retrieval is not available in 360dialog mode');
       return null;
     }
 
