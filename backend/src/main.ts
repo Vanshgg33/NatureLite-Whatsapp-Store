@@ -32,8 +32,32 @@ function validateProductionConfig(configService: ConfigService): void {
     errors.push('JWT_SECRET must be set to a strong non-default value in production.');
   }
 
+  const provider = whatsapp?.provider;
+  const apiUrl = whatsapp?.apiUrl || '';
+  const d360ApiKey = whatsapp?.d360ApiKey || '';
+  const accessToken = whatsapp?.accessToken || '';
+  const phoneNumberId = whatsapp?.phoneNumberId || '';
+
   if (whatsapp?.provider === '360dialog_sandbox') {
-    logger.warn('WHATSAPP_PROVIDER is set to 360dialog_sandbox in production. This should be used for testing only.');
+    errors.push('WHATSAPP_PROVIDER cannot be 360dialog_sandbox in production. Use 360dialog for live usage.');
+  }
+
+  if (provider === '360dialog') {
+    if (!d360ApiKey.trim()) {
+      errors.push('WHATSAPP_D360_API_KEY is required when WHATSAPP_PROVIDER=360dialog.');
+    }
+    if (apiUrl.includes('waba-sandbox.360dialog.io')) {
+      errors.push('WHATSAPP_API_URL points to sandbox. Use a 360dialog production API URL in production.');
+    }
+  }
+
+  if (provider === 'meta') {
+    if (!accessToken.trim()) {
+      errors.push('WHATSAPP_ACCESS_TOKEN is required when WHATSAPP_PROVIDER=meta.');
+    }
+    if (!phoneNumberId.trim()) {
+      errors.push('WHATSAPP_PHONE_NUMBER_ID is required when WHATSAPP_PROVIDER=meta.');
+    }
   }
 
   if (errors.length > 0) {

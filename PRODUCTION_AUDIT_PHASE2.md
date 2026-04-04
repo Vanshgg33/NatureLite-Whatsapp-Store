@@ -53,7 +53,7 @@ Fix
 - Added `validateProductionConfig`:
   - fails startup if `FRONTEND_URL` missing in production
   - fails startup if `JWT_SECRET` is default/empty in production
-  - warns if `WHATSAPP_PROVIDER=360dialog_sandbox` in production
+  - fails startup if `WHATSAPP_PROVIDER=360dialog_sandbox` in production
 
 ### 6. Environment templates improved
 

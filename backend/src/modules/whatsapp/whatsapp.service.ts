@@ -36,15 +36,17 @@ export class WhatsAppService {
   private readonly httpClient: AxiosInstance;
   private readonly config: WhatsAppConfig;
   private readonly is360DialogProvider: boolean;
+  private readonly is360DialogSandbox: boolean;
 
   constructor(
     private readonly messageLogRepository: MessageLogRepository,
     private configService: ConfigService,
   ) {
     this.config = this.configService.get<WhatsAppConfig>('whatsapp')!;
+    this.is360DialogSandbox = this.config.provider === '360dialog_sandbox';
     this.is360DialogProvider =
       this.config.provider === '360dialog' ||
-      this.config.provider === '360dialog_sandbox';
+      this.is360DialogSandbox;
 
     const normalizedApiUrl = this.config.apiUrl.replace(/\/$/, '');
 
@@ -476,8 +478,8 @@ export class WhatsAppService {
   }
 
   async getMediaUrl(mediaId: string): Promise<string | null> {
-    if (this.is360DialogProvider) {
-      this.logger.warn('Media retrieval is not available in 360dialog mode');
+    if (this.is360DialogSandbox) {
+      this.logger.warn('Media retrieval is not available in 360dialog sandbox mode');
       return null;
     }
 

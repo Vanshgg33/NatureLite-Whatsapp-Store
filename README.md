@@ -268,9 +268,11 @@ The chatbot uses a state-based flow engine:
    ngrok http 3000
    ```
 
-2. Configure webhook URL in Meta Developer Console:
+2. Configure webhook URL in your provider dashboard:
    - Webhook URL: `https://your-domain.com/api/v1/whatsapp/webhook`
    - Verify Token: Your `WHATSAPP_WEBHOOK_VERIFY_TOKEN`
+
+   For 360dialog production, register this URL in the 360dialog Hub for the live number.
 
 3. Subscribe to these webhook fields:
    - messages
