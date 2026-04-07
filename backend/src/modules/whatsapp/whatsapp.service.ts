@@ -100,6 +100,12 @@ export class WhatsAppService {
   }
 
   verifySignature(payload: string, signature: string): boolean {
+    if (this.is360DialogProvider) {
+      // 360dialog webhook signing differs from Meta app-secret flow.
+      // For 360dialog providers, rely on transport security and provider auth.
+      return true;
+    }
+
     if (!this.config.appSecret) {
       // 360dialog modes may not provide app-secret signature verification.
       return true;
