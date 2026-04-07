@@ -392,6 +392,21 @@ export class WhatsAppService {
         ? error.response?.data
         : error;
       this.logger.error('Failed to send interactive buttons', providerError);
+
+      // Coexistence or account-specific policies can reject interactive payloads.
+      // Fallback to plain text so conversations can continue.
+      const fallbackOptions = dto.buttons
+        .slice(0, 3)
+        .map((btn, idx) => `${idx + 1}. ${btn.title}`)
+        .join('\n');
+      const fallbackText = fallbackOptions
+        ? `${dto.bodyText}\n\nReply with:\n${fallbackOptions}`
+        : dto.bodyText;
+
+      await this.sendTextMessage({
+        phone: dto.phone,
+        message: fallbackText,
+      });
       return null;
     }
   }
