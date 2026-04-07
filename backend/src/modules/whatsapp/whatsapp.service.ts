@@ -51,7 +51,7 @@ export class WhatsAppService {
     const normalizedApiUrl = this.config.apiUrl.replace(/\/$/, '');
 
     const baseURL = this.is360DialogProvider
-      ? `${normalizedApiUrl}/v1`
+      ? normalizedApiUrl
       : `${normalizedApiUrl}/${this.config.phoneNumberId}`;
 
     const headers: Record<string, string> = {
