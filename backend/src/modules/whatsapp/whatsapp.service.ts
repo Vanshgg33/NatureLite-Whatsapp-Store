@@ -388,7 +388,10 @@ export class WhatsAppService {
 
       return messageId || null;
     } catch (error) {
-      this.logger.error('Failed to send interactive buttons', error);
+      const providerError = axios.isAxiosError(error)
+        ? error.response?.data
+        : error;
+      this.logger.error('Failed to send interactive buttons', providerError);
       return null;
     }
   }
