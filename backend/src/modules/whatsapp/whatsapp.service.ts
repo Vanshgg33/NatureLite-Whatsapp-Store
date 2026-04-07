@@ -185,6 +185,10 @@ export class WhatsAppService {
     msg: NonNullable<WebhookPayload['entry'][0]['changes'][0]['value']['messages']>[0],
     contactName?: string,
   ): WhatsAppMessage | null {
+    if (!msg.from || !/^\d{8,20}$/.test(msg.from)) {
+      return null;
+    }
+
     const baseMessage: WhatsAppMessage = {
       phone: msg.from,
       messageId: msg.id,
