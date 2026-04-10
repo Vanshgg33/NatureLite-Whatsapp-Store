@@ -1,6 +1,6 @@
 # 360dialog Sandbox Setup Guide (End-to-End)
 
-This guide configures the current backend to work with the 360dialog Sandbox API for full local testing.
+This guide configures the current backend to work with the 360dialog Sandbox API for local testing. For the Render deployment path, use [RENDER_SANDBOX_DEPLOYMENT_GUIDE.md](../RENDER_SANDBOX_DEPLOYMENT_GUIDE.md).
 
 ## 1. What has already been prepared in code
 
