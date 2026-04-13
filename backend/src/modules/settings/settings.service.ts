@@ -3,6 +3,15 @@ import { Settings } from './schemas/settings.schema';
 import { SettingsRepository } from './repositories/settings.repository';
 import { DEFAULT_SETTINGS } from './schemas/settings.schema';
 
+export type WhatsAppSettings = {
+  welcomeMessage: string;
+  orderConfirmationTemplate: string;
+  shippingUpdateTemplate: string;
+  deliveryConfirmationTemplate: string;
+  abandonedCartReminderEnabled: boolean;
+  abandonedCartReminderDelayMinutes: number;
+};
+
 @Injectable()
 export class SettingsService implements OnModuleInit {
   constructor(private readonly settingsRepository: SettingsRepository) {}
@@ -92,8 +101,47 @@ export class SettingsService implements OnModuleInit {
     return (await this.get('store')) || DEFAULT_SETTINGS.store;
   }
 
-  async getWhatsAppSettings(): Promise<Record<string, unknown>> {
-    return (await this.get('whatsapp')) || DEFAULT_SETTINGS.whatsapp;
+  async getWhatsAppSettings(): Promise<WhatsAppSettings> {
+    const raw = (await this.get('whatsapp')) || DEFAULT_SETTINGS.whatsapp;
+
+    const getString = (key: keyof WhatsAppSettings, fallback: string): string => {
+      const value = raw[key as string];
+      return typeof value === 'string' && value.trim() ? value : fallback;
+    };
+
+    const getBoolean = (key: keyof WhatsAppSettings, fallback: boolean): boolean => {
+      const value = raw[key as string];
+      return typeof value === 'boolean' ? value : fallback;
+    };
+
+    const getNumber = (key: keyof WhatsAppSettings, fallback: number): number => {
+      const value = raw[key as string];
+      return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+    };
+
+    return {
+      welcomeMessage: getString('welcomeMessage', DEFAULT_SETTINGS.whatsapp.welcomeMessage),
+      orderConfirmationTemplate: getString(
+        'orderConfirmationTemplate',
+        DEFAULT_SETTINGS.whatsapp.orderConfirmationTemplate,
+      ),
+      shippingUpdateTemplate: getString(
+        'shippingUpdateTemplate',
+        DEFAULT_SETTINGS.whatsapp.shippingUpdateTemplate,
+      ),
+      deliveryConfirmationTemplate: getString(
+        'deliveryConfirmationTemplate',
+        DEFAULT_SETTINGS.whatsapp.deliveryConfirmationTemplate,
+      ),
+      abandonedCartReminderEnabled: getBoolean(
+        'abandonedCartReminderEnabled',
+        DEFAULT_SETTINGS.whatsapp.abandonedCartReminderEnabled,
+      ),
+      abandonedCartReminderDelayMinutes: getNumber(
+        'abandonedCartReminderDelayMinutes',
+        DEFAULT_SETTINGS.whatsapp.abandonedCartReminderDelayMinutes,
+      ),
+    } satisfies WhatsAppSettings;
   }
 
   async getCheckoutSettings(): Promise<Record<string, unknown>> {

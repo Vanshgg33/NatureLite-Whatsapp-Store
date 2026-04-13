@@ -39,7 +39,7 @@ export class Payment {
   gatewaySignature?: string;
 
   @Prop({ type: Object })
-  gatewayResponse?: Record<string, unknown>;
+  gatewayResponse?: Record<string, string | number | boolean | null>;
 
   @Prop()
   refundId?: string;
@@ -57,7 +57,7 @@ export class Payment {
   failureReason?: string;
 
   @Prop({ type: Object, default: {} })
-  metadata: Record<string, unknown>;
+  metadata: Record<string, string | number | boolean | null>;
 
   createdAt: Date;
   updatedAt: Date;
@@ -68,4 +68,4 @@ export const PaymentSchema = SchemaFactory.createForClass(Payment);
 PaymentSchema.index({ user: 1, createdAt: -1 });
 PaymentSchema.index({ status: 1 });
 PaymentSchema.index({ gatewayOrderId: 1 });
-PaymentSchema.index({ gatewayPaymentId: 1 });
+PaymentSchema.index({ gatewayPaymentId: 1 }, { unique: true, sparse: true });

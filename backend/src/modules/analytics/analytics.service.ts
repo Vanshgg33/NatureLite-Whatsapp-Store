@@ -11,6 +11,7 @@ import { StoreStockRepository } from '../store-stock/repositories/store-stock.re
 import { StoreRepository } from '../stores/repositories/store.repository';
 import { AnalyticsSnapshot, SnapshotPeriod } from './schemas/analytics-snapshot.schema';
 import { parseObjectId } from '../../common/utils/objectid.util';
+import { ORDER_STATUSES_PENDING_FULFILLMENT } from '../../common/constants/order-status';
 
 @Injectable()
 export class AnalyticsService {
@@ -133,7 +134,7 @@ export class AnalyticsService {
         { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$total' } } },
       ]),
       this.userRepository.countDocuments(),
-      orderModel.countDocuments({ status: { $in: ['pending', 'confirmed', 'processing'] } }),
+      orderModel.countDocuments({ status: { $in: [...ORDER_STATUSES_PENDING_FULFILLMENT] } }),
     ]);
 
     const recentOrders = await orderModel
@@ -180,7 +181,7 @@ export class AnalyticsService {
           pendingOrders: {
             $sum: {
               $cond: [
-                { $in: ['$status', ['pending', 'confirmed', 'processing']] },
+                { $in: ['$status', [...ORDER_STATUSES_PENDING_FULFILLMENT]] },
                 1,
                 0,
               ],

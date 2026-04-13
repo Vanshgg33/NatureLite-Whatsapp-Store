@@ -140,15 +140,28 @@ export interface TimelineEntry {
 }
 
 export type OrderStatus =
-  | 'pending'
+  | 'placed'
   | 'confirmed'
-  | 'processing'
-  | 'shipped'
+  | 'preparing'
   | 'out_for_delivery'
   | 'delivered'
   | 'cancelled'
   | 'returned'
   | 'refunded';
+
+/**
+ * Pending fulfilment bucket (analytics / chatbot hints).
+ * Prefer generating this from the backend OpenAPI schema or a shared package so it cannot drift.
+ */
+export const ORDER_STATUSES_PENDING_FULFILLMENT: readonly OrderStatus[] = [
+  'placed',
+  'confirmed',
+  'preparing',
+] as const;
+
+export function isOrderStatusPendingFulfillment(status: string): boolean {
+  return (ORDER_STATUSES_PENDING_FULFILLMENT as readonly string[]).includes(status);
+}
 
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
 export type PaymentMethod = 'cod' | 'prepaid' | 'upi' | 'card' | 'netbanking' | 'wallet';
@@ -524,10 +537,9 @@ export interface OrderStats {
 }
 
 export interface OrdersByStatus {
-  pending: number;
+  placed: number;
   confirmed: number;
-  processing: number;
-  shipped: number;
+  preparing: number;
   out_for_delivery: number;
   delivered: number;
   cancelled: number;
@@ -608,6 +620,7 @@ export interface CreateOrderDto {
   couponCode?: string;
   notes?: string;
   walletAmount?: number;
+  idempotencyKey?: string;
 }
 
 export interface GuestCreateOrderDto {
@@ -620,6 +633,7 @@ export interface GuestCreateOrderDto {
   email?: string;
   name?: string;
   walletAmount?: number;
+  idempotencyKey?: string;
 }
 
 export interface ReorderDto {
@@ -714,6 +728,16 @@ export interface ProductReview {
 }
 
 // ==================== RAZORPAY ====================
+/** Response from POST /payments/whatsapp-checkout (WhatsApp pay link). */
+export interface WhatsAppCheckoutPrepareResult {
+  razorpayOrderId: string;
+  amount: number;
+  currency: string;
+  keyId: string;
+  orderNumber: string;
+  alreadyPaid: boolean;
+}
+
 export interface RazorpayCheckoutResponse {
   razorpay_payment_id: string;
   razorpay_order_id: string;

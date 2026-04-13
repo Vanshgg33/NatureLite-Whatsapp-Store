@@ -57,6 +57,12 @@ export class Cart {
   @Prop({ default: false })
   abandonedReminderSent: boolean;
 
+  @Prop({ default: 0 })
+  abandonedReminderCount: number;
+
+  @Prop()
+  abandonedLastReminderAt?: Date;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -64,4 +70,5 @@ export class Cart {
 export const CartSchema = SchemaFactory.createForClass(Cart);
 
 CartSchema.index({ abandonedAt: 1, abandonedReminderSent: 1 });
+CartSchema.index({ abandonedReminderCount: 1, abandonedLastReminderAt: 1 });
 CartSchema.index({ updatedAt: 1 });

@@ -16,6 +16,10 @@ export class CartRepository extends BaseRepository<CartDocument> {
     return this.model.findOne({ user: userId }).exec();
   }
 
+  async findOneByIdAndUser(cartId: Types.ObjectId, userId: Types.ObjectId): Promise<CartDocument | null> {
+    return this.model.findOne({ _id: cartId, user: userId }).exec();
+  }
+
   async findAbandonedCarts(
     cutoffTime: Date,
     limit: number,
@@ -24,10 +28,14 @@ export class CartRepository extends BaseRepository<CartDocument> {
       .find({
         updatedAt: { $lt: cutoffTime },
         abandonedAt: { $exists: false },
-        abandonedReminderSent: false,
+        abandonedReminderCount: { $lt: 2 },
+        $or: [
+          { abandonedLastReminderAt: { $exists: false } },
+          { abandonedLastReminderAt: { $lt: cutoffTime } },
+        ],
         'items.0': { $exists: true },
       })
-      .populate('user', 'phone name')
+      .populate('user', 'phone name isBlocked')
       .limit(limit)
       .exec();
   }

@@ -11,9 +11,11 @@ import {
   SendInteractiveListDto,
   SendMediaMessageDto,
   WebhookPayload,
+  FlatWebhookPayload,
   WhatsAppMessage,
 } from './dto/whatsapp.dto';
 import { WhatsAppConfig } from '../../config/configuration';
+import { MessageLogMetadata, MessageFinalStatus } from './schemas/message-log.schema';
 
 interface WhatsAppApiResponse {
   messaging_product: string;
@@ -21,13 +23,15 @@ interface WhatsAppApiResponse {
   messages?: Array<{ id: string }>;
 }
 
-interface FlatWebhookPayload {
-  contacts?: Array<{
-    profile?: { name?: string };
-    wa_id?: string;
-  }>;
-  messages?: NonNullable<WebhookPayload['entry'][0]['changes'][0]['value']['messages']>;
-  statuses?: WebhookPayload['entry'][0]['changes'][0]['value']['statuses'];
+interface WhatsAppApiErrorShape {
+  error?: {
+    message?: string;
+    type?: string;
+    code?: number;
+    error_data?: { details?: string };
+    error_subcode?: number;
+    fbtrace_id?: string;
+  };
 }
 
 @Injectable()
@@ -37,6 +41,7 @@ export class WhatsAppService {
   private readonly config: WhatsAppConfig;
   private readonly is360DialogProvider: boolean;
   private readonly is360DialogSandbox: boolean;
+  private readonly outboundMaxAttempts = 3;
 
   constructor(
     private readonly messageLogRepository: MessageLogRepository,
@@ -100,23 +105,33 @@ export class WhatsAppService {
   }
 
   verifySignature(payload: string, signature: string): boolean {
+    // Note: this verifies Meta Cloud API-style `x-hub-signature-256`.
+    // If you're using a different provider, update controller header extraction
+    // and this verification accordingly.
     if (this.is360DialogProvider) {
       // 360dialog webhook signing differs from Meta app-secret flow.
-      // For 360dialog providers, rely on transport security and provider auth.
-      return true;
+      // Require explicit verification for the configured provider instead of accepting all requests.
+      this.logger.warn('Webhook signature verification not implemented for 360dialog provider');
+      return false;
     }
 
     if (!this.config.appSecret) {
-      // 360dialog modes may not provide app-secret signature verification.
-      return true;
+      this.logger.warn('WHATSAPP_APP_SECRET not configured; cannot verify webhook signature');
+      return false;
     }
 
-    const expectedSignature = crypto
+    const expected = crypto
       .createHmac('sha256', this.config.appSecret)
       .update(payload)
       .digest('hex');
 
-    return `sha256=${expectedSignature}` === signature;
+    const expectedWithPrefix = `sha256=${expected}`;
+
+    // Timing-safe compare (length must match).
+    const a = Buffer.from(expectedWithPrefix, 'utf8');
+    const b = Buffer.from(signature, 'utf8');
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
   }
 
   async processWebhook(payload: WebhookPayload | FlatWebhookPayload): Promise<WhatsAppMessage[]> {
@@ -141,7 +156,22 @@ export class WhatsAppService {
 
           const whatsappMessage = this.parseInboundMessage(msg, contactName);
           if (whatsappMessage) {
-            await this.logMessage(whatsappMessage, 'inbound');
+            // Atomic dedupe: insert-first. If duplicate key, skip processing.
+            const messageId = whatsappMessage.messageId?.trim();
+            if (messageId) {
+              const inserted = await this.messageLogRepository.tryCreateInboundByWhatsAppMessageId({
+                phone: whatsappMessage.phone,
+                whatsappMessageId: messageId,
+                messageType: whatsappMessage.type as MessageLogDocument['messageType'],
+                content: whatsappMessage.content as MessageLogDocument['content'],
+              });
+              if (!inserted) {
+                continue;
+              }
+            } else {
+              await this.logMessage(whatsappMessage, 'inbound');
+            }
+
             messages.push(whatsappMessage);
           }
         }
@@ -189,10 +219,14 @@ export class WhatsAppService {
       return null;
     }
 
+    const tsSeconds = Number.parseInt(msg.timestamp, 10);
+    const timestamp =
+      Number.isFinite(tsSeconds) && tsSeconds > 0 ? new Date(tsSeconds * 1000) : new Date();
+
     const baseMessage: WhatsAppMessage = {
       phone: msg.from,
       messageId: msg.id,
-      timestamp: new Date(parseInt(msg.timestamp, 10) * 1000),
+      timestamp,
       type: msg.type,
       content: {},
       contactName,
@@ -250,151 +284,168 @@ export class WhatsAppService {
   }
 
   async sendTextMessage(dto: SendTextMessageDto): Promise<string | null> {
-    try {
-      const response = await this.httpClient.post<WhatsAppApiResponse>('/messages', {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: dto.phone,
-        type: 'text',
-        text: {
-          preview_url: !!dto.previewUrl,
-          body: dto.message,
-        },
+    const phone = this.normalizePhone(dto.phone);
+    const idempotencyKey = dto.meta?.idempotencyKey;
+    const content: WhatsAppMessage['content'] = { text: dto.message };
+
+    if (!phone) {
+      await this.logFinalOutboundFailure({
+        phone: dto.phone,
+        messageType: 'text',
+        content,
+        idempotencyKey,
+        failureReason: 'invalid_phone',
+        metadata: { idempotencyKey, isInvalidPhone: true, provider: this.getProviderTag() },
       });
-
-      const messageId = response.data.messages?.[0]?.id;
-
-      if (messageId) {
-        await this.logMessage(
-          {
-            phone: dto.phone,
-            messageId,
-            timestamp: new Date(),
-            type: 'text',
-            content: { text: dto.message },
-          },
-          'outbound',
-        );
-      }
-
-      return messageId || null;
-    } catch (error) {
-      this.logger.error('Failed to send text message', error);
       return null;
     }
+
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: phone,
+      type: 'text' as const,
+      text: {
+        preview_url: Boolean(dto.previewUrl),
+        body: dto.message,
+      },
+    };
+
+    return this.sendOutboundWithRetry({
+      phone,
+      messageType: 'text',
+      content,
+      idempotencyKey,
+      payload,
+    });
   }
 
   async sendTemplateMessage(dto: SendTemplateMessageDto): Promise<string | null> {
-    try {
-      const components: Array<Record<string, unknown>> = [];
+    const phone = this.normalizePhone(dto.phone);
+    const idempotencyKey = dto.meta?.idempotencyKey;
+    const content: WhatsAppMessage['content'] = {
+      templateName: dto.templateName,
+      templateParams: dto.bodyParams,
+    };
 
-      if (dto.headerParams && dto.headerParams.length > 0) {
-        components.push({
-          type: 'header',
-          parameters: dto.headerParams.map((text) => ({ type: 'text', text })),
-        });
-      }
-
-      if (dto.bodyParams && dto.bodyParams.length > 0) {
-        components.push({
-          type: 'body',
-          parameters: dto.bodyParams.map((text) => ({ type: 'text', text })),
-        });
-      }
-
-      if (dto.buttonParams && dto.buttonParams.length > 0) {
-        dto.buttonParams.forEach((param, index) => {
-          components.push({
-            type: 'button',
-            sub_type: 'quick_reply',
-            index,
-            parameters: [{ type: 'payload', payload: param }],
-          });
-        });
-      }
-
-      const response = await this.httpClient.post<WhatsAppApiResponse>('/messages', {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: dto.phone,
-        type: 'template',
-        template: {
-          name: dto.templateName,
-          language: { code: dto.languageCode || 'en' },
-          components: components.length > 0 ? components : undefined,
-        },
+    if (!phone) {
+      await this.logFinalOutboundFailure({
+        phone: dto.phone,
+        messageType: 'template',
+        content,
+        idempotencyKey,
+        failureReason: 'invalid_phone',
+        metadata: { idempotencyKey, isInvalidPhone: true, provider: this.getProviderTag() },
       });
-
-      const messageId = response.data.messages?.[0]?.id;
-
-      if (messageId) {
-        await this.logMessage(
-          {
-            phone: dto.phone,
-            messageId,
-            timestamp: new Date(),
-            type: 'template',
-            content: {
-              templateName: dto.templateName,
-              templateParams: dto.bodyParams,
-            },
-          },
-          'outbound',
-        );
-      }
-
-      return messageId || null;
-    } catch (error) {
-      this.logger.error('Failed to send template message', error);
       return null;
     }
+
+    type TemplateComponentParam = { type: 'text'; text: string } | { type: 'payload'; payload: string };
+    type TemplateComponent =
+      | { type: 'header'; parameters: Array<{ type: 'text'; text: string }> }
+      | { type: 'body'; parameters: Array<{ type: 'text'; text: string }> }
+      | {
+          type: 'button';
+          sub_type: 'quick_reply';
+          index: number;
+          parameters: Array<Extract<TemplateComponentParam, { type: 'payload' }>>;
+        };
+
+    const components: TemplateComponent[] = [];
+
+    if (dto.headerParams && dto.headerParams.length > 0) {
+      components.push({
+        type: 'header',
+        parameters: dto.headerParams.map((text) => ({ type: 'text', text })),
+      });
+    }
+
+    if (dto.bodyParams && dto.bodyParams.length > 0) {
+      components.push({
+        type: 'body',
+        parameters: dto.bodyParams.map((text) => ({ type: 'text', text })),
+      });
+    }
+
+    if (dto.buttonParams && dto.buttonParams.length > 0) {
+      dto.buttonParams.forEach((param, index) => {
+        components.push({
+          type: 'button',
+          sub_type: 'quick_reply',
+          index,
+          parameters: [{ type: 'payload', payload: param }],
+        });
+      });
+    }
+
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: phone,
+      type: 'template' as const,
+      template: {
+        name: dto.templateName,
+        language: { code: dto.languageCode || 'en' },
+        components: components.length > 0 ? components : undefined,
+      },
+    };
+
+    return this.sendOutboundWithRetry({
+      phone,
+      messageType: 'template',
+      content,
+      idempotencyKey,
+      payload,
+    });
   }
 
   async sendInteractiveButtons(dto: SendInteractiveButtonDto): Promise<string | null> {
-    try {
-      const buttons = dto.buttons.slice(0, 3).map((btn) => ({
-        type: 'reply',
-        reply: { id: btn.id, title: btn.title.slice(0, 20) },
-      }));
+    const phone = this.normalizePhone(dto.phone);
+    const idempotencyKey = dto.meta?.idempotencyKey;
+    const content: WhatsAppMessage['content'] = { text: dto.bodyText };
 
-      const response = await this.httpClient.post<WhatsAppApiResponse>('/messages', {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: dto.phone,
-        type: 'interactive',
-        interactive: {
-          type: 'button',
-          header: dto.headerText ? { type: 'text', text: dto.headerText } : undefined,
-          body: { text: dto.bodyText },
-          footer: dto.footerText ? { text: dto.footerText } : undefined,
-          action: { buttons },
-        },
+    if (!phone) {
+      await this.logFinalOutboundFailure({
+        phone: dto.phone,
+        messageType: 'interactive',
+        content,
+        idempotencyKey,
+        failureReason: 'invalid_phone',
+        metadata: { idempotencyKey, isInvalidPhone: true, provider: this.getProviderTag() },
       });
+      return null;
+    }
 
-      const messageId = response.data.messages?.[0]?.id;
+    const buttons = dto.buttons.slice(0, 3).map((btn) => ({
+      type: 'reply' as const,
+      reply: { id: btn.id, title: btn.title.slice(0, 20) },
+    }));
 
-      if (messageId) {
-        await this.logMessage(
-          {
-            phone: dto.phone,
-            messageId,
-            timestamp: new Date(),
-            type: 'interactive',
-            content: { text: dto.bodyText },
-          },
-          'outbound',
-        );
-      }
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: phone,
+      type: 'interactive' as const,
+      interactive: {
+        type: 'button' as const,
+        header: dto.headerText ? { type: 'text' as const, text: dto.headerText } : undefined,
+        body: { text: dto.bodyText },
+        footer: dto.footerText ? { text: dto.footerText } : undefined,
+        action: { buttons },
+      },
+    };
 
-      return messageId || null;
-    } catch (error) {
-      const providerError = axios.isAxiosError(error)
-        ? error.response?.data
-        : error;
-      this.logger.error('Failed to send interactive buttons', providerError);
+    const messageId = await this.sendOutboundWithRetry({
+      phone,
+      messageType: 'interactive',
+      content,
+      idempotencyKey,
+      payload,
+    });
 
-      // Coexistence or account-specific policies can reject interactive payloads.
-      // Fallback to plain text so conversations can continue.
+    // Coexistence or account-specific policies can reject interactive payloads.
+    // Fallback to plain text so conversations can continue (do not retry fallback here).
+    if (!messageId) {
       const fallbackOptions = dto.buttons
         .slice(0, 3)
         .map((btn, idx) => `${idx + 1}. ${btn.title}`)
@@ -404,105 +455,155 @@ export class WhatsAppService {
         : dto.bodyText;
 
       await this.sendTextMessage({
-        phone: dto.phone,
+        phone,
         message: fallbackText,
+        meta: idempotencyKey ? { idempotencyKey: `${idempotencyKey}:fallback_text` } : undefined,
       });
-      return null;
     }
+
+    return messageId;
   }
 
   async sendInteractiveList(dto: SendInteractiveListDto): Promise<string | null> {
-    try {
-      const sections = dto.sections.map((section) => ({
-        title: section.title,
-        rows: section.rows.slice(0, 10).map((row) => ({
-          id: row.id,
-          title: row.title.slice(0, 24),
-          description: row.description?.slice(0, 72),
-        })),
-      }));
+    const phone = this.normalizePhone(dto.phone);
+    const idempotencyKey = dto.meta?.idempotencyKey;
+    const content: WhatsAppMessage['content'] = { text: dto.bodyText };
 
-      const response = await this.httpClient.post<WhatsAppApiResponse>('/messages', {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: dto.phone,
-        type: 'interactive',
-        interactive: {
-          type: 'list',
-          header: dto.headerText ? { type: 'text', text: dto.headerText } : undefined,
-          body: { text: dto.bodyText },
-          footer: dto.footerText ? { text: dto.footerText } : undefined,
-          action: {
-            button: dto.buttonText.slice(0, 20),
-            sections,
-          },
-        },
+    if (!phone) {
+      await this.logFinalOutboundFailure({
+        phone: dto.phone,
+        messageType: 'interactive',
+        content,
+        idempotencyKey,
+        failureReason: 'invalid_phone',
+        metadata: { idempotencyKey, isInvalidPhone: true, provider: this.getProviderTag() },
       });
-
-      const messageId = response.data.messages?.[0]?.id;
-
-      if (messageId) {
-        await this.logMessage(
-          {
-            phone: dto.phone,
-            messageId,
-            timestamp: new Date(),
-            type: 'interactive',
-            content: { text: dto.bodyText },
-          },
-          'outbound',
-        );
-      }
-
-      return messageId || null;
-    } catch (error) {
-      this.logger.error('Failed to send interactive list', error);
       return null;
     }
+
+    const sections = dto.sections.map((section) => ({
+      title: section.title,
+      rows: section.rows.slice(0, 10).map((row) => ({
+        id: row.id,
+        title: row.title.slice(0, 24),
+        description: row.description?.slice(0, 72),
+      })),
+    }));
+
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: phone,
+      type: 'interactive' as const,
+      interactive: {
+        type: 'list' as const,
+        header: dto.headerText ? { type: 'text' as const, text: dto.headerText } : undefined,
+        body: { text: dto.bodyText },
+        footer: dto.footerText ? { text: dto.footerText } : undefined,
+        action: {
+          button: dto.buttonText.slice(0, 20),
+          sections,
+        },
+      },
+    };
+
+    return this.sendOutboundWithRetry({
+      phone,
+      messageType: 'interactive',
+      content,
+      idempotencyKey,
+      payload,
+    });
   }
 
   async sendMediaMessage(dto: SendMediaMessageDto): Promise<string | null> {
-    try {
-      const mediaObject: Record<string, unknown> = {
-        link: dto.mediaUrl,
-      };
+    const phone = this.normalizePhone(dto.phone);
+    const idempotencyKey = dto.meta?.idempotencyKey;
+    const content: WhatsAppMessage['content'] = { mediaUrl: dto.mediaUrl, caption: dto.caption };
 
-      if (dto.caption) {
-        mediaObject.caption = dto.caption;
-      }
-
-      if (dto.filename && dto.mediaType === 'document') {
-        mediaObject.filename = dto.filename;
-      }
-
-      const response = await this.httpClient.post<WhatsAppApiResponse>('/messages', {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: dto.phone,
-        type: dto.mediaType,
-        [dto.mediaType]: mediaObject,
+    if (!phone) {
+      await this.logFinalOutboundFailure({
+        phone: dto.phone,
+        messageType: dto.mediaType,
+        content,
+        idempotencyKey,
+        failureReason: 'invalid_phone',
+        metadata: { idempotencyKey, isInvalidPhone: true, provider: this.getProviderTag() },
       });
-
-      const messageId = response.data.messages?.[0]?.id;
-
-      if (messageId) {
-        await this.logMessage(
-          {
-            phone: dto.phone,
-            messageId,
-            timestamp: new Date(),
-            type: dto.mediaType,
-            content: { mediaUrl: dto.mediaUrl, caption: dto.caption },
-          },
-          'outbound',
-        );
-      }
-
-      return messageId || null;
-    } catch (error) {
-      this.logger.error('Failed to send media message', error);
       return null;
     }
+
+    const payloadBase = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: phone,
+      type: dto.mediaType,
+    } as const;
+
+    if (dto.mediaType === 'document') {
+      const payload = {
+        ...payloadBase,
+        document: {
+          link: dto.mediaUrl,
+          caption: dto.caption,
+          filename: dto.filename,
+        },
+      };
+      return this.sendOutboundWithRetry({
+        phone,
+        messageType: 'document',
+        content,
+        idempotencyKey,
+        payload,
+      });
+    }
+
+    if (dto.mediaType === 'image') {
+      const payload = {
+        ...payloadBase,
+        image: {
+          link: dto.mediaUrl,
+          caption: dto.caption,
+        },
+      };
+      return this.sendOutboundWithRetry({
+        phone,
+        messageType: 'image',
+        content,
+        idempotencyKey,
+        payload,
+      });
+    }
+
+    if (dto.mediaType === 'video') {
+      const payload = {
+        ...payloadBase,
+        video: {
+          link: dto.mediaUrl,
+          caption: dto.caption,
+        },
+      };
+      return this.sendOutboundWithRetry({
+        phone,
+        messageType: 'video',
+        content,
+        idempotencyKey,
+        payload,
+      });
+    }
+
+    // audio
+    const payload = {
+      ...payloadBase,
+      audio: { link: dto.mediaUrl },
+    };
+    return this.sendOutboundWithRetry({
+      phone,
+      messageType: 'audio',
+      content,
+      idempotencyKey,
+      payload,
+    });
   }
 
   async getMediaUrl(mediaId: string): Promise<string | null> {
@@ -544,15 +645,14 @@ export class WhatsAppService {
     timestamp: string,
   ): Promise<void> {
     try {
-      const updateData: Record<string, unknown> = { status };
+      const ts = Number.parseInt(timestamp, 10);
+      const eventAt = Number.isFinite(ts) && ts > 0 ? new Date(ts * 1000) : undefined;
 
-      if (status === 'delivered') {
-        updateData.deliveredAt = new Date(parseInt(timestamp, 10) * 1000);
-      } else if (status === 'read') {
-        updateData.readAt = new Date(parseInt(timestamp, 10) * 1000);
-      }
-
-      await this.messageLogRepository.updateOneByWhatsAppMessageId(messageId, updateData);
+      await this.messageLogRepository.updateStatusMonotonicByWhatsAppMessageId({
+        whatsappMessageId: messageId,
+        status,
+        eventAt,
+      });
     } catch (error) {
       this.logger.error('Failed to update message status', error);
     }
@@ -563,5 +663,195 @@ export class WhatsAppService {
     limit: number = 50,
   ): Promise<MessageLogDocument[]> {
     return this.messageLogRepository.findByPhone(phone, limit);
+  }
+
+  private normalizePhone(input: string): string | null {
+    const digits = (input || '').replace(/[^\d]/g, '');
+    if (!/^\d{8,20}$/.test(digits)) return null;
+    return digits;
+  }
+
+  private getProviderTag(): MessageLogMetadata['provider'] {
+    if (this.is360DialogSandbox) return '360dialog_sandbox';
+    if (this.is360DialogProvider) return '360dialog';
+    return 'meta_cloud';
+  }
+
+  private async sendOutboundWithRetry(input: {
+    phone: string;
+    messageType: MessageLogDocument['messageType'];
+    content: WhatsAppMessage['content'];
+    idempotencyKey?: string;
+    payload: object;
+  }): Promise<string | null> {
+    const baseMetadata: MessageLogMetadata = {
+      idempotencyKey: input.idempotencyKey,
+      provider: this.getProviderTag(),
+    };
+
+    if (input.idempotencyKey) {
+      const existing = await this.messageLogRepository.findOneByIdempotencyKey(input.idempotencyKey);
+      if (existing?.finalStatus === 'success') {
+        return existing.whatsappMessageId ?? null;
+      }
+    }
+
+    let attempt = 0;
+    let lastFailureReason: string | undefined;
+    let lastMetadata: MessageLogMetadata = baseMetadata;
+
+    while (attempt < this.outboundMaxAttempts) {
+      attempt += 1;
+      const now = new Date();
+
+      try {
+        const response = await this.httpClient.post<WhatsAppApiResponse>('/messages', input.payload);
+        const messageId = response.data.messages?.[0]?.id ?? null;
+
+        if (messageId) {
+          await this.messageLogRepository.upsertOutboundByIdempotencyKey({
+            phone: input.phone,
+            messageType: input.messageType,
+            content: input.content,
+            status: 'sent',
+            finalStatus: 'success',
+            retryCount: attempt - 1,
+            lastAttemptAt: now,
+            whatsappMessageId: messageId,
+            metadata: lastMetadata,
+          });
+
+          return messageId;
+        }
+
+        lastFailureReason = 'no_message_id';
+        await this.messageLogRepository.upsertOutboundByIdempotencyKey({
+          phone: input.phone,
+          messageType: input.messageType,
+          content: input.content,
+          status: 'failed',
+          finalStatus: attempt >= this.outboundMaxAttempts ? 'failure' : undefined,
+          failureReason: lastFailureReason,
+          retryCount: attempt,
+          lastAttemptAt: now,
+          metadata: lastMetadata,
+        });
+      } catch (error) {
+        const interpreted = this.interpretProviderError(error);
+        lastFailureReason = interpreted.failureReason;
+        lastMetadata = { ...baseMetadata, ...interpreted.metadata };
+
+        const shouldRetry = interpreted.shouldRetry && attempt < this.outboundMaxAttempts;
+
+        await this.messageLogRepository.upsertOutboundByIdempotencyKey({
+          phone: input.phone,
+          messageType: input.messageType,
+          content: input.content,
+          status: 'failed',
+          finalStatus: shouldRetry ? undefined : 'failure',
+          failureReason: lastFailureReason,
+          retryCount: attempt,
+          lastAttemptAt: now,
+          metadata: lastMetadata,
+        });
+
+        if (!shouldRetry) {
+          this.logger.warn('whatsapp_send_failed_permanent', {
+            phone: input.phone,
+            messageType: input.messageType,
+            failureReason: lastFailureReason,
+            attempt,
+          });
+          break;
+        }
+
+        const baseDelayMs = attempt === 1 ? 600 : 1800;
+        const jitterMs = Math.floor(Math.random() * 301); // 0–300ms
+        const delayMs = baseDelayMs + jitterMs;
+        await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+
+    await this.logFinalOutboundFailure({
+      phone: input.phone,
+      messageType: input.messageType,
+      content: input.content,
+      idempotencyKey: input.idempotencyKey,
+      failureReason: lastFailureReason ?? 'failed',
+      metadata: lastMetadata,
+    });
+
+    return null;
+  }
+
+  private interpretProviderError(error: object): {
+    shouldRetry: boolean;
+    failureReason: string;
+    metadata: Omit<MessageLogMetadata, 'idempotencyKey' | 'provider'>;
+  } {
+    if (axios.isAxiosError<WhatsAppApiErrorShape>(error)) {
+      const status = error.response?.status;
+      const data = error.response?.data;
+      const code = data?.error?.code;
+      const title = data?.error?.message;
+      const details = data?.error?.error_data?.details;
+
+      const isClientError = typeof status === 'number' && status >= 400 && status < 500;
+
+      // Heuristics: invalid recipient / blocked user are permanent failures.
+      const combined = `${title || ''} ${details || ''}`.toLowerCase();
+      const isBlocked =
+        combined.includes('blocked') ||
+        combined.includes('user has blocked') ||
+        combined.includes('recipient blocked');
+      const isInvalidPhone =
+        combined.includes('invalid parameter') ||
+        combined.includes('phone number') && combined.includes('invalid') ||
+        combined.includes('recipient') && combined.includes('valid') ||
+        combined.includes('not a valid whatsapp user');
+
+      const permanent = isClientError && (isBlocked || isInvalidPhone);
+      const shouldRetry = !permanent;
+
+      return {
+        shouldRetry,
+        failureReason: permanent ? (isBlocked ? 'blocked_by_user' : 'invalid_phone') : 'provider_error',
+        metadata: {
+          errorCode: typeof code === 'number' ? String(code) : undefined,
+          errorTitle: title,
+          errorDetails: details,
+          isBlocked: isBlocked || undefined,
+          isInvalidPhone: isInvalidPhone || undefined,
+        },
+      };
+    }
+
+    return {
+      shouldRetry: true,
+      failureReason: 'unknown_error',
+      metadata: {},
+    };
+  }
+
+  private async logFinalOutboundFailure(input: {
+    phone: string;
+    messageType: MessageLogDocument['messageType'];
+    content: WhatsAppMessage['content'];
+    idempotencyKey?: string;
+    failureReason: string;
+    metadata: MessageLogMetadata;
+  }): Promise<void> {
+    // Ensure there is at least one durable row for investigation.
+    await this.messageLogRepository.upsertOutboundByIdempotencyKey({
+      phone: input.phone,
+      messageType: input.messageType,
+      content: input.content,
+      status: 'failed',
+      finalStatus: 'failure' satisfies MessageFinalStatus,
+      failureReason: input.failureReason,
+      retryCount: this.outboundMaxAttempts,
+      lastAttemptAt: new Date(),
+      metadata: input.metadata,
+    });
   }
 }

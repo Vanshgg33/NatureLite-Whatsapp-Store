@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { CartDocument, CartItem } from './schemas/cart.schema';
 import { CartRepository } from './repositories/cart.repository';
 import { ProductsService } from '../products/products.service';
@@ -8,15 +8,45 @@ import { parseObjectId } from '../../common/utils/objectid.util';
 
 @Injectable()
 export class CartService {
+  private readonly logger = new Logger(CartService.name);
+
   constructor(
     private readonly cartRepository: CartRepository,
     private productsService: ProductsService,
     private couponsService: CouponsService,
   ) {}
 
+  private async revalidateOrClearCoupon(cart: CartDocument, userId: string): Promise<void> {
+    const code = cart.couponCode?.trim();
+    if (!code) return;
+
+    const validation = await this.couponsService.validateCoupon({
+      code,
+      orderAmount: cart.subtotal,
+      userId,
+    });
+
+    if (!validation.valid) {
+      cart.couponCode = undefined;
+      cart.discount = 0;
+    } else {
+      cart.discount = validation.discountAmount;
+    }
+  }
+
   async getCart(userId: string): Promise<CartResponse> {
     const cart = await this.findOrCreateCart(userId);
     return this.formatCartResponse(cart);
+  }
+
+  async getCartById(userId: string, cartId: string): Promise<CartDocument> {
+    const userObjId = parseObjectId(userId, 'userId');
+    const cartObjId = parseObjectId(cartId, 'cartId');
+    const cart = await this.cartRepository.findOneByIdAndUser(cartObjId, userObjId);
+    if (!cart) {
+      throw new NotFoundException('Cart not found');
+    }
+    return cart;
   }
 
   async addItem(userId: string, dto: AddToCartDto): Promise<CartResponse> {
@@ -76,6 +106,7 @@ export class CartService {
     }
 
     this.recalculateCart(cart);
+    await this.revalidateOrClearCoupon(cart, userId);
     await cart.save();
 
     return this.formatCartResponse(cart);
@@ -105,9 +136,10 @@ export class CartService {
 
     if (variantSku) {
       const variant = product.variants.find((v) => v.sku === variantSku);
-      if (variant) {
-        stock = variant.stock;
+      if (!variant) {
+        throw new BadRequestException('Variant not found');
       }
+      stock = variant.stock;
     }
 
     if (product.trackStock && stock < dto.quantity) {
@@ -117,6 +149,7 @@ export class CartService {
     cart.items[itemIndex].quantity = dto.quantity;
 
     this.recalculateCart(cart);
+    await this.revalidateOrClearCoupon(cart, userId);
     await cart.save();
 
     return this.formatCartResponse(cart);
@@ -143,6 +176,7 @@ export class CartService {
     cart.items.splice(itemIndex, 1);
 
     this.recalculateCart(cart);
+    await this.revalidateOrClearCoupon(cart, userId);
     await cart.save();
 
     return this.formatCartResponse(cart);
@@ -184,6 +218,8 @@ export class CartService {
     this.recalculateCart(cart);
     await cart.save();
 
+    this.logger.log(`event_coupon_applied user=${userId} code=${couponCode}`);
+
     return this.formatCartResponse(cart);
   }
 
@@ -205,6 +241,8 @@ export class CartService {
       { _id: cartObjId },
       { abandonedAt: new Date() },
     );
+
+    this.logger.log(`event_cart_abandoned cart=${cartId}`);
   }
 
   async getAbandonedCarts(
@@ -219,7 +257,10 @@ export class CartService {
     const cartObjId = parseObjectId(cartId, 'cartId');
     await this.cartRepository.updateOne(
       { _id: cartObjId },
-      { abandonedReminderSent: true },
+      {
+        $set: { abandonedReminderSent: true, abandonedLastReminderAt: new Date() },
+        $inc: { abandonedReminderCount: 1 },
+      },
     );
   }
 

@@ -33,15 +33,11 @@ export default function PackingDashboardPage() {
   const orders = useMemo(() => data?.items ?? [], [data]) as Order[];
 
   const markPacked = useMutation({
-    mutationFn: (orderId: string) =>
-      api.updateOrderStatus(orderId, {
-        status: 'shipped',
-        updatedBy: user?.id,
-      }),
+    mutationFn: (orderId: string) => api.markOrderPacked(orderId),
     onSuccess: () => {
       toast({
         title: 'Order marked as packed',
-        description: 'Billing will see this order in their queue.',
+        description: 'Billing can now send it out for delivery.',
       });
       queryClient.invalidateQueries({ queryKey: ['department', 'packing', 'orders'] });
       queryClient.invalidateQueries({ queryKey: ['department', 'billing', 'orders'] });
@@ -59,7 +55,7 @@ export default function PackingDashboardPage() {
     <div className="flex flex-col h-screen">
       <Header
         title="Packing Dashboard"
-        description="See orders waiting to be packed. Mark them as packed to notify billing."
+        description="Confirm packing for orders in “preparing”. Billing then marks them out for delivery."
         icon={<Package className="h-6 w-6 text-emerald-600" />}
       />
 
@@ -110,7 +106,7 @@ export default function PackingDashboardPage() {
                   <Button
                     size="sm"
                     className="flex-1 flex items-center justify-center gap-2"
-                    disabled={markPacked.isPending}
+                    disabled={markPacked.isPending || order.status !== 'preparing'}
                     onClick={() => markPacked.mutate(order._id)}
                   >
                     <CheckCircle2 className="h-4 w-4" />

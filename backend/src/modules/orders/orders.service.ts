@@ -1,7 +1,15 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Types, Connection } from 'mongoose';
-import { Order, OrderItem, TimelineEntry, OrderStatus } from './schemas/order.schema';
+import * as crypto from 'crypto';
+import { Order, OrderDocument, OrderItem, OrderStatus } from './schemas/order.schema';
 import { OrderRepository } from './repositories/order.repository';
 import { CartService } from '../cart/cart.service';
 import { ProductsService } from '../products/products.service';
@@ -13,6 +21,8 @@ import { StoresService } from '../stores/stores.service';
 import { StoreStockService } from '../store-stock/store-stock.service';
 import { StoreSalesService } from '../store-sales/store-sales.service';
 import { WalletService } from '../wallet/wallet.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { UpdateUserDto } from '../users/dto/user.dto';
 import {
   CreateOrderDto,
   UpdateOrderStatusDto,
@@ -25,12 +35,60 @@ import {
   UpdateDeliveryWorkflowDto,
   GuestCreateOrderDto,
 } from './dto/order.dto';
+import type { DeliveryWorkflowMetadata, DeliveryWorkflowStep, OrderMetadata, TimelineMetadata } from '../../common/types/order-types';
 import { PaginatedResult } from '../../common/types/pagination.types';
 import { parseObjectId } from '../../common/utils/objectid.util';
 
 @Injectable()
-export class OrdersService {
+export class OrdersService implements OnModuleInit {
   private readonly logger = new Logger(OrdersService.name);
+  private static readonly MAX_ORDER_NUMBER_RETRIES = 3;
+
+  private getDuplicateKeyPattern(err: Error): Record<string, number> | null {
+    const withPattern = err as Error & { keyPattern?: Record<string, number> };
+    if (!withPattern.keyPattern) return null;
+    return withPattern.keyPattern;
+  }
+
+  private computeRequestHash(input: {
+    userId: string;
+    dto: CreateOrderDto;
+    items: Array<Pick<OrderItem, 'product' | 'variantSku' | 'quantity' | 'price'>>;
+    subtotal: number;
+    discount: number;
+    gstTotal: number;
+    shippingCharge: number;
+    total: number;
+    walletUsedPaise: number;
+    paymentGatewayAmountPaise: number;
+  }): string {
+    const stable = {
+      userId: input.userId,
+      cartId: input.dto.cartId ?? null,
+      paymentMethod: input.dto.paymentMethod,
+      couponCode: input.dto.couponCode ?? null,
+      walletAmount: input.dto.walletAmount ?? null,
+      shippingAddress: input.dto.shippingAddress,
+      items: input.items.map((i) => ({
+        productId: i.product.toString(),
+        variantSku: i.variantSku ?? null,
+        quantity: i.quantity,
+        price: i.price,
+      })),
+      totals: {
+        subtotal: input.subtotal,
+        discount: input.discount,
+        gstTotal: input.gstTotal,
+        shippingCharge: input.shippingCharge,
+        total: input.total,
+        walletUsedPaise: input.walletUsedPaise,
+        paymentGatewayAmountPaise: input.paymentGatewayAmountPaise,
+      },
+    };
+
+    const json = JSON.stringify(stable);
+    return crypto.createHash('sha256').update(json, 'utf8').digest('hex');
+  }
 
   constructor(
     private readonly orderRepository: OrderRepository,
@@ -45,10 +103,40 @@ export class OrdersService {
     private storeStockService: StoreStockService,
     private storeSalesService: StoreSalesService,
     private walletService: WalletService,
+    private readonly notificationsService: NotificationsService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    try {
+      const n = await this.orderRepository.migrateLegacyOrderStatuses();
+      if (n > 0) {
+        this.logger.log(`Migrated ${n} order document(s) to canonical status values`);
+      }
+      const t = await this.orderRepository.migrateTimelineEntryStatuses();
+      if (t > 0) {
+        this.logger.log(`Normalized timeline.status on ${t} order document(s)`);
+      }
+    } catch (err) {
+      this.logger.error('Order status / timeline migration failed', err);
+    }
+  }
 
   async create(userId: string, dto: CreateOrderDto): Promise<Order> {
     const userObjId = parseObjectId(userId, 'userId');
+    let requestHashForIdem = '';
+
+    const hasCart = Boolean(dto.cartId?.trim());
+    const hasItems = Boolean(dto.items && dto.items.length > 0);
+    if (hasCart && hasItems) {
+      throw new BadRequestException('Provide either cartId or line items, not both');
+    }
+    if (!hasCart && !hasItems) {
+      throw new BadRequestException('Either cartId or at least one line item is required');
+    }
+
+    const idem = dto.idempotencyKey?.trim();
+    // Idempotency is enforced later with requestHash comparison (prevents payload-mismatch corruption).
+
     // Use transaction for atomic order creation
     const session = await this.connection.startSession();
     session.startTransaction();
@@ -58,17 +146,19 @@ export class OrdersService {
       let subtotal = 0;
 
       if (dto.cartId) {
-        const cart = await this.cartService.getCart(userId);
+        // cartId integrity: verify referenced cart belongs to user
+        const cart = await this.cartService.getCartById(userId, dto.cartId);
 
         if (cart.items.length === 0) {
           throw new BadRequestException('Cart is empty');
         }
 
         for (const item of cart.items) {
-          const product = await this.productsService.findById(item.product.id);
+          const productId = item.product.toString();
+          const product = await this.productsService.findById(productId);
 
           const orderItem: OrderItem = {
-            product: new Types.ObjectId(item.product.id),
+            product: new Types.ObjectId(productId),
             name: product.name,
             variantSku: item.variantSku,
             quantity: item.quantity,
@@ -126,6 +216,7 @@ export class OrdersService {
       }
 
       let discount = 0;
+      let appliedCouponCode: string | undefined;
       if (dto.couponCode) {
         const validation = await this.couponsService.validateCoupon({
           code: dto.couponCode,
@@ -135,7 +226,7 @@ export class OrdersService {
 
         if (validation.valid) {
           discount = validation.discountAmount;
-          await this.couponsService.incrementUsageCount(dto.couponCode);
+          appliedCouponCode = dto.couponCode;
         }
       }
 
@@ -144,9 +235,13 @@ export class OrdersService {
       let defaultShippingCharge = 50;
       try {
         const checkoutSettings = await this.settingsService.get('checkout');
-        if (checkoutSettings?.value) {
-          freeShippingThreshold = (checkoutSettings.value as any).freeShippingThreshold || 500;
-          defaultShippingCharge = (checkoutSettings.value as any).defaultShippingCharge || 50;
+        if (checkoutSettings?.value && typeof checkoutSettings.value === 'object') {
+          const v = checkoutSettings.value as {
+            freeShippingThreshold?: number;
+            defaultShippingCharge?: number;
+          };
+          freeShippingThreshold = v.freeShippingThreshold ?? 500;
+          defaultShippingCharge = v.defaultShippingCharge ?? 50;
         }
       } catch {
         // Use defaults if settings unavailable
@@ -187,34 +282,87 @@ export class OrdersService {
 
       const total = totalBeforeWallet;
 
-      const orderNumber = await this.generateOrderNumber();
+      const requestHash =
+        idem
+          ? this.computeRequestHash({
+              userId,
+              dto,
+              items: orderItems.map((i) => ({
+                product: i.product,
+                variantSku: i.variantSku,
+                quantity: i.quantity,
+                price: i.price,
+              })),
+              subtotal,
+              discount,
+              gstTotal,
+              shippingCharge,
+              total,
+              walletUsedPaise,
+              paymentGatewayAmountPaise,
+            })
+          : '';
+      requestHashForIdem = requestHash;
 
-      const savedOrder = await this.orderRepository.createWithSession(
-        {
-          orderNumber,
-          user: userObjId,
-          items: orderItems,
-          shippingAddress: dto.shippingAddress,
-          paymentMethod: dto.paymentMethod,
-          subtotal,
-          discount,
-          couponCode: dto.couponCode,
-          shippingCharge,
-          gstTotal,
-          walletUsed: walletUsedPaise,
-          paymentGatewayAmount: paymentGatewayAmountPaise,
-          total,
-          notes: dto.notes,
-          timeline: [
-            {
-              status: 'pending',
-              message: 'Order placed successfully',
-              timestamp: new Date(),
-            },
-          ],
-        },
-        session,
-      );
+      if (idem) {
+        const existing = await this.orderRepository.findByUserIdAndIdempotencyKey(userObjId, idem);
+        if (existing) {
+          const existingHash = existing.metadata?.requestHash;
+          if (existingHash && existingHash !== requestHash) {
+            throw new ConflictException('Idempotency key already used with a different request payload');
+          }
+          return existing;
+        }
+      }
+
+      const baseOrderData: Omit<Partial<Order>, 'orderNumber'> = {
+        user: userObjId,
+        items: orderItems,
+        shippingAddress: dto.shippingAddress,
+        paymentMethod: dto.paymentMethod,
+        subtotal,
+        discount,
+        couponCode: dto.couponCode,
+        shippingCharge,
+        gstTotal,
+        walletUsed: walletUsedPaise,
+        paymentGatewayAmount: paymentGatewayAmountPaise,
+        total,
+        notes: dto.notes,
+        metadata: idem ? { idempotencyKey: idem, requestHash } : {},
+        timeline: [
+          {
+            status: 'placed',
+            message: 'Order placed successfully',
+            timestamp: new Date(),
+          },
+        ],
+      };
+
+      let savedOrder: OrderDocument | null = null;
+      for (let attempt = 0; attempt < OrdersService.MAX_ORDER_NUMBER_RETRIES; attempt += 1) {
+        const orderNumber = await this.generateOrderNumber();
+        try {
+          savedOrder = await this.orderRepository.createWithSession(
+            { ...baseOrderData, orderNumber },
+            session,
+          );
+          break;
+        } catch (err) {
+          if (!(err instanceof Error) || (err as { code?: number }).code !== 11000) {
+            throw err;
+          }
+          const keyPattern = this.getDuplicateKeyPattern(err);
+          // Only retry when the collision is due to orderNumber uniqueness.
+          if (!keyPattern || keyPattern.orderNumber !== 1) {
+            throw err;
+          }
+        }
+      }
+
+      if (!savedOrder) {
+        throw new BadRequestException('Failed to generate a unique order number. Please try again.');
+      }
 
       // Decrement stock from main store (Raipur) for website orders
       const mainStore = await this.storesService.findMainStore();
@@ -228,20 +376,48 @@ export class OrdersService {
           item.variantSku,
           session,
         );
-        // Keep global totalSold counter updated
-        await this.productsService.incrementTotalSold(
-          item.product.toString(),
-          item.quantity,
+      }
+
+      await session.commitTransaction();
+
+      // Best-effort side effects after commit (avoid transaction drift on abort).
+      if (appliedCouponCode) {
+        try {
+          await this.couponsService.incrementUsageCount(appliedCouponCode);
+        } catch (couponErr) {
+          this.logger.warn(
+            `Post-commit coupon usage increment failed for ${appliedCouponCode}`,
+            couponErr,
+          );
+        }
+      }
+      try {
+        for (const item of orderItems) {
+          await this.productsService.incrementTotalSold(item.product.toString(), item.quantity);
+        }
+      } catch (soldErr) {
+        this.logger.warn(
+          `Post-commit totalSold update failed for order ${savedOrder.orderNumber}`,
+          soldErr,
         );
       }
 
       if (dto.cartId) {
-        await this.cartService.clearCart(userId);
+        try {
+          await this.cartService.clearCart(userId);
+        } catch (clearErr) {
+          this.logger.error(
+            `Order ${savedOrder.orderNumber} committed but cart clear failed for user ${userId}`,
+            clearErr,
+          );
+        }
       }
 
-      await this.usersService.updateOrderStats(userId, total);
-
-      await session.commitTransaction();
+      try {
+        await this.usersService.updateOrderStats(userId, total);
+      } catch (statsErr) {
+        this.logger.warn(`Failed to update order stats for user ${userId}`, statsErr);
+      }
 
       // Auto-log as website sale for the main store (non-blocking)
       try {
@@ -260,9 +436,43 @@ export class OrdersService {
         this.logger.warn(`Failed to send order confirmation email: ${emailError.message}`);
       }
 
+      // Send WhatsApp order created notification (non-blocking)
+      try {
+        await this.notificationsService.notifyOrderCreated(savedOrder);
+      } catch (waErr) {
+        this.logger.warn(
+          `Failed to send WhatsApp order created notification for ${savedOrder.orderNumber}`,
+          waErr,
+        );
+      }
+
+      this.logger.log(`event_order_placed order=${savedOrder._id.toString()} user=${userId}`);
+
       return savedOrder;
     } catch (error) {
       await session.abortTransaction();
+
+      // Concurrency-safe idempotency: return the existing order if this is a duplicate insert.
+      const isDupKey = error instanceof Error && (error as { code?: number }).code === 11000;
+      if (isDupKey && idem && error instanceof Error) {
+        const keyPattern = this.getDuplicateKeyPattern(error);
+        const isIdempotencyKeyCollision = Boolean(
+          keyPattern && keyPattern['metadata.idempotencyKey'] === 1,
+        );
+        if (!isIdempotencyKeyCollision) {
+          throw error;
+        }
+        const existing = await this.orderRepository.findByUserIdAndIdempotencyKey(userObjId, idem);
+        if (existing) {
+          const existingHash = existing.metadata?.requestHash;
+          const mismatch = Boolean(existingHash && existingHash !== requestHashForIdem);
+          if (mismatch) {
+            throw new ConflictException('Idempotency key already used with a different request payload');
+          }
+          return existing;
+        }
+      }
+
       throw error;
     } finally {
       session.endSession();
@@ -300,11 +510,11 @@ export class OrdersService {
     const user = await this.usersService.findOrCreateByPhone(dto.phone);
 
     // Optionally update basic profile info for this user
-    const updates: Record<string, unknown> = {};
+    const updates: UpdateUserDto = {};
     if (dto.name && !user.name) updates.name = dto.name;
     if (dto.email && !user.email) updates.email = dto.email;
     if (Object.keys(updates).length > 0) {
-      await this.usersService.update(user._id.toString(), updates as any);
+      await this.usersService.update(user._id.toString(), updates);
     }
 
     // Reuse existing create logic so pricing, coupons, and stock handling stay consistent
@@ -315,16 +525,90 @@ export class OrdersService {
       couponCode: dto.couponCode,
       notes: dto.notes,
       walletAmount: dto.walletAmount,
+      idempotencyKey: dto.idempotencyKey,
     };
 
     return this.create(user._id.toString(), createDto);
   }
 
+  /** Single place timeline rows are appended on the order document (avoids drift vs status). */
+  private pushTimelineEntry(
+    order: OrderDocument,
+    entry: {
+      status: OrderStatus;
+      message: string;
+      updatedBy?: string;
+      metadata?: TimelineMetadata;
+    },
+  ): void {
+    order.timeline.push({
+      status: entry.status,
+      message: entry.message,
+      timestamp: new Date(),
+      updatedBy: entry.updatedBy,
+      metadata: entry.metadata,
+    });
+  }
+
+  /** Fulfilment: out_for_delivery always requires packing (all callers: admin API, billing, scripts). */
+  private assertPackedBeforeOutForDelivery(
+    order: OrderDocument,
+    nextStatus: OrderStatus,
+    actorId?: string,
+  ): void {
+    if (nextStatus === 'out_for_delivery' && !order.packedAt) {
+      this.logger.warn('blocked_transition_requires_packed', {
+        orderId: order._id?.toString?.() ?? '',
+        fromStatus: order.status,
+        toStatus: nextStatus,
+        actorId: actorId ?? '',
+      });
+      throw new BadRequestException(
+        'Order must be packed before marking out for delivery.',
+      );
+    }
+  }
+
+  /**
+   * Razorpay / webhooks: apply paid + prepaid + one timeline note (do not $push timeline from PaymentsService).
+   */
+  async recordRazorpayPaymentApplied(orderId: string, message: string): Promise<void> {
+    const idObj = parseObjectId(orderId, 'orderId');
+    const order = await this.orderRepository.findById(idObj);
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+    if (order.paymentStatus === 'paid') {
+      return;
+    }
+    order.paymentStatus = 'paid';
+    order.paymentMethod = 'prepaid';
+    this.pushTimelineEntry(order, { status: 'confirmed', message });
+    await order.save();
+  }
+
+  async recordRefundOnOrder(orderId: string, refundAmount: number): Promise<void> {
+    const idObj = parseObjectId(orderId, 'orderId');
+    const order = await this.orderRepository.findById(idObj);
+    if (!order) {
+      return;
+    }
+    if (order.status === 'refunded' && order.paymentStatus === 'refunded') {
+      return;
+    }
+    order.paymentStatus = 'refunded';
+    order.status = 'refunded';
+    this.pushTimelineEntry(order, {
+      status: 'refunded',
+      message: `Refund of ₹${refundAmount} initiated`,
+    });
+    await order.save();
+  }
+
   private static readonly VALID_TRANSITIONS: Record<string, string[]> = {
-    pending: ['confirmed', 'cancelled', 'shipped'],
-    confirmed: ['processing', 'cancelled', 'shipped'],
-    processing: ['shipped', 'cancelled'],
-    shipped: ['out_for_delivery', 'delivered', 'returned'],
+    placed: ['confirmed', 'cancelled', 'out_for_delivery'],
+    confirmed: ['preparing', 'cancelled', 'out_for_delivery'],
+    preparing: ['out_for_delivery', 'cancelled'],
     out_for_delivery: ['delivered', 'returned'],
     delivered: ['returned', 'refunded'],
     cancelled: [],
@@ -332,6 +616,10 @@ export class OrdersService {
     refunded: [],
   };
 
+  /**
+   * Fulfilment status changes: `order.status` and the matching timeline row are updated together here only
+   * (see `pushTimelineEntry`). Use this path for admin API and department billing transitions.
+   */
   async updateStatus(
     id: string,
     dto: UpdateOrderStatusDto,
@@ -345,11 +633,18 @@ export class OrdersService {
     }
 
     if (departmentType) {
-      if (departmentType === 'packing' && (dto.status !== 'shipped' || order.status !== 'processing')) {
-        throw new BadRequestException('Packing can only mark orders as shipped from processing.');
+      if (departmentType === 'packing') {
+        throw new BadRequestException(
+          'Packing staff must use “Mark packed” on the packing dashboard, not manual status changes.',
+        );
       }
-      if (departmentType === 'billing' && (dto.status !== 'out_for_delivery' || order.status !== 'shipped')) {
-        throw new BadRequestException('Billing can only set status to out for delivery from shipped.');
+      if (
+        departmentType === 'billing' &&
+        (dto.status !== 'out_for_delivery' || order.status !== 'preparing')
+      ) {
+        throw new BadRequestException(
+          'Billing can only set out for delivery from preparing (after packing marks complete).',
+        );
       }
       if (departmentType === 'delivery') {
         throw new BadRequestException('Delivery staff must use the delivery workflow endpoint, not status update.');
@@ -363,20 +658,17 @@ export class OrdersService {
       );
     }
 
-    const timelineEntry: TimelineEntry = {
+    this.assertPackedBeforeOutForDelivery(order, dto.status, dto.updatedBy);
+
+    const previousStatus = order.status;
+    order.status = dto.status;
+    this.pushTimelineEntry(order, {
       status: dto.status,
       message: dto.message || `Order status updated to ${dto.status}`,
-      timestamp: new Date(),
       updatedBy: dto.updatedBy,
-    };
+    });
 
-    order.status = dto.status;
-    order.timeline.push(timelineEntry);
-
-    if (dto.status === 'shipped') {
-      order.packedAt = new Date();
-      if (dto.updatedBy) order.packedBy = dto.updatedBy;
-    } else if (dto.status === 'out_for_delivery') {
+    if (dto.status === 'out_for_delivery') {
       order.outForDeliveryAt = new Date();
       if (dto.updatedBy) {
         order.billedAt = new Date();
@@ -393,7 +685,7 @@ export class OrdersService {
       const user = await this.usersService.findById(order.user.toString());
       if (user?.email) {
         const orderObj = savedOrder.toObject();
-        if (dto.status === 'shipped') {
+        if (dto.status === 'out_for_delivery') {
           this.emailService.sendShippingUpdate(orderObj, user.email);
         } else if (dto.status === 'delivered') {
           this.emailService.sendDeliveryConfirmation(orderObj, user.email);
@@ -403,7 +695,51 @@ export class OrdersService {
       this.logger.warn(`Failed to send status update email: ${emailError.message}`);
     }
 
+    // WhatsApp status update notification (non-blocking)
+    try {
+      await this.notificationsService.notifyOrderStatusChanged(savedOrder, previousStatus);
+    } catch (waErr) {
+      this.logger.warn(
+        `Failed to send WhatsApp status notification for ${savedOrder.orderNumber}`,
+        waErr,
+      );
+    }
+
     return savedOrder;
+  }
+
+  /**
+   * Packing: sets packedAt while order stays in preparing; billing then moves to out_for_delivery.
+   */
+  async markPacked(
+    id: string,
+    updatedBy: string,
+    departmentType?: 'packing' | 'billing' | 'delivery',
+  ): Promise<Order> {
+    if (departmentType && departmentType !== 'packing') {
+      throw new BadRequestException('Only packing staff can mark an order as packed.');
+    }
+    const idObj = parseObjectId(id, 'id');
+    const order = await this.orderRepository.findById(idObj);
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+    if (order.status !== 'preparing') {
+      throw new BadRequestException('Only orders in preparing can be marked packed.');
+    }
+    if (order.packedAt) {
+      return order;
+    }
+    order.packedAt = new Date();
+    if (updatedBy) {
+      order.packedBy = updatedBy;
+    }
+    this.pushTimelineEntry(order, {
+      status: 'preparing',
+      message: 'Packed — ready for billing / dispatch',
+      updatedBy,
+    });
+    return order.save();
   }
 
   async updatePaymentStatus(id: string, dto: UpdatePaymentStatusDto): Promise<Order> {
@@ -416,13 +752,10 @@ export class OrdersService {
 
     order.paymentStatus = dto.paymentStatus;
 
-    const timelineEntry: TimelineEntry = {
+    this.pushTimelineEntry(order, {
       status: order.status,
       message: `Payment status updated to ${dto.paymentStatus}`,
-      timestamp: new Date(),
-    };
-
-    order.timeline.push(timelineEntry);
+    });
 
     return order.save();
   }
@@ -444,11 +777,9 @@ export class OrdersService {
       throw new NotFoundException('Order not found');
     }
 
-    const metadata: Record<string, unknown> = order.metadata || {};
-    const existingWorkflow = (metadata.deliveryWorkflow || {}) as Record<string, unknown>;
-
-    const workflow: Record<string, unknown> = {
-      ...existingWorkflow,
+    const previousStatus = order.status;
+    const metadata: OrderMetadata = order.metadata || {};
+    const workflow: DeliveryWorkflowMetadata = {
       status: dto.status,
       paymentMethod: dto.paymentMethod,
       paymentProofUrl: dto.paymentProofUrl,
@@ -457,8 +788,9 @@ export class OrdersService {
       updatedAt: new Date(),
     };
 
-    metadata.deliveryWorkflow = workflow;
-    order.metadata = metadata;
+    order.metadata = { ...metadata, deliveryWorkflow: workflow };
+
+    const step: DeliveryWorkflowStep = dto.status;
 
     if (dto.status === 'delivery_done') {
       if (order.paymentStatus !== 'paid') {
@@ -474,22 +806,43 @@ export class OrdersService {
       order.deliveredAt = new Date();
     }
 
-    const timelineEntry: TimelineEntry = {
-      status: dto.status,
+    this.pushTimelineEntry(order, {
+      status: order.status,
       message:
         dto.note ||
         `Delivery status updated to ${dto.status.replace(/_/g, ' ')}`.trim(),
-      timestamp: new Date(),
       updatedBy,
       metadata: {
+        step,
         paymentMethod: dto.paymentMethod,
         paymentProofUrl: dto.paymentProofUrl,
       },
-    };
+    });
 
-    order.timeline.push(timelineEntry);
+    const saved = await order.save();
 
-    return order.save();
+    if (saved.status !== previousStatus) {
+      try {
+        await this.notificationsService.notifyOrderStatusChanged(saved, previousStatus);
+      } catch (waErr) {
+        this.logger.warn(
+          `Failed to send WhatsApp status notification for ${saved.orderNumber}`,
+          waErr,
+        );
+      }
+    } else if (saved.status === 'delivered') {
+      // Defensive: delivery workflow sets delivered without changing status in some paths.
+      try {
+        await this.notificationsService.notifyOrderDelivered(saved);
+      } catch (waErr) {
+        this.logger.warn(
+          `Failed to send WhatsApp delivered notification for ${saved.orderNumber}`,
+          waErr,
+        );
+      }
+    }
+
+    return saved;
   }
 
   async cancelOrder(id: string, dto: CancelOrderDto, cancelledBy?: string): Promise<Order> {
@@ -508,14 +861,11 @@ export class OrdersService {
     order.cancelledAt = new Date();
     order.cancelReason = dto.reason;
 
-    const timelineEntry: TimelineEntry = {
+    this.pushTimelineEntry(order, {
       status: 'cancelled',
       message: `Order cancelled: ${dto.reason}`,
-      timestamp: new Date(),
       updatedBy: cancelledBy,
-    };
-
-    order.timeline.push(timelineEntry);
+    });
 
     const savedOrder = await order.save();
 
@@ -623,13 +973,10 @@ export class OrdersService {
     order.returnRequestReason = reason;
     order.returnRequestStatus = 'requested';
 
-    const timelineEntry: TimelineEntry = {
+    this.pushTimelineEntry(order, {
       status: order.status,
       message: `Customer requested return: ${reason}`,
-      timestamp: new Date(),
-    };
-
-    order.timeline.push(timelineEntry);
+    });
 
     const savedOrder = await order.save();
 
@@ -654,10 +1001,9 @@ export class OrdersService {
       throw new BadRequestException('Return request must be in requested state to approve');
     }
     order.returnRequestStatus = 'approved';
-    order.timeline.push({
+    this.pushTimelineEntry(order, {
       status: order.status,
       message: 'Return approved by admin',
-      timestamp: new Date(),
     });
     return order.save();
   }
@@ -670,10 +1016,9 @@ export class OrdersService {
       throw new BadRequestException('Return request must be in requested state to reject');
     }
     order.returnRequestStatus = 'rejected';
-    order.timeline.push({
+    this.pushTimelineEntry(order, {
       status: order.status,
       message: 'Return request rejected by admin',
-      timestamp: new Date(),
     });
     return order.save();
   }
@@ -687,10 +1032,9 @@ export class OrdersService {
     }
     order.returnRequestStatus = 'completed';
     order.status = 'returned';
-    order.timeline.push({
+    this.pushTimelineEntry(order, {
       status: 'returned',
       message: 'Return completed',
-      timestamp: new Date(),
     });
     return order.save();
   }

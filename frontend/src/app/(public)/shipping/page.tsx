@@ -11,7 +11,7 @@ const shippingInfo = [
   {
     icon: Clock,
     title: 'Processing Time',
-    description: 'Orders are processed within 1-2 business days. You will receive a confirmation email once your order is shipped.',
+    description: 'Orders are processed within 1-2 business days. You will receive updates by email and WhatsApp as your order moves to out for delivery.',
   },
   {
     icon: Truck,
@@ -36,7 +36,7 @@ const shippingInfo = [
   {
     icon: ShieldCheck,
     title: 'Order Tracking',
-    description: 'Once shipped, you will receive an AWB number and tracking link via email and WhatsApp to track your order in real-time.',
+    description: 'When your order is out for delivery, you may receive an AWB number and tracking link via email and WhatsApp when applicable.',
   },
 ];
 

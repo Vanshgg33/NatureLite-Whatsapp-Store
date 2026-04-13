@@ -63,11 +63,10 @@ const TOOLTIP_STYLE = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: '#F59E0B',
+  placed: '#F59E0B',
   confirmed: '#3B82F6',
-  processing: '#8B5CF6',
-  shipped: '#6366F1',
-  out_for_delivery: '#06B6D4',
+  preparing: '#8B5CF6',
+  out_for_delivery: '#6366F1',
   delivered: '#2F6B47',
   cancelled: '#EF4444',
   returned: '#F97316',
