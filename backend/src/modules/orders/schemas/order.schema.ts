@@ -1,18 +1,11 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
+import type { OrderStatus } from '../../../common/constants/order-status';
+import type { OrderMetadata, TimelineMetadata } from '../../../common/types/order-types';
 
 export type OrderDocument = Order & Document;
 
-export type OrderStatus =
-  | 'pending'
-  | 'confirmed'
-  | 'processing'
-  | 'shipped'
-  | 'out_for_delivery'
-  | 'delivered'
-  | 'cancelled'
-  | 'returned'
-  | 'refunded';
+export type { OrderStatus } from '../../../common/constants/order-status';
 
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
 
@@ -79,7 +72,7 @@ export const ShippingAddressSchema = SchemaFactory.createForClass(ShippingAddres
 @Schema()
 export class TimelineEntry {
   @Prop({ required: true })
-  status: string;
+  status: OrderStatus;
 
   @Prop({ required: true })
   message: string;
@@ -91,7 +84,7 @@ export class TimelineEntry {
   updatedBy?: string;
 
   @Prop({ type: Object })
-  metadata?: Record<string, unknown>;
+  metadata?: TimelineMetadata;
 }
 
 export const TimelineEntrySchema = SchemaFactory.createForClass(TimelineEntry);
@@ -112,7 +105,7 @@ export class Order {
   @Prop({ type: ShippingAddressSchema, required: true })
   shippingAddress: ShippingAddress;
 
-  @Prop({ default: 'pending', index: true })
+  @Prop({ default: 'placed', index: true })
   status: OrderStatus;
 
   @Prop({ default: 'pending' })
@@ -213,7 +206,7 @@ export class Order {
   invoiceUrl?: string;
 
   @Prop({ type: Object, default: {} })
-  metadata: Record<string, unknown>;
+  metadata: OrderMetadata;
 
   createdAt: Date;
   updatedAt: Date;
@@ -222,6 +215,7 @@ export class Order {
 export const OrderSchema = SchemaFactory.createForClass(Order);
 
 OrderSchema.index({ user: 1, createdAt: -1 });
+OrderSchema.index({ user: 1, 'metadata.idempotencyKey': 1 }, { unique: true, sparse: true });
 OrderSchema.index({ status: 1, createdAt: -1 });
 OrderSchema.index({ paymentStatus: 1 });
 OrderSchema.index({ createdAt: -1 });

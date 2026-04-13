@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, ClientSession, PipelineStage } from 'mongoose';
+import { ORDER_STATUSES_PENDING_FULFILLMENT } from '../../../common/constants/order-status';
 import { Order, OrderDocument, OrderStatus } from '../schemas/order.schema';
 import { BaseRepository } from '../../../common/repository/base.repository';
 import { OrderQueryDto } from '../dto/order.dto';
@@ -45,9 +46,16 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
       filter.user = parseObjectId(userId, 'userId');
     }
     if (forPacking) {
-      filter.status = { $in: ['pending', 'confirmed', 'processing'] };
+      filter.$or = [
+        { status: { $in: ['placed', 'confirmed'] } },
+        {
+          status: 'preparing',
+          $or: [{ packedAt: null }, { packedAt: { $exists: false } }],
+        },
+      ];
     } else if (forBilling) {
-      filter.status = 'shipped';
+      filter.status = 'preparing';
+      filter.packedAt = { $ne: null };
     } else if (forDelivery) {
       filter.status = 'out_for_delivery';
     } else if (status) {
@@ -124,7 +132,7 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
           pendingOrders: {
             $sum: {
               $cond: [
-                { $in: ['$status', ['pending', 'confirmed', 'processing']] },
+                { $in: ['$status', [...ORDER_STATUSES_PENDING_FULFILLMENT]] },
                 1,
                 0,
               ],
@@ -153,5 +161,75 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
       statusCounts[item._id] = item.count;
     });
     return statusCounts as Record<OrderStatus, number>;
+  }
+
+  async findByUserIdAndIdempotencyKey(
+    userId: Types.ObjectId,
+    idempotencyKey: string,
+  ): Promise<OrderDocument | null> {
+    return this.model
+      .findOne({ user: userId, 'metadata.idempotencyKey': idempotencyKey })
+      .exec();
+  }
+
+  /** One-time migration: legacy status strings → Phase 1 canonical values. */
+  async migrateLegacyOrderStatuses(): Promise<number> {
+    let n = 0;
+    const rShipped = await this.model
+      .updateMany({ status: 'shipped' }, { $set: { status: 'out_for_delivery' } })
+      .exec();
+    n += rShipped.modifiedCount ?? 0;
+    const rPlaced = await this.model
+      .updateMany({ status: 'pending' }, { $set: { status: 'placed' } })
+      .exec();
+    n += rPlaced.modifiedCount ?? 0;
+    const rPrep = await this.model
+      .updateMany({ status: 'processing' }, { $set: { status: 'preparing' } })
+      .exec();
+    n += rPrep.modifiedCount ?? 0;
+    return n;
+  }
+
+  /** Normalize historical timeline.status values to match current OrderStatus vocabulary. */
+  async migrateTimelineEntryStatuses(): Promise<number> {
+    const res = await this.model.collection.updateMany(
+      {
+        $or: [
+          { 'timeline.status': 'pending' },
+          { 'timeline.status': 'processing' },
+          { 'timeline.status': 'shipped' },
+        ],
+      },
+      [
+        {
+          $set: {
+            timeline: {
+              $map: {
+                input: { $ifNull: ['$timeline', []] },
+                as: 't',
+                in: {
+                  $mergeObjects: [
+                    '$$t',
+                    {
+                      status: {
+                        $switch: {
+                          branches: [
+                            { case: { $eq: ['$$t.status', 'pending'] }, then: 'placed' },
+                            { case: { $eq: ['$$t.status', 'processing'] }, then: 'preparing' },
+                            { case: { $eq: ['$$t.status', 'shipped'] }, then: 'out_for_delivery' },
+                          ],
+                          default: '$$t.status',
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      ],
+    );
+    return res.modifiedCount ?? 0;
   }
 }

@@ -16,6 +16,28 @@ export class ChatSessionRepository extends BaseRepository<ChatSessionDocument> {
     return this.model.findOne({ phone }).exec();
   }
 
+  async upsertNewByPhone(input: {
+    phone: string;
+    userId: Types.ObjectId;
+  }): Promise<ChatSessionDocument> {
+    return this.model
+      .findOneAndUpdate(
+        { phone: input.phone },
+        {
+          $setOnInsert: {
+            phone: input.phone,
+            user: input.userId,
+            currentState: 'main_menu',
+            context: {},
+            isHandedOffToSupport: false,
+            isExpired: false,
+          },
+        },
+        { new: true, upsert: true },
+      )
+      .exec();
+  }
+
   async updateActivity(sessionId: Types.ObjectId): Promise<void> {
     await this.model.updateOne(
       { _id: sessionId },
@@ -28,7 +50,7 @@ export class ChatSessionRepository extends BaseRepository<ChatSessionDocument> {
 
   async updateOneByPhone(
     phone: string,
-    update: Record<string, unknown>,
+    update: Partial<ChatSession>,
   ): Promise<void> {
     await this.model.updateOne({ phone }, { $set: update }).exec();
   }
@@ -41,7 +63,7 @@ export class ChatSessionRepository extends BaseRepository<ChatSessionDocument> {
         isExpired: { $ne: true },
         lastMessageAt: { $lt: cutoffDate },
       },
-      { $set: { isExpired: true } },
+      { $set: { isExpired: true, expiredAt: new Date() } },
     ).exec();
     return { modifiedCount: result.modifiedCount };
   }

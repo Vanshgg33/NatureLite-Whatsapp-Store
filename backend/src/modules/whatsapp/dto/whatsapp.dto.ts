@@ -1,5 +1,11 @@
 import { IsString, IsNotEmpty, IsOptional, IsArray, IsObject, IsEnum } from 'class-validator';
 
+class OutboundMessageMetaDto {
+  @IsString()
+  @IsOptional()
+  idempotencyKey?: string;
+}
+
 export class SendTextMessageDto {
   @IsString()
   @IsNotEmpty()
@@ -12,6 +18,10 @@ export class SendTextMessageDto {
   @IsString()
   @IsOptional()
   previewUrl?: string;
+
+  @IsObject()
+  @IsOptional()
+  meta?: OutboundMessageMetaDto;
 }
 
 export class SendTemplateMessageDto {
@@ -38,6 +48,10 @@ export class SendTemplateMessageDto {
   @IsArray()
   @IsOptional()
   buttonParams?: string[];
+
+  @IsObject()
+  @IsOptional()
+  meta?: OutboundMessageMetaDto;
 }
 
 export class SendInteractiveButtonDto {
@@ -62,6 +76,10 @@ export class SendInteractiveButtonDto {
     id: string;
     title: string;
   }>;
+
+  @IsObject()
+  @IsOptional()
+  meta?: OutboundMessageMetaDto;
 }
 
 export class SendInteractiveListDto {
@@ -94,6 +112,10 @@ export class SendInteractiveListDto {
       description?: string;
     }>;
   }>;
+
+  @IsObject()
+  @IsOptional()
+  meta?: OutboundMessageMetaDto;
 }
 
 export class SendMediaMessageDto {
@@ -115,6 +137,10 @@ export class SendMediaMessageDto {
   @IsString()
   @IsOptional()
   filename?: string;
+
+  @IsObject()
+  @IsOptional()
+  meta?: OutboundMessageMetaDto;
 }
 
 export interface WebhookEntry {
@@ -163,6 +189,16 @@ export interface WebhookEntry {
 export interface WebhookPayload {
   object: string;
   entry: WebhookEntry[];
+}
+
+/** 360Dialog sends a flat payload without the Meta Cloud API wrapper. */
+export interface FlatWebhookPayload {
+  contacts?: Array<{
+    profile?: { name?: string };
+    wa_id?: string;
+  }>;
+  messages?: NonNullable<WebhookPayload['entry'][0]['changes'][0]['value']['messages']>;
+  statuses?: WebhookPayload['entry'][0]['changes'][0]['value']['statuses'];
 }
 
 export interface WhatsAppMessage {

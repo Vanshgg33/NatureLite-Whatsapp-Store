@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { MessageLog, MessageLogDocument } from '../schemas/message-log.schema';
+import { MessageLog, MessageLogDocument, MessageLogMetadata, MessageStatus, MessageFinalStatus } from '../schemas/message-log.schema';
 import { BaseRepository } from '../../../common/repository/base.repository';
 
 @Injectable()
@@ -16,15 +16,140 @@ export class MessageLogRepository extends BaseRepository<MessageLogDocument> {
     return this.model.findOne({ whatsappMessageId }).exec();
   }
 
+  async tryCreateInboundByWhatsAppMessageId(input: {
+    phone: string;
+    whatsappMessageId: string;
+    messageType: MessageLogDocument['messageType'];
+    content: MessageLogDocument['content'];
+  }): Promise<boolean> {
+    try {
+      await this.create({
+        phone: input.phone,
+        direction: 'inbound',
+        messageType: input.messageType,
+        whatsappMessageId: input.whatsappMessageId,
+        content: input.content,
+      } as Partial<MessageLogDocument>);
+      return true;
+    } catch (err) {
+      const isDupKey = err instanceof Error && (err as { code?: number }).code === 11000;
+      if (isDupKey) return false;
+      throw err;
+    }
+  }
+
   async findOneByIdempotencyKey(key: string): Promise<MessageLogDocument | null> {
     return this.model.findOne({ 'metadata.idempotencyKey': key }).exec();
   }
 
+  async upsertOutboundByIdempotencyKey(input: {
+    phone: string;
+    messageType: MessageLogDocument['messageType'];
+    content: MessageLogDocument['content'];
+    status: MessageStatus;
+    finalStatus?: MessageFinalStatus;
+    failureReason?: string;
+    retryCount: number;
+    lastAttemptAt: Date;
+    whatsappMessageId?: string;
+    metadata: MessageLogMetadata;
+  }): Promise<void> {
+    const key = input.metadata.idempotencyKey;
+    if (!key) {
+      // No idempotency key: create a new row (best-effort).
+      await this.create({
+        phone: input.phone,
+        direction: 'outbound',
+        messageType: input.messageType,
+        whatsappMessageId: input.whatsappMessageId,
+        content: input.content,
+        status: input.status,
+        finalStatus: input.finalStatus,
+        failureReason: input.failureReason,
+        retryCount: input.retryCount,
+        lastAttemptAt: input.lastAttemptAt,
+        metadata: input.metadata,
+      } as Partial<MessageLogDocument>);
+      return;
+    }
+
+    await this.model
+      .updateOne(
+        { 'metadata.idempotencyKey': key },
+        {
+          $setOnInsert: {
+            phone: input.phone,
+            direction: 'outbound',
+            messageType: input.messageType,
+            content: input.content,
+            metadata: input.metadata,
+          },
+          $set: {
+            whatsappMessageId: input.whatsappMessageId,
+            status: input.status,
+            finalStatus: input.finalStatus,
+            failureReason: input.failureReason,
+            retryCount: input.retryCount,
+            lastAttemptAt: input.lastAttemptAt,
+          },
+        },
+        { upsert: true },
+      )
+      .exec();
+  }
+
   async updateOneByWhatsAppMessageId(
     whatsappMessageId: string,
-    update: Record<string, unknown>,
+    update: Partial<Pick<MessageLogDocument, 'status' | 'deliveredAt' | 'readAt' | 'failureReason' | 'finalStatus'>>,
   ): Promise<void> {
     await this.model.updateOne({ whatsappMessageId }, { $set: update }).exec();
+  }
+
+  async updateStatusMonotonicByWhatsAppMessageId(input: {
+    whatsappMessageId: string;
+    status: MessageStatus;
+    eventAt?: Date;
+  }): Promise<void> {
+    const existing = await this.findOneByWhatsAppMessageId(input.whatsappMessageId);
+    if (!existing) return;
+
+    const rank = (s: MessageStatus): number => {
+      switch (s) {
+        case 'sent':
+          return 1;
+        case 'delivered':
+          return 2;
+        case 'read':
+          return 3;
+        case 'failed':
+          return 4;
+      }
+    };
+
+    // Do not regress status on out-of-order webhooks.
+    if (rank(input.status) < rank(existing.status)) {
+      return;
+    }
+
+    const update: Partial<Pick<MessageLogDocument, 'status' | 'deliveredAt' | 'readAt' | 'finalStatus'>> = {
+      status: input.status,
+    };
+
+    if (input.status === 'delivered' && input.eventAt) {
+      if (!existing.deliveredAt || existing.deliveredAt < input.eventAt) {
+        update.deliveredAt = input.eventAt;
+      }
+    }
+    if (input.status === 'read' && input.eventAt) {
+      if (!existing.readAt || existing.readAt < input.eventAt) {
+        update.readAt = input.eventAt;
+      }
+    }
+    if (input.status === 'failed') {
+      update.finalStatus = 'failure';
+    }
+
+    await this.updateOneByWhatsAppMessageId(input.whatsappMessageId, update);
   }
 
   async findByPhone(phone: string, limit: number = 50): Promise<MessageLogDocument[]> {

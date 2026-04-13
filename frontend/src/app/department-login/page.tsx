@@ -187,7 +187,7 @@ export default function DepartmentLoginPage() {
               <li className="flex items-start gap-2">
                 <span className="mt-1 h-1.5 w-1.5 rounded-full bg-white" />
                 <span>
-                  <strong>Packing</strong>: see pending orders, confirm quantities, and mark boxes ready in one tap.
+                  <strong>Packing</strong>: confirm items for orders in preparing, then hand off to billing for dispatch.
                 </span>
               </li>
               <li className="flex items-start gap-2">

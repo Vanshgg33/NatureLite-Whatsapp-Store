@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
+import type { ChatSessionContext } from '../chat-session-context';
 
 export type ChatSessionDocument = ChatSession & Document;
 
@@ -8,6 +9,8 @@ export type SessionState =
   | 'browsing'
   | 'product_detail'
   | 'cart'
+  | 'coupon_prompt'
+  | 'coupon_input'
   | 'checkout'
   | 'address_input'
   | 'payment_selection'
@@ -15,7 +18,15 @@ export type SessionState =
   | 'reorder'
   | 'faq'
   | 'support'
-  | 'awaiting_input';
+  | 'account'
+  | 'account_edit'
+  | 'account_addresses'
+  | 'account_address_edit'
+  | 'wallet';
+
+export type ChatSessionMetadata = {
+  contactName?: string;
+};
 
 @Schema({ timestamps: true })
 export class ChatSession {
@@ -34,7 +45,7 @@ export class ChatSession {
   previousState?: SessionState;
 
   @Prop({ type: Object, default: {} })
-  context: Record<string, unknown>;
+  context: ChatSessionContext;
 
   @Prop()
   currentCategoryId?: string;
@@ -72,8 +83,12 @@ export class ChatSession {
   @Prop({ default: false })
   isExpired: boolean;
 
+  /** Set when isExpired flips to true. MongoDB TTL index auto-deletes 90 days after this date. */
+  @Prop()
+  expiredAt?: Date;
+
   @Prop({ type: Object, default: {} })
-  metadata: Record<string, unknown>;
+  metadata: ChatSessionMetadata;
 
   createdAt: Date;
   updatedAt: Date;
@@ -81,7 +96,10 @@ export class ChatSession {
 
 export const ChatSessionSchema = SchemaFactory.createForClass(ChatSession);
 
+ChatSessionSchema.index({ phone: 1 }, { unique: true });
 ChatSessionSchema.index({ user: 1 });
 ChatSessionSchema.index({ isHandedOffToSupport: 1 });
 ChatSessionSchema.index({ lastMessageAt: -1 });
 ChatSessionSchema.index({ createdAt: -1 });
+/** Auto-delete expired sessions 90 days after they were marked expired. */
+ChatSessionSchema.index({ expiredAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });

@@ -58,6 +58,7 @@ import {
   Feedback,
   ProductReview,
   AuditLog,
+  WhatsAppCheckoutPrepareResult,
 } from '@/types';
 
 // Backend API base URL. Set via NEXT_PUBLIC_API_URL in environment.
@@ -505,6 +506,11 @@ class ApiClient {
     return response.data.data;
   }
 
+  async markOrderPacked(id: string): Promise<Order> {
+    const response = await this.client.put<ApiResponse<Order>>(`/orders/${id}/mark-packed`);
+    return response.data.data;
+  }
+
   async updatePaymentStatus(id: string, paymentStatus: PaymentStatus, transactionId?: string): Promise<Order> {
     const response = await this.client.put<ApiResponse<Order>>(`/orders/${id}/payment-status`, {
       paymentStatus,
@@ -853,6 +859,27 @@ class ApiClient {
     razorpay_signature: string;
   }): Promise<void> {
     await this.client.post('/payments/verify', data);
+  }
+
+  /** Public: load Razorpay order for WhatsApp pay link (no auth cookies required). */
+  async whatsappPrepareCheckout(
+    orderId: string,
+    token: string,
+  ): Promise<WhatsAppCheckoutPrepareResult> {
+    const response = await this.client.post<ApiResponse<WhatsAppCheckoutPrepareResult>>(
+      '/payments/whatsapp-checkout',
+      { orderId, token },
+    );
+    return response.data.data;
+  }
+
+  async whatsappVerifyPayment(data: {
+    payToken: string;
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+  }): Promise<void> {
+    await this.client.post('/payments/whatsapp-verify', data);
   }
 
   // ==================== FEEDBACK ====================

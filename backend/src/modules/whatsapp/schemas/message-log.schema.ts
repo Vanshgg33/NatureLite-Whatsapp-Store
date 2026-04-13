@@ -6,6 +6,17 @@ export type MessageLogDocument = MessageLog & Document;
 export type MessageDirection = 'inbound' | 'outbound';
 export type MessageType = 'text' | 'image' | 'document' | 'audio' | 'video' | 'location' | 'contact' | 'interactive' | 'template' | 'button' | 'list_reply';
 export type MessageStatus = 'sent' | 'delivered' | 'read' | 'failed';
+export type MessageFinalStatus = 'success' | 'failure';
+
+export interface MessageLogMetadata {
+  idempotencyKey?: string;
+  provider?: 'meta_cloud' | '360dialog' | '360dialog_sandbox';
+  errorCode?: string;
+  errorTitle?: string;
+  errorDetails?: string;
+  isBlocked?: boolean;
+  isInvalidPhone?: boolean;
+}
 
 @Schema({ timestamps: true })
 export class MessageLog {
@@ -52,11 +63,21 @@ export class MessageLog {
   @Prop({ default: 'sent' })
   status: MessageStatus;
 
+  /**
+   * Final outcome for outbound messages (best-effort).
+   * Inbound messages don't use this field.
+   */
+  @Prop()
+  finalStatus?: MessageFinalStatus;
+
   @Prop()
   failureReason?: string;
 
   @Prop({ default: 0 })
   retryCount: number;
+
+  @Prop()
+  lastAttemptAt?: Date;
 
   @Prop()
   deliveredAt?: Date;
@@ -65,7 +86,7 @@ export class MessageLog {
   readAt?: Date;
 
   @Prop({ type: Object, default: {} })
-  metadata: Record<string, unknown>;
+  metadata: MessageLogMetadata;
 
   createdAt: Date;
   updatedAt: Date;
@@ -75,6 +96,9 @@ export const MessageLogSchema = SchemaFactory.createForClass(MessageLog);
 
 MessageLogSchema.index({ phone: 1, createdAt: -1 });
 MessageLogSchema.index({ session: 1, createdAt: -1 });
-MessageLogSchema.index({ whatsappMessageId: 1 });
+MessageLogSchema.index({ whatsappMessageId: 1 }, { unique: true, sparse: true });
 MessageLogSchema.index({ direction: 1, createdAt: -1 });
 MessageLogSchema.index({ status: 1 });
+MessageLogSchema.index({ 'metadata.idempotencyKey': 1 }, { sparse: true });
+// Retention: auto-expire logs after 60 days to prevent unbounded growth.
+MessageLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 60 * 24 * 60 * 60 });

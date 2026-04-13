@@ -7,9 +7,15 @@ import {
   IsArray,
   ValidateNested,
   Min,
+  MaxLength,
+  IsIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { OrderStatus, PaymentMethod, PaymentStatus } from '../schemas/order.schema';
+import { ORDER_STATUS_VALUES, type OrderStatus } from '../../../common/constants/order-status';
+import type { PaymentMethod, PaymentStatus } from '../schemas/order.schema';
+import type { DeliveryWorkflowStep } from '../../../common/types/order-types';
+
+const ORDER_STATUS_LIST = [...ORDER_STATUS_VALUES] as OrderStatus[];
 
 export class ShippingAddressDto {
   @IsString()
@@ -89,10 +95,18 @@ export class CreateOrderDto {
   @IsOptional()
   @Min(0)
   walletAmount?: number;
+
+  /**
+   * When the same user repeats a checkout with the same key, the existing order is returned (no double charge / duplicate rows).
+   */
+  @IsString()
+  @IsOptional()
+  @MaxLength(128)
+  idempotencyKey?: string;
 }
 
 export class UpdateOrderStatusDto {
-  @IsEnum(['pending', 'confirmed', 'processing', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'returned', 'refunded'])
+  @IsIn(ORDER_STATUS_LIST)
   status: OrderStatus;
 
   @IsString()
@@ -162,7 +176,7 @@ export class OrderQueryDto {
   @IsOptional()
   userId?: string;
 
-  @IsEnum(['pending', 'confirmed', 'processing', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'returned', 'refunded'])
+  @IsIn(ORDER_STATUS_LIST)
   @IsOptional()
   status?: OrderStatus;
 
@@ -213,7 +227,7 @@ export class ReorderDto {
 
 export class UpdateDeliveryWorkflowDto {
   @IsEnum(['delivery_done', 'customer_ringing', 'customer_cancelled', 'customer_tomorrow'])
-  status: 'delivery_done' | 'customer_ringing' | 'customer_cancelled' | 'customer_tomorrow';
+  status: DeliveryWorkflowStep;
 
   @IsEnum(['cash', 'upi'])
   @IsOptional()
@@ -275,4 +289,9 @@ export class GuestCreateOrderDto {
   @IsOptional()
   @Min(0)
   walletAmount?: number;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(128)
+  idempotencyKey?: string;
 }

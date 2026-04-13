@@ -10,6 +10,7 @@ import {
   UseGuards,
   Logger,
   RawBodyRequest,
+  OnModuleDestroy,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { WhatsAppService } from './whatsapp.service';
@@ -21,20 +22,71 @@ import {
   SendInteractiveListDto,
   SendMediaMessageDto,
   WebhookPayload,
+  FlatWebhookPayload,
 } from './dto/whatsapp.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 
+/** Per-phone sliding-window rate limiter (in-memory, no external deps). */
+class PhoneRateLimiter {
+  private readonly buckets = new Map<string, number[]>();
+  constructor(
+    private readonly maxMessages: number,
+    private readonly windowMs: number,
+  ) {}
+
+  isAllowed(phone: string): boolean {
+    const now = Date.now();
+    let timestamps = this.buckets.get(phone);
+    if (!timestamps) {
+      timestamps = [];
+      this.buckets.set(phone, timestamps);
+    }
+    // Evict expired entries.
+    while (timestamps.length > 0 && timestamps[0] <= now - this.windowMs) {
+      timestamps.shift();
+    }
+    if (timestamps.length >= this.maxMessages) {
+      return false;
+    }
+    timestamps.push(now);
+    return true;
+  }
+
+  /** Periodic cleanup of stale buckets to prevent memory leaks. */
+  cleanup(): void {
+    const now = Date.now();
+    for (const [phone, timestamps] of this.buckets) {
+      while (timestamps.length > 0 && timestamps[0] <= now - this.windowMs) {
+        timestamps.shift();
+      }
+      if (timestamps.length === 0) {
+        this.buckets.delete(phone);
+      }
+    }
+  }
+}
+
 @Controller('whatsapp')
-export class WhatsAppController {
+export class WhatsAppController implements OnModuleDestroy {
   private readonly logger = new Logger(WhatsAppController.name);
+  /** 10 messages per phone per 60 seconds. */
+  private readonly rateLimiter = new PhoneRateLimiter(10, 60_000);
+  private readonly cleanupInterval: ReturnType<typeof setInterval>;
 
   constructor(
     private readonly whatsappService: WhatsAppService,
     private readonly chatbotService: ChatbotService,
-  ) {}
+  ) {
+    // Clean up stale rate-limit buckets every 5 minutes.
+    this.cleanupInterval = setInterval(() => this.rateLimiter.cleanup(), 5 * 60_000);
+  }
+
+  onModuleDestroy(): void {
+    clearInterval(this.cleanupInterval);
+  }
 
   @Public()
   @Get('webhook')
@@ -71,22 +123,25 @@ export class WhatsAppController {
   @Post('webhook')
   async handleWebhook(
     @Req() req: RawBodyRequest<Request>,
-    @Body() body: WebhookPayload | Record<string, unknown>,
+    @Body() body: WebhookPayload | FlatWebhookPayload,
     @Res() res: Response,
   ): Promise<void> {
-    const signature = req.headers['x-hub-signature-256'] as string;
+    const signature = req.headers['x-hub-signature-256'] as string | undefined;
+    const rawBody = req.rawBody?.toString() ?? '';
 
-    if (signature && req.rawBody) {
-      const isValid = this.whatsappService.verifySignature(
-        req.rawBody.toString(),
-        signature,
-      );
+    // Webhook authenticity must be enforced (signature is required).
+    if (!signature || !rawBody) {
+      this.logger.warn('Missing webhook signature or raw body');
+      res.status(401).send('Missing signature');
+      return;
+    }
 
-      if (!isValid) {
-        this.logger.warn('Invalid webhook signature');
-        res.status(401).send('Invalid signature');
-        return;
-      }
+    const isValid = this.whatsappService.verifySignature(rawBody, signature);
+
+    if (!isValid) {
+      this.logger.warn('Invalid webhook signature');
+      res.status(401).send('Invalid signature');
+      return;
     }
 
     res.status(200).send('OK');
@@ -95,6 +150,10 @@ export class WhatsAppController {
       const messages = await this.whatsappService.processWebhook(body);
 
       for (const message of messages) {
+        if (!this.rateLimiter.isAllowed(message.phone)) {
+          this.logger.warn(`Rate limit exceeded for phone ***${message.phone.slice(-4)}, dropping message`);
+          continue;
+        }
         await this.chatbotService.handleMessage(message);
       }
     } catch (error) {

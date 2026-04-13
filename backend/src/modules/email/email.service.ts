@@ -115,11 +115,11 @@ export class EmailService {
     const html = `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
         <div style="background:#2A5A3A;padding:20px;text-align:center">
-          <h1 style="color:white;margin:0">Your Order Has Shipped!</h1>
+          <h1 style="color:white;margin:0">Your Order Is Out for Delivery</h1>
         </div>
         <div style="padding:20px">
           <p>Hi ${order.shippingAddress?.name || 'Customer'},</p>
-          <p>Great news! Your order <strong>#${order.orderNumber}</strong> has been shipped.</p>
+          <p>Your order <strong>#${order.orderNumber}</strong> is on its way — our delivery team is handling it.</p>
 
           ${order.awbNumber ? `<div style="padding:16px;background:#f5f0e8;border-radius:8px;margin:16px 0">
             <p style="margin:0"><strong>Tracking Number:</strong> ${order.awbNumber}</p>
@@ -133,7 +133,7 @@ export class EmailService {
       </div>
     `;
 
-    await this.send(customerEmail, `Order Shipped - #${order.orderNumber}`, html);
+    await this.send(customerEmail, `Out for delivery - #${order.orderNumber}`, html);
   }
 
   async sendDeliveryConfirmation(order: any, customerEmail: string): Promise<void> {

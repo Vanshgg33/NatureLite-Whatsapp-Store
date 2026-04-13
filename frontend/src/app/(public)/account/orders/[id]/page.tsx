@@ -32,19 +32,19 @@ import {
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
 import { useCartStore } from '@/lib/cart-store';
-import { cn } from '@/lib/utils';
+import { cn, getCustomerOrderStatusDisplay, getStatusColor } from '@/lib/utils';
 import type { Order, RazorpayCheckoutResponse } from '@/types';
 
 const statusSteps = [
-  { key: 'pending', label: 'Order Placed' },
+  { key: 'placed', label: 'Order Placed' },
   { key: 'confirmed', label: 'Confirmed' },
-  { key: 'processing', label: 'Processing' },
-  { key: 'shipped', label: 'Shipped' },
+  { key: 'preparing', label: 'Preparing' },
+  { key: 'out_for_delivery', label: 'Out for delivery' },
   { key: 'delivered', label: 'Delivered' },
 ];
 
 // Orders that can be cancelled
-const cancellableStatuses = ['pending', 'confirmed'];
+const cancellableStatuses = ['placed', 'confirmed'];
 
 export default function OrderDetailPage() {
   const params = useParams();
@@ -238,7 +238,12 @@ export default function OrderDetailPage() {
     );
   }
 
+  const statusDisplay = getCustomerOrderStatusDisplay(order);
   const currentStepIndex = statusSteps.findIndex((s) => s.key === order.status);
+  const statusBarPct =
+    currentStepIndex <= 0
+      ? 0
+      : (Math.min(currentStepIndex, statusSteps.length - 1) / (statusSteps.length - 1)) * 100;
   const canCancel = cancellableStatuses.includes(order.status);
   const canReorder = order.status === 'delivered' || order.status === 'cancelled';
   const canPayNow = order.paymentMethod === 'prepaid' && order.paymentStatus !== 'paid';
@@ -274,14 +279,10 @@ export default function OrderDetailPage() {
           <span
             className={cn(
               'px-3 py-1 rounded-full text-sm font-body font-medium capitalize',
-              order.status === 'delivered'
-                ? 'bg-green-100 text-green-800'
-                : order.status === 'cancelled'
-                  ? 'bg-red-100 text-red-800'
-                  : 'bg-blue-100 text-blue-800'
+              getStatusColor(statusDisplay.colorKey)
             )}
           >
-            {order.status.replace('_', ' ')}
+            {statusDisplay.label}
           </span>
         </div>
 
@@ -387,7 +388,7 @@ export default function OrderDetailPage() {
             <div
               className="absolute top-4 left-4 h-0.5 bg-brand-mustard transition-all"
               style={{
-                width: `${Math.max(0, currentStepIndex) * 25}%`,
+                width: `${statusBarPct}%`,
               }}
             />
             <div className="relative flex justify-between">

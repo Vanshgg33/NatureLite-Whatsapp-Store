@@ -40,7 +40,7 @@ const faqs = [
       },
       {
         q: 'Can I track my order?',
-        a: 'Yes, once your order is shipped, you will receive an AWB tracking number and a tracking link via email and WhatsApp. You can also track orders from your account dashboard.',
+        a: 'Yes, when your order is out for delivery, you may receive an AWB tracking number and link via email and WhatsApp where available. You can also track orders from your account dashboard.',
       },
       {
         q: 'Do you deliver internationally?',

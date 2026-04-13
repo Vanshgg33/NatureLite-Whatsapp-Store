@@ -16,12 +16,14 @@ import { OrderStatus } from '@/types';
 
 const statusOptions = [
   { value: '', label: 'All Statuses' },
-  { value: 'pending', label: 'Pending' },
+  { value: 'placed', label: 'Placed' },
   { value: 'confirmed', label: 'Confirmed' },
-  { value: 'processing', label: 'Processing' },
-  { value: 'shipped', label: 'Shipped' },
+  { value: 'preparing', label: 'Preparing' },
+  { value: 'out_for_delivery', label: 'Out for delivery' },
   { value: 'delivered', label: 'Delivered' },
   { value: 'cancelled', label: 'Cancelled' },
+  { value: 'returned', label: 'Returned' },
+  { value: 'refunded', label: 'Refunded' },
 ];
 
 export default function OrdersPage() {

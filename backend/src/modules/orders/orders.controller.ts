@@ -137,6 +137,16 @@ export class OrdersController {
     return this.ordersService.updateStatus(id, dto, user.departmentType);
   }
 
+  @Put(':id/mark-packed')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  async markPacked(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<Order> {
+    return this.ordersService.markPacked(id, user.sub, user.departmentType);
+  }
+
   @Put(':id/payment-status')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')

@@ -46,7 +46,7 @@ export default function BillingDashboardPage() {
     <div className="flex flex-col h-screen">
       <Header
         title="Billing Dashboard"
-        description="Orders recently packed and ready for billing."
+        description="Packed orders (still in preparing) — confirm and send out for delivery."
         icon={<FileText className="h-6 w-6 text-sky-600" />}
       />
 
@@ -58,7 +58,9 @@ export default function BillingDashboardPage() {
         )}
 
         {!isLoading && orders.length === 0 && (
-          <div className="text-center text-sm text-gray-500">No packed orders waiting for billing right now.</div>
+          <div className="text-center text-sm text-gray-500">
+            No packed orders waiting for billing right now. Packing marks “preparing” orders as packed first.
+          </div>
         )}
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
