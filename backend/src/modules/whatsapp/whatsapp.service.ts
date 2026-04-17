@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 import * as crypto from 'crypto';
@@ -35,7 +35,7 @@ interface WhatsAppApiErrorShape {
 }
 
 @Injectable()
-export class WhatsAppService {
+export class WhatsAppService implements OnModuleInit {
   private readonly logger = new Logger(WhatsAppService.name);
   private readonly httpClient: AxiosInstance;
   private readonly config: WhatsAppConfig;
@@ -79,6 +79,33 @@ export class WhatsAppService {
     this.logger.log(
       `WhatsApp provider initialized: ${this.config.provider}`,
     );
+  }
+
+  async onModuleInit(): Promise<void> {
+    if (!this.is360DialogSandbox) {
+      return;
+    }
+
+    const webhookUrl = this.config.webhookUrl.trim();
+    if (!webhookUrl) {
+      this.logger.warn('WHATSAPP_WEBHOOK_URL is not configured; skipping 360dialog sandbox webhook registration');
+      return;
+    }
+
+    try {
+      const response = await this.httpClient.post('/configs/webhook', {
+        url: webhookUrl,
+      });
+
+      this.logger.log(
+        `360dialog sandbox webhook registered: ${response.data?.url || webhookUrl}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to register 360dialog sandbox webhook at ${webhookUrl}`,
+        error,
+      );
+    }
   }
 
   verifyWebhook(mode: string, token: string, challenge: string): string | null {

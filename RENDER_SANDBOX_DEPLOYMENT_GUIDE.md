@@ -97,6 +97,8 @@ After the backend is live:
    - `https://store-backend-sandbox.onrender.com/api/v1/whatsapp/webhook`
 3. Use the same value that you set in `WHATSAPP_WEBHOOK_VERIFY_TOKEN`.
 
+The backend can now auto-register the sandbox webhook on startup when `WHATSAPP_WEBHOOK_URL` is set in Render.
+
 If you need to run the webhook registration manually, send a POST request to:
 
 - `https://waba-sandbox.360dialog.io/v1/configs/webhook`

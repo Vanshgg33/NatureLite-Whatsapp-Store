@@ -43,6 +43,7 @@ MONGODB_URI=<your-mongo-uri>
 WHATSAPP_PROVIDER=360dialog_sandbox
 WHATSAPP_API_URL=https://waba-sandbox.360dialog.io
 WHATSAPP_D360_API_KEY=<your-360dialog-sandbox-api-key>
+WHATSAPP_WEBHOOK_URL=<your-public-backend-url>/api/v1/whatsapp/webhook
 
 # Required by existing code paths
 WHATSAPP_PHONE_NUMBER_ID=sandbox
@@ -59,6 +60,7 @@ Important:
 - Keep `WHATSAPP_PROVIDER=360dialog_sandbox`
 - `WHATSAPP_API_URL` must be exactly `https://waba-sandbox.360dialog.io`
 - Do not add `/v1` here (the code adds it automatically in sandbox mode)
+- `WHATSAPP_WEBHOOK_URL` must be the public callback URL that 360Dialog should call
 
 ## 4. Install dependencies
 
@@ -126,6 +128,8 @@ Expected response:
   "url": "https://abcd-1234.ngrok-free.app/api/v1/whatsapp/webhook"
 }
 ```
+
+If `WHATSAPP_WEBHOOK_URL` is configured, the backend now registers the sandbox webhook automatically at startup.
 
 ## 8. Inbound test (phone -> webhook)
 

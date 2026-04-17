@@ -20,6 +20,7 @@ export interface WhatsAppConfig {
   businessAccountId: string;
   accessToken: string;
   d360ApiKey: string;
+  webhookUrl: string;
   webhookVerifyToken: string;
   appSecret: string;
 }
@@ -97,6 +98,7 @@ export default (): Configuration => ({
     businessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
     accessToken: process.env.WHATSAPP_ACCESS_TOKEN || '',
     d360ApiKey: process.env.WHATSAPP_D360_API_KEY || '',
+    webhookUrl: process.env.WHATSAPP_WEBHOOK_URL || '',
     webhookVerifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '',
     appSecret: process.env.WHATSAPP_APP_SECRET || '',
   },
