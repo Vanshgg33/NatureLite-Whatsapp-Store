@@ -126,6 +126,16 @@ export class WhatsAppController implements OnModuleDestroy {
     @Body() body: WebhookPayload | FlatWebhookPayload,
     @Res() res: Response,
   ): Promise<void> {
+    const asFlat = body as FlatWebhookPayload;
+    const asCloud = body as WebhookPayload;
+    const inboundMessageCount =
+      asFlat.messages?.length ??
+      asCloud.entry?.flatMap((entry) => entry.changes || [])
+        .flatMap((change) => change.value?.messages || []).length ??
+      0;
+
+    this.logger.log(`Webhook received with ${inboundMessageCount} inbound message(s)`);
+
     const signature = req.headers['x-hub-signature-256'] as string | undefined;
     const rawBody = req.rawBody?.toString() ?? '';
     const shouldBypassSignatureValidation =

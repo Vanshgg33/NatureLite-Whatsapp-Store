@@ -449,6 +449,23 @@ export class WhatsAppService implements OnModuleInit {
       return null;
     }
 
+    if (this.is360DialogSandbox) {
+      const fallbackOptions = dto.buttons
+        .slice(0, 3)
+        .map((btn, idx) => `${idx + 1}. ${btn.title}`)
+        .join('\n');
+
+      const sandboxText = fallbackOptions
+        ? `${dto.bodyText}\n\nReply with:\n${fallbackOptions}`
+        : dto.bodyText;
+
+      return this.sendTextMessage({
+        phone,
+        message: sandboxText,
+        meta: idempotencyKey ? { idempotencyKey: `${idempotencyKey}:sandbox_text` } : undefined,
+      });
+    }
+
     const buttons = dto.buttons.slice(0, 3).map((btn) => ({
       type: 'reply' as const,
       reply: { id: btn.id, title: btn.title.slice(0, 20) },
@@ -512,6 +529,24 @@ export class WhatsAppService implements OnModuleInit {
         metadata: { idempotencyKey, isInvalidPhone: true, provider: this.getProviderTag() },
       });
       return null;
+    }
+
+    if (this.is360DialogSandbox) {
+      const flattenedRows = dto.sections
+        .flatMap((section) => section.rows)
+        .slice(0, 10)
+        .map((row, idx) => `${idx + 1}. ${row.title}`)
+        .join('\n');
+
+      const sandboxText = flattenedRows
+        ? `${dto.bodyText}\n\nReply with:\n${flattenedRows}`
+        : dto.bodyText;
+
+      return this.sendTextMessage({
+        phone,
+        message: sandboxText,
+        meta: idempotencyKey ? { idempotencyKey: `${idempotencyKey}:sandbox_text` } : undefined,
+      });
     }
 
     const sections = dto.sections.map((section) => ({
