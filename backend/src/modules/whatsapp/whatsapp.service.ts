@@ -39,6 +39,7 @@ export class WhatsAppService {
   private readonly logger = new Logger(WhatsAppService.name);
   private readonly httpClient: AxiosInstance;
   private readonly config: WhatsAppConfig;
+  private readonly nodeEnv: string;
   private readonly is360DialogProvider: boolean;
   private readonly is360DialogSandbox: boolean;
   private readonly outboundMaxAttempts = 3;
@@ -47,6 +48,7 @@ export class WhatsAppService {
     private readonly messageLogRepository: MessageLogRepository,
     private configService: ConfigService,
   ) {
+    this.nodeEnv = this.configService.get<string>('app.nodeEnv') || 'development';
     this.config = this.configService.get<WhatsAppConfig>('whatsapp')!;
     this.is360DialogSandbox = this.config.provider === '360dialog_sandbox';
     this.is360DialogProvider =
@@ -132,6 +134,10 @@ export class WhatsAppService {
     const b = Buffer.from(signature, 'utf8');
     if (a.length !== b.length) return false;
     return crypto.timingSafeEqual(a, b);
+  }
+
+  shouldBypassSignatureValidation(): boolean {
+    return this.is360DialogSandbox && this.nodeEnv !== 'production';
   }
 
   async processWebhook(payload: WebhookPayload | FlatWebhookPayload): Promise<WhatsAppMessage[]> {

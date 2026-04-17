@@ -128,20 +128,28 @@ export class WhatsAppController implements OnModuleDestroy {
   ): Promise<void> {
     const signature = req.headers['x-hub-signature-256'] as string | undefined;
     const rawBody = req.rawBody?.toString() ?? '';
+    const shouldBypassSignatureValidation =
+      this.whatsappService.shouldBypassSignatureValidation();
 
-    // Webhook authenticity must be enforced (signature is required).
-    if (!signature || !rawBody) {
-      this.logger.warn('Missing webhook signature or raw body');
-      res.status(401).send('Missing signature');
-      return;
-    }
+    if (shouldBypassSignatureValidation) {
+      this.logger.warn(
+        'Bypassing webhook signature validation for 360dialog sandbox in non-production mode',
+      );
+    } else {
+      // Webhook authenticity must be enforced (signature is required).
+      if (!signature || !rawBody) {
+        this.logger.warn('Missing webhook signature or raw body');
+        res.status(401).send('Missing signature');
+        return;
+      }
 
-    const isValid = this.whatsappService.verifySignature(rawBody, signature);
+      const isValid = this.whatsappService.verifySignature(rawBody, signature);
 
-    if (!isValid) {
-      this.logger.warn('Invalid webhook signature');
-      res.status(401).send('Invalid signature');
-      return;
+      if (!isValid) {
+        this.logger.warn('Invalid webhook signature');
+        res.status(401).send('Invalid signature');
+        return;
+      }
     }
 
     res.status(200).send('OK');
