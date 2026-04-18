@@ -553,13 +553,37 @@ export class WhatsAppService implements OnModuleInit {
       },
     };
 
-    return this.sendOutboundWithRetry({
+    const messageId = await this.sendOutboundWithRetry({
       phone,
       messageType: 'interactive',
       content,
       idempotencyKey,
       payload,
     });
+
+    // Some sandbox/provider policies reject interactive list payloads.
+    // Fallback to plain text options so the conversation can continue.
+    if (!messageId) {
+      const flattenedRows = dto.sections
+        .flatMap((section) => section.rows)
+        .slice(0, 10);
+
+      const fallbackOptions = flattenedRows
+        .map((row, idx) => `${idx + 1}. ${row.title}`)
+        .join('\n');
+
+      const fallbackText = fallbackOptions
+        ? `${dto.bodyText}\n\nReply with:\n${fallbackOptions}`
+        : dto.bodyText;
+
+      await this.sendTextMessage({
+        phone,
+        message: fallbackText,
+        meta: idempotencyKey ? { idempotencyKey: `${idempotencyKey}:fallback_text` } : undefined,
+      });
+    }
+
+    return messageId;
   }
 
   async sendMediaMessage(dto: SendMediaMessageDto): Promise<string | null> {
