@@ -34,6 +34,8 @@ interface WhatsAppApiErrorShape {
   };
 }
 
+const versionedApiPathPattern = /\/v\d+(?:\/|$)/;
+
 @Injectable()
 export class WhatsAppService implements OnModuleInit {
   private readonly logger = new Logger(WhatsAppService.name);
@@ -56,9 +58,13 @@ export class WhatsAppService implements OnModuleInit {
       this.is360DialogSandbox;
 
     const normalizedApiUrl = this.config.apiUrl.replace(/\/$/, '');
+    const effectiveApiUrl =
+      this.is360DialogSandbox && !versionedApiPathPattern.test(normalizedApiUrl)
+        ? `${normalizedApiUrl}/v1`
+        : normalizedApiUrl;
 
     const baseURL = this.is360DialogProvider
-      ? normalizedApiUrl
+      ? effectiveApiUrl
       : `${normalizedApiUrl}/${this.config.phoneNumberId}`;
 
     const headers: Record<string, string> = {
@@ -79,6 +85,7 @@ export class WhatsAppService implements OnModuleInit {
     this.logger.log(
       `WhatsApp provider initialized: ${this.config.provider}`,
     );
+    this.logger.log(`WhatsApp API base URL: ${baseURL}`);
   }
 
   async onModuleInit(): Promise<void> {
@@ -101,6 +108,12 @@ export class WhatsAppService implements OnModuleInit {
         `360dialog sandbox webhook registered: ${response.data?.url || webhookUrl}`,
       );
     } catch (error) {
+      if (axios.isAxiosError(error)) {
+        this.logger.error(
+          `360dialog sandbox webhook registration failed with status ${error.response?.status ?? 'unknown'}`,
+          JSON.stringify(error.response?.data ?? {}),
+        );
+      }
       this.logger.error(
         `Failed to register 360dialog sandbox webhook at ${webhookUrl}`,
         error,
