@@ -99,26 +99,78 @@ export class WhatsAppService implements OnModuleInit {
       return;
     }
 
+    // Validate webhook URL format
     try {
-      const response = await this.httpClient.post('/configs/webhook', {
-        url: webhookUrl,
-      });
-
-      this.logger.log(
-        `360dialog sandbox webhook registered: ${response.data?.url || webhookUrl}`,
-      );
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        this.logger.error(
-          `360dialog sandbox webhook registration failed with status ${error.response?.status ?? 'unknown'}`,
-          JSON.stringify(error.response?.data ?? {}),
-        );
-      }
+      new URL(webhookUrl);
+    } catch {
       this.logger.error(
-        `Failed to register 360dialog sandbox webhook at ${webhookUrl}`,
-        error,
+        `Invalid WHATSAPP_WEBHOOK_URL format: ${webhookUrl}. Must be a valid absolute URL.`,
       );
+      return;
     }
+
+    // Attempt registration with retry logic
+    const maxAttempts = 3;
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        this.logger.log(
+          `Attempting to register 360dialog sandbox webhook (attempt ${attempt}/${maxAttempts}) at ${webhookUrl}`,
+        );
+
+        const response = await this.httpClient.post(
+          '/configs/webhook',
+          { url: webhookUrl },
+          { timeout: 10000 }, // 10 second timeout
+        );
+
+        this.logger.log(
+          `✓ 360dialog sandbox webhook registered successfully: ${response.data?.url || webhookUrl}`,
+        );
+        return; // Success, exit immediately
+      } catch (error) {
+        lastError = error as Error;
+
+        if (axios.isAxiosError(error)) {
+          const status = error.response?.status ?? 'unknown';
+          const errorData = error.response?.data;
+          const errorMessage = typeof errorData === 'object' && 'error' in errorData 
+            ? JSON.stringify(errorData) 
+            : String(errorData);
+
+          this.logger.warn(
+            `Webhook registration attempt ${attempt}/${maxAttempts} failed with status ${status}: ${errorMessage}`,
+          );
+
+          // If 4xx (client error), likely a configuration issue - don't retry
+          if (error.response && error.response.status >= 400 && error.response.status < 500) {
+            this.logger.error(
+              `Client error (${status}) registering webhook - likely configuration issue. Webhook URL: ${webhookUrl}`,
+            );
+            return;
+          }
+        } else {
+          this.logger.warn(
+            `Webhook registration attempt ${attempt}/${maxAttempts} failed with error: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+
+        // Wait before retry (exponential backoff)
+        if (attempt < maxAttempts) {
+          const delayMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Cap at 5s
+          this.logger.log(`Retrying webhook registration in ${delayMs}ms...`);
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+      }
+    }
+
+    // All retry attempts failed
+    this.logger.warn(
+      `Failed to register 360dialog sandbox webhook after ${maxAttempts} attempts. ` +
+      `Service will continue - webhook may have been manually registered or will be registered on next startup. ` +
+      `Last error: ${lastError?.message || 'unknown'}`,
+    );
   }
 
   verifyWebhook(mode: string, token: string, challenge: string): string | null {
