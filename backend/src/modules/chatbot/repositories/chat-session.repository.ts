@@ -67,4 +67,22 @@ export class ChatSessionRepository extends BaseRepository<ChatSessionDocument> {
     ).exec();
     return { modifiedCount: result.modifiedCount };
   }
+
+  /**
+   * Auto-clear handoff for sessions where support was handed off before `cutoffDate`
+   * and the user hasn't typed "menu" to come back. Avoids users being stuck in a
+   * muted state indefinitely if the team forgets to reset them.
+   */
+  async autoClearStaleHandoffs(
+    cutoffDate: Date,
+  ): Promise<{ modifiedCount: number }> {
+    const result = await this.model.updateMany(
+      {
+        isHandedOffToSupport: true,
+        supportHandoffAt: { $lt: cutoffDate },
+      },
+      { $set: { isHandedOffToSupport: false } },
+    ).exec();
+    return { modifiedCount: result.modifiedCount };
+  }
 }

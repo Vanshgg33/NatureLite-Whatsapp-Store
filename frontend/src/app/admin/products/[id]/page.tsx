@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, X, Upload, Trash2 } from 'lucide-react';
+import axios from 'axios';
+import { ArrowLeft, X, Upload, Trash2, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Header } from '@/components/layout/header';
@@ -11,12 +12,25 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { BarcodeScanCard } from '@/components/admin/barcode-scan-card';
 import type { BarcodeProduct } from '@/lib/barcode-lookup';
+
+function extractErrorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data as { message?: string | string[] } | undefined;
+    if (data?.message) {
+      return Array.isArray(data.message) ? data.message.join(', ') : data.message;
+    }
+    return error.message || fallback;
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
 
 export default function EditProductPage() {
   const router = useRouter();
@@ -44,6 +58,7 @@ export default function EditProductPage() {
   const [images, setImages] = useState<string[]>([]);
   const [variants, setVariants] = useState<{ name: string; sku: string; price: string; compareAtPrice: string; stock: string }[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const { data: product, isLoading } = useQuery({
     queryKey: ['product', productId],
@@ -94,6 +109,9 @@ export default function EditProductPage() {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       router.push('/admin/products');
     },
+    onError: (error: Error) => {
+      setSubmitError(extractErrorMessage(error, 'Failed to update product. Please try again.'));
+    },
   });
 
   const deleteMutation = useMutation({
@@ -108,15 +126,17 @@ export default function EditProductPage() {
     if (!files) return;
 
     setUploading(true);
+    setSubmitError(null);
     try {
       for (const file of Array.from(files)) {
         const result = await api.uploadImage(file, 'products');
         setImages((prev) => [...prev, result.secureUrl]);
       }
     } catch (error) {
-      console.error('Upload failed:', error);
+      setSubmitError(extractErrorMessage(error, 'Image upload failed. Check that Cloudinary credentials are configured on the backend.'));
     } finally {
       setUploading(false);
+      e.target.value = '';
     }
   };
 
@@ -151,6 +171,7 @@ export default function EditProductPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
 
     updateMutation.mutate({
       name: formData.name,
@@ -216,6 +237,13 @@ export default function EditProductPage() {
       />
 
       <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        {submitError && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{submitError}</AlertDescription>
+          </Alert>
+        )}
+
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-6">
             <BarcodeScanCard onProductFound={handleBarcodeProduct} />

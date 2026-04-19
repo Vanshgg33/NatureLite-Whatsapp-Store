@@ -41,31 +41,38 @@ export class AuthController {
   private setAuthCookies(res: Response, accessToken: string, refreshToken: string): void {
     const isProduction = this.configService.get<string>('app.nodeEnv') === 'production';
 
-    res.cookie('access_token', accessToken, {
+    // Frontend and backend live on different Render subdomains → cross-site request.
+    // Browsers only attach cookies cross-site when SameSite=None + Secure=true.
+    // In local dev (http) we keep 'lax' since Secure=true would block http cookies entirely.
+    const cookieOptions: {
+      httpOnly: true;
+      secure: boolean;
+      sameSite: 'none' | 'lax';
+      maxAge: number;
+      path: string;
+    } = {
       httpOnly: true,
       secure: isProduction,
-      sameSite: isProduction ? 'strict' : 'lax',
+      sameSite: isProduction ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       path: '/',
-    });
-    res.cookie('refresh_token', refreshToken, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? 'strict' : 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/',
-    });
+    };
+
+    res.cookie('access_token', accessToken, cookieOptions);
+    res.cookie('refresh_token', refreshToken, cookieOptions);
   }
 
   private clearAuthCookie(res: Response): void {
-    res.clearCookie('access_token', {
+    const isProduction = this.configService.get<string>('app.nodeEnv') === 'production';
+    const clearOptions = {
       httpOnly: true,
+      secure: isProduction,
+      sameSite: (isProduction ? 'none' : 'lax') as 'none' | 'lax',
       path: '/',
-    });
-    res.clearCookie('refresh_token', {
-      httpOnly: true,
-      path: '/',
-    });
+    };
+
+    res.clearCookie('access_token', clearOptions);
+    res.clearCookie('refresh_token', clearOptions);
   }
 
   @Public()

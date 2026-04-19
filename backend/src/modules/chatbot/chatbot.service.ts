@@ -237,8 +237,18 @@ export class ChatbotService {
     const buttonId = message.content.buttonId || message.content.listId;
     const transitionKey = buttonId || this.mapTextToTransitionKey(currentState, inputText);
 
-    // Global transition keys that are valid from any state (rendered after add-to-cart, remove, etc.).
-    const globalKeys = new Set(['view_cart', 'continue_shopping']);
+    // Global transition keys that are valid from any state (rendered after add-to-cart, remove,
+    // out-of-stock recovery, etc.). These always route to a known state so the user never gets stuck.
+    const globalKeys = new Set([
+      'view_cart',
+      'continue_shopping',
+      'browse',
+      'menu',
+      'main_menu',
+      'account',
+      'orders',
+      'support',
+    ]);
 
     // If a user taps an old or fabricated button/list id, do not mutate state; re-show current options.
     if (buttonId && !globalKeys.has(buttonId) && !this.isValidTransitionKeyForState(currentState, buttonId)) {
@@ -251,9 +261,45 @@ export class ChatbotService {
       await this.sendCartSummary(message.phone, session);
       return;
     }
-    if (transitionKey === 'continue_shopping') {
+    if (transitionKey === 'continue_shopping' || transitionKey === 'browse') {
       await this.transitionToState(session, 'browsing');
       await this.sendCategoryList(message.phone, session);
+      return;
+    }
+    if (transitionKey === 'menu' || transitionKey === 'main_menu') {
+      await this.transitionToState(session, 'main_menu');
+      await this.sendFlowResponse(message.phone, 'main_menu', session);
+      return;
+    }
+    if (transitionKey === 'account') {
+      await this.transitionToState(session, 'account');
+      await this.sendAccountSummary(message.phone, session);
+      return;
+    }
+    if (transitionKey === 'orders') {
+      session.context = mergeChatContext(session.context, { ordersPage: 0 });
+      await session.save();
+      await this.transitionToState(session, 'order_tracking');
+      await this.sendOrdersList(message.phone, session);
+      return;
+    }
+    // Free-text product search: if the user typed non-button text that wasn't
+    // recognised as a navigation alias, and it's not a menu-command, treat it as
+    // a search query from states where that makes sense.
+    if (
+      !buttonId &&
+      inputText.length >= 3 &&
+      !this.isMenuCommand(inputText) &&
+      this.isSearchCapableState(currentState) &&
+      !this.isValidTransitionKeyForState(currentState, transitionKey)
+    ) {
+      const handled = await this.tryProductSearch(message.phone, session, inputText);
+      if (handled) return;
+    }
+
+    if (transitionKey === 'support') {
+      await this.transitionToState(session, 'support');
+      await this.sendFlowResponse(message.phone, 'support', session);
       return;
     }
 
@@ -959,8 +1005,24 @@ export class ChatbotService {
         session.context = mergeChatContext(session.context, { allowAnotherOrderOnce: false });
         await session.save();
       }
+      // Re-validate coupon right before order creation — it may have expired, hit
+      // its usage cap, or been deleted since the cart applied it.
+      if (cart.couponCode) {
+        try {
+          await this.cartService.applyCoupon(session.user.toString(), cart.couponCode);
+        } catch {
+          await this.cartService.removeCoupon(session.user.toString());
+          await this.whatsappService.sendTextMessage({
+            phone,
+            message: '_Coupon is no longer valid and was removed from your cart._',
+          });
+        }
+      }
+      // Refresh cart to pick up any coupon/total adjustments before creating the order.
+      const finalCart = await this.cartService.getCart(session.user.toString());
+
       order = await this.ordersService.create(session.user.toString(), {
-        cartId: cart.id,
+        cartId: finalCart.id,
         shippingAddress: {
           name: user.name || 'Customer',
           phone,
@@ -2379,6 +2441,65 @@ export class ChatbotService {
     return ['menu', 'start', 'hi', 'hello', 'hey', '/start', '/menu'].includes(normalized);
   }
 
+  /** States from which free-text is safe to interpret as a product search. */
+  private isSearchCapableState(state: SessionState): boolean {
+    return state === 'main_menu' || state === 'browsing' || state === 'product_detail';
+  }
+
+  /**
+   * Search products by free text and render the results as an interactive list.
+   * Returns true if a response was sent (search ran), false if the query was
+   * skipped (e.g. too few letters, no matches and we chose not to spam).
+   */
+  private async tryProductSearch(
+    phone: string,
+    session: ChatSessionDocument,
+    query: string,
+  ): Promise<boolean> {
+    const trimmed = query.trim();
+    if (trimmed.length < 3) return false;
+
+    let products: Product[] = [];
+    try {
+      products = await this.productsService.searchProducts(trimmed, 9);
+    } catch (err) {
+      this.logger.warn('Product search failed', err);
+      return false;
+    }
+
+    if (products.length === 0) {
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        bodyText:
+          `*No matches for "${trimmed.slice(0, 40)}"*\n\n` +
+          `Try a different keyword, or browse by category.`,
+        buttons: [
+          { id: 'browse', title: 'Browse Categories' },
+          { id: 'menu', title: 'Main Menu' },
+        ],
+      });
+      return true;
+    }
+
+    const rows = products.map((prod) => ({
+      id: `prod_${prod._id.toString()}`,
+      title: prod.name.slice(0, 24),
+      description: `${this.formatCurrency(prod.price)}`.slice(0, 72),
+    }));
+
+    await this.transitionToState(session, 'browsing');
+    await this.whatsappService.sendInteractiveList({
+      phone,
+      bodyText:
+        `*Results for "${trimmed.slice(0, 40)}"*\n` +
+        `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
+        `Tap a product to view details.`,
+      buttonText: 'View Results',
+      sections: [{ title: 'Matches', rows }],
+    });
+    return true;
+  }
+
   async getSession(phone: string): Promise<ChatSession | null> {
     return this.chatSessionRepository.findOneByPhone(phone);
   }
@@ -2399,6 +2520,15 @@ export class ChatbotService {
 
     if (result.modifiedCount > 0) {
       this.logger.log(`Expired ${result.modifiedCount} chat sessions`);
+    }
+
+    // Auto-clear support handoffs older than 6 hours so users aren't stuck in a
+    // muted state if the team forgets to reset them. They'll get the main menu
+    // back on their next message.
+    const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
+    const handoffResult = await this.chatSessionRepository.autoClearStaleHandoffs(sixHoursAgo);
+    if (handoffResult.modifiedCount > 0) {
+      this.logger.log(`Cleared ${handoffResult.modifiedCount} stale support handoffs`);
     }
 
     // Purge stale product cache entries to prevent unbounded growth.
