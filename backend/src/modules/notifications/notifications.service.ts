@@ -213,6 +213,34 @@ export class NotificationsService {
     });
   }
 
+  /**
+   * Ask the customer to rate a delivered order. Best-effort text message sent
+   * inside the 24h session window (idempotent on orderId).
+   */
+  async sendFeedbackRequest(order: Order, phone: string): Promise<boolean> {
+    const orderId = order._id.toString();
+    const idempotencyKey = `feedback_request_${orderId}`;
+    if (await this.isDuplicate(idempotencyKey)) return true;
+
+    const message =
+      `*How was order ${order.orderNumber}?* \u2b50\n` +
+      `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
+      `Reply with a rating from 1 to 5:\n` +
+      `5 \u2605 Loved it\n` +
+      `4 \u2605 Good\n` +
+      `3 \u2605 Okay\n` +
+      `2 \u2605 Poor\n` +
+      `1 \u2605 Bad\n\n` +
+      `You can also reply with any comments. Your feedback helps us improve.`;
+
+    return this.sendNotification({
+      phone,
+      text: message,
+      orderId,
+      idempotencyKey,
+    });
+  }
+
   async sendOrderCancelled(order: Order, phone: string, reason: string): Promise<void> {
     const idempotencyKey = `cancelled_${order._id.toString()}`;
 

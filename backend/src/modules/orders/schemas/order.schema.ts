@@ -172,6 +172,10 @@ export class Order {
   @Prop()
   deliveredAt?: Date;
 
+  /** When the post-delivery feedback request was sent via WhatsApp (dedup). */
+  @Prop()
+  feedbackRequestedAt?: Date;
+
   @Prop()
   packedAt?: Date;
 

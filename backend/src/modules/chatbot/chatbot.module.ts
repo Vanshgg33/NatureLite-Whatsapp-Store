@@ -13,6 +13,7 @@ import { CartModule } from '../cart/cart.module';
 import { OrdersModule } from '../orders/orders.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { WalletModule } from '../wallet/wallet.module';
+import { FeedbackModule } from '../feedback/feedback.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { WalletModule } from '../wallet/wallet.module';
     forwardRef(() => OrdersModule),
     PaymentsModule,
     WalletModule,
+    FeedbackModule,
   ],
   controllers: [ChatbotController],
   providers: [ChatSessionRepository, ChatbotService],

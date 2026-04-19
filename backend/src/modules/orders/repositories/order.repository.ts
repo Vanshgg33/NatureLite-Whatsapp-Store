@@ -232,4 +232,29 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
     );
     return res.modifiedCount ?? 0;
   }
+
+  /**
+   * Find orders that were delivered between the min/max age window and haven't had
+   * a feedback request sent yet. Used by the post-delivery feedback cron.
+   */
+  async findDeliveredPendingFeedback(input: {
+    olderThan: Date;
+    newerThan: Date;
+    limit: number;
+  }): Promise<OrderDocument[]> {
+    return this.model
+      .find({
+        status: 'delivered',
+        deliveredAt: { $gte: input.newerThan, $lte: input.olderThan },
+        feedbackRequestedAt: { $exists: false },
+      })
+      .limit(input.limit)
+      .exec();
+  }
+
+  async markFeedbackRequested(orderId: Types.ObjectId): Promise<void> {
+    await this.model
+      .updateOne({ _id: orderId }, { $set: { feedbackRequestedAt: new Date() } })
+      .exec();
+  }
 }

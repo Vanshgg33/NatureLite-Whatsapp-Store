@@ -14,6 +14,7 @@ import { CartService } from '../cart/cart.service';
 import { OrdersService } from '../orders/orders.service';
 import { PaymentsService } from '../payments/payments.service';
 import { WalletService } from '../wallet/wallet.service';
+import { FeedbackService } from '../feedback/feedback.service';
 import { WhatsAppMessage } from '../whatsapp/dto/whatsapp.dto';
 import { CHATBOT_FLOWS, FAQ_RESPONSES } from './chatbot.flows';
 import {
@@ -96,6 +97,7 @@ export class ChatbotService {
     private readonly paymentsService: PaymentsService,
     private readonly walletService: WalletService,
     private readonly configService: ConfigService,
+    private readonly feedbackService: FeedbackService,
   ) {}
 
   /** First origin in FRONTEND_URL (comma-separated supported in main.ts). */
@@ -283,6 +285,20 @@ export class ChatbotService {
       await this.sendOrdersList(message.phone, session);
       return;
     }
+    // Post-delivery feedback: if a user has a recent delivered order with a pending
+    // feedback request, interpret a plain rating reply (1-5) or "1 star", "5 stars",
+    // "great", "loved it" as feedback. Runs only from main_menu to avoid hijacking
+    // other flows' typed input.
+    if (
+      !buttonId &&
+      currentState === 'main_menu' &&
+      session.user &&
+      !this.isMenuCommand(inputText)
+    ) {
+      const handled = await this.tryHandleFeedbackReply(message.phone, session, inputText);
+      if (handled) return;
+    }
+
     // Free-text product search: if the user typed non-button text that wasn't
     // recognised as a navigation alias, and it's not a menu-command, treat it as
     // a search query from states where that makes sense.
@@ -1619,13 +1635,14 @@ export class ChatbotService {
       walletLine +
       `\n\n` +
       `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n` +
-      `Orders  *${user.totalOrders || 0}*  \u00B7  Spent  *${this.formatCurrency(user.totalSpent || 0)}*`;
+      `Orders  *${user.totalOrders || 0}*  \u00B7  Spent  *${this.formatCurrency(user.totalSpent || 0)}*\n\n` +
+      `_Type *edit profile* to update your name or email._`;
 
     await this.whatsappService.sendInteractiveButtons({
       phone,
       bodyText: body,
       buttons: [
-        { id: 'edit_profile', title: 'Edit Profile' },
+        { id: 'orders', title: 'My Orders' },
         { id: 'addresses', title: 'My Addresses' },
         { id: 'wallet', title: 'Wallet' },
       ],
@@ -2287,9 +2304,10 @@ export class ChatbotService {
       faq: { back: 'back', support: 'support', agent: 'support' },
       support: { menu: 'menu' },
       account: {
-        '1': 'edit_profile', edit: 'edit_profile', profile: 'edit_profile', 'edit profile': 'edit_profile',
+        '1': 'orders', orders: 'orders', 'my orders': 'orders', 'previous orders': 'orders',
         '2': 'addresses', addresses: 'addresses', address: 'addresses',
         '3': 'wallet', wallet: 'wallet',
+        edit: 'edit_profile', profile: 'edit_profile', 'edit profile': 'edit_profile',
         back: 'back',
       },
       account_edit: {
@@ -2392,7 +2410,7 @@ export class ChatbotService {
       case 'main_menu':
         return key === 'browse' || key === 'cart' || key === 'orders' || key === 'account' || key === 'help' || key === 'faq' || key === 'support';
       case 'account':
-        return key === 'edit_profile' || key === 'addresses' || key === 'wallet' || key === 'back';
+        return key === 'edit_profile' || key === 'addresses' || key === 'wallet' || key === 'orders' || key === 'back';
       case 'account_edit':
         return key === 'edit_name' || key === 'edit_email' || key === 'back';
       case 'account_addresses':
@@ -2444,6 +2462,87 @@ export class ChatbotService {
   /** States from which free-text is safe to interpret as a product search. */
   private isSearchCapableState(state: SessionState): boolean {
     return state === 'main_menu' || state === 'browsing' || state === 'product_detail';
+  }
+
+  /**
+   * Parse a rating from free text. Matches "1".."5", "1 star", "5 stars", and simple
+   * sentiment words. Returns null if the text clearly isn't a rating.
+   */
+  private parseRatingFromText(input: string): number | null {
+    const normalized = this.normalizeInput(input);
+    if (!normalized) return null;
+
+    const numMatch = normalized.match(/^([1-5])(?:\s*(?:star|stars|\u2b50)?)?$/);
+    if (numMatch) return Number.parseInt(numMatch[1], 10);
+
+    const sentimentMap: Record<string, number> = {
+      excellent: 5, amazing: 5, loved: 5, 'loved it': 5, great: 5, awesome: 5, perfect: 5,
+      good: 4, nice: 4, liked: 4, 'liked it': 4,
+      okay: 3, ok: 3, average: 3, fine: 3, 'so so': 3,
+      poor: 2, bad: 2, disappointed: 2,
+      terrible: 1, awful: 1, worst: 1, horrible: 1,
+    };
+    if (sentimentMap[normalized] !== undefined) return sentimentMap[normalized];
+
+    return null;
+  }
+
+  /**
+   * If the user has a recently delivered order with a pending feedback request,
+   * accept a rating/comment reply and save it as feedback. Returns true if handled.
+   */
+  private async tryHandleFeedbackReply(
+    phone: string,
+    session: ChatSessionDocument,
+    inputText: string,
+  ): Promise<boolean> {
+    if (!session.user) return false;
+
+    // Find the most recent delivered order where we asked for feedback but they haven't replied.
+    const recent = await this.ordersService.findUserOrders(session.user.toString(), 5);
+    const target = recent.find(
+      (o) =>
+        o.status === 'delivered' &&
+        (o as { feedbackRequestedAt?: Date }).feedbackRequestedAt,
+    );
+    if (!target) return false;
+
+    const rating = this.parseRatingFromText(inputText);
+    const trimmed = inputText.trim();
+    // Must be either a parseable rating OR a short message (> 3 chars, < 500) right after
+    // a feedback request — otherwise we hand off to search/menu to avoid hijacking.
+    const looksLikeFeedback =
+      rating !== null || (trimmed.length >= 3 && trimmed.length <= 500 && !/^[a-z_]+$/i.test(trimmed));
+    if (!looksLikeFeedback) return false;
+
+    try {
+      await this.feedbackService.create(session.user.toString(), {
+        type: 'order_feedback',
+        orderId: target._id.toString(),
+        rating: rating ?? undefined,
+        message: trimmed.slice(0, 500),
+      });
+    } catch (err) {
+      this.logger.warn('chatbot_feedback_save_failed', err);
+      return false;
+    }
+
+    const thanks =
+      rating && rating >= 4
+        ? `Thanks for the ${rating}\u2605 rating! We appreciate it.`
+        : rating
+          ? `Thanks for your feedback (${rating}\u2605). We'll look into it.`
+          : `Thanks for your feedback. We'll review it.`;
+    await this.whatsappService.sendInteractiveButtons({
+      phone,
+      bodyText: `${thanks}\n\nAnything else we can help with?`,
+      buttons: [
+        { id: 'browse', title: 'Browse Products' },
+        { id: 'orders', title: 'My Orders' },
+        { id: 'menu', title: 'Main Menu' },
+      ],
+    });
+    return true;
   }
 
   /**

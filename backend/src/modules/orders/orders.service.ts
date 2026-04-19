@@ -6,6 +6,7 @@ import {
   Logger,
   OnModuleInit,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Types, Connection } from 'mongoose';
 import * as crypto from 'crypto';
@@ -1105,5 +1106,49 @@ export class OrdersService implements OnModuleInit {
       sequence = lastSequence + 1;
     }
     return `ORD${dateStr}${sequence.toString().padStart(4, '0')}`;
+  }
+
+  /**
+   * Ask customers for feedback 24h–7d after delivery. Runs every 6h; idempotent via
+   * `order.feedbackRequestedAt`. 7-day cap avoids pestering users for old orders when
+   * the cron first starts running. Limit 100 per tick to cap burst WhatsApp sends.
+   */
+  @Cron(CronExpression.EVERY_6_HOURS)
+  async requestPostDeliveryFeedback(): Promise<void> {
+    const now = Date.now();
+    const olderThan = new Date(now - 24 * 60 * 60 * 1000); // delivered >= 24h ago
+    const newerThan = new Date(now - 7 * 24 * 60 * 60 * 1000); // but <= 7d ago
+
+    let orders: OrderDocument[];
+    try {
+      orders = await this.orderRepository.findDeliveredPendingFeedback({
+        olderThan,
+        newerThan,
+        limit: 100,
+      });
+    } catch (err) {
+      this.logger.warn('feedback_request_query_failed', err);
+      return;
+    }
+
+    if (orders.length === 0) return;
+
+    let sent = 0;
+    for (const order of orders) {
+      const phone = order.shippingAddress?.phone;
+      if (!phone) continue;
+      try {
+        const ok = await this.notificationsService.sendFeedbackRequest(order, phone);
+        // Mark requested even on no-op (duplicate) so we don't re-query it forever.
+        await this.orderRepository.markFeedbackRequested(order._id);
+        if (ok) sent++;
+      } catch (err) {
+        this.logger.warn(`feedback_request_send_failed order=${order._id.toString()}`, err);
+      }
+    }
+
+    if (sent > 0) {
+      this.logger.log(`post_delivery_feedback_requested count=${sent}`);
+    }
   }
 }
