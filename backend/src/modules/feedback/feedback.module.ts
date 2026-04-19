@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Feedback, FeedbackSchema } from './schemas/feedback.schema';
 import { FeedbackService } from './feedback.service';
@@ -9,7 +9,7 @@ import { OrdersModule } from '../orders/orders.module';
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Feedback.name, schema: FeedbackSchema }]),
-    OrdersModule,
+    forwardRef(() => OrdersModule),
   ],
   controllers: [FeedbackController],
   providers: [FeedbackRepository, FeedbackService],
