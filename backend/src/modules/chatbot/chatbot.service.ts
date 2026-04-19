@@ -235,7 +235,7 @@ export class ChatbotService {
     const flow = CHATBOT_FLOWS[currentState];
 
     const buttonId = message.content.buttonId || message.content.listId;
-    const transitionKey = buttonId || this.normalizeInput(inputText);
+    const transitionKey = buttonId || this.mapTextToTransitionKey(currentState, inputText);
 
     // Global transition keys that are valid from any state (rendered after add-to-cart, remove, etc.).
     const globalKeys = new Set(['view_cart', 'continue_shopping']);
@@ -2157,6 +2157,102 @@ export class ChatbotService {
 
   private normalizeInput(input: string): string {
     return input.toLowerCase().trim();
+  }
+
+  /**
+   * Map common free-text replies (e.g. "browse products", "1", "my cart") to the
+   * transition key the current state expects. Needed when 360dialog rejects
+   * interactive buttons and falls back to numbered text — users then reply with
+   * the label or number instead of a button id.
+   */
+  private mapTextToTransitionKey(state: SessionState, raw: string): string {
+    const normalized = this.normalizeInput(raw);
+    if (!normalized) return normalized;
+
+    const aliases: Record<SessionState, Record<string, string>> = {
+      main_menu: {
+        '1': 'browse', 'browse': 'browse', 'browse products': 'browse', 'shop': 'browse', 'products': 'browse',
+        '2': 'cart', 'cart': 'cart', 'my cart': 'cart', 'view cart': 'cart',
+        '3': 'orders', 'orders': 'orders', 'my orders': 'orders', 'order': 'orders', 'track': 'orders',
+        '4': 'account', 'account': 'account', 'my account': 'account', 'profile': 'account',
+        '5': 'faq', 'help': 'faq', 'faq': 'faq', 'help & faq': 'faq', 'help and faq': 'faq',
+        '6': 'support', 'support': 'support', 'agent': 'support', 'human': 'support',
+      },
+      browsing: { back: 'back', more: 'more_products', next: 'more_products' },
+      product_detail: {
+        '1': 'add_cart', 'add': 'add_cart', 'add to cart': 'add_cart',
+        '2': 'buy_now', 'buy': 'buy_now', 'buy now': 'buy_now',
+        back: 'back',
+      },
+      cart: {
+        '1': 'checkout', 'checkout': 'checkout', 'pay': 'checkout', 'order': 'checkout',
+        '2': 'remove', 'remove': 'remove',
+        '3': 'clear', 'clear': 'clear', 'empty': 'clear',
+        continue: 'continue', 'continue shopping': 'continue',
+        back: 'back',
+      },
+      coupon_prompt: {
+        '1': 'coupon_yes', yes: 'coupon_yes', y: 'coupon_yes',
+        '2': 'coupon_no', no: 'coupon_no', n: 'coupon_no', skip: 'coupon_no',
+        back: 'back',
+      },
+      coupon_input: {
+        skip: 'skip_coupon', 'skip coupon': 'skip_coupon',
+        'try again': 'try_coupon_again', retry: 'try_coupon_again',
+        remove: 'remove_coupon', 'remove coupon': 'remove_coupon',
+        back: 'back',
+      },
+      checkout: {
+        '1': 'new_address', 'new address': 'new_address', 'add address': 'new_address',
+        back: 'back',
+      },
+      address_input: { back: 'back' },
+      payment_selection: {
+        '1': 'cod', cod: 'cod', cash: 'cod', 'cash on delivery': 'cod',
+        '2': 'prepaid', prepaid: 'prepaid', online: 'prepaid', pay: 'prepaid', upi: 'prepaid',
+        yes: 'another_yes', no: 'another_no',
+        back: 'back',
+      },
+      order_tracking: {
+        back: 'back', more: 'more_orders',
+      },
+      reorder: {
+        '1': 'confirm', confirm: 'confirm', yes: 'confirm',
+        '2': 'modify', modify: 'modify', edit: 'modify',
+        '3': 'cancel', cancel: 'cancel', no: 'cancel',
+        back: 'back',
+      },
+      faq: { back: 'back', support: 'support', agent: 'support' },
+      support: { menu: 'menu' },
+      account: {
+        '1': 'edit_profile', edit: 'edit_profile', profile: 'edit_profile', 'edit profile': 'edit_profile',
+        '2': 'addresses', addresses: 'addresses', address: 'addresses',
+        '3': 'wallet', wallet: 'wallet',
+        back: 'back',
+      },
+      account_edit: {
+        '1': 'edit_name', name: 'edit_name', 'change name': 'edit_name',
+        '2': 'edit_email', email: 'edit_email', 'change email': 'edit_email',
+        back: 'back',
+      },
+      account_addresses: {
+        '1': 'add_address', add: 'add_address', 'add address': 'add_address',
+        back: 'back',
+      },
+      account_address_edit: {
+        '1': 'set_default', default: 'set_default', 'set default': 'set_default',
+        '2': 'delete_address', delete: 'delete_address', remove: 'delete_address',
+        back: 'back',
+      },
+      wallet: {
+        '1': 'wallet_history', history: 'wallet_history', transactions: 'wallet_history',
+        back: 'back',
+      },
+    };
+
+    const table = aliases[state];
+    if (table && table[normalized]) return table[normalized];
+    return normalized;
   }
 
   private getOrderUserId(order: { user: Types.ObjectId }): string | null {

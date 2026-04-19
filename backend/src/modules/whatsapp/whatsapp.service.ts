@@ -863,6 +863,13 @@ export class WhatsAppService implements OnModuleInit {
         lastFailureReason = interpreted.failureReason;
         lastMetadata = { ...baseMetadata, ...interpreted.metadata };
 
+        // Surface the raw provider response so we can diagnose 360dialog rejections.
+        if (axios.isAxiosError(error)) {
+          this.logger.warn(
+            `whatsapp_send_attempt_failed attempt=${attempt} status=${error.response?.status} type=${input.messageType} body=${JSON.stringify(error.response?.data).slice(0, 1000)}`,
+          );
+        }
+
         const shouldRetry = interpreted.shouldRetry && attempt < this.outboundMaxAttempts;
 
         await this.messageLogRepository.upsertOutboundByIdempotencyKey({
@@ -882,6 +889,9 @@ export class WhatsAppService implements OnModuleInit {
             phone: input.phone,
             messageType: input.messageType,
             failureReason: lastFailureReason,
+            errorCode: lastMetadata.errorCode,
+            errorTitle: lastMetadata.errorTitle,
+            errorDetails: lastMetadata.errorDetails,
             attempt,
           });
           break;
