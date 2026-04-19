@@ -15,10 +15,14 @@ export default function AdminLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { isAuthenticated, user } = useAdminAuthStore();
+  const { isAuthenticated, user, hasHydrated } = useAdminAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
+    // Wait for persisted auth state to rehydrate from localStorage before deciding.
+    // Redirecting during the initial render race creates a login <-> admin loop.
+    if (!hasHydrated) return;
+
     if (!isAuthenticated) {
       router.push('/admin-login');
       return;
@@ -39,9 +43,9 @@ export default function AdminLayout({
         router.replace('/department/delivery');
       }
     }
-  }, [isAuthenticated, user, pathname, router]);
+  }, [hasHydrated, isAuthenticated, user, pathname, router]);
 
-  if (!isAuthenticated || user?.departmentType) {
+  if (!hasHydrated || !isAuthenticated || user?.departmentType) {
     return null;
   }
 

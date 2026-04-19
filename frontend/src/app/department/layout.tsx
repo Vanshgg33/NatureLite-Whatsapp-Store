@@ -6,15 +6,16 @@ import { useAdminAuthStore } from '@/lib/admin-store';
 
 export default function DepartmentLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { isAuthenticated } = useAdminAuthStore();
+  const { isAuthenticated, hasHydrated } = useAdminAuthStore();
 
   useEffect(() => {
+    if (!hasHydrated) return;
     if (!isAuthenticated) {
       router.push('/department-login');
     }
-  }, [isAuthenticated, router]);
+  }, [hasHydrated, isAuthenticated, router]);
 
-  if (!isAuthenticated) {
+  if (!hasHydrated || !isAuthenticated) {
     return null;
   }
 

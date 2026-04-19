@@ -22,23 +22,20 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
   main_menu: {
     state: 'main_menu',
     action: {
-      type: 'list',
+      type: 'buttons',
       content:
-        `Welcome to *O+ Connect* \u2728\n` +
+        `Welcome to *NatureLite Foods* \u2728\n` +
         `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
         `How can we help you today?\n\n` +
+        `Tap a button below, or type:\n` +
+        `\u2022 *account* \u00B7 profile, addresses, wallet\n` +
+        `\u2022 *help* \u00B7 shipping, returns & FAQs\n` +
+        `\u2022 *support* \u00B7 talk to our team\n\n` +
         `_Type *menu* anytime to return here._`,
-      sections: [
-        {
-          title: 'How can we help?',
-          rows: [
-            { id: 'browse', title: 'Browse Products', description: 'Explore categories & discover items' },
-            { id: 'cart', title: 'My Cart', description: 'Review items & proceed to checkout' },
-            { id: 'orders', title: 'My Orders', description: 'Track status & reorder favourites' },
-            { id: 'account', title: 'My Account', description: 'Profile, addresses & wallet' },
-            { id: 'help', title: 'Help & FAQ', description: 'Shipping, returns & support' },
-          ],
-        },
+      buttons: [
+        { id: 'browse', title: 'Browse Products' },
+        { id: 'cart', title: 'My Cart' },
+        { id: 'orders', title: 'My Orders' },
       ],
     },
     transitions: {
@@ -70,7 +67,7 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     state: 'product_detail',
     action: {
       type: 'buttons',
-      content: '',
+      content: 'What would you like to do with this product?',
       buttons: [
         { id: 'add_cart', title: 'Add to Cart' },
         { id: 'buy_now', title: 'Buy Now' },
@@ -87,7 +84,7 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     state: 'cart',
     action: {
       type: 'buttons',
-      content: '',
+      content: 'Your cart — what would you like to do next?',
       buttons: [
         { id: 'checkout', title: 'Checkout' },
         { id: 'remove', title: 'Remove Item' },
@@ -277,7 +274,7 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     state: 'account',
     action: {
       type: 'buttons',
-      content: '',
+      content: 'Manage your account',
       buttons: [
         { id: 'edit_profile', title: 'Edit Profile' },
         { id: 'addresses', title: 'My Addresses' },
@@ -295,7 +292,7 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     state: 'account_edit',
     action: {
       type: 'buttons',
-      content: '',
+      content: 'What would you like to update?',
       buttons: [
         { id: 'edit_name', title: 'Change Name' },
         { id: 'edit_email', title: 'Change Email' },
@@ -327,7 +324,7 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     state: 'account_address_edit',
     action: {
       type: 'buttons',
-      content: '',
+      content: 'What would you like to do with this address?',
       buttons: [
         { id: 'set_default', title: 'Set as Default' },
         { id: 'delete_address', title: 'Delete' },
@@ -344,7 +341,7 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     state: 'wallet',
     action: {
       type: 'buttons',
-      content: '',
+      content: 'Your wallet',
       buttons: [
         { id: 'wallet_history', title: 'Transactions' },
         { id: 'back', title: 'Back' },

@@ -519,6 +519,10 @@ export class WhatsAppService implements OnModuleInit {
       reply: { id: btn.id, title: btn.title.slice(0, 20) },
     }));
 
+    // WhatsApp rejects interactive messages with empty/whitespace body text
+    // (error #100). Supply a minimal fallback so a misconfigured flow can't 400.
+    const safeBody = dto.bodyText?.trim() ? dto.bodyText.slice(0, 1024) : 'Please choose an option:';
+
     const payload = {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
@@ -527,7 +531,7 @@ export class WhatsAppService implements OnModuleInit {
       interactive: {
         type: 'button' as const,
         header: dto.headerText ? { type: 'text' as const, text: dto.headerText } : undefined,
-        body: { text: dto.bodyText },
+        body: { text: safeBody },
         footer: dto.footerText ? { text: dto.footerText } : undefined,
         action: { buttons },
       },
@@ -591,6 +595,9 @@ export class WhatsAppService implements OnModuleInit {
       })),
     }));
 
+    // WhatsApp rejects interactive messages with empty/whitespace body text (error #100).
+    const safeBody = dto.bodyText?.trim() ? dto.bodyText.slice(0, 1024) : 'Please choose an option:';
+
     const payload = {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
@@ -599,7 +606,7 @@ export class WhatsAppService implements OnModuleInit {
       interactive: {
         type: 'list' as const,
         header: dto.headerText ? { type: 'text' as const, text: dto.headerText } : undefined,
-        body: { text: dto.bodyText },
+        body: { text: safeBody },
         footer: dto.footerText ? { text: dto.footerText } : undefined,
         action: {
           button: dto.buttonText.slice(0, 20),
