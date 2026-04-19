@@ -30,7 +30,7 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
         `_Type *menu* anytime to return here._`,
       sections: [
         {
-          title: 'What would you like to do?',
+          title: 'How can we help?',
           rows: [
             { id: 'browse', title: 'Browse Products', description: 'Explore categories & discover items' },
             { id: 'cart', title: 'My Cart', description: 'Review items & proceed to checkout' },
@@ -244,7 +244,7 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
         `Browse common questions or reach out to our team.`,
       sections: [
         {
-          title: 'Frequently Asked Questions',
+          title: 'Common questions',
           rows: [
             { id: 'faq_shipping', title: 'Shipping & Delivery', description: 'Delivery times, costs & coverage' },
             { id: 'faq_returns', title: 'Returns & Refunds', description: 'Return policy & refund timelines' },

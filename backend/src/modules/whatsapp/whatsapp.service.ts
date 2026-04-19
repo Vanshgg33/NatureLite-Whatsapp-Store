@@ -579,8 +579,11 @@ export class WhatsAppService implements OnModuleInit {
       return null;
     }
 
+    // WhatsApp interactive-list limits (provider-enforced):
+    //   section.title  ≤ 24 chars   row.title       ≤ 24 chars
+    //   row.description ≤ 72 chars  action.button   ≤ 20 chars
     const sections = dto.sections.map((section) => ({
-      title: section.title,
+      title: section.title.slice(0, 24),
       rows: section.rows.slice(0, 10).map((row) => ({
         id: row.id,
         title: row.title.slice(0, 24),
