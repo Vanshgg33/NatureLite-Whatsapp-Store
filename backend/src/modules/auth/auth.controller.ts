@@ -38,12 +38,18 @@ export class AuthController {
     private readonly configService: ConfigService,
   ) {}
 
-  private setAuthCookies(res: Response, accessToken: string, refreshToken: string): void {
-    const isProduction = this.configService.get<string>('app.nodeEnv') === 'production';
+  private isCrossSiteDeploy(): boolean {
+    // Staging and production frontends are served over https on a different Render
+    // subdomain (cross-site for cookies). Local dev is http://localhost, same-site.
+    // NODE_ENV alone isn't enough — sandbox runs as NODE_ENV=staging but still needs
+    // SameSite=None + Secure=true or the browser drops the cookie.
+    const frontendUrl = this.configService.get<string>('frontendUrl') || '';
+    return frontendUrl.split(',').some((u) => u.trim().startsWith('https://'));
+  }
 
-    // Frontend and backend live on different Render subdomains → cross-site request.
-    // Browsers only attach cookies cross-site when SameSite=None + Secure=true.
-    // In local dev (http) we keep 'lax' since Secure=true would block http cookies entirely.
+  private setAuthCookies(res: Response, accessToken: string, refreshToken: string): void {
+    const crossSite = this.isCrossSiteDeploy();
+
     const cookieOptions: {
       httpOnly: true;
       secure: boolean;
@@ -52,8 +58,8 @@ export class AuthController {
       path: string;
     } = {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? 'none' : 'lax',
+      secure: crossSite,
+      sameSite: crossSite ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       path: '/',
     };
@@ -63,11 +69,11 @@ export class AuthController {
   }
 
   private clearAuthCookie(res: Response): void {
-    const isProduction = this.configService.get<string>('app.nodeEnv') === 'production';
+    const crossSite = this.isCrossSiteDeploy();
     const clearOptions = {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: (isProduction ? 'none' : 'lax') as 'none' | 'lax',
+      secure: crossSite,
+      sameSite: (crossSite ? 'none' : 'lax') as 'none' | 'lax',
       path: '/',
     };
 

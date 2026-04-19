@@ -125,6 +125,121 @@ export class ChatbotService {
     return order.status.replace(/_/g, ' ');
   }
 
+  /** Short date+time stamp (e.g. "Sat, 20 Apr · 2:14 PM") for tracking timeline. */
+  private formatStepTimestamp(d?: Date | null): string {
+    if (!d) return '';
+    const date = new Date(d);
+    const datePart = date.toLocaleDateString('en-IN', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    });
+    const timePart = date.toLocaleTimeString('en-IN', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+    return `${datePart} \u00B7 ${timePart}`;
+  }
+
+  /**
+   * Zomato-style vertical tracker. Uses check/current/pending glyphs and timestamps
+   * from order lifecycle fields. Cancelled orders short-circuit to a red layout.
+   */
+  private buildOrderTrackingMessage(order: any): string {
+    const DIVIDER =
+      '\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500';
+    const statusLabel = this.formatOrderStatusForCustomer(order);
+
+    if (order.status === 'cancelled') {
+      const when = this.formatStepTimestamp(order.cancelledAt || order.updatedAt);
+      const reasonLine = order.cancelReason ? `\n\nReason: _${order.cancelReason}_` : '';
+      return (
+        `\u274C  *Order ${order.orderNumber}*\n` +
+        `${DIVIDER}\n\n` +
+        `Status \u00B7 *Cancelled*\n` +
+        (when ? `When \u00B7 _${when}_\n` : '') +
+        reasonLine +
+        `\n\n` +
+        `${DIVIDER}\n` +
+        `Items \u00B7 *${order.items.length}*\n` +
+        `*Total  ${this.formatCurrency(order.total)}*`
+      );
+    }
+
+    // Build timeline stages. Each stage has a status: done / current / pending.
+    type Stage = { icon: string; label: string; at?: Date | null };
+    const current = (() => {
+      if (order.status === 'delivered') return 5;
+      if (order.status === 'out_for_delivery') return 4;
+      if (order.status === 'preparing' && order.packedAt) return 3;
+      if (order.status === 'preparing' || order.status === 'confirmed') return 2;
+      return 1;
+    })();
+
+    const stages: Stage[] = [
+      { icon: '\uD83D\uDCDD', label: 'Order Placed', at: order.createdAt },
+      { icon: '\u2705', label: 'Confirmed', at: null },
+      { icon: '\uD83D\uDCE6', label: 'Packed & Ready', at: order.packedAt },
+      { icon: '\uD83D\uDEF5', label: 'Out for Delivery', at: order.outForDeliveryAt },
+      { icon: '\uD83C\uDFE0', label: 'Delivered', at: order.deliveredAt },
+    ];
+
+    const timeline = stages
+      .map((stage, i) => {
+        const idx = i + 1;
+        const glyph =
+          idx < current ? '\u2705' : idx === current ? '\uD83D\uDFE0' : '\u26AA';
+        const weight = idx === current ? `*${stage.label}*` : stage.label;
+        const whenLine = stage.at
+          ? `\n     _${this.formatStepTimestamp(stage.at)}_`
+          : idx === current
+            ? `\n     _in progress_`
+            : `\n     _pending_`;
+        return `${glyph}  ${weight}${whenLine}`;
+      })
+      .join('\n\n');
+
+    const etaLine = order.expectedDeliveryDate
+      ? `ETA \u00B7 *${new Date(order.expectedDeliveryDate).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}*\n`
+      : '';
+
+    const courierLines: string[] = [];
+    if (order.courierName) courierLines.push(`\uD83D\uDEF5  Courier \u00B7 *${order.courierName}*`);
+    if (order.awbNumber) courierLines.push(`\uD83D\uDCE6  AWB \u00B7 *${order.awbNumber}*`);
+    if (order.trackingUrl) courierLines.push(`\uD83D\uDD17  ${order.trackingUrl}`);
+    const courierBlock = courierLines.length
+      ? `\n${DIVIDER}\n${courierLines.join('\n')}\n`
+      : '';
+
+    const itemsPreview = (order.items as any[])
+      .slice(0, 4)
+      .map((it: any) => `\u2022  ${it.name}  \u00D7${it.quantity}`)
+      .join('\n');
+    const itemsMore =
+      order.items.length > 4 ? `\n_\u2026 and ${order.items.length - 4} more_` : '';
+
+    const headerIcon =
+      order.status === 'delivered'
+        ? '\u2705'
+        : order.status === 'out_for_delivery'
+          ? '\uD83D\uDEF5'
+          : '\uD83D\uDED2';
+
+    return (
+      `${headerIcon}  *Order ${order.orderNumber}*\n` +
+      `${DIVIDER}\n\n` +
+      `Status \u00B7 *${statusLabel}*\n` +
+      etaLine +
+      `\n${DIVIDER}  *Journey*  ${DIVIDER}\n\n` +
+      `${timeline}\n` +
+      courierBlock +
+      `\n${DIVIDER}  *Items (${order.items.length})*  ${DIVIDER}\n` +
+      `${itemsPreview}${itemsMore}\n\n` +
+      `*Total   ${this.formatCurrency(order.total)}*`
+    );
+  }
+
   private async goBack(session: ChatSessionDocument, phone: string): Promise<void> {
     const prev = session.previousState;
     if (!prev) {
@@ -550,13 +665,13 @@ export class ChatbotService {
       await this.whatsappService.sendInteractiveButtons({
         phone,
         bodyText:
-          `*Added to Cart* \u2713\n` +
-          `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
-          `${product.name}\n` +
-          `Cart items: *${cart.itemCount}*`,
+          `\u2705  *Added to Cart*\n` +
+          `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
+          `\uD83D\uDCE6  ${product.name}\n` +
+          `\uD83D\uDED2  Cart: *${cart.itemCount} item${cart.itemCount === 1 ? '' : 's'}*  \u00B7  ${this.formatCurrency(cart.total)}`,
         buttons: [
           { id: 'view_cart', title: 'View Cart' },
-          { id: 'continue_shopping', title: 'Continue Shopping' },
+          { id: 'continue_shopping', title: 'Keep Shopping' },
         ],
       });
       return;
@@ -626,51 +741,47 @@ export class ChatbotService {
       return;
     }
 
-    if (input === 'remove') {
-      await this.sendRemoveItemList(phone, session);
+    if (input === 'manage' || input === 'remove') {
+      await this.sendManageCartList(phone, session);
       return;
     }
 
-    if (input.startsWith('rm_')) {
-      const idxStr = input.replace('rm_', '');
-      const idx = Number.parseInt(idxStr, 10);
+    // Select a specific item to manage (list row) → open its +/-/remove panel.
+    if (input.startsWith('mi_')) {
+      const idx = Number.parseInt(input.replace('mi_', ''), 10);
       if (!Number.isFinite(idx) || idx < 0) {
-        await this.sendCartSummary(phone, session);
+        await this.sendManageCartList(phone, session);
         return;
       }
-      const cart = await this.cartService.getCart(session.user.toString());
-      const previousCoupon = cart.couponCode;
-      const item = cart.items[idx];
-      if (!item) {
-        await this.sendCartSummary(phone, session);
-        return;
-      }
-      await this.cartService.removeItem(
-        session.user.toString(),
-        item.product.id,
-        item.variantSku,
-      );
-      const updated = await this.cartService.getCart(session.user.toString());
-      if (previousCoupon && !updated.couponCode) {
-        await this.whatsappService.sendTextMessage({
-          phone,
-          message: '_Coupon removed \u2014 cart was updated._',
-        });
-      }
-      await this.whatsappService.sendInteractiveButtons({
-        phone,
-        bodyText:
-          `*Item Removed*\n` +
-          `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
-          `${item.product.name}\n` +
-          `Items remaining: *${updated.itemCount}*`,
-        buttons: [
-          { id: 'view_cart', title: 'View Cart' },
-          { id: 'continue_shopping', title: 'Continue Shopping' },
-        ],
-      });
+      await this.sendCartItemManage(phone, session, idx);
       return;
     }
+
+    // Increase quantity by 1
+    if (input.startsWith('inc_')) {
+      const idx = Number.parseInt(input.replace('inc_', ''), 10);
+      await this.adjustCartItemQuantity(phone, session, idx, +1);
+      return;
+    }
+
+    // Decrease quantity by 1 (removes if goes to 0)
+    if (input.startsWith('dec_')) {
+      const idx = Number.parseInt(input.replace('dec_', ''), 10);
+      await this.adjustCartItemQuantity(phone, session, idx, -1);
+      return;
+    }
+
+    // Delete item
+    if (input.startsWith('del_') || input.startsWith('rm_')) {
+      const idx = Number.parseInt(input.replace(/^(del_|rm_)/, ''), 10);
+      await this.removeCartItemByIndex(phone, session, idx);
+      return;
+    }
+
+    // Typed shortcuts: "+<n> <name>", "-<n> <name>", "set <name> <n>",
+    // "remove <name>", "delete <name>".
+    const typed = await this.tryHandleCartTypedCommand(phone, session, input);
+    if (typed) return;
 
     if (input === 'back') {
       await this.goBack(session, phone);
@@ -678,6 +789,162 @@ export class ChatbotService {
     }
 
     await this.sendCartSummary(phone, session);
+  }
+
+  /** Apply delta (+1 / -1) to item at index; if new qty <= 0, removes the item. */
+  private async adjustCartItemQuantity(
+    phone: string,
+    session: ChatSessionDocument,
+    idx: number,
+    delta: number,
+  ): Promise<void> {
+    if (!session.user || !Number.isFinite(idx) || idx < 0) {
+      await this.sendCartSummary(phone, session);
+      return;
+    }
+    const cart = await this.cartService.getCart(session.user.toString());
+    const item = cart.items[idx];
+    if (!item) {
+      await this.sendCartSummary(phone, session);
+      return;
+    }
+    const nextQty = item.quantity + delta;
+    if (nextQty <= 0) {
+      await this.removeCartItemByIndex(phone, session, idx);
+      return;
+    }
+    try {
+      await this.cartService.updateItemQuantity(
+        session.user.toString(),
+        item.product.id,
+        { quantity: nextQty },
+        item.variantSku,
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '';
+      if (/stock/i.test(msg)) {
+        await this.whatsappService.sendTextMessage({
+          phone,
+          message: `_Only ${item.quantity} in stock — cannot increase further._`,
+        });
+        await this.sendCartItemManage(phone, session, idx);
+        return;
+      }
+      throw e;
+    }
+    // Re-render the item panel with new quantity (same index still valid — no list reorder).
+    await this.sendCartItemManage(phone, session, idx);
+  }
+
+  /** Remove item at idx; notifies if a coupon got invalidated; returns to cart summary. */
+  private async removeCartItemByIndex(
+    phone: string,
+    session: ChatSessionDocument,
+    idx: number,
+  ): Promise<void> {
+    if (!session.user || !Number.isFinite(idx) || idx < 0) {
+      await this.sendCartSummary(phone, session);
+      return;
+    }
+    const cart = await this.cartService.getCart(session.user.toString());
+    const previousCoupon = cart.couponCode;
+    const item = cart.items[idx];
+    if (!item) {
+      await this.sendCartSummary(phone, session);
+      return;
+    }
+    await this.cartService.removeItem(
+      session.user.toString(),
+      item.product.id,
+      item.variantSku,
+    );
+    const updated = await this.cartService.getCart(session.user.toString());
+    if (previousCoupon && !updated.couponCode) {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: '_Coupon removed \u2014 cart was updated._',
+      });
+    }
+    await this.whatsappService.sendTextMessage({
+      phone,
+      message: `\uD83D\uDDD1\uFE0F  *Removed* ${item.product.name}`,
+    });
+    await this.sendCartSummary(phone, session);
+  }
+
+  /** Parse free-text cart commands: set/+/-/remove/delete. Returns true if handled. */
+  private async tryHandleCartTypedCommand(
+    phone: string,
+    session: ChatSessionDocument,
+    rawInput: string,
+  ): Promise<boolean> {
+    if (!session.user) return false;
+    const text = (rawInput || '').trim().toLowerCase();
+    if (!text) return false;
+
+    // set <name> <n>
+    const setMatch = text.match(/^set\s+(.+?)\s+(\d{1,3})$/);
+    // remove <name> / delete <name>
+    const removeMatch = text.match(/^(?:remove|delete|rm|del)\s+(.+)$/);
+    // +<n> <name> OR +<name>
+    const incMatch = text.match(/^\+\s*(\d{0,3})\s*(.+)$/);
+    // -<n> <name> OR -<name>
+    const decMatch = text.match(/^-\s*(\d{0,3})\s*(.+)$/);
+
+    let name = '';
+    let explicitQty: number | null = null;
+    let action: 'set' | 'remove' | 'inc' | 'dec' | null = null;
+
+    if (setMatch) {
+      name = setMatch[1];
+      explicitQty = Number.parseInt(setMatch[2], 10);
+      action = 'set';
+    } else if (removeMatch) {
+      name = removeMatch[1];
+      action = 'remove';
+    } else if (incMatch) {
+      name = incMatch[2];
+      explicitQty = incMatch[1] ? Number.parseInt(incMatch[1], 10) : 1;
+      action = 'inc';
+    } else if (decMatch) {
+      name = decMatch[2];
+      explicitQty = decMatch[1] ? Number.parseInt(decMatch[1], 10) : 1;
+      action = 'dec';
+    }
+
+    if (!action || !name) return false;
+
+    const cart = await this.cartService.getCart(session.user.toString());
+    const idx = cart.items.findIndex((it) =>
+      it.product.name.toLowerCase().includes(name.trim()),
+    );
+    if (idx < 0) {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: `_No cart item matches "${name.trim()}"._`,
+      });
+      await this.sendCartSummary(phone, session);
+      return true;
+    }
+
+    if (action === 'remove') {
+      await this.removeCartItemByIndex(phone, session, idx);
+      return true;
+    }
+    if (action === 'set' && Number.isFinite(explicitQty!) && explicitQty! > 0) {
+      const current = cart.items[idx].quantity;
+      await this.adjustCartItemQuantity(phone, session, idx, explicitQty! - current);
+      return true;
+    }
+    if (action === 'inc') {
+      await this.adjustCartItemQuantity(phone, session, idx, +(explicitQty || 1));
+      return true;
+    }
+    if (action === 'dec') {
+      await this.adjustCartItemQuantity(phone, session, idx, -(explicitQty || 1));
+      return true;
+    }
+    return false;
   }
 
   private async handleCouponPrompt(
@@ -1153,14 +1420,7 @@ export class ChatbotService {
         return;
       }
 
-      const message =
-        `*Order ${order.orderNumber}*\n` +
-        `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
-        `Status     *${this.formatOrderStatusForCustomer(order)}*\n` +
-        `Total       *${this.formatCurrency(order.total)}*\n` +
-        `Items      *${order.items.length}*\n` +
-        (order.awbNumber ? `Tracking  *${order.awbNumber}*\n` : '') +
-        (order.expectedDeliveryDate ? `Expected  *${order.expectedDeliveryDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}*\n` : '');
+      const message = this.buildOrderTrackingMessage(order);
 
       await this.whatsappService.sendInteractiveButtons({
         phone,
@@ -1888,22 +2148,26 @@ export class ChatbotService {
   ): Promise<void> {
     const product = await this.productsService.findById(productId);
 
-    const stockLabel =
-      product.trackStock === true
-        ? (product.stock ?? 0) > 0
-          ? 'In Stock'
-          : 'Out of Stock'
-        : 'Available';
+    const inStock = product.trackStock !== true || (product.stock ?? 0) > 0;
+    const stockBadge = product.trackStock === true
+      ? inStock
+        ? '\uD83D\uDFE2 In Stock'
+        : '\uD83D\uDD34 Out of Stock'
+      : '\uD83D\uDFE2 Available';
 
     const priceDisplay = product.compareAtPrice
       ? `~${this.formatCurrency(product.compareAtPrice)}~  *${this.formatCurrency(product.price)}*`
       : `*${this.formatCurrency(product.price)}*`;
 
+    const savings = product.compareAtPrice && product.compareAtPrice > product.price
+      ? `\n\uD83C\uDFF7\uFE0F  Save ${this.formatCurrency(product.compareAtPrice - product.price)}`
+      : '';
+
     const caption =
-      `*${product.name}*\n` +
-      `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
-      `Price   ${priceDisplay}\n` +
-      `Stock   ${stockLabel}\n\n` +
+      `\u2728  *${product.name}*\n` +
+      `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
+      `\uD83D\uDCB0  ${priceDisplay}${savings}\n` +
+      `${stockBadge}\n\n` +
       `${(product.description || '').toString().slice(0, 600)}`;
 
     if (product.images[0]) {
@@ -1919,7 +2183,7 @@ export class ChatbotService {
       phone,
       bodyText:
         product.images[0]
-          ? `*${product.name}*  \u00B7  ${this.formatCurrency(product.price)}  \u00B7  ${stockLabel}`
+          ? `*${product.name}*  \u00B7  ${this.formatCurrency(product.price)}  \u00B7  ${stockBadge}`
           : caption,
       buttons: [
         { id: 'add_cart', title: 'Add to Cart' },
@@ -1934,8 +2198,7 @@ export class ChatbotService {
       await this.whatsappService.sendTextMessage({
         phone,
         message:
-          `*Your Cart*\n` +
-          `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
+          `\uD83D\uDED2  *Your Cart*\n\n` +
           `Your cart is empty. Start browsing to add items.`,
       });
       return;
@@ -1947,9 +2210,9 @@ export class ChatbotService {
       await this.whatsappService.sendInteractiveButtons({
         phone,
         bodyText:
-          `*Your Cart*\n` +
-          `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
-          `Your cart is empty. Start browsing to add items.`,
+          `\uD83D\uDED2  *Your Cart*\n\n` +
+          `Your cart is empty.\n` +
+          `Tap below to browse our products and fill it up.`,
         buttons: [{ id: 'continue_shopping', title: 'Browse Products' }],
       });
       return;
@@ -1957,32 +2220,42 @@ export class ChatbotService {
 
     const itemList = cart.items
       .map((item, idx) =>
-        `${idx + 1}.  ${item.product.name}  \u00D7${item.quantity}` +
-        `\n      ${this.formatCurrency(item.total)}`,
+        `*${idx + 1}.*  ${item.product.name}\n` +
+        `     \u2003Qty *\u00D7${item.quantity}*  \u00B7  ${this.formatCurrency(item.total)}`,
       )
       .join('\n\n');
 
+    const footerLines: string[] = [];
+    footerLines.push(`Subtotal\u2003${this.formatCurrency(cart.subtotal)}`);
+    if (cart.discount > 0) {
+      footerLines.push(
+        `Discount\u2003\u2212${this.formatCurrency(cart.discount)}` +
+          (cart.couponCode ? `  \uD83C\uDFF7\uFE0F ${cart.couponCode}` : ''),
+      );
+    }
+    footerLines.push(`*Total\u2003\u2003${this.formatCurrency(cart.total)}*`);
+
     const message =
-      `*Your Cart*\n` +
-      `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
+      `\uD83D\uDED2  *Your Cart* \u00B7 ${cart.itemCount} item${cart.itemCount === 1 ? '' : 's'}\n` +
+      `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
       `${itemList}\n\n` +
-      `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n` +
-      `Subtotal   ${this.formatCurrency(cart.subtotal)}\n` +
-      (cart.discount > 0 ? `Discount   \u2212${this.formatCurrency(cart.discount)}\n` : '') +
-      `*Total       ${this.formatCurrency(cart.total)}*`;
+      `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n` +
+      `${footerLines.join('\n')}\n\n` +
+      `_Tip: type *+1 ghee* or *remove ghee* to edit quickly._`;
 
     await this.whatsappService.sendInteractiveButtons({
       phone,
       bodyText: message,
       buttons: [
         { id: 'checkout', title: 'Checkout' },
-        { id: 'remove', title: 'Remove Item' },
-        { id: 'back', title: 'Back' },
+        { id: 'manage', title: 'Manage Items' },
+        { id: 'continue_shopping', title: 'Keep Shopping' },
       ],
     });
   }
 
-  private async sendRemoveItemList(phone: string, session: ChatSessionDocument): Promise<void> {
+  /** Item list for the "Manage Items" flow — user picks an item to adjust. */
+  private async sendManageCartList(phone: string, session: ChatSessionDocument): Promise<void> {
     if (!session.user) return;
     const cart = await this.cartService.getCart(session.user.toString());
     if (cart.items.length === 0) {
@@ -1991,24 +2264,58 @@ export class ChatbotService {
     }
 
     const itemRows = cart.items.slice(0, 8).map((item, idx) => ({
-      id: `rm_${idx}`,
-      title: `${item.product.name}`.slice(0, 24),
+      id: `mi_${idx}`,
+      title: item.product.name.slice(0, 24),
       description: `Qty ${item.quantity}  \u00B7  ${this.formatCurrency(item.total)}`,
     }));
+
     const rows = [
       ...itemRows,
       { id: 'clear', title: 'Clear Entire Cart', description: 'Remove all items at once' },
-      { id: 'back', title: 'Back', description: 'Return to cart' },
+      { id: 'back', title: 'Back to Cart', description: 'Return to cart summary' },
     ];
 
     await this.whatsappService.sendInteractiveList({
       phone,
       bodyText:
-        `*Remove Item*\n` +
-        `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
-        `Select an item to remove from your cart.`,
-      buttonText: 'Select Item',
+        `\uD83D\uDEE0\uFE0F  *Manage Cart*\n\n` +
+        `Pick an item to change quantity or remove it.`,
+      buttonText: 'Choose Item',
       sections: [{ title: 'Cart Items', rows }],
+    });
+  }
+
+  /** Per-item panel with − / + / Remove controls. */
+  private async sendCartItemManage(
+    phone: string,
+    session: ChatSessionDocument,
+    idx: number,
+  ): Promise<void> {
+    if (!session.user) return;
+    const cart = await this.cartService.getCart(session.user.toString());
+    const item = cart.items[idx];
+    if (!item) {
+      await this.sendCartSummary(phone, session);
+      return;
+    }
+
+    const unitPrice = item.quantity > 0 ? item.total / item.quantity : item.price;
+    const body =
+      `\uD83D\uDCE6  *${item.product.name}*\n` +
+      `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
+      `Unit price\u2003${this.formatCurrency(unitPrice)}\n` +
+      `Quantity\u2003\u2003*\u00D7${item.quantity}*\n` +
+      `Line total\u2003*${this.formatCurrency(item.total)}*\n\n` +
+      `Tap to adjust, or type *set ${item.product.name.split(' ')[0].toLowerCase()} 3* to set a specific quantity.`;
+
+    await this.whatsappService.sendInteractiveButtons({
+      phone,
+      bodyText: body,
+      buttons: [
+        { id: `dec_${idx}`, title: '\u2212 Decrease' },
+        { id: `inc_${idx}`, title: '+ Increase' },
+        { id: `del_${idx}`, title: 'Remove' },
+      ],
     });
   }
 
@@ -2370,10 +2677,16 @@ export class ChatbotService {
       case 'cart':
         return (
           key === 'checkout' ||
+          key === 'manage' ||
           key === 'remove' ||
           key === 'clear' ||
           key === 'back' ||
           key === 'continue' ||
+          key === 'continue_shopping' ||
+          key.startsWith('mi_') ||
+          key.startsWith('inc_') ||
+          key.startsWith('dec_') ||
+          key.startsWith('del_') ||
           key.startsWith('rm_')
         );
       case 'coupon_prompt':

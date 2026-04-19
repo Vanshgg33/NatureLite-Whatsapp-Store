@@ -87,12 +87,13 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
       content: 'Your cart — what would you like to do next?',
       buttons: [
         { id: 'checkout', title: 'Checkout' },
-        { id: 'remove', title: 'Remove Item' },
-        { id: 'clear', title: 'Clear Cart' },
+        { id: 'manage', title: 'Manage Items' },
+        { id: 'continue_shopping', title: 'Keep Shopping' },
       ],
     },
     transitions: {
       checkout: 'checkout',
+      manage: 'cart',
       continue: 'browsing',
       clear: 'cart',
       back: 'main_menu',
