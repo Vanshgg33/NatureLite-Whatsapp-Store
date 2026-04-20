@@ -22,6 +22,8 @@ import {
   SendInteractiveButtonDto,
   SendInteractiveListDto,
   SendMediaMessageDto,
+  SendSingleProductDto,
+  SendProductListDto,
   UpdateContactNameDto,
   WebhookPayload,
   FlatWebhookPayload,
@@ -228,6 +230,26 @@ export class WhatsAppController implements OnModuleDestroy {
     @Body() dto: SendMediaMessageDto,
   ): Promise<{ messageId: string | null }> {
     const messageId = await this.whatsappService.sendMediaMessage(dto);
+    return { messageId };
+  }
+
+  @Post('send/product')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  async sendSingleProduct(
+    @Body() dto: SendSingleProductDto,
+  ): Promise<{ messageId: string | null }> {
+    const messageId = await this.whatsappService.sendSingleProduct(dto);
+    return { messageId };
+  }
+
+  @Post('send/product-list')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  async sendProductList(
+    @Body() dto: SendProductListDto,
+  ): Promise<{ messageId: string | null }> {
+    const messageId = await this.whatsappService.sendProductList(dto);
     return { messageId };
   }
 

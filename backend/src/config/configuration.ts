@@ -59,6 +59,17 @@ export interface SmtpConfig {
   from: string;
 }
 
+export interface MetaCatalogConfig {
+  /** Meta Commerce catalog id (16-digit number from Commerce Manager URL). */
+  catalogId: string;
+  /** Long-lived system-user token with catalog_management scope. */
+  graphToken: string;
+  /** Graph API version used for all catalog calls. */
+  apiVersion: string;
+  /** When false the sync + outbound catalog messages are no-op (safe default). */
+  enabled: boolean;
+}
+
 export interface Configuration {
   app: AppConfig;
   database: DatabaseConfig;
@@ -71,6 +82,7 @@ export interface Configuration {
   razorpayX?: RazorpayXConfig;
   smtp: SmtpConfig;
   frontendUrl: string;
+  metaCatalog: MetaCatalogConfig;
 }
 
 export default (): Configuration => ({
@@ -132,4 +144,12 @@ export default (): Configuration => ({
   },
   // Frontend URL used for CORS/CSRF checks. Must be set explicitly in env.
   frontendUrl: process.env.FRONTEND_URL || '',
+  metaCatalog: {
+    catalogId: process.env.META_CATALOG_ID || '',
+    graphToken: process.env.META_GRAPH_TOKEN || '',
+    apiVersion: process.env.META_GRAPH_API_VERSION || 'v19.0',
+    // Default off — Phase 5 flips it on per-environment.
+    enabled:
+      (process.env.WA_CATALOG_ENABLED || '').trim().toLowerCase() === 'true',
+  },
 });

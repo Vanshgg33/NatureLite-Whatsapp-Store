@@ -12,6 +12,7 @@ import { isValidObjectIdString, parseObjectId } from '../../common/utils/objecti
 import { StoreStockService } from '../store-stock/store-stock.service';
 import { StoresService } from '../stores/stores.service';
 import { ProductRepository } from './repositories/product.repository';
+import { MetaCatalogService } from '../meta-catalog/meta-catalog.service';
 
 @Injectable()
 export class ProductsService implements OnModuleInit {
@@ -21,6 +22,7 @@ export class ProductsService implements OnModuleInit {
     private readonly productRepository: ProductRepository,
     private readonly storeStockService: StoreStockService,
     private readonly storesService: StoresService,
+    private readonly metaCatalog: MetaCatalogService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -80,6 +82,7 @@ export class ProductsService implements OnModuleInit {
       this.logger.error(`Failed to initialize StoreStock for product ${saved.name}: ${(error as Error).message}`);
     }
 
+    this.metaCatalog.syncProduct(saved as Product);
     return saved as Product;
   }
 
@@ -170,6 +173,7 @@ export class ProductsService implements OnModuleInit {
     if (!product) {
       throw new NotFoundException('Product not found');
     }
+    this.metaCatalog.syncProduct(product as Product);
     return product as Product;
   }
 
@@ -191,7 +195,9 @@ export class ProductsService implements OnModuleInit {
       product.stock = dto.stock;
     }
 
-    return product.save() as Promise<Product>;
+    const saved = await product.save();
+    this.metaCatalog.syncProduct(saved as Product);
+    return saved as Product;
   }
 
   async decrementStock(
@@ -241,6 +247,7 @@ export class ProductsService implements OnModuleInit {
     if (deleted === 0) {
       throw new NotFoundException('Product not found');
     }
+    this.metaCatalog.deleteProduct(id);
   }
 
   private generateSlug(name: string): string {

@@ -9,7 +9,8 @@ export type AnalyticsEvent =
   | 'chatbot.order_completed'
   | 'chatbot.product_viewed'
   | 'chatbot.item_added_to_cart'
-  | 'chatbot.reorder_applied';
+  | 'chatbot.reorder_applied'
+  | 'chatbot.wa_cart_submitted';
 
 @Injectable()
 export class ChatbotAnalyticsService {

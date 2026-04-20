@@ -11,11 +11,13 @@ import {
   SendInteractiveButtonDto,
   SendInteractiveListDto,
   SendMediaMessageDto,
+  SendSingleProductDto,
+  SendProductListDto,
   WebhookPayload,
   FlatWebhookPayload,
   WhatsAppMessage,
 } from './dto/whatsapp.dto';
-import { WhatsAppConfig } from '../../config/configuration';
+import { WhatsAppConfig, MetaCatalogConfig } from '../../config/configuration';
 import { MessageLogMetadata, MessageFinalStatus } from './schemas/message-log.schema';
 
 interface WhatsAppApiResponse {
@@ -42,6 +44,7 @@ export class WhatsAppService implements OnModuleInit {
   private readonly logger = new Logger(WhatsAppService.name);
   private readonly httpClient: AxiosInstance;
   private readonly config: WhatsAppConfig;
+  private readonly metaCatalogConfig: MetaCatalogConfig;
   private readonly nodeEnv: string;
   private readonly is360DialogProvider: boolean;
   private readonly is360DialogSandbox: boolean;
@@ -54,6 +57,12 @@ export class WhatsAppService implements OnModuleInit {
   ) {
     this.nodeEnv = this.configService.get<string>('app.nodeEnv') || 'development';
     this.config = this.configService.get<WhatsAppConfig>('whatsapp')!;
+    this.metaCatalogConfig = this.configService.get<MetaCatalogConfig>('metaCatalog') ?? {
+      catalogId: '',
+      graphToken: '',
+      apiVersion: 'v19.0',
+      enabled: false,
+    };
     this.is360DialogSandbox = this.config.provider === '360dialog_sandbox';
     this.is360DialogProvider =
       this.config.provider === '360dialog' ||
@@ -376,6 +385,31 @@ export class WhatsAppService implements OnModuleInit {
         }
         break;
 
+      case 'order':
+        // Native WhatsApp cart submission from a product_list / product message.
+        // product_items carries retailer_ids + quantities + the price the customer
+        // saw in the catalog. Treat item_price as informational — recompute server-side.
+        if (msg.order) {
+          const rawItems = Array.isArray(msg.order.product_items) ? msg.order.product_items : [];
+          const items = rawItems
+            .filter((it) => it?.product_retailer_id && Number.isFinite(it.quantity) && it.quantity > 0)
+            .map((it) => ({
+              productRetailerId: it.product_retailer_id,
+              quantity: Math.max(1, Math.min(Math.floor(it.quantity), 99)),
+              itemPrice: Number(it.item_price) || 0,
+              currency: it.currency || 'INR',
+            }));
+          if (items.length === 0) return null;
+          baseMessage.content.order = {
+            catalogId: msg.order.catalog_id || '',
+            text: msg.order.text,
+            items,
+          };
+        } else {
+          return null;
+        }
+        break;
+
       default:
         return null;
     }
@@ -667,6 +701,177 @@ export class WhatsAppService implements OnModuleInit {
     }
 
     return messageId;
+  }
+
+  /**
+   * Native WhatsApp single-product catalog card. Customer sees the product
+   * image, price, and a "View" button that opens the native product detail
+   * UI (swipeable images, quantity stepper, Add-to-cart). Requires:
+   *   - META_CATALOG_ID provisioned
+   *   - The product synced to that catalog (Phase 1)
+   *   - The WABA linked to the catalog in Meta Commerce Manager
+   */
+  async sendSingleProduct(dto: SendSingleProductDto): Promise<string | null> {
+    const phone = this.normalizePhone(dto.phone);
+    const idempotencyKey = dto.meta?.idempotencyKey;
+    const content: WhatsAppMessage['content'] = {
+      text: dto.bodyText,
+      catalogProductId: dto.productRetailerId,
+    };
+
+    if (!phone) {
+      await this.logFinalOutboundFailure({
+        phone: dto.phone,
+        messageType: 'interactive',
+        content,
+        idempotencyKey,
+        failureReason: 'invalid_phone',
+        metadata: { idempotencyKey, isInvalidPhone: true, provider: this.getProviderTag() },
+      });
+      return null;
+    }
+
+    const catalogId = (dto.catalogId || this.metaCatalogConfig.catalogId || '').trim();
+    if (!catalogId) {
+      this.logger.warn('sendSingleProduct skipped: no META_CATALOG_ID configured');
+      await this.logFinalOutboundFailure({
+        phone,
+        messageType: 'interactive',
+        content,
+        idempotencyKey,
+        failureReason: 'missing_catalog_id',
+        metadata: { idempotencyKey, provider: this.getProviderTag() },
+      });
+      return null;
+    }
+
+    const safeBody = dto.bodyText?.trim()
+      ? dto.bodyText.slice(0, 1024)
+      : 'View this product:';
+
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: phone,
+      type: 'interactive' as const,
+      interactive: {
+        type: 'product' as const,
+        body: { text: safeBody },
+        footer: dto.footerText ? { text: dto.footerText.slice(0, 60) } : undefined,
+        action: {
+          catalog_id: catalogId,
+          product_retailer_id: dto.productRetailerId,
+        },
+      },
+    };
+
+    return this.sendOutboundWithRetry({
+      phone,
+      messageType: 'interactive',
+      content,
+      idempotencyKey,
+      payload,
+    });
+  }
+
+  /**
+   * Native WhatsApp product list — up to 30 products across 10 sections in a
+   * single bubble. Each row is a tappable product card with image + price.
+   * Customer adds to the native cart and sends it back via an inbound
+   * "order" webhook (handled in Phase 3).
+   */
+  async sendProductList(dto: SendProductListDto): Promise<string | null> {
+    const phone = this.normalizePhone(dto.phone);
+    const idempotencyKey = dto.meta?.idempotencyKey;
+    const retailerIdsFlat = dto.sections.flatMap((s) =>
+      s.productItems.map((p) => p.productRetailerId),
+    );
+    const content: WhatsAppMessage['content'] = {
+      text: dto.bodyText,
+      catalogProductIds: retailerIdsFlat,
+    };
+
+    if (!phone) {
+      await this.logFinalOutboundFailure({
+        phone: dto.phone,
+        messageType: 'interactive',
+        content,
+        idempotencyKey,
+        failureReason: 'invalid_phone',
+        metadata: { idempotencyKey, isInvalidPhone: true, provider: this.getProviderTag() },
+      });
+      return null;
+    }
+
+    const catalogId = (dto.catalogId || this.metaCatalogConfig.catalogId || '').trim();
+    if (!catalogId) {
+      this.logger.warn('sendProductList skipped: no META_CATALOG_ID configured');
+      await this.logFinalOutboundFailure({
+        phone,
+        messageType: 'interactive',
+        content,
+        idempotencyKey,
+        failureReason: 'missing_catalog_id',
+        metadata: { idempotencyKey, provider: this.getProviderTag() },
+      });
+      return null;
+    }
+
+    // Meta caps: ≤10 sections, ≤30 product rows total, section.title ≤24 chars.
+    const sections = dto.sections
+      .slice(0, 10)
+      .map((section) => ({
+        title: (section.title || 'Products').slice(0, 24),
+        product_items: section.productItems.map((p) => ({
+          product_retailer_id: p.productRetailerId,
+        })),
+      }))
+      .filter((s) => s.product_items.length > 0);
+
+    const totalRows = sections.reduce((acc, s) => acc + s.product_items.length, 0);
+    if (totalRows === 0) {
+      this.logger.warn('sendProductList skipped: no product rows in any section');
+      return null;
+    }
+    if (totalRows > 30) {
+      // Trim overflow rows from the end so we always stay under Meta's hard cap.
+      let remaining = 30;
+      for (const section of sections) {
+        if (section.product_items.length > remaining) {
+          section.product_items = section.product_items.slice(0, remaining);
+        }
+        remaining -= section.product_items.length;
+      }
+    }
+
+    const safeBody = dto.bodyText?.trim()
+      ? dto.bodyText.slice(0, 1024)
+      : 'Tap a product to add it to your cart.';
+
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: phone,
+      type: 'interactive' as const,
+      interactive: {
+        type: 'product_list' as const,
+        header: { type: 'text' as const, text: dto.headerText.slice(0, 60) },
+        body: { text: safeBody },
+        footer: dto.footerText ? { text: dto.footerText.slice(0, 60) } : undefined,
+        action: {
+          catalog_id: catalogId,
+          sections,
+        },
+      },
+    };
+
+    return this.sendOutboundWithRetry({
+      phone,
+      messageType: 'interactive',
+      content,
+      idempotencyKey,
+      payload,
+    });
   }
 
   async sendMediaMessage(dto: SendMediaMessageDto): Promise<string | null> {

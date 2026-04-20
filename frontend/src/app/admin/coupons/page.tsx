@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import axios from 'axios';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Pencil, Tag } from 'lucide-react';
+import { Plus, Trash2, Pencil, Tag, AlertCircle } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +12,20 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useToast } from '@/components/ui/use-toast';
+
+function extractErrorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data as { message?: string | string[] } | undefined;
+    if (data?.message) {
+      return Array.isArray(data.message) ? data.message.join(', ') : data.message;
+    }
+    return error.message || fallback;
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
 import {
   Table,
   TableBody,
@@ -41,9 +56,11 @@ import { Coupon, CreateCouponDto } from '@/types';
 export default function CouponsPage() {
   const [page, setPage] = useState(1);
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Coupon | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     code: '',
     description: '',
@@ -67,6 +84,10 @@ export default function CouponsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['coupons'] });
       closeDialog();
+      toast({ title: 'Coupon created' });
+    },
+    onError: (error: unknown) => {
+      setSubmitError(extractErrorMessage(error, 'Failed to create coupon.'));
     },
   });
 
@@ -76,6 +97,10 @@ export default function CouponsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['coupons'] });
       closeDialog();
+      toast({ title: 'Coupon updated' });
+    },
+    onError: (error: unknown) => {
+      setSubmitError(extractErrorMessage(error, 'Failed to update coupon.'));
     },
   });
 
@@ -84,6 +109,41 @@ export default function CouponsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['coupons'] });
       setDeleteConfirm(null);
+      toast({ title: 'Coupon deleted' });
+    },
+    onError: (error: unknown) => {
+      toast({
+        title: extractErrorMessage(error, 'Failed to delete coupon.'),
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Inline status toggle on the table row — flips isActive without opening
+  // the edit dialog. Sends only { isActive } so partial-update semantics are clean.
+  const toggleStatusMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      api.updateCoupon(id, { isActive }),
+    onMutate: ({ id, isActive }) => {
+      // Optimistic: flip the row immediately so the switch feels responsive.
+      const previous = queryClient.getQueryData<{ items: Coupon[] }>(['coupons', page]);
+      if (previous) {
+        queryClient.setQueryData(['coupons', page], {
+          ...previous,
+          items: previous.items.map((c) => (c._id === id ? { ...c, isActive } : c)),
+        });
+      }
+      return { previous };
+    },
+    onError: (error: unknown, _vars, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(['coupons', page], ctx.previous);
+      toast({
+        title: extractErrorMessage(error, 'Failed to update status.'),
+        variant: 'destructive',
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['coupons'] });
     },
   });
 
@@ -124,10 +184,12 @@ export default function CouponsPage() {
   const closeDialog = () => {
     setIsDialogOpen(false);
     setEditingCoupon(null);
+    setSubmitError(null);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
     const submitData = {
       code: formData.code.toUpperCase(),
       description: formData.description,
@@ -232,15 +294,32 @@ export default function CouponsPage() {
                       </TableCell>
                       <TableCell>{formatShortDate(coupon.validUntil)}</TableCell>
                       <TableCell>
-                        <Badge
-                          className={
-                            isActive(coupon)
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-gray-100 text-gray-800'
-                          }
-                        >
-                          {isActive(coupon) ? 'Active' : 'Inactive'}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={coupon.isActive}
+                            disabled={toggleStatusMutation.isPending}
+                            onCheckedChange={(checked) =>
+                              toggleStatusMutation.mutate({
+                                id: coupon._id,
+                                isActive: checked,
+                              })
+                            }
+                            aria-label="Toggle coupon status"
+                          />
+                          <Badge
+                            className={
+                              isActive(coupon)
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-gray-100 text-gray-800'
+                            }
+                          >
+                            {isActive(coupon)
+                              ? 'Active'
+                              : coupon.isActive
+                              ? 'Expired'
+                              : 'Off'}
+                          </Badge>
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -284,6 +363,12 @@ export default function CouponsPage() {
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="grid gap-4 py-4">
+              {submitError && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{submitError}</AlertDescription>
+                </Alert>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label htmlFor="code">Coupon Code</Label>

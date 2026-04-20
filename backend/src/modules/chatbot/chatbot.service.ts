@@ -121,6 +121,19 @@ export class ChatbotService {
     return this.mainStoreIdCached;
   }
 
+  /**
+   * True when Meta Commerce catalog messages are enabled AND credentials
+   * are present. Phase 4 callers branch on this to render product_list /
+   * single product cards; anything else falls through to the legacy
+   * text-list + image path. The feature flag (`WA_CATALOG_ENABLED`) lets
+   * us toggle the whole path off instantly if Meta flags our catalog.
+   */
+  private isCatalogReady(): boolean {
+    const enabled = this.configService.get<boolean>('metaCatalog.enabled');
+    const catalogId = this.configService.get<string>('metaCatalog.catalogId') || '';
+    return Boolean(enabled) && catalogId.trim().length > 0;
+  }
+
   /** Compute available stock at a store for a product (plain or variant-aware). */
   private resolveStoreAvailableStock(
     entry: {
@@ -189,31 +202,31 @@ export class ChatbotService {
   }
 
   /**
-   * Clean vertical tracker. Four collapsed stages (Placed → Preparing →
-   * Out for Delivery → Delivered), past stages get a timestamp, current is
-   * bolded, future stages are unadorned. No box-draw dividers — WhatsApp's
-   * bubble already separates sections.
+   * Rich order tracking card. Lead with a visual progress bar (🟩/🟨/⬜),
+   * prominent status + ETA, then a clean vertical journey, itemised cart, and
+   * a subtle footer. No box-draw dividers — WhatsApp bubble separation
+   * carries the sections.
    */
   private buildOrderTrackingMessage(order: any): string {
     const statusLabel = this.formatOrderStatusForCustomer(order);
 
     if (order.status === 'cancelled') {
       const when = this.formatStepTimestamp(order.cancelledAt || order.updatedAt);
-      const reasonLine = order.cancelReason ? `\nReason: _${order.cancelReason}_` : '';
+      const reasonLine = order.cancelReason ? `\n\n${italic(`Reason: ${order.cancelReason}`)}` : '';
       const itemsPreview = this.formatOrderItemsPreview(order.items as any[]);
       return (
-        `\u274C  *Order #${order.orderNumber}*\n` +
-        `Status \u00B7 *Cancelled*` +
-        (when ? `\nWhen \u00B7 _${when}_` : '') +
+        `\u274C  ${bold('Order cancelled')}\n\n` +
+        `\uD83D\uDFE5\uD83D\uDFE5\uD83D\uDFE5\uD83D\uDFE5   ${bold('Cancelled')}` +
+        (when ? `\n\u23F1  _${when}_` : '') +
         reasonLine +
         `\n\n` +
-        `*Items (${order.items.length})*\n${itemsPreview}\n\n` +
-        `*Total  ${this.formatCurrency(order.total)}*`
+        `${bold(`Items (${order.items.length})`)}\n${itemsPreview}\n\n` +
+        `${bold(`Total  ${this.formatCurrency(order.total)}`)}\n\n` +
+        italic(`#${order.orderNumber}`)
       );
     }
 
-    // Four customer-visible stages. "Confirmed" + "Preparing" + "Packed" all
-    // read as "Preparing" to customers; admin-facing states are collapsed.
+    // Four customer-visible stages.
     type Stage = { label: string; at?: Date | null };
     const current = (() => {
       if (order.status === 'delivered') return 4;
@@ -229,59 +242,108 @@ export class ChatbotService {
     })();
 
     const stages: Stage[] = [
-      { label: 'Order placed', at: order.createdAt },
-      {
-        label: 'Preparing',
-        at: order.packedAt || null,
-      },
+      { label: 'Placed', at: order.createdAt },
+      { label: 'Preparing', at: order.packedAt || null },
       { label: 'Out for delivery', at: order.outForDeliveryAt },
       { label: 'Delivered', at: order.deliveredAt },
     ];
 
+    // Progress bar: 4 segments. Green = done, yellow = current, white = pending.
+    // Fully green on delivered, all-yellow-then-green on out-for-delivery, etc.
+    const progressBar = [1, 2, 3, 4]
+      .map((idx) => {
+        if (order.status === 'delivered') return '\uD83D\uDFE9';
+        if (idx < current) return '\uD83D\uDFE9';
+        if (idx === current) return '\uD83D\uDFE8';
+        return '\u2B1C';
+      })
+      .join('');
+
+    // Vertical journey with emoji glyphs.
     const timeline = stages
       .map((stage, i) => {
         const idx = i + 1;
-        const done = idx < current;
-        const isCurrent = idx === current;
-        const glyph = done ? '\u2705' : isCurrent ? '\uD83D\uDFE0' : '\u26AA';
-        const label = isCurrent ? `*${stage.label}*` : stage.label;
+        const done = idx < current || order.status === 'delivered';
+        const isCurrent = idx === current && order.status !== 'delivered';
+        const glyph = done ? '\u2705' : isCurrent ? '\uD83D\uDFE1' : '\u26AA';
+        const label = isCurrent ? bold(stage.label) : stage.label;
         const timestamp = stage.at
-          ? `  \u00B7  _${this.formatStepTimestamp(stage.at)}_`
-          : '';
+          ? `   _${this.formatStepTimestamp(stage.at)}_`
+          : isCurrent
+            ? `   _now_`
+            : '';
         return `${glyph}  ${label}${timestamp}`;
       })
       .join('\n');
 
-    const etaLine = order.expectedDeliveryDate
-      ? `\uD83D\uDCC5 ETA \u00B7 *${new Date(order.expectedDeliveryDate).toLocaleDateString(
-          'en-IN',
-          { weekday: 'short', day: 'numeric', month: 'short' },
-        )}*\n`
-      : '';
-
-    const courierLines: string[] = [];
-    if (order.courierName) courierLines.push(`\uD83D\uDEF5 Courier \u00B7 *${order.courierName}*`);
-    if (order.awbNumber) courierLines.push(`\uD83D\uDCE6 AWB \u00B7 *${order.awbNumber}*`);
-    if (order.trackingUrl) courierLines.push(`\uD83D\uDD17 ${order.trackingUrl}`);
-    const courierBlock = courierLines.length ? `\n${courierLines.join('\n')}\n` : '';
+    // Smart ETA: prefer the real expectedDeliveryDate, else infer from status.
+    const etaText = (() => {
+      if (order.expectedDeliveryDate) {
+        const d = new Date(order.expectedDeliveryDate).toLocaleDateString('en-IN', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+        });
+        return `Arrives ${bold(d)}`;
+      }
+      if (order.status === 'delivered') {
+        const d = order.deliveredAt
+          ? new Date(order.deliveredAt).toLocaleDateString('en-IN', {
+              weekday: 'short',
+              day: 'numeric',
+              month: 'short',
+            })
+          : '';
+        return d ? `Delivered ${bold(d)}` : bold('Delivered');
+      }
+      if (order.status === 'out_for_delivery') return bold('Arriving today');
+      if (order.status === 'preparing' && order.packedAt) return bold('Shipping soon');
+      return bold('Ships in 24 hours');
+    })();
 
     const itemsPreview = this.formatOrderItemsPreview(order.items as any[]);
 
+    // Header icon tells the whole story at a glance.
     const headerIcon =
       order.status === 'delivered'
         ? '\u2705'
         : order.status === 'out_for_delivery'
           ? '\uD83D\uDEF5'
-          : '\uD83D\uDED2';
+          : order.status === 'preparing' && order.packedAt
+            ? '\uD83D\uDCE6'
+            : '\uD83D\uDC68\u200D\uD83C\uDF73'; // chef for "being prepared"
+
+    // Address line — compact, city + pincode.
+    const addrParts = [order.shippingAddress?.city, order.shippingAddress?.pincode]
+      .filter(Boolean)
+      .join(' ');
+    const addressLine = addrParts
+      ? `\n\uD83D\uDCCD  Delivering to ${addrParts}`
+      : '';
+
+    // Courier block — only when info is available.
+    const courierLines: string[] = [];
+    if (order.courierName) courierLines.push(`\uD83D\uDEF5  ${bold(order.courierName)}`);
+    if (order.awbNumber) courierLines.push(`\uD83D\uDCE6  AWB ${bold(order.awbNumber)}`);
+    if (order.trackingUrl) courierLines.push(`\uD83D\uDD17  ${order.trackingUrl}`);
+    const courierBlock = courierLines.length
+      ? `\n\n${bold('Courier')}\n${courierLines.join('\n')}`
+      : '';
+
+    // Payment method — friendly label.
+    const paymentLabel =
+      order.paymentMethod === 'cod' ? 'Cash on Delivery' : 'Paid online';
 
     return (
-      `${headerIcon}  *Order #${order.orderNumber}*\n` +
-      `Status \u00B7 *${statusLabel}*\n` +
-      etaLine +
-      `\n${timeline}\n` +
+      `${headerIcon}  ${bold(statusLabel)}\n\n` +
+      `${progressBar}\n` +
+      `\u23F1  ${etaText}\n\n` +
+      `${bold('Journey')}\n${timeline}` +
       courierBlock +
-      `\n*Items (${order.items.length})*\n${itemsPreview}\n\n` +
-      `*Total  ${this.formatCurrency(order.total)}*`
+      `\n\n${bold(`Items (${order.items.length})`)}\n${itemsPreview}\n\n` +
+      `${bold(`Total  ${this.formatCurrency(order.total)}`)}\n` +
+      `${italic(`${paymentLabel} \u00B7 #${order.orderNumber}`)}` +
+      addressLine
     );
   }
 
@@ -390,6 +452,14 @@ export class ChatbotService {
         } else {
           return;
         }
+      }
+
+      // Native WhatsApp cart submission (Phase 3). Must run before processInput
+      // so it's not mistaken for unknown input. isHandedOffToSupport was already
+      // checked above — cart submissions respect the support mute too.
+      if (message.content.order && message.content.order.items.length > 0) {
+        await this.handleCartSubmission(session, message.phone, message.content.order);
+        return;
       }
 
       await this.processInput(session, message, inputText);
@@ -725,12 +795,6 @@ export class ChatbotService {
 
     if (input === 'add_cart' && session.currentProductId && session.user) {
       await this.addCurrentProductToCart(phone, session, 1);
-      return;
-    }
-
-    // Quantity-picker list: open a list of quantity choices for the current product.
-    if (input === BTN.PICK_QTY && session.currentProductId && session.user) {
-      await this.sendQuantityPicker(phone, session);
       return;
     }
 
@@ -2965,11 +3029,11 @@ export class ChatbotService {
     }
 
     let page = this.getListPage(session, 'productPage');
-    // Smaller page size since every product is now sent as its own image card.
-    const pageSize = 5;
+    // Catalog mode uses 20/page (well under Meta's 30 cap); text mode stays at 9
+    // to keep the interactive list comfortable on small phones.
+    const pageSize = this.isCatalogReady() ? 20 : 9;
     let start = page * pageSize;
 
-    // Reset to first page if current page is beyond available data.
     if (start >= fulfillableProducts.length && fulfillableProducts.length > 0) {
       page = 0;
       start = 0;
@@ -2979,41 +3043,45 @@ export class ChatbotService {
     const slice = fulfillableProducts.slice(start, start + pageSize);
     const hasMore = start + pageSize < fulfillableProducts.length;
 
-    // Send each product's photo + a short caption so the customer can see what
-    // they're buying. WhatsApp interactive lists don't support inline images,
-    // so we emit a media message per product before the picker list. Products
-    // without an image fall back to a text bubble with the same info.
-    for (const prod of slice) {
-      const priceLine = prod.compareAtPrice
-        ? `~${this.formatCurrency(prod.compareAtPrice)}~  ${bold(this.formatCurrency(prod.price))}`
-        : bold(this.formatCurrency(prod.price));
-      const caption =
-        `${bold(prod.name)}\n` +
-        `${priceLine}\n` +
-        `\uD83D\uDFE2 In stock`;
-      try {
-        if (prod.images[0]) {
-          await this.whatsappService.sendMediaMessage({
-            phone,
-            mediaType: 'image',
-            mediaUrl: prod.images[0],
-            caption,
-          });
-        } else {
-          await this.whatsappService.sendTextMessage({ phone, message: caption });
-        }
-      } catch (err) {
-        this.logger.warn(
-          `sendMedia failed for product ${prod._id.toString()}: ${err instanceof Error ? err.message : 'unknown'}`,
-        );
+    // Catalog-first path: send a native WhatsApp product_list message so each
+    // row has the product image + price + native Add-to-cart. If the send fails
+    // (Meta rejects the payload, 360dialog tier missing, etc.) the method
+    // returns null and we fall through to the legacy text-list below.
+    if (this.isCatalogReady()) {
+      const sent = await this.whatsappService.sendProductList({
+        phone,
+        headerText: clip('Browse products', WA.HEADER),
+        bodyText:
+          hasMore
+            ? `Showing ${start + 1}\u2013${start + slice.length} of ${fulfillableProducts.length}. Tap any item to add to your cart.`
+            : 'Tap any item to add to your cart.',
+        footerText: hasMore ? 'Type *more* for the next page' : undefined,
+        sections: [
+          {
+            title: 'Products',
+            productItems: slice.map((p) => ({ productRetailerId: p._id.toString() })),
+          },
+        ],
+      });
+      if (sent) {
+        return;
       }
+      this.logger.warn('Catalog product_list rejected — falling back to text list');
     }
 
-    const rows = slice.map((prod) => ({
-      id: Btn.product(prod._id.toString()),
-      title: clip(prod.name, WA.LIST_ROW_TITLE),
-      description: clip(this.formatCurrency(prod.price), WA.LIST_ROW_DESC),
-    }));
+    // Legacy text-list fallback. Clean list — photos show on the product
+    // detail step. Each row's description carries price + stock so the list
+    // is scannable without images.
+    const rows = slice.map((prod) => {
+      const priceText = prod.compareAtPrice && prod.compareAtPrice > prod.price
+        ? `${this.formatCurrency(prod.price)} (save ${this.formatCurrency(prod.compareAtPrice - prod.price)})`
+        : this.formatCurrency(prod.price);
+      return {
+        id: Btn.product(prod._id.toString()),
+        title: clip(prod.name, WA.LIST_ROW_TITLE),
+        description: clip(`${priceText} \u00B7 \uD83D\uDFE2 In stock`, WA.LIST_ROW_DESC),
+      };
+    });
 
     if (hasMore) {
       rows.push({
@@ -3026,9 +3094,9 @@ export class ChatbotService {
     await this.whatsappService.sendInteractiveList({
       phone,
       headerText: 'Products',
-      bodyText: 'Tap any product above to add to cart or adjust quantity.',
+      bodyText: 'Tap any item to see its photo, details and add to cart.',
       footerText: page > 0 ? `Page ${page + 1}` : undefined,
-      buttonText: 'Add / view details',
+      buttonText: 'View products',
       sections: [{ title: 'Products', rows }],
     });
   }
@@ -3092,6 +3160,42 @@ export class ChatbotService {
       `${stockBadge}\n\n` +
       `${(product.description || '').toString().slice(0, 600)}`;
 
+    this.analytics.track('chatbot.product_viewed', {
+      userId: session.user?.toString(),
+      productId,
+      price: product.price,
+    });
+
+    // Catalog-first path: send a native WhatsApp single-product card. The
+    // card has its own "View" CTA that opens the native detail page with an
+    // image carousel, quantity stepper, and Add-to-cart. Items added there
+    // flow back to us via the inbound `order` webhook (Phase 3).
+    if (this.isCatalogReady()) {
+      const sent = await this.whatsappService.sendSingleProduct({
+        phone,
+        bodyText: caption.slice(0, 1024),
+        footerText: product.compareAtPrice && product.compareAtPrice > product.price
+          ? `Save ${this.formatCurrency(product.compareAtPrice - product.price)}`
+          : undefined,
+        productRetailerId: productId,
+      });
+      if (sent) {
+        // Compact nav follow-up so the customer is never stuck at the card.
+        await this.whatsappService.sendInteractiveButtons({
+          phone,
+          bodyText: 'Tap *View* above to add, or continue browsing.',
+          buttons: [
+            { id: BTN.BACK, title: '\u21A9 More products' },
+            { id: BTN.VIEW_CART, title: '\uD83D\uDED2 View Cart' },
+            { id: BTN.MENU, title: '\uD83C\uDFE0 Menu' },
+          ],
+        });
+        return;
+      }
+      this.logger.warn('Catalog single product rejected — falling back to image + qty list');
+    }
+
+    // Legacy fallback — image + rich caption + inline qty-picker list.
     if (product.images[0]) {
       await this.whatsappService.sendMediaMessage({
         phone,
@@ -3101,24 +3205,37 @@ export class ChatbotService {
       });
     }
 
-    this.analytics.track('chatbot.product_viewed', {
-      userId: session.user?.toString(),
-      productId,
-      price: product.price,
-    });
+    // Single action surface — a quantity picker LIST. No redundant
+    // "Ready to add?" button row repeating the image caption. Each row shows
+    // the exact total for that quantity so customers know what they'll pay.
+    const QTY_CHOICES = [1, 2, 3, 5, 10];
+    const rows = QTY_CHOICES.map((n) => ({
+      id: Btn.addQty(n),
+      title: clip(`Add \u00D7${n}`, WA.LIST_ROW_TITLE),
+      description: clip(
+        `${n} \u00D7 ${this.formatCurrency(product.price)} = ${this.formatCurrency(product.price * n)}`,
+        WA.LIST_ROW_DESC,
+      ),
+    }));
+    rows.push(
+      {
+        id: BTN.BUY_NOW,
+        title: '\u26A1 Buy Now',
+        description: clip(`1 item \u00B7 ${this.formatCurrency(product.price)}`, WA.LIST_ROW_DESC),
+      },
+      {
+        id: BTN.BACK,
+        title: '\u21A9 Back',
+        description: 'Return to product list',
+      },
+    );
 
-    const followUpBody = product.images[0]
-      ? `${bold(product.name)} \u00B7 ${this.formatCurrency(product.price)} \u00B7 ${stockBadge}\n\nReady to add?`
-      : `${caption}\n\nReady to add?`;
-
-    await this.whatsappService.sendInteractiveButtons({
+    await this.whatsappService.sendInteractiveList({
       phone,
-      bodyText: followUpBody,
-      buttons: [
-        { id: BTN.ADD_CART, title: '\uD83D\uDED2 Add 1 to Cart' },
-        { id: BTN.PICK_QTY, title: '\uD83D\uDD22 Pick qty' },
-        { id: BTN.BUY_NOW, title: '\u26A1 Buy Now' },
-      ],
+      headerText: clip(product.name, WA.HEADER),
+      bodyText: `Select how many to add, or tap *Buy Now* to order a single item.`,
+      buttonText: 'Add to cart',
+      sections: [{ title: 'Quantity', rows }],
     });
   }
 
@@ -3180,6 +3297,140 @@ export class ChatbotService {
   }
 
   /** Empty cart with high-intent recovery CTAs. */
+  /**
+   * Native WhatsApp cart submission (`type: "order"`). Received when the
+   * customer taps Send on their WhatsApp cart after picking products from a
+   * catalog message. We map each product_retailer_id back to our Mongo
+   * Product (same id used in Phase 1 sync), enforce stock + active checks,
+   * add each to the Mongo cart, and drop the user on the cart summary so
+   * the existing coupon → address → payment flow takes over.
+   *
+   * item_price from the webhook is intentionally ignored — always use the
+   * live product price to avoid stale-catalog pricing abuse.
+   */
+  private async handleCartSubmission(
+    session: ChatSessionDocument,
+    phone: string,
+    order: NonNullable<WhatsAppMessage['content']['order']>,
+  ): Promise<void> {
+    if (!session.user) {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: 'Please register first to place an order.',
+      });
+      return;
+    }
+    const userId = session.user.toString();
+
+    this.analytics.track('chatbot.button_clicked', {
+      state: session.currentState,
+      buttonId: 'wa_cart_order',
+      userId,
+    });
+
+    const mainStoreId = await this.getMainStoreId();
+    const retailerIds = order.items.map((i) => i.productRetailerId);
+    const stockMap = await this.storeStockService.getStockMapForStoreProducts(
+      mainStoreId,
+      retailerIds,
+    );
+
+    const skipped: Array<{ name: string; reason: string }> = [];
+    let addedCount = 0;
+
+    for (const item of order.items) {
+      let product;
+      try {
+        product = await this.productsService.findById(item.productRetailerId);
+      } catch {
+        // Retailer id didn't match any Product — catalog is ahead of Mongo or
+        // someone deleted the product mid-flow.
+        skipped.push({ name: `#${item.productRetailerId.slice(0, 8)}`, reason: 'unavailable' });
+        continue;
+      }
+
+      if (!product.isActive) {
+        skipped.push({ name: product.name, reason: 'unavailable' });
+        continue;
+      }
+
+      // Respect main-store inventory the same way browse does.
+      if (product.trackStock !== false) {
+        const entry = stockMap.get(product._id.toString());
+        const available = this.resolveStoreAvailableStock(entry);
+        if (available <= 0) {
+          skipped.push({ name: product.name, reason: 'out of stock' });
+          continue;
+        }
+        if (available < item.quantity) {
+          skipped.push({ name: product.name, reason: `only ${available} left` });
+          continue;
+        }
+      }
+
+      try {
+        await this.cartService.addItem(userId, {
+          productId: product._id.toString(),
+          quantity: item.quantity,
+        });
+        addedCount += 1;
+      } catch (err) {
+        this.logger.warn(
+          `WA-cart add failed for ${product._id}: ${err instanceof Error ? err.message : 'unknown'}`,
+        );
+        skipped.push({ name: product.name, reason: 'could not add' });
+      }
+    }
+
+    if (addedCount === 0) {
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        headerText: 'Couldn\u2019t add to cart',
+        bodyText:
+          'None of the items in your cart are available right now. Please pick something else.',
+        buttons: [
+          { id: BTN.BROWSE, title: '\uD83D\uDECD Browse' },
+          { id: BTN.SUPPORT, title: '\uD83D\uDC64 Support' },
+          { id: BTN.MENU, title: '\uD83C\uDFE0 Menu' },
+        ],
+      });
+      await this.transitionToState(session, 'main_menu');
+      return;
+    }
+
+    if (skipped.length > 0) {
+      const preview = skipped
+        .slice(0, 3)
+        .map((s) => `\u2022 ${s.name} \u2014 _${s.reason}_`)
+        .join('\n');
+      const extra = skipped.length > 3 ? `\n_+${skipped.length - 3} more_` : '';
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message:
+          `${italic('Some items couldn\u2019t be added')}\n${preview}${extra}`,
+      });
+    }
+
+    if (order.text && order.text.trim()) {
+      // Customer attached a note to the cart — preserve it on the cart so it
+      // surfaces on the order later.
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: `${italic('Note received:')} ${order.text.trim().slice(0, 200)}`,
+      });
+    }
+
+    this.analytics.track('chatbot.wa_cart_submitted', {
+      userId,
+      addedCount,
+      skippedCount: skipped.length,
+      catalogId: order.catalogId,
+    });
+
+    await this.transitionToState(session, 'cart');
+    await this.sendCartSummary(phone, session);
+  }
+
   /**
    * Add N units of the session's current product to the cart and render the
    * "Added to cart" confirmation. Centralised so the Add-1 button, the qty
@@ -3252,47 +3503,6 @@ export class ChatbotService {
         { id: BTN.VIEW_CART, title: '\uD83D\uDED2 View Cart' },
         { id: BTN.KEEP_SHOPPING, title: '\u2795 Keep Shopping' },
       ],
-    });
-  }
-
-  /** Interactive list letting the customer pick how many units to add. */
-  private async sendQuantityPicker(
-    phone: string,
-    session: ChatSessionDocument,
-  ): Promise<void> {
-    if (!session.currentProductId) return;
-
-    let product;
-    try {
-      product = await this.productsService.findById(session.currentProductId);
-    } catch {
-      await this.sendProductDetail(phone, session.currentProductId, session);
-      return;
-    }
-
-    const QTY_CHOICES = [1, 2, 3, 5, 10];
-    const rows = QTY_CHOICES.map((n) => ({
-      id: Btn.addQty(n),
-      title: clip(`\u00D7${n}   ${this.formatCurrency(product.price * n)}`, WA.LIST_ROW_TITLE),
-      description: clip(
-        n === 1
-          ? 'Add 1 to cart'
-          : `Add ${n} units \u00B7 ${this.formatCurrency(product.price)} each`,
-        WA.LIST_ROW_DESC,
-      ),
-    }));
-    rows.push({
-      id: BTN.BACK,
-      title: 'Back',
-      description: 'Return to product',
-    });
-
-    await this.whatsappService.sendInteractiveList({
-      phone,
-      headerText: clip(product.name, WA.HEADER),
-      bodyText: 'How many would you like to add?',
-      buttonText: 'Pick quantity',
-      sections: [{ title: 'Quantity', rows }],
     });
   }
 
@@ -3866,7 +4076,6 @@ export class ChatbotService {
         return (
           key === 'add_cart' ||
           key === 'buy_now' ||
-          key === 'pick_qty' ||
           key === 'back' ||
           key.startsWith('qty_')
         );

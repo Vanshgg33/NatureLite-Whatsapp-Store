@@ -4,7 +4,7 @@ import { Document, Types } from 'mongoose';
 export type MessageLogDocument = MessageLog & Document;
 
 export type MessageDirection = 'inbound' | 'outbound';
-export type MessageType = 'text' | 'image' | 'document' | 'audio' | 'video' | 'location' | 'contact' | 'interactive' | 'template' | 'button' | 'list_reply';
+export type MessageType = 'text' | 'image' | 'document' | 'audio' | 'video' | 'location' | 'contact' | 'interactive' | 'template' | 'button' | 'list_reply' | 'order';
 export type MessageStatus = 'sent' | 'delivered' | 'read' | 'failed';
 export type MessageFinalStatus = 'success' | 'failure';
 
@@ -57,6 +57,21 @@ export class MessageLog {
       longitude: number;
       name?: string;
       address?: string;
+    };
+    /** Outbound single-product catalog message — the retailer_id shown. */
+    catalogProductId?: string;
+    /** Outbound product-list catalog message — flat list of retailer_ids. */
+    catalogProductIds?: string[];
+    /** Inbound "order" (native WhatsApp cart submission). */
+    order?: {
+      catalogId: string;
+      text?: string;
+      items: Array<{
+        productRetailerId: string;
+        quantity: number;
+        itemPrice: number;
+        currency: string;
+      }>;
     };
   };
 
