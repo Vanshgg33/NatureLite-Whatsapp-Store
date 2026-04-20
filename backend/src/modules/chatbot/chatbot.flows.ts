@@ -260,7 +260,8 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
       type: 'text',
       content:
         `*Live support*\n\n` +
-        `Describe your issue below and our team will respond shortly.\n\n` +
+        `For any issues, please contact us on *8962021112*.\n\n` +
+        `Or describe your issue below and our team will respond shortly.\n\n` +
         `_Type *menu* anytime to return._`,
     },
     transitions: {
@@ -374,7 +375,7 @@ export const FAQ_RESPONSES: Record<string, string> = {
     `\u2022 Digital Wallets`,
   faq_contact:
     `*Contact Us*\n\n` +
-    `\u2022 WhatsApp \u2014 +91 XXXXXXXXXX\n` +
+    `\u2022 Support \u2014 *8962021112*\n` +
     `\u2022 Email \u2014 support@store.com\n` +
     `\u2022 Hours \u2014 Mon\u2013Sat, 9 AM \u2013 6 PM`,
 };

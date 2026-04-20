@@ -68,6 +68,10 @@ export class ChatSession {
   @Prop()
   supportHandoffAt?: Date;
 
+  /** When the support handoff auto-releases back to the bot. */
+  @Prop()
+  supportHandoffExpiresAt?: Date;
+
   @Prop()
   supportAgentId?: string;
 

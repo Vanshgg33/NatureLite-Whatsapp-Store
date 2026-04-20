@@ -552,7 +552,7 @@ export class WhatsAppService implements OnModuleInit {
     if (!messageId) {
       const fallbackOptions = dto.buttons
         .slice(0, 3)
-        .map((btn, idx) => `${idx + 1}. ${btn.title}`)
+        .map((btn, idx) => `${idx + 1}. ${this.stripEmoji(btn.title)}`)
         .join('\n');
       const fallbackText = fallbackOptions
         ? `${dto.bodyText}\n\nReply with:\n${fallbackOptions}`
@@ -566,6 +566,21 @@ export class WhatsAppService implements OnModuleInit {
     }
 
     return messageId;
+  }
+
+  /**
+   * Strip emoji / box-draw characters from a label so the numbered text
+   * fallback (used when 360dialog rejects interactive payloads) stays
+   * clean on devices that render emojis as placeholders.
+   */
+  private stripEmoji(text: string): string {
+    return text
+      .replace(
+        /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2500}-\u{25FF}\u{2190}-\u{21FF}\u{FE0F}\u{200D}]/gu,
+        '',
+      )
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   async sendInteractiveList(dto: SendInteractiveListDto): Promise<string | null> {
@@ -633,7 +648,11 @@ export class WhatsAppService implements OnModuleInit {
         .slice(0, 10);
 
       const fallbackOptions = flattenedRows
-        .map((row, idx) => `${idx + 1}. ${row.title}`)
+        .map((row, idx) => {
+          const title = this.stripEmoji(row.title);
+          const desc = row.description ? ` — ${this.stripEmoji(row.description)}` : '';
+          return `${idx + 1}. ${title}${desc}`;
+        })
         .join('\n');
 
       const fallbackText = fallbackOptions
