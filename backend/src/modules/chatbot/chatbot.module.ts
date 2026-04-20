@@ -15,6 +15,8 @@ import { OrdersModule } from '../orders/orders.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { FeedbackModule } from '../feedback/feedback.module';
+import { StoresModule } from '../stores/stores.module';
+import { StoreStockModule } from '../store-stock/store-stock.module';
 
 @Module({
   imports: [
@@ -29,6 +31,8 @@ import { FeedbackModule } from '../feedback/feedback.module';
     PaymentsModule,
     WalletModule,
     FeedbackModule,
+    StoresModule,
+    StoreStockModule,
   ],
   controllers: [ChatbotController],
   providers: [ChatSessionRepository, ChatbotService, ChatbotAnalyticsService],

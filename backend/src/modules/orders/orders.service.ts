@@ -145,6 +145,11 @@ export class OrdersService implements OnModuleInit {
     try {
       let orderItems: OrderItem[] = [];
       let subtotal = 0;
+      // Which products opt out of inventory tracking. Used below to skip the
+      // per-store stock decrement — otherwise a product with trackStock=false
+      // would incorrectly fail order creation with "Insufficient store stock
+      // for this product" when no StoreStock row exists for it.
+      const tracksStockByProductId = new Map<string, boolean>();
 
       if (dto.cartId) {
         // cartId integrity: verify referenced cart belongs to user
@@ -157,6 +162,7 @@ export class OrdersService implements OnModuleInit {
         for (const item of cart.items) {
           const productId = item.product.toString();
           const product = await this.productsService.findById(productId);
+          tracksStockByProductId.set(productId, product.trackStock !== false);
 
           const orderItem: OrderItem = {
             product: new Types.ObjectId(productId),
@@ -176,6 +182,7 @@ export class OrdersService implements OnModuleInit {
         for (const item of dto.items) {
           const productIdObj = parseObjectId(item.productId, 'items[].productId');
           const product = await this.productsService.findById(item.productId);
+          tracksStockByProductId.set(item.productId, product.trackStock !== false);
           let price = product.price;
 
           if (item.variantSku) {
@@ -365,14 +372,34 @@ export class OrdersService implements OnModuleInit {
         throw new BadRequestException('Failed to generate a unique order number. Please try again.');
       }
 
-      // Decrement stock from main store (Raipur) for website orders
+      // Decrement stock from main store (Raipur).
+      //   - Products with trackStock=false opt out of inventory entirely — skip.
+      //   - Products with no StoreStock row yet (admin hasn't set store-level
+      //     inventory) also skip the decrement: blocking a customer order for
+      //     a data-setup gap that only the admin can fix would be incorrect.
+      //     Admins can still see low/zero stock in the Store Stock dashboard.
+      //   - Products with a StoreStock row get the normal guarded decrement.
       const mainStore = await this.storesService.findMainStore();
       const mainStoreId = mainStore._id.toString();
 
       for (const item of orderItems) {
+        const productId = item.product.toString();
+        if (tracksStockByProductId.get(productId) === false) {
+          continue;
+        }
+        const existingStoreStock = await this.storeStockService.getStockForStoreProduct(
+          mainStoreId,
+          productId,
+        );
+        if (!existingStoreStock) {
+          this.logger.warn(
+            `No StoreStock row for product ${productId} in store ${mainStoreId} — skipping decrement`,
+          );
+          continue;
+        }
         await this.storeStockService.decrementStock(
           mainStoreId,
-          item.product.toString(),
+          productId,
           item.quantity,
           item.variantSku,
           session,

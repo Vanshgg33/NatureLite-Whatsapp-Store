@@ -121,6 +121,17 @@ export class StoreStockRepository extends BaseRepository<StoreStockDocument> {
     return this.model.findOne({ store: storeId, product: productId }).exec();
   }
 
+  /** Batch lookup: all StoreStock rows for the given productIds at a single store. */
+  async findByStoreAndProducts(
+    storeId: Types.ObjectId,
+    productIds: Types.ObjectId[],
+  ): Promise<StoreStockDocument[]> {
+    if (!productIds.length) return [];
+    return this.model
+      .find({ store: storeId, product: { $in: productIds } })
+      .exec();
+  }
+
   async setStockMain(
     storeId: Types.ObjectId,
     productId: Types.ObjectId,

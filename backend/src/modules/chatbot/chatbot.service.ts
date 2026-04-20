@@ -15,6 +15,8 @@ import { OrdersService } from '../orders/orders.service';
 import { PaymentsService } from '../payments/payments.service';
 import { WalletService } from '../wallet/wallet.service';
 import { FeedbackService } from '../feedback/feedback.service';
+import { StoresService } from '../stores/stores.service';
+import { StoreStockService } from '../store-stock/store-stock.service';
 import { WhatsAppMessage } from '../whatsapp/dto/whatsapp.dto';
 import { CHATBOT_FLOWS, FAQ_RESPONSES } from './chatbot.flows';
 import {
@@ -103,7 +105,34 @@ export class ChatbotService {
     private readonly configService: ConfigService,
     private readonly feedbackService: FeedbackService,
     private readonly analytics: ChatbotAnalyticsService,
+    private readonly storesService: StoresService,
+    private readonly storeStockService: StoreStockService,
   ) {}
+
+  /** Resolve the main store id once per process (the Raipur store). Cached so every
+   *  product-list render doesn't round-trip to `stores.findMainStore`. */
+  private mainStoreIdCached: string | null = null;
+  private async getMainStoreId(): Promise<string> {
+    if (this.mainStoreIdCached) return this.mainStoreIdCached;
+    const store = await this.storesService.findMainStore();
+    this.mainStoreIdCached = store._id.toString();
+    return this.mainStoreIdCached;
+  }
+
+  /** Compute available stock at a store for a product (plain or variant-aware). */
+  private resolveStoreAvailableStock(
+    entry: {
+      stock?: number;
+      variantStocks?: Array<{ variantSku: string; stock: number }>;
+    } | null | undefined,
+    variantSku?: string,
+  ): number {
+    if (!entry) return 0;
+    if (variantSku) {
+      return entry.variantStocks?.find((v) => v.variantSku === variantSku)?.stock ?? 0;
+    }
+    return entry.stock ?? 0;
+  }
 
   /** First origin in FRONTEND_URL (comma-separated supported in main.ts). */
   private resolveFrontendBaseUrl(): string {
@@ -631,8 +660,17 @@ export class ChatbotService {
 
     if ((input === 'add_cart' || input === 'buy_now') && session.currentProductId) {
       const product = await this.productsService.findById(session.currentProductId);
-      const isOutOfStock =
-        product.trackStock === true && (product.stock ?? 0) <= 0;
+      // Stock is enforced against the main (Raipur) store, same as browse/detail.
+      let mainStoreAvailable = Number.POSITIVE_INFINITY;
+      if (product.trackStock !== false) {
+        const mainStoreId = await this.getMainStoreId();
+        const storeStock = await this.storeStockService.getStockForStoreProduct(
+          mainStoreId,
+          product._id.toString(),
+        );
+        mainStoreAvailable = this.resolveStoreAvailableStock(storeStock);
+      }
+      const isOutOfStock = product.trackStock !== false && mainStoreAvailable <= 0;
 
       if (isOutOfStock) {
         await this.whatsappService.sendInteractiveButtons({
@@ -2529,19 +2567,52 @@ export class ChatbotService {
       return;
     }
 
+    // Filter the catalog down to what the Raipur (main) store can actually
+    // fulfil. Untracked products (trackStock=false) are always shown —
+    // inventory is unlimited for those. Tracked products must have positive
+    // main-store stock (a StoreStock row with stock > 0). Products the admin
+    // hasn't set up at the main store yet are hidden from the WhatsApp channel.
+    const mainStoreId = await this.getMainStoreId();
+    const trackedProductIds = products
+      .filter((p) => p.trackStock !== false)
+      .map((p) => p._id.toString());
+    const stockMap = await this.storeStockService.getStockMapForStoreProducts(
+      mainStoreId,
+      trackedProductIds,
+    );
+
+    const fulfillableProducts = products.filter((prod) => {
+      if (prod.trackStock === false) return true;
+      const entry = stockMap.get(prod._id.toString());
+      return this.resolveStoreAvailableStock(entry) > 0;
+    });
+
+    if (fulfillableProducts.length === 0) {
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        headerText: 'No stock',
+        bodyText: 'No products in this category are in stock at our store right now.',
+        buttons: [
+          { id: BTN.BROWSE, title: '\uD83D\uDECD Other categories' },
+          { id: BTN.MENU, title: '\uD83C\uDFE0 Menu' },
+        ],
+      });
+      return;
+    }
+
     let page = this.getListPage(session, 'productPage');
     const pageSize = 9;
     let start = page * pageSize;
 
     // Reset to first page if current page is beyond available data.
-    if (start >= products.length && products.length > 0) {
+    if (start >= fulfillableProducts.length && fulfillableProducts.length > 0) {
       page = 0;
       start = 0;
       await this.setListPage(session, 'productPage', 0);
     }
 
-    const slice = products.slice(start, start + pageSize);
-    const hasMore = start + pageSize < products.length;
+    const slice = fulfillableProducts.slice(start, start + pageSize);
+    const hasMore = start + pageSize < fulfillableProducts.length;
 
     const rows = slice.map((prod) => ({
       id: Btn.product(prod._id.toString()),
@@ -2553,7 +2624,7 @@ export class ChatbotService {
       rows.push({
         id: BTN.MORE_PRODUCTS,
         title: 'View more',
-        description: `Showing ${start + 1}\u2013${start + slice.length} of ${products.length}`,
+        description: `Showing ${start + 1}\u2013${start + slice.length} of ${fulfillableProducts.length}`,
       });
     }
 
@@ -2594,12 +2665,23 @@ export class ChatbotService {
       return;
     }
 
-    const inStock = product.trackStock !== true || (product.stock ?? 0) > 0;
-    const stockBadge = product.trackStock === true
-      ? inStock
+    // Stock badge uses the main-store (Raipur) inventory, not the product's
+    // global stock field. Untracked products are always "Available".
+    let storeAvailable = 0;
+    if (product.trackStock !== false) {
+      const mainStoreId = await this.getMainStoreId();
+      const storeStock = await this.storeStockService.getStockForStoreProduct(
+        mainStoreId,
+        product._id.toString(),
+      );
+      storeAvailable = this.resolveStoreAvailableStock(storeStock);
+    }
+    const inStock = product.trackStock === false || storeAvailable > 0;
+    const stockBadge = product.trackStock === false
+      ? '\uD83D\uDFE2 Available'
+      : inStock
         ? '\uD83D\uDFE2 In stock'
-        : '\uD83D\uDD34 Out of stock'
-      : '\uD83D\uDFE2 Available';
+        : '\uD83D\uDD34 Out of stock';
 
     const priceDisplay = product.compareAtPrice
       ? `~${this.formatCurrency(product.compareAtPrice)}~  ${bold(this.formatCurrency(product.price))}`

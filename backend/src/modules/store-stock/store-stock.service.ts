@@ -28,6 +28,22 @@ export class StoreStockService {
     return this.storeStockRepository.findOneByStoreAndProduct(storeObjId, productObjId);
   }
 
+  /** Batch lookup for a list of productIds at one store. Returns a Map keyed by productId string. */
+  async getStockMapForStoreProducts(
+    storeId: string,
+    productIds: string[],
+  ): Promise<Map<string, StoreStock>> {
+    const storeObjId = parseObjectId(storeId, 'storeId');
+    if (!productIds.length) return new Map();
+    const productObjIds = productIds.map((id) => parseObjectId(id, 'productId'));
+    const docs = await this.storeStockRepository.findByStoreAndProducts(storeObjId, productObjIds);
+    const out = new Map<string, StoreStock>();
+    for (const doc of docs) {
+      out.set(doc.product.toString(), doc);
+    }
+    return out;
+  }
+
   async setStock(dto: SetStoreStockDto): Promise<StoreStock> {
     const storeObjId = parseObjectId(dto.storeId, 'storeId');
     const productObjId = parseObjectId(dto.productId, 'productId');
