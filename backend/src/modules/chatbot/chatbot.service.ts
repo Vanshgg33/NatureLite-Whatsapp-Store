@@ -17,6 +17,7 @@ import { WalletService } from '../wallet/wallet.service';
 import { FeedbackService } from '../feedback/feedback.service';
 import { StoresService } from '../stores/stores.service';
 import { StoreStockService } from '../store-stock/store-stock.service';
+import { CouponsService } from '../coupons/coupons.service';
 import { WhatsAppMessage } from '../whatsapp/dto/whatsapp.dto';
 import { CHATBOT_FLOWS, FAQ_RESPONSES } from './chatbot.flows';
 import {
@@ -107,6 +108,7 @@ export class ChatbotService {
     private readonly analytics: ChatbotAnalyticsService,
     private readonly storesService: StoresService,
     private readonly storeStockService: StoreStockService,
+    private readonly couponsService: CouponsService,
   ) {}
 
   /** Resolve the main store id once per process (the Raipur store). Cached so every
@@ -159,6 +161,16 @@ export class ChatbotService {
     return order.status.replace(/_/g, ' ');
   }
 
+  /** Preview up to 4 items for the tracking message. */
+  private formatOrderItemsPreview(items: Array<{ name: string; quantity: number }>): string {
+    const preview = items
+      .slice(0, 4)
+      .map((it) => `\u2022 ${it.name}  \u00D7${it.quantity}`)
+      .join('\n');
+    const more = items.length > 4 ? `\n_\u2026 and ${items.length - 4} more_` : '';
+    return `${preview}${more}`;
+  }
+
   /** Short date+time stamp (e.g. "Sat, 20 Apr · 2:14 PM") for tracking timeline. */
   private formatStepTimestamp(d?: Date | null): string {
     if (!d) return '';
@@ -177,81 +189,83 @@ export class ChatbotService {
   }
 
   /**
-   * Zomato-style vertical tracker. Uses check/current/pending glyphs and timestamps
-   * from order lifecycle fields. Cancelled orders short-circuit to a red layout.
+   * Clean vertical tracker. Four collapsed stages (Placed → Preparing →
+   * Out for Delivery → Delivered), past stages get a timestamp, current is
+   * bolded, future stages are unadorned. No box-draw dividers — WhatsApp's
+   * bubble already separates sections.
    */
   private buildOrderTrackingMessage(order: any): string {
-    const DIVIDER =
-      '\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500';
     const statusLabel = this.formatOrderStatusForCustomer(order);
 
     if (order.status === 'cancelled') {
       const when = this.formatStepTimestamp(order.cancelledAt || order.updatedAt);
-      const reasonLine = order.cancelReason ? `\n\nReason: _${order.cancelReason}_` : '';
+      const reasonLine = order.cancelReason ? `\nReason: _${order.cancelReason}_` : '';
+      const itemsPreview = this.formatOrderItemsPreview(order.items as any[]);
       return (
-        `\u274C  *Order ${order.orderNumber}*\n` +
-        `${DIVIDER}\n\n` +
-        `Status \u00B7 *Cancelled*\n` +
-        (when ? `When \u00B7 _${when}_\n` : '') +
+        `\u274C  *Order #${order.orderNumber}*\n` +
+        `Status \u00B7 *Cancelled*` +
+        (when ? `\nWhen \u00B7 _${when}_` : '') +
         reasonLine +
         `\n\n` +
-        `${DIVIDER}\n` +
-        `Items \u00B7 *${order.items.length}*\n` +
+        `*Items (${order.items.length})*\n${itemsPreview}\n\n` +
         `*Total  ${this.formatCurrency(order.total)}*`
       );
     }
 
-    // Build timeline stages. Each stage has a status: done / current / pending.
-    type Stage = { icon: string; label: string; at?: Date | null };
+    // Four customer-visible stages. "Confirmed" + "Preparing" + "Packed" all
+    // read as "Preparing" to customers; admin-facing states are collapsed.
+    type Stage = { label: string; at?: Date | null };
     const current = (() => {
-      if (order.status === 'delivered') return 5;
-      if (order.status === 'out_for_delivery') return 4;
-      if (order.status === 'preparing' && order.packedAt) return 3;
-      if (order.status === 'preparing' || order.status === 'confirmed') return 2;
+      if (order.status === 'delivered') return 4;
+      if (order.status === 'out_for_delivery') return 3;
+      if (
+        order.status === 'placed' ||
+        order.status === 'confirmed' ||
+        order.status === 'preparing'
+      ) {
+        return 2;
+      }
       return 1;
     })();
 
     const stages: Stage[] = [
-      { icon: '\uD83D\uDCDD', label: 'Order Placed', at: order.createdAt },
-      { icon: '\u2705', label: 'Confirmed', at: null },
-      { icon: '\uD83D\uDCE6', label: 'Packed & Ready', at: order.packedAt },
-      { icon: '\uD83D\uDEF5', label: 'Out for Delivery', at: order.outForDeliveryAt },
-      { icon: '\uD83C\uDFE0', label: 'Delivered', at: order.deliveredAt },
+      { label: 'Order placed', at: order.createdAt },
+      {
+        label: 'Preparing',
+        at: order.packedAt || null,
+      },
+      { label: 'Out for delivery', at: order.outForDeliveryAt },
+      { label: 'Delivered', at: order.deliveredAt },
     ];
 
     const timeline = stages
       .map((stage, i) => {
         const idx = i + 1;
-        const glyph =
-          idx < current ? '\u2705' : idx === current ? '\uD83D\uDFE0' : '\u26AA';
-        const weight = idx === current ? `*${stage.label}*` : stage.label;
-        const whenLine = stage.at
-          ? `\n     _${this.formatStepTimestamp(stage.at)}_`
-          : idx === current
-            ? `\n     _in progress_`
-            : `\n     _pending_`;
-        return `${glyph}  ${weight}${whenLine}`;
+        const done = idx < current;
+        const isCurrent = idx === current;
+        const glyph = done ? '\u2705' : isCurrent ? '\uD83D\uDFE0' : '\u26AA';
+        const label = isCurrent ? `*${stage.label}*` : stage.label;
+        const timestamp = stage.at
+          ? `  \u00B7  _${this.formatStepTimestamp(stage.at)}_`
+          : '';
+        return `${glyph}  ${label}${timestamp}`;
       })
-      .join('\n\n');
+      .join('\n');
 
     const etaLine = order.expectedDeliveryDate
-      ? `ETA \u00B7 *${new Date(order.expectedDeliveryDate).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}*\n`
+      ? `\uD83D\uDCC5 ETA \u00B7 *${new Date(order.expectedDeliveryDate).toLocaleDateString(
+          'en-IN',
+          { weekday: 'short', day: 'numeric', month: 'short' },
+        )}*\n`
       : '';
 
     const courierLines: string[] = [];
-    if (order.courierName) courierLines.push(`\uD83D\uDEF5  Courier \u00B7 *${order.courierName}*`);
-    if (order.awbNumber) courierLines.push(`\uD83D\uDCE6  AWB \u00B7 *${order.awbNumber}*`);
-    if (order.trackingUrl) courierLines.push(`\uD83D\uDD17  ${order.trackingUrl}`);
-    const courierBlock = courierLines.length
-      ? `\n${DIVIDER}\n${courierLines.join('\n')}\n`
-      : '';
+    if (order.courierName) courierLines.push(`\uD83D\uDEF5 Courier \u00B7 *${order.courierName}*`);
+    if (order.awbNumber) courierLines.push(`\uD83D\uDCE6 AWB \u00B7 *${order.awbNumber}*`);
+    if (order.trackingUrl) courierLines.push(`\uD83D\uDD17 ${order.trackingUrl}`);
+    const courierBlock = courierLines.length ? `\n${courierLines.join('\n')}\n` : '';
 
-    const itemsPreview = (order.items as any[])
-      .slice(0, 4)
-      .map((it: any) => `\u2022  ${it.name}  \u00D7${it.quantity}`)
-      .join('\n');
-    const itemsMore =
-      order.items.length > 4 ? `\n_\u2026 and ${order.items.length - 4} more_` : '';
+    const itemsPreview = this.formatOrderItemsPreview(order.items as any[]);
 
     const headerIcon =
       order.status === 'delivered'
@@ -261,16 +275,13 @@ export class ChatbotService {
           : '\uD83D\uDED2';
 
     return (
-      `${headerIcon}  *Order ${order.orderNumber}*\n` +
-      `${DIVIDER}\n\n` +
+      `${headerIcon}  *Order #${order.orderNumber}*\n` +
       `Status \u00B7 *${statusLabel}*\n` +
       etaLine +
-      `\n${DIVIDER}  *Journey*  ${DIVIDER}\n\n` +
-      `${timeline}\n` +
+      `\n${timeline}\n` +
       courierBlock +
-      `\n${DIVIDER}  *Items (${order.items.length})*  ${DIVIDER}\n` +
-      `${itemsPreview}${itemsMore}\n\n` +
-      `*Total   ${this.formatCurrency(order.total)}*`
+      `\n*Items (${order.items.length})*\n${itemsPreview}\n\n` +
+      `*Total  ${this.formatCurrency(order.total)}*`
     );
   }
 
@@ -1085,29 +1096,20 @@ export class ChatbotService {
         await this.sendCouponPromptScreen(phone, session);
         return;
       }
-      try {
-        const updated = await this.cartService.applyCoupon(session.user.toString(), code);
-        this.analytics.track('chatbot.coupon_applied', {
-          userId: session.user.toString(),
-          code,
-          discount: updated.discount,
-          source: 'suggested',
-        });
-        await this.whatsappService.sendTextMessage({
-          phone,
-          message:
-            `\u2705 ${bold('Coupon applied')}\n` +
-            `Code ${bold(code)} \u2014 saved ${bold(this.formatCurrency(updated.discount))}`,
-        });
-      } catch {
-        this.analytics.track('chatbot.coupon_failed', {
-          userId: session.user.toString(),
-          code,
-          source: 'suggested',
-        });
-      }
-      await this.transitionToState(session, 'checkout');
-      await this.sendCheckoutOptions(phone, session);
+      await this.applyCouponCode(phone, session, code, 'suggested');
+      return;
+    }
+
+    // Show the full list of applicable coupons.
+    if (input === BTN.COUPON_LIST) {
+      await this.sendAvailableCouponsList(phone, session);
+      return;
+    }
+
+    // Parse a coupon-apply list row (e.g. "capply_SAVE50").
+    const parsed = parseButton(input);
+    if (parsed.kind === 'applyCoupon') {
+      await this.applyCouponCode(phone, session, parsed.code, 'list');
       return;
     }
 
@@ -1133,22 +1135,30 @@ export class ChatbotService {
     phone: string,
     session: ChatSessionDocument,
   ): Promise<void> {
-    const suggestion = await this.findSuggestedCoupon(session);
+    const applicable = await this.findApplicableCoupons(session);
+    const suggestion = applicable[0] ?? null;
 
     if (suggestion) {
       session.context = mergeChatContext(session.context, { suggestedCoupon: suggestion.code });
       await session.save();
 
       const applyTitle = clip(`\u2705 Apply ${suggestion.code}`, WA.BUTTON_TITLE);
+      // Show "See all" when there's more than one choice; otherwise surface
+      // the manual-code entry instead so the 3-button budget isn't wasted.
+      const secondaryButton =
+        applicable.length > 1
+          ? { id: BTN.COUPON_LIST, title: `\uD83C\uDFF7 See all (${applicable.length})` }
+          : { id: BTN.COUPON_CUSTOM, title: '\uD83C\uDFF7 Use another' };
+
       await this.whatsappService.sendInteractiveButtons({
         phone,
         headerText: 'Save on this order',
         bodyText:
           `\uD83C\uDF81 ${bold(`${this.formatCurrency(suggestion.discount)} off`)} with ${bold(suggestion.code)} \u2014 we've lined it up for you.\n` +
-          italic(suggestion.reason),
+          italic(suggestion.description || 'Applied to your cart total.'),
         buttons: [
           { id: BTN.COUPON_APPLY_SUGGESTED, title: applyTitle },
-          { id: BTN.COUPON_CUSTOM, title: '\uD83C\uDFF7 Use another' },
+          secondaryButton,
           { id: BTN.COUPON_SKIP, title: 'Skip' },
         ],
       });
@@ -1170,21 +1180,168 @@ export class ChatbotService {
   }
 
   /**
-   * Lightweight coupon suggestion: if a cart doesn't already have one and subtotal
-   * is above ₹500, suggest SAVE50. Wire this into your CouponsService later to
-   * pull real eligible codes; keeping it inline for now to avoid a module-graph change.
+   * Interactive list of every coupon applicable to the customer's cart right now.
+   * Each row applies its code on tap.
    */
+  private async sendAvailableCouponsList(
+    phone: string,
+    session: ChatSessionDocument,
+  ): Promise<void> {
+    const applicable = await this.findApplicableCoupons(session);
+
+    if (applicable.length === 0) {
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        headerText: 'No coupons available',
+        bodyText: 'No promo codes apply to your cart right now. You can type a code to try it.',
+        buttons: [
+          { id: BTN.COUPON_CUSTOM, title: '\uD83C\uDFF7 Enter code' },
+          { id: BTN.COUPON_SKIP, title: 'Skip' },
+          { id: BTN.BACK, title: '\u21A9 Back' },
+        ],
+      });
+      return;
+    }
+
+    const rows = applicable.slice(0, WA.MAX_ROWS_PER_SECTION - 1).map((c) => ({
+      id: Btn.applyCoupon(c.code),
+      title: clip(c.code, WA.LIST_ROW_TITLE),
+      description: clip(
+        `Save ${this.formatCurrency(c.discount)}${c.description ? ' \u00B7 ' + c.description : ''}`,
+        WA.LIST_ROW_DESC,
+      ),
+    }));
+    rows.push({
+      id: BTN.COUPON_SKIP,
+      title: 'Skip',
+      description: 'Continue without a coupon',
+    });
+
+    await this.whatsappService.sendInteractiveList({
+      phone,
+      headerText: 'Available coupons',
+      bodyText: 'Tap a code to apply it to your cart.',
+      footerText: applicable.length > WA.MAX_ROWS_PER_SECTION - 1
+        ? `Showing top ${WA.MAX_ROWS_PER_SECTION - 1} of ${applicable.length}`
+        : undefined,
+      buttonText: 'Choose coupon',
+      sections: [{ title: 'Eligible codes', rows }],
+    });
+  }
+
+  /** Apply a coupon code picked from the "Available coupons" list. */
+  private async applyCouponCode(
+    phone: string,
+    session: ChatSessionDocument,
+    code: string,
+    source: 'suggested' | 'list' | 'manual',
+  ): Promise<void> {
+    if (!session.user) return;
+    try {
+      const updated = await this.cartService.applyCoupon(session.user.toString(), code);
+      this.analytics.track('chatbot.coupon_applied', {
+        userId: session.user.toString(),
+        code,
+        discount: updated.discount,
+        source,
+      });
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message:
+          `\u2705 ${bold('Coupon applied')}\n` +
+          `Code ${bold(code)} \u2014 saved ${bold(this.formatCurrency(updated.discount))}`,
+      });
+    } catch (err) {
+      this.analytics.track('chatbot.coupon_failed', {
+        userId: session.user.toString(),
+        code,
+        source,
+        reason: err instanceof Error ? err.message : 'unknown',
+      });
+      const msg = err instanceof Error ? err.message : 'Please try again.';
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        headerText: 'Couldn\u2019t apply coupon',
+        bodyText: msg,
+        buttons: [
+          { id: BTN.COUPON_LIST, title: '\uD83C\uDFF7 See codes' },
+          { id: BTN.COUPON_SKIP, title: 'Skip' },
+          { id: BTN.BACK, title: '\u21A9 Back' },
+        ],
+      });
+      return;
+    }
+    await this.transitionToState(session, 'checkout');
+    await this.sendCheckoutOptions(phone, session);
+  }
+
+  /**
+   * Returns every currently-valid coupon for this customer's cart, each with
+   * its actual resolved discount, sorted by biggest discount first. Uses the
+   * real CouponsService — no hard-coded codes. Cart context is required so
+   * the min-order-amount / percentage cap rules are applied correctly.
+   */
+  private async findApplicableCoupons(
+    session: ChatSessionDocument,
+  ): Promise<
+    Array<{ code: string; discount: number; description: string }>
+  > {
+    if (!session.user) return [];
+    const cart = await this.cartService.getCart(session.user.toString());
+    if (!cart.subtotal || cart.subtotal <= 0) return [];
+
+    let active: Awaited<ReturnType<typeof this.couponsService.getActiveCoupons>>;
+    try {
+      active = await this.couponsService.getActiveCoupons();
+    } catch (err) {
+      this.logger.warn(
+        `getActiveCoupons failed: ${err instanceof Error ? err.message : 'unknown'}`,
+      );
+      return [];
+    }
+
+    const userId = session.user.toString();
+    const results: Array<{ code: string; discount: number; description: string }> = [];
+
+    for (const coupon of active) {
+      // Skip the coupon already on the cart — no point suggesting the same one.
+      if (cart.couponCode && cart.couponCode.toUpperCase() === coupon.code.toUpperCase()) {
+        continue;
+      }
+      try {
+        const validation = await this.couponsService.validateCoupon({
+          code: coupon.code,
+          orderAmount: cart.subtotal,
+          userId,
+        });
+        if (validation.valid && validation.discountAmount > 0) {
+          results.push({
+            code: coupon.code,
+            discount: validation.discountAmount,
+            description: coupon.description || '',
+          });
+        }
+      } catch {
+        // Validation rejection (e.g. per-user cap). Silently skip this coupon —
+        // we only want to surface ones the user can actually apply right now.
+      }
+    }
+
+    results.sort((a, b) => b.discount - a.discount);
+    return results;
+  }
+
+  /** Best single coupon for the suggested-coupon prompt, or null if none. */
   private async findSuggestedCoupon(
     session: ChatSessionDocument,
   ): Promise<{ code: string; discount: number; reason: string } | null> {
-    if (!session.user) return null;
-    const cart = await this.cartService.getCart(session.user.toString());
-    if (cart.couponCode) return null;
-    if (!cart.subtotal || cart.subtotal < 500) return null;
+    const all = await this.findApplicableCoupons(session);
+    const top = all[0];
+    if (!top) return null;
     return {
-      code: 'SAVE50',
-      discount: 50,
-      reason: 'Your cart qualifies \u2014 orders above \u20B9500.',
+      code: top.code,
+      discount: top.discount,
+      reason: top.description || 'Applied to your cart total.',
     };
   }
 
@@ -3311,8 +3468,10 @@ export class ChatbotService {
           key === 'coupon_no' ||
           key === 'coupon_apply_suggested' ||
           key === 'coupon_custom' ||
+          key === 'coupon_list' ||
           key === 'skip_coupon' ||
-          key === 'back'
+          key === 'back' ||
+          key.startsWith('capply_')
         );
       case 'coupon_input':
         return (
