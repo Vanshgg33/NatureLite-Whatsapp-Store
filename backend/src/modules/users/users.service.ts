@@ -40,6 +40,32 @@ export class UsersService {
     return this.userRepository.findOneByPhone(phone);
   }
 
+  async findManyByPhones(phones: string[]): Promise<User[]> {
+    return this.userRepository.findManyByPhones(phones);
+  }
+
+  /**
+   * Set the display name for a user identified by phone. Creates the user record
+   * if it doesn't exist yet (admin is naming a chat-only contact whose account
+   * hasn't been provisioned by a login/OTP yet).
+   */
+  async setNameByPhone(phone: string, name: string): Promise<User> {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      throw new BadRequestException('Name cannot be empty');
+    }
+    let userDoc = await this.userRepository.findOneByPhone(phone);
+    if (!userDoc) {
+      await this.userRepository.create({ phone } as Partial<User>);
+      userDoc = await this.userRepository.findOneByPhone(phone);
+      if (!userDoc) {
+        throw new NotFoundException('User not found after create');
+      }
+    }
+    userDoc.name = trimmed;
+    return userDoc.save();
+  }
+
   /**
    * Same phone is treated as the same user (used for guest checkout and OTP login).
    * If a guest later registers with the same phone, they get the same account.

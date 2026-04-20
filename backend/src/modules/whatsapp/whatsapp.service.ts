@@ -4,6 +4,7 @@ import axios, { AxiosInstance } from 'axios';
 import * as crypto from 'crypto';
 import { MessageLogDocument } from './schemas/message-log.schema';
 import { MessageLogRepository } from './repositories/message-log.repository';
+import { UsersService } from '../users/users.service';
 import {
   SendTextMessageDto,
   SendTemplateMessageDto,
@@ -49,6 +50,7 @@ export class WhatsAppService implements OnModuleInit {
   constructor(
     private readonly messageLogRepository: MessageLogRepository,
     private configService: ConfigService,
+    private readonly usersService: UsersService,
   ) {
     this.nodeEnv = this.configService.get<string>('app.nodeEnv') || 'development';
     this.config = this.configService.get<WhatsAppConfig>('whatsapp')!;
@@ -795,6 +797,59 @@ export class WhatsAppService implements OnModuleInit {
     limit: number = 50,
   ): Promise<MessageLogDocument[]> {
     return this.messageLogRepository.findByPhone(phone, limit);
+  }
+
+  /**
+   * Admin inbox: one row per phone that has ever exchanged a WhatsApp message,
+   * sorted by most-recent first, hydrated with the customer's stored name.
+   */
+  async listConversations(limit: number = 50): Promise<
+    Array<{
+      phone: string;
+      name: string | null;
+      lastMessage: {
+        preview: string;
+        direction: 'inbound' | 'outbound';
+        status?: string;
+        at: Date;
+      };
+    }>
+  > {
+    const conversations = await this.messageLogRepository.listConversations(limit);
+    if (!conversations.length) return [];
+
+    const phones = conversations.map((c) => c.phone);
+    const users = await this.usersService.findManyByPhones(phones);
+    const nameByPhone = new Map(users.map((u) => [u.phone, u.name || null]));
+
+    return conversations.map((c) => {
+      const text = c.lastMessage.content?.text || c.lastMessage.content?.caption;
+      const template = c.lastMessage.content?.templateName;
+      const preview = text || (template ? `[template: ${template}]` : '[Media]');
+      return {
+        phone: c.phone,
+        name: nameByPhone.get(c.phone) ?? null,
+        lastMessage: {
+          preview: preview.slice(0, 160),
+          direction: c.lastMessage.direction,
+          status: c.lastMessage.status,
+          at: c.lastMessage.createdAt,
+        },
+      };
+    });
+  }
+
+  /**
+   * Set the display name for a chat contact. Creates the user record if the
+   * contact hasn't been provisioned yet (chat-only — no login/order history).
+   */
+  async setContactName(phone: string, name: string): Promise<{ phone: string; name: string }> {
+    const normalized = this.normalizePhone(phone);
+    if (!normalized) {
+      throw new Error('Invalid phone number');
+    }
+    const user = await this.usersService.setNameByPhone(normalized, name);
+    return { phone: normalized, name: user.name || '' };
   }
 
   private normalizePhone(input: string): string | null {

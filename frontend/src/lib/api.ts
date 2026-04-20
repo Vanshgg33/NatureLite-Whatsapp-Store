@@ -835,6 +835,37 @@ class ApiClient {
     return response.data.data;
   }
 
+  async listWhatsAppConversations(limit: number = 50): Promise<Array<{
+    phone: string;
+    name: string | null;
+    lastMessage: {
+      preview: string;
+      direction: 'inbound' | 'outbound';
+      status?: string;
+      at: string;
+    };
+  }>> {
+    const response = await this.client.get<ApiResponse<Array<{
+      phone: string;
+      name: string | null;
+      lastMessage: {
+        preview: string;
+        direction: 'inbound' | 'outbound';
+        status?: string;
+        at: string;
+      };
+    }>>>(`/whatsapp/conversations?limit=${limit}`);
+    return response.data.data;
+  }
+
+  async updateWhatsAppContactName(phone: string, name: string): Promise<{ phone: string; name: string }> {
+    const response = await this.client.patch<ApiResponse<{ phone: string; name: string }>>(
+      `/whatsapp/contacts/${phone}`,
+      { name },
+    );
+    return response.data.data;
+  }
+
   // ==================== NOTIFICATIONS ====================
   async sendBroadcast(
     phones: string[],

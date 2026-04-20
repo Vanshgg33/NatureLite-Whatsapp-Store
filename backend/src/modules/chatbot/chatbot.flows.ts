@@ -167,12 +167,12 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
       type: 'text',
       content:
         `*New address*\n\n` +
-        `Send your address in this format:\n\n` +
-        `Name\n` +
-        `Street address\n` +
+        `Send it in this format (one line each):\n\n` +
+        `Full name\n` +
+        `House / flat no, street\n` +
         `City, State\n` +
-        `Pincode\n` +
-        `Landmark _(optional)_`,
+        `6-digit pincode\n` +
+        `_Landmark (optional)_`,
     },
     transitions: {
       submit: 'payment_selection',

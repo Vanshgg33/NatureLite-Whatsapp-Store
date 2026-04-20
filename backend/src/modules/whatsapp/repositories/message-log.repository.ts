@@ -155,4 +155,49 @@ export class MessageLogRepository extends BaseRepository<MessageLogDocument> {
   async findByPhone(phone: string, limit: number = 50): Promise<MessageLogDocument[]> {
     return this.model.find({ phone }).sort({ createdAt: -1 }).limit(limit).exec();
   }
+
+  /**
+   * Conversation list for the admin chat inbox: one row per phone with the most
+   * recent message attached. Uses an aggregation instead of N+1 per-phone lookups.
+   */
+  async listConversations(limit: number = 50): Promise<
+    Array<{
+      phone: string;
+      lastMessageAt: Date;
+      lastMessage: {
+        direction: 'inbound' | 'outbound';
+        messageType: string;
+        content?: { text?: string; caption?: string; templateName?: string };
+        status?: string;
+        createdAt: Date;
+      };
+    }>
+  > {
+    const rows = await this.model
+      .aggregate([
+        { $sort: { createdAt: -1 } },
+        {
+          $group: {
+            _id: '$phone',
+            lastMessageAt: { $first: '$createdAt' },
+            lastMessage: { $first: '$$ROOT' },
+          },
+        },
+        { $sort: { lastMessageAt: -1 } },
+        { $limit: limit },
+      ])
+      .exec();
+
+    return rows.map((r) => ({
+      phone: r._id as string,
+      lastMessageAt: r.lastMessageAt as Date,
+      lastMessage: {
+        direction: r.lastMessage.direction,
+        messageType: r.lastMessage.messageType,
+        content: r.lastMessage.content,
+        status: r.lastMessage.status,
+        createdAt: r.lastMessage.createdAt,
+      },
+    }));
+  }
 }

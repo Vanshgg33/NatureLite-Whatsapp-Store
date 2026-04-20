@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Body,
   Query,
   Param,
@@ -21,6 +22,7 @@ import {
   SendInteractiveButtonDto,
   SendInteractiveListDto,
   SendMediaMessageDto,
+  UpdateContactNameDto,
   WebhookPayload,
   FlatWebhookPayload,
 } from './dto/whatsapp.dto';
@@ -240,5 +242,26 @@ export class WhatsAppController implements OnModuleDestroy {
       phone,
       limit ? parseInt(limit, 10) : 50,
     );
+  }
+
+  @Get('conversations')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  async listConversations(
+    @Query('limit') limit?: string,
+  ): Promise<unknown[]> {
+    const parsed = limit ? parseInt(limit, 10) : 50;
+    const safeLimit = Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 200) : 50;
+    return this.whatsappService.listConversations(safeLimit);
+  }
+
+  @Patch('contacts/:phone')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  async updateContactName(
+    @Param('phone') phone: string,
+    @Body() dto: UpdateContactNameDto,
+  ): Promise<{ phone: string; name: string }> {
+    return this.whatsappService.setContactName(phone, dto.name);
   }
 }

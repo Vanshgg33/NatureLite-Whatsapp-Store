@@ -665,15 +665,20 @@ export class ChatbotService {
         });
       } catch (e) {
         const msg = e instanceof Error ? e.message : '';
-        if (/stock/i.test(msg)) {
-          await this.whatsappService.sendTextMessage({
-            phone,
-            message: 'Not enough stock available for this item.',
-          });
-          await this.sendProductDetail(phone, session.currentProductId, session);
-          return;
+        const stockIssue = /stock/i.test(msg);
+        if (!stockIssue) {
+          this.logger.warn(
+            `Cart addItem failed for ${session.user.toString()} / ${session.currentProductId}: ${msg || 'unknown'}`,
+          );
         }
-        throw e;
+        await this.whatsappService.sendTextMessage({
+          phone,
+          message: stockIssue
+            ? 'Not enough stock available for this item.'
+            : italic('Couldn\u2019t add this item to your cart. Please try again.'),
+        });
+        await this.sendProductDetail(phone, session.currentProductId, session);
+        return;
       }
 
       const cart = await this.cartService.getCart(session.user.toString());
@@ -707,15 +712,24 @@ export class ChatbotService {
         });
       } catch (e) {
         const msg = e instanceof Error ? e.message : '';
-        if (/stock/i.test(msg)) {
+        const stockIssue = /stock/i.test(msg);
+        if (!stockIssue) {
+          this.logger.warn(
+            `Buy-now failed for ${session.user.toString()} / ${session.currentProductId}: ${msg || 'unknown'}`,
+          );
           await this.whatsappService.sendTextMessage({
             phone,
-            message: 'Not enough stock available for this item.',
+            message: italic('Couldn\u2019t start checkout right now. Please try again.'),
           });
           await this.sendProductDetail(phone, session.currentProductId, session);
           return;
         }
-        throw e;
+        await this.whatsappService.sendTextMessage({
+          phone,
+          message: 'Not enough stock available for this item.',
+        });
+        await this.sendProductDetail(phone, session.currentProductId, session);
+        return;
       }
 
       await this.transitionToState(session, 'coupon_prompt');
@@ -856,10 +870,17 @@ export class ChatbotService {
           phone,
           message: `_Only ${item.quantity} in stock — cannot increase further._`,
         });
-        await this.sendCartItemManage(phone, session, idx);
-        return;
+      } else {
+        this.logger.warn(
+          `Cart quantity update failed for ${session.user.toString()}: ${msg || 'unknown'}`,
+        );
+        await this.whatsappService.sendTextMessage({
+          phone,
+          message: italic('Couldn\u2019t update the quantity. Please try again.'),
+        });
       }
-      throw e;
+      await this.sendCartItemManage(phone, session, idx);
+      return;
     }
     // Re-render the item panel with new quantity (same index still valid — no list reorder).
     await this.sendCartItemManage(phone, session, idx);
@@ -882,11 +903,23 @@ export class ChatbotService {
       await this.sendCartSummary(phone, session);
       return;
     }
-    await this.cartService.removeItem(
-      session.user.toString(),
-      item.product.id,
-      item.variantSku,
-    );
+    try {
+      await this.cartService.removeItem(
+        session.user.toString(),
+        item.product.id,
+        item.variantSku,
+      );
+    } catch (e) {
+      this.logger.warn(
+        `Cart item removal failed for ${session.user.toString()}: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: italic('Couldn\u2019t remove that item. Please try again.'),
+      });
+      await this.sendCartSummary(phone, session);
+      return;
+    }
     const updated = await this.cartService.getCart(session.user.toString());
     if (previousCoupon && !updated.couponCode) {
       await this.whatsappService.sendTextMessage({
@@ -1246,47 +1279,213 @@ export class ChatbotService {
     await this.sendCheckoutOptions(phone, session);
   }
 
+  /**
+   * Parse a free-text Indian address. Accepts:
+   *   - 4–5 clean lines (name / street / city, state / pincode / landmark)
+   *   - Single-line comma-separated input
+   *   - Missing commas ("Nagpur Maharashtra")
+   *   - Pincode hidden inside another line
+   *   - Extra whitespace / bullet characters
+   *
+   * Returns { ok: false, reason } with a human-friendly reason for each failure mode
+   * so the caller can prompt the user with a specific fix, not a generic error.
+   */
+  private parseCustomerAddress(
+    raw: string,
+  ):
+    | {
+        ok: true;
+        name: string;
+        street: string;
+        city: string;
+        state: string;
+        pincode: string;
+        landmark?: string;
+      }
+    | { ok: false; reason: string } {
+    const trimmed = (raw || '').trim();
+    if (!trimmed) return { ok: false, reason: 'Address is empty' };
+
+    // Known Indian states + UTs for recognition and to peel the state out of
+    // the "City State" / "City, State" line even when the user forgets the
+    // comma. Order matters: longer names listed first so e.g. "Andhra Pradesh"
+    // wins over "Pradesh" in greedy regex matching.
+    const STATES = [
+      'Andaman and Nicobar Islands', 'Dadra and Nagar Haveli', 'Jammu and Kashmir',
+      'Himachal Pradesh', 'Arunachal Pradesh', 'Madhya Pradesh', 'Uttar Pradesh',
+      'Andhra Pradesh', 'West Bengal', 'Tamil Nadu', 'Daman and Diu',
+      'Uttarakhand', 'Maharashtra', 'Chhattisgarh', 'Puducherry', 'Chandigarh',
+      'Rajasthan', 'Karnataka', 'Telangana', 'Jharkhand', 'Meghalaya',
+      'Nagaland', 'Gujarat', 'Haryana', 'Manipur', 'Mizoram',
+      'Lakshadweep', 'Tripura', 'Sikkim', 'Kerala', 'Odisha',
+      'Punjab', 'Assam', 'Bihar', 'Delhi', 'Ladakh', 'Goa',
+    ];
+    const STATE_RE = new RegExp(
+      `\\b(${STATES.map((s) => s.replace(/\s+/g, '\\s+')).join('|')})\\b`,
+      'i',
+    );
+
+    const canonicalState = (match: string): string => {
+      const norm = match.replace(/\s+/g, ' ').trim().toLowerCase();
+      const hit = STATES.find((s) => s.toLowerCase() === norm);
+      return hit || match.replace(/\s+/g, ' ').trim();
+    };
+
+    // Split into lines; if the user typed it all on one line, fall back to commas.
+    let lines = trimmed
+      .split('\n')
+      .map((l) => l.replace(/^[\u2022\-\*\s]+/, '').trim())
+      .filter(Boolean);
+    if (lines.length <= 2 && trimmed.includes(',')) {
+      lines = trimmed
+        .split(/[,\n]/)
+        .map((l) => l.replace(/^[\u2022\-\*\s]+/, '').trim())
+        .filter(Boolean);
+    }
+
+    if (lines.length < 3) {
+      return {
+        ok: false,
+        reason: 'Need at least 4 lines (name, street, city/state, pincode)',
+      };
+    }
+
+    // Extract pincode from anywhere in the input.
+    const pincodeMatch = trimmed.match(/\b(\d{6})\b/);
+    const pincode = pincodeMatch?.[1];
+    if (!pincode) {
+      return { ok: false, reason: 'Couldn\u2019t find a 6-digit pincode' };
+    }
+
+    // Drop any line that is just the pincode (so it doesn't get mistaken for
+    // city/street) — but keep lines that contain the pincode plus other text.
+    lines = lines.filter((l) => l.replace(/\s+/g, '') !== pincode);
+
+    // Find which remaining line contains a state name.
+    let stateLineIdx = -1;
+    let state = '';
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i].match(STATE_RE);
+      if (m) {
+        stateLineIdx = i;
+        state = canonicalState(m[1]);
+        break;
+      }
+    }
+    if (!state) {
+      return {
+        ok: false,
+        reason: 'Couldn\u2019t recognise the state. Please spell it fully (e.g. Maharashtra)',
+      };
+    }
+
+    // City: the state line with the state text stripped, commas/dashes cleaned.
+    const cityStateLine = lines[stateLineIdx];
+    const cityRaw = cityStateLine
+      .replace(STATE_RE, '')
+      .replace(/[,\-\u2013\u2014]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!cityRaw) {
+      return { ok: false, reason: 'Couldn\u2019t read the city' };
+    }
+
+    // Name: first line that is NOT the state line (usually index 0).
+    const nameIdx = stateLineIdx === 0 ? -1 : 0;
+    if (nameIdx === -1) {
+      return { ok: false, reason: 'Please put your name on the first line' };
+    }
+    const name = lines[nameIdx];
+
+    // Street: everything between the name line and the state line.
+    const streetParts = lines.slice(nameIdx + 1, stateLineIdx);
+    const street = streetParts.join(', ').trim();
+    if (!street) {
+      return {
+        ok: false,
+        reason: 'Missing street / house number on line 2',
+      };
+    }
+
+    // Landmark: anything after the state line that isn't just the pincode.
+    const tailParts = lines
+      .slice(stateLineIdx + 1)
+      .filter((l) => l.replace(/\s+/g, '') !== pincode && !/^\d{6}$/.test(l.trim()));
+    const landmark = tailParts.length > 0 ? tailParts.join(', ') : undefined;
+
+    return {
+      ok: true,
+      name,
+      street,
+      city: cityRaw,
+      state,
+      pincode,
+      landmark,
+    };
+  }
+
   private async handleAddressInput(
     session: ChatSessionDocument,
     phone: string,
     input: string,
   ): Promise<void> {
-    const lines = input.split('\n').filter((l) => l.trim());
-
-    if (lines.length < 4) {
+    const sendRetry = async (reason: string) => {
       await this.whatsappService.sendTextMessage({
         phone,
         message:
-          `${bold('Invalid format')}\n\n` +
-          `Please send your address as:\n\n` +
-          `Name\nStreet address\nCity, State\nPincode\nLandmark ${italic('(optional)')}`,
+          `${bold(reason)}\n\n` +
+          `Send the address like this (one line each):\n\n` +
+          `Full name\n` +
+          `House / flat no, street\n` +
+          `City, State\n` +
+          `6-digit pincode\n` +
+          `${italic('Landmark (optional)')}`,
+      });
+    };
+
+    const parsed = this.parseCustomerAddress(input);
+    if (parsed.ok !== true) {
+      const reason = parsed.reason;
+      await sendRetry(reason);
+      return;
+    }
+    const { name, street, city, state, pincode, landmark } = parsed;
+
+    if (!session.user) {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: 'Please register first to save an address.',
       });
       return;
     }
 
-    if (session.user) {
-      const [name, street, cityState, pincode, landmark] = lines;
-      const [city, state] = (cityState || '').split(',').map((s) => s.trim());
-
+    try {
       await this.usersService.addAddress(session.user.toString(), {
         label: 'Delivery',
         street,
-        city: city || '',
-        state: state || '',
-        pincode: pincode || '',
+        city,
+        state,
+        pincode,
         landmark,
         isDefault: false,
       });
-
-      session.context = mergeChatContext(session.context, {
-        newAddress: { name, street, city: city || '', state: state || '', pincode: pincode || '', landmark },
-      });
-      await session.save();
+    } catch (err) {
+      this.logger.warn(
+        `Address save failed for ${session.user.toString()}: ${err instanceof Error ? err.message : 'unknown'}`,
+      );
+      await sendRetry('Couldn\u2019t save that address');
+      return;
     }
+
+    session.context = mergeChatContext(session.context, {
+      newAddress: { name, street, city, state, pincode, landmark },
+    });
+    await session.save();
 
     await this.whatsappService.sendTextMessage({
       phone,
-      message: '*Address Saved* \u2713',
+      message: `\u2705 ${bold('Address saved')}`,
     });
 
     // Navigate back depending on where the user came from.
@@ -1294,6 +1493,11 @@ export class ChatbotService {
       await this.transitionToState(session, 'account_addresses');
       await this.sendAddressList(phone, session);
     } else {
+      // Select the freshly-added address so the payment screen uses it.
+      const user = await this.usersService.findById(session.user.toString());
+      const newIdx = Math.max(0, user.addresses.length - 1);
+      session.context = mergeChatContext(session.context, { selectedAddressIndex: newIdx });
+      await session.save();
       await this.transitionToState(session, 'payment_selection');
       await this.sendFlowResponse(phone, 'payment_selection', session);
     }
@@ -1456,21 +1660,34 @@ export class ChatbotService {
         idempotencyKey: this.whatsAppCheckoutIdempotencyKey(message.messageId),
       });
     } catch (err) {
-      const msg = err instanceof BadRequestException ? err.message : '';
-      if (/stock|pincode|empty|deliver/i.test(msg)) {
-        await this.whatsappService.sendInteractiveButtons({
-          phone,
-          headerText: 'Order failed',
-          bodyText: msg || 'Please review your cart and address, then try again.',
-          buttons: [
-            { id: BTN.CART, title: '\uD83D\uDED2 View Cart' },
-            { id: BTN.BACK, title: '\u21A9 Back' },
-          ],
-        });
-        await this.transitionToState(session, 'cart');
-        return;
+      // Never let an order-creation failure drop the user into the generic outer
+      // catch — that strands them with "type menu to start over" and no way to
+      // retry. Surface a specific reason when we have one, a safe fallback otherwise.
+      const msg = err instanceof Error ? err.message : '';
+      const isExpected =
+        err instanceof BadRequestException && /stock|pincode|empty|deliver/i.test(msg);
+
+      if (!isExpected) {
+        this.logger.error(
+          `Order creation failed for ${session.user?.toString()}: ${msg || 'unknown'}`,
+          err as Error,
+        );
       }
-      throw err;
+
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        headerText: 'Order failed',
+        bodyText: isExpected
+          ? msg
+          : 'We couldn\u2019t place your order right now. Your cart is saved \u2014 please try again or contact support.',
+        buttons: [
+          { id: BTN.CART, title: '\uD83D\uDED2 View Cart' },
+          { id: BTN.SUPPORT, title: '\uD83D\uDC64 Support' },
+          { id: BTN.MENU, title: '\uD83C\uDFE0 Menu' },
+        ],
+      });
+      await this.transitionToState(session, 'cart');
+      return;
     }
 
     this.analytics.track('chatbot.order_completed', {
@@ -1558,7 +1775,20 @@ export class ChatbotService {
 
     if (btn.kind === 'order') {
       const orderId = btn.id;
-      const order = await this.ordersService.findById(orderId);
+      let order;
+      try {
+        order = await this.ordersService.findById(orderId);
+      } catch (err) {
+        this.logger.warn(
+          `Order findById failed for ${orderId}: ${err instanceof Error ? err.message : 'unknown'}`,
+        );
+        await this.whatsappService.sendTextMessage({
+          phone,
+          message: 'This order is no longer available.',
+        });
+        await this.sendOrdersList(phone, session);
+        return;
+      }
       if (session.user) {
         const orderUserId = this.getOrderUserId(order);
         if (orderUserId && orderUserId !== session.user.toString()) {
@@ -1595,7 +1825,20 @@ export class ChatbotService {
 
     if (btn.kind === 'reorder') {
       const orderId = btn.id;
-      const order = await this.ordersService.findById(orderId);
+      let order;
+      try {
+        order = await this.ordersService.findById(orderId);
+      } catch (err) {
+        this.logger.warn(
+          `Order findById (reorder) failed for ${orderId}: ${err instanceof Error ? err.message : 'unknown'}`,
+        );
+        await this.whatsappService.sendTextMessage({
+          phone,
+          message: 'This order is no longer available for reorder.',
+        });
+        await this.sendOrdersList(phone, session);
+        return;
+      }
       if (session.user) {
         const orderUserId = this.getOrderUserId(order);
         if (orderUserId && orderUserId !== session.user.toString()) {
@@ -1642,18 +1885,26 @@ export class ChatbotService {
         });
       } catch (e) {
         const msg = e instanceof Error ? e.message : '';
-        if (/stock|insufficient/i.test(msg)) {
-          await this.whatsappService.sendTextMessage({
-            phone,
-            message:
-              `${bold('Reorder unavailable')}\n\n` +
-              `Some items are currently out of stock. Type ${bold('menu')} to continue browsing.`,
-          });
-          await this.transitionToState(session, 'main_menu');
-          await this.sendFlowResponse(phone, 'main_menu', session);
-          return;
+        const outOfStock = /stock|insufficient/i.test(msg);
+        if (!outOfStock) {
+          this.logger.warn(
+            `Reorder failed for ${session.user.toString()} / ${session.pendingOrderId}: ${msg || 'unknown'}`,
+          );
         }
-        throw e;
+        await this.whatsappService.sendInteractiveButtons({
+          phone,
+          headerText: outOfStock ? 'Reorder unavailable' : 'Reorder failed',
+          bodyText: outOfStock
+            ? 'Some items are currently out of stock.'
+            : 'We couldn\u2019t reorder right now. Please try another order or contact support.',
+          buttons: [
+            { id: BTN.ORDERS, title: '\uD83D\uDCE6 My Orders' },
+            { id: BTN.BROWSE, title: '\uD83D\uDECD Browse' },
+            { id: BTN.MENU, title: '\uD83C\uDFE0 Menu' },
+          ],
+        });
+        await this.transitionToState(session, 'main_menu');
+        return;
       }
 
       await this.whatsappService.sendTextMessage({
@@ -1819,12 +2070,27 @@ export class ChatbotService {
       if (editingField === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
         await this.whatsappService.sendTextMessage({
           phone,
-          message: 'That doesn\'t look like a valid email. Please try again.',
+          message: 'That doesn\'t look like a valid email. Please type your email again, or tap Back.',
         });
         return;
       }
 
-      await this.usersService.update(session.user.toString(), { [editingField]: value });
+      try {
+        await this.usersService.update(session.user.toString(), { [editingField]: value });
+      } catch (err) {
+        this.logger.warn(
+          `Profile update failed for ${session.user.toString()} (${editingField}): ${err instanceof Error ? err.message : 'unknown'}`,
+        );
+        const msg = err instanceof Error ? err.message : '';
+        const looksLikeDup = /duplicate|exists|unique/i.test(msg);
+        await this.whatsappService.sendTextMessage({
+          phone,
+          message: looksLikeDup
+            ? `That ${editingField} is already in use. Please try another.`
+            : `Couldn't update your ${editingField}. Please try again or tap Back.`,
+        });
+        return;
+      }
       session.context = mergeChatContext(session.context, { editingField: undefined });
       await session.save();
 
@@ -2235,8 +2501,24 @@ export class ChatbotService {
     }
     let products = productCacheEntry.get();
     if (!products) {
-      products = await this.productsService.findByCategory(categoryId);
-      productCacheEntry.set(products);
+      try {
+        products = await this.productsService.findByCategory(categoryId);
+        productCacheEntry.set(products);
+      } catch (err) {
+        // Category id may be stale (deleted while user was browsing).
+        this.logger.warn(
+          `findByCategory failed for ${categoryId}: ${err instanceof Error ? err.message : 'unknown'}`,
+        );
+        this.productCache.delete(categoryId);
+        session.currentCategoryId = undefined;
+        await session.save();
+        await this.whatsappService.sendTextMessage({
+          phone,
+          message: 'That category is no longer available. Showing all categories.',
+        });
+        await this.sendCategoryList(phone, session);
+        return;
+      }
     }
 
     if (products.length === 0) {
@@ -2290,7 +2572,27 @@ export class ChatbotService {
     productId: string,
     session: ChatSessionDocument,
   ): Promise<void> {
-    const product = await this.productsService.findById(productId);
+    let product;
+    try {
+      product = await this.productsService.findById(productId);
+    } catch (err) {
+      // Product may have been deleted since the list was rendered.
+      this.logger.warn(
+        `findById product failed for ${productId}: ${err instanceof Error ? err.message : 'unknown'}`,
+      );
+      session.currentProductId = undefined;
+      await session.save();
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        headerText: 'Product unavailable',
+        bodyText: 'This product is no longer available.',
+        buttons: [
+          { id: BTN.BROWSE, title: '\uD83D\uDECD Browse' },
+          { id: BTN.MENU, title: '\uD83C\uDFE0 Menu' },
+        ],
+      });
+      return;
+    }
 
     const inStock = product.trackStock !== true || (product.stock ?? 0) > 0;
     const stockBadge = product.trackStock === true

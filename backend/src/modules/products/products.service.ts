@@ -153,8 +153,17 @@ export class ProductsService implements OnModuleInit {
     }
 
     const updateData: Record<string, unknown> = { ...dto };
+    // Treat empty / whitespace-only category as "not provided" — the frontend
+    // can send an empty string when the dropdown hasn't been interacted with,
+    // and we don't want that to trip parseObjectId's "24-character hex string"
+    // guard and block the rest of the update.
     if (dto.category !== undefined) {
-      updateData.category = parseObjectId(dto.category, 'category');
+      const trimmed = typeof dto.category === 'string' ? dto.category.trim() : '';
+      if (trimmed === '') {
+        delete updateData.category;
+      } else {
+        updateData.category = parseObjectId(trimmed, 'category');
+      }
     }
 
     const product = await this.productRepository.findByIdAndUpdateDoc(id, updateData);

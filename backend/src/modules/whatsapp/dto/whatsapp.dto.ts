@@ -227,6 +227,12 @@ export interface WhatsAppMessage {
   contactName?: string;
 }
 
+export class UpdateContactNameDto {
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+}
+
 export class BroadcastMessageDto {
   @IsArray()
   @IsString({ each: true })

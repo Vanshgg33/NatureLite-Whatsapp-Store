@@ -72,11 +72,22 @@ export default function EditProductPage() {
 
   useEffect(() => {
     if (product) {
+      // product.category can be:
+      //   - a populated category object { _id, ... }
+      //   - an id string
+      //   - null (the category was deleted)
+      // typeof null === 'object', so the old unchecked access threw a TypeError
+      // and left formData at its initial empty state — causing the backend's
+      // "must be a 24-character hex string" when the user hit Save.
+      const categoryValue =
+        product.category && typeof product.category === 'object'
+          ? (product.category as { _id: string })._id
+          : (typeof product.category === 'string' ? product.category : '');
       setFormData({
         name: product.name,
         description: product.description || '',
         shortDescription: product.shortDescription || '',
-        category: typeof product.category === 'object' ? product.category._id : product.category,
+        category: categoryValue,
         price: product.price.toString(),
         compareAtPrice: product.compareAtPrice?.toString() || '',
         sku: product.sku,
@@ -173,11 +184,21 @@ export default function EditProductPage() {
     e.preventDefault();
     setSubmitError(null);
 
+    // Category is required. Without this guard, submitting with "Select category"
+    // showing (which happens when the product's category was deleted and the
+    // dropdown has no matching value to display) sends an empty string and the
+    // backend rejects with "Invalid category: must be a 24-character hex string".
+    const categoryId = formData.category?.trim() || '';
+    if (!categoryId) {
+      setSubmitError('Please select a category before saving.');
+      return;
+    }
+
     updateMutation.mutate({
       name: formData.name,
       description: formData.description,
       shortDescription: formData.shortDescription,
-      category: formData.category,
+      category: categoryId,
       price: parseFloat(formData.price),
       compareAtPrice: formData.compareAtPrice ? parseFloat(formData.compareAtPrice) : undefined,
       sku: formData.sku,

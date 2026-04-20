@@ -19,6 +19,11 @@ export class UserRepository extends BaseRepository<UserDocument> {
     return this.model.findOne({ phone }).exec();
   }
 
+  async findManyByPhones(phones: string[]): Promise<UserDocument[]> {
+    if (!phones.length) return [];
+    return this.model.find({ phone: { $in: phones } }).exec();
+  }
+
   async findOneByEmail(email: string): Promise<UserDocument | null> {
     return this.model.findOne({ email: email.toLowerCase() }).exec();
   }
