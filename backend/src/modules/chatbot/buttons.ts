@@ -15,6 +15,7 @@ export const BTN = {
 
   ADD_CART: 'add_cart',
   BUY_NOW: 'buy_now',
+  PICK_QTY: 'pick_qty',
 
   COUPON_APPLY_SUGGESTED: 'coupon_apply_suggested',
   COUPON_YES: 'coupon_yes',
@@ -48,6 +49,7 @@ export const Btn = {
   decItem: (i: number) => `dec_${i}`,
   delItem: (i: number) => `del_${i}`,
   applyCoupon: (code: string) => `capply_${code}`,
+  addQty: (n: number) => `qty_${n}`,
 };
 
 export type ParsedButton =
@@ -61,9 +63,10 @@ export type ParsedButton =
   | { kind: 'decItem'; idx: number }
   | { kind: 'delItem'; idx: number }
   | { kind: 'applyCoupon'; code: string }
+  | { kind: 'addQty'; qty: number }
   | { kind: 'static'; value: string };
 
-const PREFIX_RE = /^(prod|cat|order|reorder|address|addr|mi|inc|dec|del|rm|capply)_(.+)$/;
+const PREFIX_RE = /^(prod|cat|order|reorder|address|addr|mi|inc|dec|del|rm|capply|qty)_(.+)$/;
 
 export function parseButton(id: string | undefined | null): ParsedButton {
   const raw = (id ?? '').trim();
@@ -85,6 +88,12 @@ export function parseButton(id: string | undefined | null): ParsedButton {
     case 'del':
     case 'rm':       return { kind: 'delItem', idx };
     case 'capply':   return { kind: 'applyCoupon', code: rest };
+    case 'qty': {
+      const qty = Number.parseInt(rest, 10);
+      return Number.isFinite(qty) && qty > 0
+        ? { kind: 'addQty', qty }
+        : { kind: 'static', value: raw };
+    }
     default:         return { kind: 'static', value: raw };
   }
 }

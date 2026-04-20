@@ -724,50 +724,33 @@ export class ChatbotService {
     }
 
     if (input === 'add_cart' && session.currentProductId && session.user) {
-      const product = await this.productsService.findById(session.currentProductId);
-      try {
-        await this.cartService.addItem(session.user.toString(), {
-          productId: session.currentProductId,
-          quantity: 1,
-        });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : '';
-        const stockIssue = /stock/i.test(msg);
-        if (!stockIssue) {
-          this.logger.warn(
-            `Cart addItem failed for ${session.user.toString()} / ${session.currentProductId}: ${msg || 'unknown'}`,
-          );
-        }
-        await this.whatsappService.sendTextMessage({
-          phone,
-          message: stockIssue
-            ? 'Not enough stock available for this item.'
-            : italic('Couldn\u2019t add this item to your cart. Please try again.'),
-        });
-        await this.sendProductDetail(phone, session.currentProductId, session);
-        return;
-      }
-
-      const cart = await this.cartService.getCart(session.user.toString());
-      this.analytics.track('chatbot.item_added_to_cart', {
-        userId: session.user.toString(),
-        productId: session.currentProductId,
-        cartCount: cart.itemCount,
-        cartTotal: cart.total,
-      });
-      await this.whatsappService.sendInteractiveButtons({
-        phone,
-        headerText: '\u2705 Added to cart',
-        bodyText:
-          `\uD83D\uDCE6 ${product.name}\n` +
-          `\uD83D\uDED2 ${bold(`${cart.itemCount} item${cart.itemCount === 1 ? '' : 's'}`)} \u00B7 ${this.formatCurrency(cart.total)}`,
-        buttons: [
-          { id: BTN.VIEW_CART, title: '\uD83D\uDED2 View Cart' },
-          { id: BTN.KEEP_SHOPPING, title: '\u2795 Keep Shopping' },
-          { id: BTN.CHECKOUT, title: '\u2705 Checkout' },
-        ],
-      });
+      await this.addCurrentProductToCart(phone, session, 1);
       return;
+    }
+
+    // Quantity-picker list: open a list of quantity choices for the current product.
+    if (input === BTN.PICK_QTY && session.currentProductId && session.user) {
+      await this.sendQuantityPicker(phone, session);
+      return;
+    }
+
+    // User tapped a quantity row (id: "qty_3") — add that many at once.
+    const parsedBtn = parseButton(input);
+    if (parsedBtn.kind === 'addQty' && session.currentProductId && session.user) {
+      await this.addCurrentProductToCart(phone, session, parsedBtn.qty);
+      return;
+    }
+
+    // Typed "+3" / "x2" / "add 5" → multi-qty shortcut for the current product.
+    if (session.currentProductId && session.user) {
+      const qtyMatch = input.trim().match(/^(?:\+|x\s*|add\s+)(\d{1,2})$/i);
+      if (qtyMatch) {
+        const n = Number.parseInt(qtyMatch[1], 10);
+        if (Number.isFinite(n) && n > 0 && n <= 99) {
+          await this.addCurrentProductToCart(phone, session, n);
+          return;
+        }
+      }
     }
 
     if (input === 'buy_now' && session.currentProductId && session.user) {
@@ -2982,7 +2965,8 @@ export class ChatbotService {
     }
 
     let page = this.getListPage(session, 'productPage');
-    const pageSize = 9;
+    // Smaller page size since every product is now sent as its own image card.
+    const pageSize = 5;
     let start = page * pageSize;
 
     // Reset to first page if current page is beyond available data.
@@ -2994,6 +2978,36 @@ export class ChatbotService {
 
     const slice = fulfillableProducts.slice(start, start + pageSize);
     const hasMore = start + pageSize < fulfillableProducts.length;
+
+    // Send each product's photo + a short caption so the customer can see what
+    // they're buying. WhatsApp interactive lists don't support inline images,
+    // so we emit a media message per product before the picker list. Products
+    // without an image fall back to a text bubble with the same info.
+    for (const prod of slice) {
+      const priceLine = prod.compareAtPrice
+        ? `~${this.formatCurrency(prod.compareAtPrice)}~  ${bold(this.formatCurrency(prod.price))}`
+        : bold(this.formatCurrency(prod.price));
+      const caption =
+        `${bold(prod.name)}\n` +
+        `${priceLine}\n` +
+        `\uD83D\uDFE2 In stock`;
+      try {
+        if (prod.images[0]) {
+          await this.whatsappService.sendMediaMessage({
+            phone,
+            mediaType: 'image',
+            mediaUrl: prod.images[0],
+            caption,
+          });
+        } else {
+          await this.whatsappService.sendTextMessage({ phone, message: caption });
+        }
+      } catch (err) {
+        this.logger.warn(
+          `sendMedia failed for product ${prod._id.toString()}: ${err instanceof Error ? err.message : 'unknown'}`,
+        );
+      }
+    }
 
     const rows = slice.map((prod) => ({
       id: Btn.product(prod._id.toString()),
@@ -3012,9 +3026,9 @@ export class ChatbotService {
     await this.whatsappService.sendInteractiveList({
       phone,
       headerText: 'Products',
-      bodyText: 'Pick a product to see details and add to cart.',
+      bodyText: 'Tap any product above to add to cart or adjust quantity.',
       footerText: page > 0 ? `Page ${page + 1}` : undefined,
-      buttonText: 'View products',
+      buttonText: 'Add / view details',
       sections: [{ title: 'Products', rows }],
     });
   }
@@ -3101,9 +3115,9 @@ export class ChatbotService {
       phone,
       bodyText: followUpBody,
       buttons: [
-        { id: BTN.ADD_CART, title: '\uD83D\uDED2 Add to Cart' },
+        { id: BTN.ADD_CART, title: '\uD83D\uDED2 Add 1 to Cart' },
+        { id: BTN.PICK_QTY, title: '\uD83D\uDD22 Pick qty' },
         { id: BTN.BUY_NOW, title: '\u26A1 Buy Now' },
-        { id: BTN.BACK, title: '\u21A9 More products' },
       ],
     });
   }
@@ -3166,6 +3180,122 @@ export class ChatbotService {
   }
 
   /** Empty cart with high-intent recovery CTAs. */
+  /**
+   * Add N units of the session's current product to the cart and render the
+   * "Added to cart" confirmation. Centralised so the Add-1 button, the qty
+   * picker rows, and typed "+N" commands share the same error surface.
+   */
+  private async addCurrentProductToCart(
+    phone: string,
+    session: ChatSessionDocument,
+    quantity: number,
+  ): Promise<void> {
+    if (!session.user || !session.currentProductId) return;
+    const qty = Math.max(1, Math.min(Math.floor(quantity), 99));
+    const productId = session.currentProductId;
+
+    let product;
+    try {
+      product = await this.productsService.findById(productId);
+    } catch (err) {
+      this.logger.warn(
+        `Cart add: product ${productId} lookup failed (${err instanceof Error ? err.message : 'unknown'})`,
+      );
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: 'This product is no longer available.',
+      });
+      await this.sendCategoryList(phone, session);
+      return;
+    }
+
+    try {
+      await this.cartService.addItem(session.user.toString(), {
+        productId,
+        quantity: qty,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '';
+      const stockIssue = /stock/i.test(msg);
+      if (!stockIssue) {
+        this.logger.warn(
+          `Cart addItem failed for ${session.user.toString()} / ${productId}: ${msg || 'unknown'}`,
+        );
+      }
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: stockIssue
+          ? msg || 'Not enough stock available for this item.'
+          : italic('Couldn\u2019t add this item to your cart. Please try again.'),
+      });
+      await this.sendProductDetail(phone, productId, session);
+      return;
+    }
+
+    const cart = await this.cartService.getCart(session.user.toString());
+    this.analytics.track('chatbot.item_added_to_cart', {
+      userId: session.user.toString(),
+      productId,
+      quantity: qty,
+      cartCount: cart.itemCount,
+      cartTotal: cart.total,
+    });
+
+    await this.whatsappService.sendInteractiveButtons({
+      phone,
+      headerText: `\u2705 Added ${qty > 1 ? `\u00D7${qty} ` : ''}to cart`,
+      bodyText:
+        `\uD83D\uDCE6 ${product.name}\n` +
+        `\uD83D\uDED2 ${bold(`${cart.itemCount} item${cart.itemCount === 1 ? '' : 's'}`)} \u00B7 ${this.formatCurrency(cart.total)}`,
+      buttons: [
+        { id: BTN.CHECKOUT, title: '\u2705 Checkout' },
+        { id: BTN.VIEW_CART, title: '\uD83D\uDED2 View Cart' },
+        { id: BTN.KEEP_SHOPPING, title: '\u2795 Keep Shopping' },
+      ],
+    });
+  }
+
+  /** Interactive list letting the customer pick how many units to add. */
+  private async sendQuantityPicker(
+    phone: string,
+    session: ChatSessionDocument,
+  ): Promise<void> {
+    if (!session.currentProductId) return;
+
+    let product;
+    try {
+      product = await this.productsService.findById(session.currentProductId);
+    } catch {
+      await this.sendProductDetail(phone, session.currentProductId, session);
+      return;
+    }
+
+    const QTY_CHOICES = [1, 2, 3, 5, 10];
+    const rows = QTY_CHOICES.map((n) => ({
+      id: Btn.addQty(n),
+      title: clip(`\u00D7${n}   ${this.formatCurrency(product.price * n)}`, WA.LIST_ROW_TITLE),
+      description: clip(
+        n === 1
+          ? 'Add 1 to cart'
+          : `Add ${n} units \u00B7 ${this.formatCurrency(product.price)} each`,
+        WA.LIST_ROW_DESC,
+      ),
+    }));
+    rows.push({
+      id: BTN.BACK,
+      title: 'Back',
+      description: 'Return to product',
+    });
+
+    await this.whatsappService.sendInteractiveList({
+      phone,
+      headerText: clip(product.name, WA.HEADER),
+      bodyText: 'How many would you like to add?',
+      buttonText: 'Pick quantity',
+      sections: [{ title: 'Quantity', rows }],
+    });
+  }
+
   private async sendEmptyCart(phone: string): Promise<void> {
     await this.whatsappService.sendInteractiveButtons({
       phone,
@@ -3733,7 +3863,13 @@ export class ChatbotService {
       case 'support':
         return key === 'menu';
       case 'product_detail':
-        return key === 'add_cart' || key === 'buy_now' || key === 'back';
+        return (
+          key === 'add_cart' ||
+          key === 'buy_now' ||
+          key === 'pick_qty' ||
+          key === 'back' ||
+          key.startsWith('qty_')
+        );
       case 'address_input':
         return key === 'back' || key === 'submit';
       case 'main_menu':
