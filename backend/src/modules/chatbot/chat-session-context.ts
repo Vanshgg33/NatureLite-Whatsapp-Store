@@ -21,6 +21,10 @@ export interface ChatSessionContext {
   editingField?: string;
   /** Address index being edited in account_address_edit state. */
   editingAddressIndex?: number;
+  /** True after the cart-edit tip has been shown once in this session. */
+  cartTipSeen?: boolean;
+  /** Suggested coupon code offered on coupon_prompt (stored so apply can use it). */
+  suggestedCoupon?: string;
 }
 
 export function mergeChatContext(

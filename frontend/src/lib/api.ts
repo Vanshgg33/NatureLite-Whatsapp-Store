@@ -91,33 +91,45 @@ class ApiClient {
 
           if (!this.isRefreshing) {
             this.isRefreshing = true;
+            // Swallow rejection here so all awaiters observe a settled promise
+            // without triggering unhandled-rejection warnings. The boolean result
+            // lets awaiters know whether they should retry the original request.
             this.refreshPromise = axios
               .post(`${API_URL}/auth/refresh`, {}, { withCredentials: true })
-              .then(() => {
-                // New cookies set by backend
-              })
+              .then(() => true as const)
+              .catch(() => false as const)
               .finally(() => {
                 this.isRefreshing = false;
-                this.refreshPromise = null;
-              });
+              }) as unknown as Promise<void>;
           }
 
-          try {
-            if (this.refreshPromise) {
-              await this.refreshPromise;
-            }
+          const refreshed = (await this.refreshPromise) as unknown as boolean;
+          this.refreshPromise = null;
+
+          if (refreshed) {
             return this.client(originalRequest);
-          } catch {
-            // Refresh failed — fall through to redirect
           }
 
-          // Refresh failed — redirect to appropriate login
+          // Refresh failed — clear SPA auth state and let the route guard handle
+          // the redirect via the router. Avoid window.location.href hard-reloads
+          // (loses query cache, flashes white) and never redirect if we're
+          // already on a login page (prevents login↔dashboard loops when a stale
+          // cookie is present but the backend session is gone).
           if (typeof window !== 'undefined') {
             const path = window.location.pathname;
-            if (path.startsWith('/admin')) {
-              window.location.href = '/admin-login';
-            } else if (path.startsWith('/department')) {
-              window.location.href = '/department-login';
+            try {
+              // Dynamic import avoids a client/server circular init with Zustand persist.
+              const { useAdminAuthStore } = await import('./admin-store');
+              useAdminAuthStore.getState().logout();
+            } catch {
+              // store module unavailable — ignore
+            }
+            const onAdminLogin = path === '/admin-login' || path.startsWith('/admin-login');
+            const onDeptLogin = path === '/department-login' || path.startsWith('/department-login');
+            if (path.startsWith('/admin') && !onAdminLogin) {
+              window.location.assign('/admin-login');
+            } else if (path.startsWith('/department') && !onDeptLogin) {
+              window.location.assign('/department-login');
             }
           }
         }

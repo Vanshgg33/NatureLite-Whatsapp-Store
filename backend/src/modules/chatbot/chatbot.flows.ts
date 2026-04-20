@@ -1,13 +1,21 @@
 import { SessionState } from './schemas/chat-session.schema';
+import { BTN } from './buttons';
 
 export interface FlowAction {
   type: 'text' | 'buttons' | 'list' | 'template';
+  /** Native WhatsApp interactive header (max 60 chars). */
+  header?: string;
+  /** Body text. */
   content: string;
+  /** Native WhatsApp interactive footer (max 60 chars). */
+  footer?: string;
   buttons?: Array<{ id: string; title: string }>;
   sections?: Array<{
     title: string;
     rows: Array<{ id: string; title: string; description?: string }>;
   }>;
+  /** Label on the List CTA (max 20 chars). */
+  buttonText?: string;
   templateName?: string;
   templateParams?: string[];
 }
@@ -23,19 +31,16 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     state: 'main_menu',
     action: {
       type: 'buttons',
+      header: 'NatureLite Foods',
       content:
-        `Welcome to *NatureLite Foods* \u2728\n` +
-        `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
-        `How can we help you today?\n\n` +
-        `Tap a button below, or type:\n` +
-        `\u2022 *account* \u00B7 profile, addresses, wallet\n` +
-        `\u2022 *help* \u00B7 shipping, returns & FAQs\n` +
-        `\u2022 *support* \u00B7 talk to our team\n\n` +
-        `_Type *menu* anytime to return here._`,
+        `Hey there \uD83D\uDC4B\n` +
+        `What are you in the mood for today?\n\n` +
+        `Quick access: *orders* \u00B7 *account* \u00B7 *help*`,
+      footer: 'Type menu anytime',
       buttons: [
-        { id: 'browse', title: 'Browse Products' },
-        { id: 'cart', title: 'My Cart' },
-        { id: 'orders', title: 'My Orders' },
+        { id: BTN.BROWSE, title: '\uD83D\uDECD Shop Now' },
+        { id: BTN.CART, title: '\uD83D\uDED2 My Cart' },
+        { id: BTN.ORDERS, title: '\uD83D\uDCE6 Track Order' },
       ],
     },
     transitions: {
@@ -52,10 +57,9 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     state: 'browsing',
     action: {
       type: 'list',
-      content:
-        `*Browse Products*\n` +
-        `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
-        `Select a category to explore our collection.`,
+      header: 'Shop by category',
+      content: 'Pick a category to explore our collection.',
+      buttonText: 'View categories',
       sections: [],
     },
     transitions: {
@@ -67,11 +71,11 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     state: 'product_detail',
     action: {
       type: 'buttons',
-      content: 'What would you like to do with this product?',
+      content: 'Ready to add this to your cart?',
       buttons: [
-        { id: 'add_cart', title: 'Add to Cart' },
-        { id: 'buy_now', title: 'Buy Now' },
-        { id: 'back', title: 'Back' },
+        { id: BTN.ADD_CART, title: '\uD83D\uDED2 Add to Cart' },
+        { id: BTN.BUY_NOW, title: '\u26A1 Buy Now' },
+        { id: BTN.BACK, title: '\u21A9 More products' },
       ],
     },
     transitions: {
@@ -84,11 +88,11 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     state: 'cart',
     action: {
       type: 'buttons',
-      content: 'Your cart — what would you like to do next?',
+      content: 'Your cart \u2014 what next?',
       buttons: [
-        { id: 'checkout', title: 'Checkout' },
-        { id: 'manage', title: 'Manage Items' },
-        { id: 'continue_shopping', title: 'Keep Shopping' },
+        { id: BTN.CHECKOUT, title: '\u2705 Checkout' },
+        { id: BTN.MANAGE_CART, title: '\u270F\uFE0F Manage' },
+        { id: BTN.KEEP_SHOPPING, title: '\u2795 Add More' },
       ],
     },
     transitions: {
@@ -103,19 +107,19 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     state: 'coupon_prompt',
     action: {
       type: 'buttons',
-      content:
-        `*Apply a Coupon?*\n` +
-        `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
-        `Have a discount code? Apply it now to save on your order.`,
+      content: 'Got a promo code? Enter it now, or continue to payment.',
       buttons: [
-        { id: 'coupon_yes', title: 'Yes, Apply' },
-        { id: 'coupon_no', title: 'No, Continue' },
-        { id: 'back', title: 'Back' },
+        { id: BTN.COUPON_CUSTOM, title: '\uD83C\uDFF7 Enter code' },
+        { id: BTN.COUPON_SKIP, title: 'Skip' },
+        { id: BTN.BACK, title: '\u21A9 Back' },
       ],
     },
     transitions: {
       coupon_yes: 'coupon_input',
+      coupon_apply_suggested: 'checkout',
+      coupon_custom: 'coupon_input',
       coupon_no: 'checkout',
+      skip_coupon: 'checkout',
       back: 'cart',
     },
   },
@@ -123,15 +127,14 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     state: 'coupon_input',
     action: {
       type: 'buttons',
+      header: 'Enter coupon code',
       content:
-        `*Enter Coupon Code*\n` +
-        `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
-        `Type your coupon code below\n` +
+        `Type your code below.\n` +
         `_e.g. SAVE50, WELCOME10_`,
       buttons: [
-        { id: 'skip_coupon', title: 'Skip' },
-        { id: 'remove_coupon', title: 'Remove Coupon' },
-        { id: 'back', title: 'Back' },
+        { id: BTN.COUPON_SKIP, title: 'Skip' },
+        { id: BTN.COUPON_REMOVE, title: 'Remove coupon' },
+        { id: BTN.BACK, title: '\u21A9 Back' },
       ],
     },
     transitions: {
@@ -144,13 +147,12 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     state: 'checkout',
     action: {
       type: 'buttons',
-      content:
-        `*Delivery Address*\n` +
-        `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
-        `Select a saved address or add a new one.`,
+      header: 'Deliver to',
+      content: 'Select a saved address or add a new one.',
       buttons: [
-        { id: 'address_1', title: 'Home' },
-        { id: 'new_address', title: 'New Address' },
+        { id: 'address_0', title: 'Home' },
+        { id: BTN.ADD_NEW_ADDRESS, title: '\u2795 New address' },
+        { id: BTN.BACK, title: '\u21A9 Back' },
       ],
     },
     transitions: {
@@ -164,11 +166,10 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     action: {
       type: 'text',
       content:
-        `*New Address*\n` +
-        `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
-        `Please send your address in this format:\n\n` +
+        `*New address*\n\n` +
+        `Send your address in this format:\n\n` +
         `Name\n` +
-        `Street Address\n` +
+        `Street address\n` +
         `City, State\n` +
         `Pincode\n` +
         `Landmark _(optional)_`,
@@ -182,13 +183,13 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     state: 'payment_selection',
     action: {
       type: 'buttons',
-      content:
-        `*Payment Method*\n` +
-        `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
-        `How would you like to pay?`,
+      header: 'Payment',
+      content: 'How would you like to pay?',
+      footer: 'Secure payment \u00B7 Razorpay',
       buttons: [
-        { id: 'cod', title: 'Cash on Delivery' },
-        { id: 'prepaid', title: 'Pay Online' },
+        { id: BTN.PREPAID, title: '\u26A1 UPI / Card' },
+        { id: BTN.COD, title: '\uD83D\uDCB5 Cash on Delivery' },
+        { id: BTN.BACK, title: '\u21A9 Change' },
       ],
     },
     transitions: {
@@ -201,10 +202,9 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     state: 'order_tracking',
     action: {
       type: 'list',
-      content:
-        `*My Orders*\n` +
-        `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
-        `Select an order to view details or reorder.`,
+      header: 'My orders',
+      content: 'Select an order to view details or reorder.',
+      buttonText: 'View orders',
       sections: [],
     },
     transitions: {
@@ -216,13 +216,11 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     state: 'reorder',
     action: {
       type: 'buttons',
-      content:
-        `*Reorder*\n` +
-        `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
-        `Add the same items from your previous order to your cart?`,
+      header: 'Reorder',
+      content: 'Add the same items from your previous order to your cart?',
       buttons: [
-        { id: 'confirm', title: 'Yes, Reorder' },
-        { id: 'modify', title: 'Modify Items' },
+        { id: 'confirm', title: '\u2705 Yes, reorder' },
+        { id: 'modify', title: '\u270F\uFE0F Modify' },
         { id: 'cancel', title: 'Cancel' },
       ],
     },
@@ -236,10 +234,9 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     state: 'faq',
     action: {
       type: 'list',
-      content:
-        `*Help & FAQ*\n` +
-        `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
-        `Browse common questions or reach out to our team.`,
+      header: 'Help & FAQ',
+      content: 'Browse common questions or reach out to our team.',
+      buttonText: 'Browse topics',
       sections: [
         {
           title: 'Common questions',
@@ -262,10 +259,9 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     action: {
       type: 'text',
       content:
-        `*Live Support*\n` +
-        `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
-        `Please describe your issue below and our team will respond shortly.\n\n` +
-        `_Type *menu* anytime to return to the main menu._`,
+        `*Live support*\n\n` +
+        `Describe your issue below and our team will respond shortly.\n\n` +
+        `_Type *menu* anytime to return._`,
     },
     transitions: {
       menu: 'main_menu',
@@ -275,11 +271,12 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     state: 'account',
     action: {
       type: 'buttons',
-      content: 'Manage your account',
+      header: 'Your account',
+      content: 'What would you like to manage?',
       buttons: [
-        { id: 'edit_profile', title: 'Edit Profile' },
-        { id: 'addresses', title: 'My Addresses' },
-        { id: 'wallet', title: 'Wallet' },
+        { id: 'edit_profile', title: '\uD83D\uDC64 Edit profile' },
+        { id: 'addresses', title: '\uD83D\uDCCD Addresses' },
+        { id: 'wallet', title: '\uD83D\uDCB3 Wallet' },
       ],
     },
     transitions: {
@@ -295,9 +292,9 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
       type: 'buttons',
       content: 'What would you like to update?',
       buttons: [
-        { id: 'edit_name', title: 'Change Name' },
-        { id: 'edit_email', title: 'Change Email' },
-        { id: 'back', title: 'Back' },
+        { id: 'edit_name', title: 'Change name' },
+        { id: 'edit_email', title: 'Change email' },
+        { id: BTN.BACK, title: '\u21A9 Back' },
       ],
     },
     transitions: {
@@ -310,10 +307,9 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     state: 'account_addresses',
     action: {
       type: 'list',
-      content:
-        `*My Addresses*\n` +
-        `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
-        `Tap an address to manage it, or add a new one.`,
+      header: 'My addresses',
+      content: 'Tap an address to manage it, or add a new one.',
+      buttonText: 'View addresses',
       sections: [],
     },
     transitions: {
@@ -327,9 +323,9 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
       type: 'buttons',
       content: 'What would you like to do with this address?',
       buttons: [
-        { id: 'set_default', title: 'Set as Default' },
+        { id: 'set_default', title: 'Set as default' },
         { id: 'delete_address', title: 'Delete' },
-        { id: 'back', title: 'Back' },
+        { id: BTN.BACK, title: '\u21A9 Back' },
       ],
     },
     transitions: {
@@ -342,10 +338,11 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
     state: 'wallet',
     action: {
       type: 'buttons',
-      content: 'Your wallet',
+      header: 'Your wallet',
+      content: 'Rewards and credits \u2014 applied automatically at checkout.',
       buttons: [
         { id: 'wallet_history', title: 'Transactions' },
-        { id: 'back', title: 'Back' },
+        { id: BTN.BACK, title: '\u21A9 Back' },
       ],
     },
     transitions: {
@@ -357,30 +354,26 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
 
 export const FAQ_RESPONSES: Record<string, string> = {
   faq_shipping:
-    `*Shipping & Delivery*\n` +
-    `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
+    `*Shipping & Delivery*\n\n` +
     `\u2022 Free shipping on orders above *\u20B9500*\n` +
     `\u2022 Standard delivery \u2014 *3\u20135 business days*\n` +
     `\u2022 Express delivery \u2014 *1\u20132 business days*\n` +
     `\u2022 Pan-India coverage`,
   faq_returns:
-    `*Returns & Refunds*\n` +
-    `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
+    `*Returns & Refunds*\n\n` +
     `\u2022 Returns accepted within *7 days* of delivery\n` +
     `\u2022 Items must be unused & in original packaging\n` +
     `\u2022 Refunds processed within *5\u20137 business days*\n` +
     `\u2022 Contact support to initiate a return`,
   faq_payment:
-    `*Payment Methods*\n` +
-    `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
+    `*Payment Methods*\n\n` +
     `\u2022 Cash on Delivery (COD)\n` +
     `\u2022 UPI \u2014 PhonePe, Google Pay, Paytm\n` +
     `\u2022 Credit & Debit Cards\n` +
     `\u2022 Net Banking\n` +
     `\u2022 Digital Wallets`,
   faq_contact:
-    `*Contact Us*\n` +
-    `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
+    `*Contact Us*\n\n` +
     `\u2022 WhatsApp \u2014 +91 XXXXXXXXXX\n` +
     `\u2022 Email \u2014 support@store.com\n` +
     `\u2022 Hours \u2014 Mon\u2013Sat, 9 AM \u2013 6 PM`,

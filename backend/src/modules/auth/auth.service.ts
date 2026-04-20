@@ -33,7 +33,9 @@ export class AuthService {
     private configService: ConfigService,
   ) {}
 
-  private generateTokens(payload: JwtPayload): { accessToken: string; refreshToken: string } {
+  private async generateTokens(
+    payload: JwtPayload,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
     const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
     const refreshToken = uuidv4();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -46,10 +48,10 @@ export class AuthService {
     if (payload.storeId) {
       data.storeId = parseObjectId(payload.storeId, 'storeId');
     }
-    // Fire-and-forget; failures will surface on refresh attempt
-    this.refreshTokenRepository.create(data).catch((err) => {
-      this.logger.warn(`Failed to persist refresh token: ${err.message}`);
-    });
+    // Must persist before returning: the client will immediately make authenticated
+    // requests, and any transient 401 triggers a refresh round-trip. A fire-and-forget
+    // insert loses that race on slow DB writes and the user gets bounced to login.
+    await this.refreshTokenRepository.create(data);
     return { accessToken, refreshToken };
   }
 
@@ -89,7 +91,7 @@ export class AuthService {
       departmentType: tokenDoc.role !== 'customer' ? (user as any).departmentType : undefined,
     };
 
-    const tokens = this.generateTokens(payload);
+    const tokens = await this.generateTokens(payload);
 
     return {
       accessToken: tokens.accessToken,
@@ -154,7 +156,7 @@ export class AuthService {
       departmentType: admin.departmentType,
     };
 
-    const tokens = this.generateTokens(payload);
+    const tokens = await this.generateTokens(payload);
 
     return {
       ...tokens,
@@ -208,7 +210,7 @@ export class AuthService {
       departmentType: admin.departmentType,
     };
 
-    const tokens = this.generateTokens(payload);
+    const tokens = await this.generateTokens(payload);
 
     return {
       ...tokens,
@@ -263,7 +265,7 @@ export class AuthService {
       role: 'customer',
     };
 
-    const tokens = this.generateTokens(payload);
+    const tokens = await this.generateTokens(payload);
 
     return {
       ...tokens,
@@ -305,7 +307,7 @@ export class AuthService {
       role: 'customer',
     };
 
-    const tokens = this.generateTokens(payload);
+    const tokens = await this.generateTokens(payload);
 
     return {
       ...tokens,
@@ -362,7 +364,7 @@ export class AuthService {
       role: 'customer',
     };
 
-    const tokens = this.generateTokens(payload);
+    const tokens = await this.generateTokens(payload);
 
     return {
       ...tokens,
