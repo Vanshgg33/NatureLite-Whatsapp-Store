@@ -25,6 +25,12 @@ export interface WhatsAppConfig {
   appSecret: string;
 }
 
+export interface CatalogConfig {
+  apiUrl: string;
+  businessId: string;
+  accessToken: string;
+}
+
 export interface CloudinaryConfig {
   cloudName: string;
   apiKey: string;
@@ -64,6 +70,7 @@ export interface Configuration {
   database: DatabaseConfig;
   jwt: JwtConfig;
   whatsapp: WhatsAppConfig;
+  catalog: CatalogConfig;
   cloudinary: CloudinaryConfig;
   throttle: ThrottleConfig;
   razorpay: RazorpayConfig;
@@ -101,6 +108,13 @@ export default (): Configuration => ({
     webhookUrl: process.env.WHATSAPP_WEBHOOK_URL || '',
     webhookVerifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '',
     appSecret: process.env.WHATSAPP_APP_SECRET || '',
+  },
+  catalog: {
+    apiUrl: process.env.CATALOG_API_URL || 'https://graph.facebook.com/v25.0',
+    businessId: process.env.CATALOG_BUSINESS_ID || process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
+    accessToken:
+      process.env.CATALOG_ACCESS_TOKEN ||
+      (process.env.WHATSAPP_PROVIDER === 'meta' ? process.env.WHATSAPP_ACCESS_TOKEN || '' : ''),
   },
   cloudinary: {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',

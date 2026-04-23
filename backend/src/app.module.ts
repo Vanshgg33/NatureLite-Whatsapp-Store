@@ -23,6 +23,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { UcmModule } from './modules/ucm/ucm.module';
 import { MediaModule } from './modules/media/media.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { PaymentsModule } from './modules/payments/payments.module';
@@ -76,6 +77,7 @@ import { HealthController } from './health.controller';
     AnalyticsModule,
     AdminModule,
     SettingsModule,
+    UcmModule,
     MediaModule,
     AuditModule,
     PaymentsModule,

@@ -25,6 +25,7 @@ import {
   CouponValidationResult,
   StoreSettings,
   WhatsAppSettings,
+  CatalogSettings,
   AppearanceSettings,
   BannerSettings,
   MessageLog,
@@ -59,6 +60,9 @@ import {
   ProductReview,
   AuditLog,
   WhatsAppCheckoutPrepareResult,
+  RemoteCatalog,
+  UcmDashboardSnapshot,
+  UcmSyncSummary,
 } from '@/types';
 
 // Backend API base URL. Set via NEXT_PUBLIC_API_URL in environment.
@@ -664,8 +668,8 @@ class ApiClient {
   }
 
   // ==================== SETTINGS ====================
-  async getSettings(): Promise<{ store?: StoreSettings; whatsapp?: WhatsAppSettings; appearance?: AppearanceSettings; banners?: BannerSettings }> {
-    const response = await this.client.get<ApiResponse<{ store?: StoreSettings; whatsapp?: WhatsAppSettings; appearance?: AppearanceSettings; banners?: BannerSettings }>>('/settings');
+  async getSettings(): Promise<{ store?: StoreSettings; whatsapp?: WhatsAppSettings; catalog?: CatalogSettings; appearance?: AppearanceSettings; banners?: BannerSettings }> {
+    const response = await this.client.get<ApiResponse<{ store?: StoreSettings; whatsapp?: WhatsAppSettings; catalog?: CatalogSettings; appearance?: AppearanceSettings; banners?: BannerSettings }>>('/settings');
     return response.data.data;
   }
 
@@ -676,19 +680,57 @@ class ApiClient {
 
   async getSetting(key: 'store'): Promise<StoreSettings | null>;
   async getSetting(key: 'whatsapp'): Promise<WhatsAppSettings | null>;
+  async getSetting(key: 'catalog'): Promise<CatalogSettings | null>;
   async getSetting(key: 'appearance'): Promise<AppearanceSettings | null>;
   async getSetting(key: 'banners'): Promise<BannerSettings | null>;
-  async getSetting(key: string): Promise<StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings | null> {
-    const response = await this.client.get<ApiResponse<StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings | null>>(`/settings/${key}`);
+  async getSetting(key: string): Promise<StoreSettings | WhatsAppSettings | CatalogSettings | AppearanceSettings | BannerSettings | null> {
+    const response = await this.client.get<ApiResponse<StoreSettings | WhatsAppSettings | CatalogSettings | AppearanceSettings | BannerSettings | null>>(`/settings/${key}`);
     return response.data.data;
   }
 
   async updateSettings(key: 'store', updates: Partial<StoreSettings>): Promise<StoreSettings>;
   async updateSettings(key: 'whatsapp', updates: Partial<WhatsAppSettings>): Promise<WhatsAppSettings>;
+  async updateSettings(key: 'catalog', updates: Partial<CatalogSettings>): Promise<CatalogSettings>;
   async updateSettings(key: 'appearance', updates: Partial<AppearanceSettings>): Promise<AppearanceSettings>;
   async updateSettings(key: 'banners', updates: Partial<BannerSettings>): Promise<BannerSettings>;
-  async updateSettings(key: string, updates: Partial<StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings>): Promise<StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings> {
-    const response = await this.client.put<ApiResponse<StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings>>(`/settings/${key}/update`, updates);
+  async updateSettings(key: string, updates: Partial<StoreSettings | WhatsAppSettings | CatalogSettings | AppearanceSettings | BannerSettings>): Promise<StoreSettings | WhatsAppSettings | CatalogSettings | AppearanceSettings | BannerSettings> {
+    const response = await this.client.put<ApiResponse<StoreSettings | WhatsAppSettings | CatalogSettings | AppearanceSettings | BannerSettings>>(`/settings/${key}/update`, updates);
+    return response.data.data;
+  }
+
+  // ==================== UCM / CATALOG ====================
+  async getUcmDashboard(): Promise<UcmDashboardSnapshot> {
+    const response = await this.client.get<ApiResponse<UcmDashboardSnapshot>>('/ucm/dashboard');
+    return response.data.data;
+  }
+
+  async getUcmCatalogs(): Promise<RemoteCatalog[]> {
+    const response = await this.client.get<ApiResponse<RemoteCatalog[]>>('/ucm/catalogs');
+    return response.data.data;
+  }
+
+  async getUcmConfig(): Promise<CatalogSettings> {
+    const response = await this.client.get<ApiResponse<CatalogSettings>>('/ucm/config');
+    return response.data.data;
+  }
+
+  async updateUcmConfig(updates: Partial<CatalogSettings>): Promise<CatalogSettings> {
+    const response = await this.client.put<ApiResponse<CatalogSettings>>('/ucm/config', updates);
+    return response.data.data;
+  }
+
+  async syncUcmCatalog(): Promise<UcmSyncSummary> {
+    const response = await this.client.post<ApiResponse<UcmSyncSummary>>('/ucm/sync', {});
+    return response.data.data;
+  }
+
+  async syncUcmProduct(productId: string): Promise<{ success: boolean }> {
+    const response = await this.client.post<ApiResponse<{ success: boolean }>>(`/ucm/sync/${productId}`, {});
+    return response.data.data;
+  }
+
+  async deleteUcmCatalog(catalogId: string): Promise<{ success: boolean }> {
+    const response = await this.client.delete<ApiResponse<{ success: boolean }>>(`/ucm/catalogs/${catalogId}`);
     return response.data.data;
   }
 

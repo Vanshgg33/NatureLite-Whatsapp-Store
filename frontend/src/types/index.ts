@@ -345,6 +345,47 @@ export interface WhatsAppSettings {
   abandonedCartReminderDelayMinutes: number;
 }
 
+export type CatalogSyncMode = 'dry_run' | 'meta';
+
+export interface CatalogSettings {
+  syncMode: CatalogSyncMode;
+  autoSyncEnabled: boolean;
+  selectedCatalogId: string;
+  selectedCatalogName: string;
+  lastSyncAt: string;
+  lastSyncStatus: 'idle' | 'dry_run' | 'syncing' | 'success' | 'failed';
+  lastSyncMessage: string;
+}
+
+export interface RemoteCatalog {
+  id: string;
+  name: string;
+  product_count?: number;
+  vertical?: string;
+}
+
+export interface UcmDashboardSnapshot {
+  config: CatalogSettings;
+  catalogs: RemoteCatalog[];
+  productCount: number;
+}
+
+export interface UcmSyncDetail {
+  retailerId: string;
+  status: 'synced' | 'skipped' | 'failed';
+  message?: string;
+}
+
+export interface UcmSyncSummary {
+  mode: CatalogSyncMode;
+  totalProducts: number;
+  syncedProducts: number;
+  failedProducts: number;
+  remoteCatalogId?: string;
+  remoteCatalogName?: string;
+  details: UcmSyncDetail[];
+}
+
 // ==================== APPEARANCE & BANNER TYPES ====================
 export type ThemePresetName =
   | 'forest-green'
@@ -394,15 +435,16 @@ export interface BannerSettings {
 export interface SettingsValue {
   store?: StoreSettings;
   whatsapp?: WhatsAppSettings;
+  catalog?: CatalogSettings;
   appearance?: AppearanceSettings;
   banners?: BannerSettings;
-  [key: string]: StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings | undefined;
+  [key: string]: StoreSettings | WhatsAppSettings | CatalogSettings | AppearanceSettings | BannerSettings | undefined;
 }
 
 export interface Settings {
   _id: string;
   key: string;
-  value: StoreSettings | WhatsAppSettings | AppearanceSettings | BannerSettings;
+  value: StoreSettings | WhatsAppSettings | CatalogSettings | AppearanceSettings | BannerSettings;
   isPublic: boolean;
   updatedAt: string;
 }

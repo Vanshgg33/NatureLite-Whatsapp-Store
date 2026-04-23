@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, OnModuleInit, Inject, forwardRef } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { Product } from './schemas/product.schema';
 import {
@@ -12,6 +12,7 @@ import { isValidObjectIdString, parseObjectId } from '../../common/utils/objecti
 import { StoreStockService } from '../store-stock/store-stock.service';
 import { StoresService } from '../stores/stores.service';
 import { ProductRepository } from './repositories/product.repository';
+import { UcmService } from '../ucm/ucm.service';
 
 @Injectable()
 export class ProductsService implements OnModuleInit {
@@ -21,6 +22,8 @@ export class ProductsService implements OnModuleInit {
     private readonly productRepository: ProductRepository,
     private readonly storeStockService: StoreStockService,
     private readonly storesService: StoresService,
+    @Inject(forwardRef(() => UcmService))
+    private readonly ucmService: UcmService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -79,6 +82,8 @@ export class ProductsService implements OnModuleInit {
     } catch (error) {
       this.logger.error(`Failed to initialize StoreStock for product ${saved.name}: ${(error as Error).message}`);
     }
+
+    await this.ucmService.syncProductById(saved._id.toString(), 'product_created');
 
     return saved as Product;
   }
@@ -170,6 +175,8 @@ export class ProductsService implements OnModuleInit {
     if (!product) {
       throw new NotFoundException('Product not found');
     }
+
+    await this.ucmService.syncProductById(product._id.toString(), 'product_updated');
     return product as Product;
   }
 
@@ -191,7 +198,9 @@ export class ProductsService implements OnModuleInit {
       product.stock = dto.stock;
     }
 
-    return product.save() as Promise<Product>;
+    const saved = await product.save();
+    await this.ucmService.syncProductById(saved._id.toString(), 'stock_updated');
+    return saved as Product;
   }
 
   async decrementStock(
@@ -215,6 +224,8 @@ export class ProductsService implements OnModuleInit {
         );
       }
     }
+
+    await this.ucmService.syncProductById(productId, 'stock_decremented');
   }
 
   async incrementTotalSold(productId: string, quantity: number): Promise<void> {
@@ -237,9 +248,14 @@ export class ProductsService implements OnModuleInit {
   }
 
   async delete(id: string): Promise<void> {
+    const product = await this.productRepository.findByIdString(id);
     const deleted = await this.productRepository.deleteById(parseObjectId(id, 'id'));
     if (deleted === 0) {
       throw new NotFoundException('Product not found');
+    }
+
+    if (product) {
+      await this.ucmService.archiveDeletedProduct(product, 'product_deleted');
     }
   }
 

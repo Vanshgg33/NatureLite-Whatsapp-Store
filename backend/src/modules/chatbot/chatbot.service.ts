@@ -417,6 +417,28 @@ export class ChatbotService {
     const buttonId = message.content.buttonId || message.content.listId;
     const transitionKey = buttonId || this.mapTextToTransitionKey(currentState, inputText);
 
+    if (message.content.productRetailerId) {
+      const productId = message.content.productRetailerId.split('::')[0];
+      try {
+        const product = await this.productsService.findById(productId);
+        session.currentProductId = product._id.toString();
+        await session.save();
+        await this.transitionToState(session, 'product_detail');
+        await this.sendProductDetail(message.phone, product._id.toString(), session);
+        return;
+      } catch (error) {
+        this.logger.warn(
+          `catalog_product_lookup_failed for ${message.content.productRetailerId}: ${error instanceof Error ? error.message : 'unknown'}`,
+        );
+        await this.whatsappService.sendTextMessage({
+          phone: message.phone,
+          message: 'That catalog item is no longer available. Please browse the latest catalog in chat.',
+        });
+        await this.sendCategoryList(message.phone, session);
+        return;
+      }
+    }
+
     if (buttonId) {
       this.analytics.track('chatbot.button_clicked', {
         state: currentState,

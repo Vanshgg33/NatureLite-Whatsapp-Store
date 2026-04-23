@@ -20,6 +20,10 @@ export class ProductRepository extends BaseRepository<ProductDocument> {
     return this.model.find().select('_id stock').lean().exec();
   }
 
+  async findAllForSync(): Promise<ProductDocument[]> {
+    return this.model.find().populate('category', 'name slug').sort({ createdAt: 1 }).exec();
+  }
+
   async findOneBySku(sku: string): Promise<ProductDocument | null> {
     return this.model.findOne({ sku }).exec();
   }

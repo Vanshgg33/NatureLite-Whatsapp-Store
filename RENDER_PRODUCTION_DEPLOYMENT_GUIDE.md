@@ -127,6 +127,9 @@ Required:
 - `WHATSAPP_D360_API_KEY=<360dialog-api-key>`
 - `WHATSAPP_WEBHOOK_VERIFY_TOKEN=<strong-random-token>`
 - `WHATSAPP_APP_SECRET=<if used in your flow, else keep blank>`
+- `CATALOG_API_URL=https://graph.facebook.com/v25.0`
+- `CATALOG_BUSINESS_ID=<meta-business-id>`
+- `CATALOG_ACCESS_TOKEN=<meta-catalog-token-with-permissions>`
 - `CLOUDINARY_CLOUD_NAME=<...>`
 - `CLOUDINARY_API_KEY=<...>`
 - `CLOUDINARY_API_SECRET=<...>`
@@ -205,6 +208,17 @@ Run these checks after both services are live:
 
 6. WhatsApp outbound:
 - Trigger template/text send from admin and verify delivery/logs.
+
+7. Smoke check from local terminal:
+
+```bash
+cd backend
+BASE_URL='https://<backend-domain>/api/v1' \
+WHATSAPP_WEBHOOK_VERIFY_TOKEN='<webhook-token>' \
+ADMIN_EMAIL='<admin-email>' \
+ADMIN_PASSWORD='<admin-password>' \
+npm run test:smoke
+```
 
 ## 10. Common Issues and Fast Fixes
 

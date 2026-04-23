@@ -53,6 +53,15 @@ export const DEFAULT_SETTINGS = {
     abandonedCartReminderEnabled: true,
     abandonedCartReminderDelayMinutes: 60,
   },
+  catalog: {
+    syncMode: 'dry_run',
+    autoSyncEnabled: true,
+    selectedCatalogId: '',
+    selectedCatalogName: '',
+    lastSyncAt: '',
+    lastSyncStatus: 'idle',
+    lastSyncMessage: '',
+  },
   notifications: {
     orderNotificationsEnabled: true,
     shippingNotificationsEnabled: true,

@@ -57,6 +57,9 @@ Set these for `store-backend-sandbox`:
 - `WHATSAPP_D360_API_KEY=<sandbox-360dialog-api-key>`
 - `WHATSAPP_WEBHOOK_VERIFY_TOKEN=<sandbox-webhook-token>`
 - `WHATSAPP_APP_SECRET=`
+- `CATALOG_API_URL=https://graph.facebook.com/v25.0`
+- `CATALOG_BUSINESS_ID=<meta-business-id-optional-for-dry-run>`
+- `CATALOG_ACCESS_TOKEN=<meta-catalog-token-optional-for-dry-run>`
 - `CLOUDINARY_CLOUD_NAME=<...>`
 - `CLOUDINARY_API_KEY=<...>`
 - `CLOUDINARY_API_SECRET=<...>`
@@ -112,6 +115,17 @@ If you need to run the webhook registration manually, send a POST request to:
 4. Load dashboard, analytics, orders, and WhatsApp pages.
 5. Send a test message through sandbox WhatsApp.
 6. Confirm the message appears in the WhatsApp message log.
+
+Optional smoke check from local terminal:
+
+```bash
+cd backend
+BASE_URL='https://<sandbox-backend-domain>/api/v1' \
+WHATSAPP_WEBHOOK_VERIFY_TOKEN='<sandbox-webhook-token>' \
+ADMIN_EMAIL='<admin-email>' \
+ADMIN_PASSWORD='<admin-password>' \
+npm run test:smoke
+```
 
 ## 9. Keeping sandbox and production aligned
 

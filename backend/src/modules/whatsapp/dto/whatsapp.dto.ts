@@ -30,6 +30,8 @@ export class SendTemplateMessageDto {
   phone: string;
 
   @IsString()
+    productRetailerId?: string;
+    productItems?: Array<{ productRetailerId: string; quantity?: number }>;
   @IsNotEmpty()
   templateName: string;
 
@@ -42,8 +44,11 @@ export class SendTemplateMessageDto {
   headerParams?: string[];
 
   @IsArray()
+      product?: { product_retailer_id: string; quantity?: number };
+      product_list_reply?: { title?: string; description?: string; product_items?: Array<{ product_retailer_id: string; quantity?: number }> };
   @IsOptional()
   bodyParams?: string[];
+    order?: { catalog_id?: string; text?: string; product_items?: Array<{ product_retailer_id: string; quantity?: number }> };
 
   @IsArray()
   @IsOptional()
@@ -171,8 +176,11 @@ export interface WebhookEntry {
           type: 'button_reply' | 'list_reply';
           button_reply?: { id: string; title: string };
           list_reply?: { id: string; title: string; description?: string };
+          product?: { product_retailer_id: string; quantity?: number };
+          product_list_reply?: { title?: string; description?: string; product_items?: Array<{ product_retailer_id: string; quantity?: number }> };
         };
         button?: { text: string; payload: string };
+        order?: { catalog_id?: string; text?: string; product_items?: Array<{ product_retailer_id: string; quantity?: number }> };
       }>;
       statuses?: Array<{
         id: string;
@@ -215,6 +223,8 @@ export interface WhatsAppMessage {
     buttonText?: string;
     listId?: string;
     listTitle?: string;
+    productRetailerId?: string;
+    productItems?: Array<{ productRetailerId: string; quantity?: number }>;
     templateName?: string;
     templateParams?: string[];
     location?: {

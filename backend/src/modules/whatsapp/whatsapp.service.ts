@@ -366,8 +366,46 @@ export class WhatsAppService implements OnModuleInit {
         } else if (msg.interactive?.type === 'list_reply' && msg.interactive.list_reply) {
           baseMessage.content.listId = msg.interactive.list_reply.id;
           baseMessage.content.listTitle = msg.interactive.list_reply.title;
+        } else {
+          const interactive = msg.interactive as Record<string, any> | undefined;
+          const productReply = interactive?.product || interactive?.product_reply;
+          const productListReply = interactive?.product_list_reply;
+          const productItems = productListReply?.product_items || interactive?.product_items || [];
+
+          const productRetailerId =
+            productReply?.product_retailer_id ||
+            productReply?.productRetailerId ||
+            productItems?.[0]?.product_retailer_id;
+
+          if (productRetailerId) {
+            baseMessage.content.productRetailerId = productRetailerId;
+          }
+
+          if (Array.isArray(productItems) && productItems.length > 0) {
+            baseMessage.content.productItems = productItems
+              .map((item: any) => ({
+                productRetailerId: item.product_retailer_id,
+                quantity: typeof item.quantity === 'number' ? item.quantity : undefined,
+              }))
+              .filter((item) => Boolean(item.productRetailerId));
+          }
         }
         break;
+
+      case 'order': {
+        const order = msg.order as Record<string, any> | undefined;
+        const productItems = order?.product_items;
+        if (Array.isArray(productItems) && productItems.length > 0) {
+          baseMessage.content.productItems = productItems
+            .map((item: any) => ({
+              productRetailerId: item.product_retailer_id,
+              quantity: typeof item.quantity === 'number' ? item.quantity : undefined,
+            }))
+            .filter((item) => Boolean(item.productRetailerId));
+          baseMessage.content.productRetailerId = baseMessage.content.productItems[0]?.productRetailerId;
+        }
+        break;
+      }
 
       case 'button':
         if (msg.button) {
@@ -381,6 +419,83 @@ export class WhatsAppService implements OnModuleInit {
     }
 
     return baseMessage;
+  }
+
+  async sendSingleProductMessage(dto: {
+    phone: string;
+    catalogId: string;
+    productRetailerId: string;
+    bodyText?: string;
+    footerText?: string;
+    meta?: { idempotencyKey?: string };
+  }): Promise<string | null> {
+    const phone = this.normalizePhone(dto.phone);
+    if (!phone) return null;
+
+    const payload: Record<string, unknown> = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: phone,
+      type: 'interactive',
+      interactive: {
+        type: 'product',
+        body: dto.bodyText ? { text: dto.bodyText } : undefined,
+        footer: dto.footerText ? { text: dto.footerText } : undefined,
+        action: {
+          catalog_id: dto.catalogId,
+          product_retailer_id: dto.productRetailerId,
+        },
+      },
+    };
+
+    return this.sendOutboundWithRetry({
+      phone,
+      messageType: 'interactive',
+      content: { text: dto.bodyText || '' },
+      idempotencyKey: dto.meta?.idempotencyKey,
+      payload,
+    });
+  }
+
+  async sendProductListMessage(dto: {
+    phone: string;
+    catalogId: string;
+    bodyText: string;
+    headerText?: string;
+    footerText?: string;
+    sections: Array<{ title: string; productRetailerIds: string[] }>;
+    meta?: { idempotencyKey?: string };
+  }): Promise<string | null> {
+    const phone = this.normalizePhone(dto.phone);
+    if (!phone) return null;
+
+    const payload: Record<string, unknown> = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: phone,
+      type: 'interactive',
+      interactive: {
+        type: 'product_list',
+        body: { text: dto.bodyText },
+        header: dto.headerText ? { type: 'text', text: dto.headerText } : undefined,
+        footer: dto.footerText ? { text: dto.footerText } : undefined,
+        action: {
+          catalog_id: dto.catalogId,
+          sections: dto.sections.map((section) => ({
+            title: section.title,
+            product_items: section.productRetailerIds.map((productRetailerId) => ({ product_retailer_id: productRetailerId })),
+          })),
+        },
+      },
+    };
+
+    return this.sendOutboundWithRetry({
+      phone,
+      messageType: 'interactive',
+      content: { text: dto.bodyText },
+      idempotencyKey: dto.meta?.idempotencyKey,
+      payload,
+    });
   }
 
   async sendTextMessage(dto: SendTextMessageDto): Promise<string | null> {

@@ -30,6 +30,12 @@ services:
         sync: false
       - key: WHATSAPP_APP_SECRET
         sync: false
+      - key: CATALOG_API_URL
+        value: https://graph.facebook.com/v25.0
+      - key: CATALOG_BUSINESS_ID
+        sync: false
+      - key: CATALOG_ACCESS_TOKEN
+        sync: false
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
