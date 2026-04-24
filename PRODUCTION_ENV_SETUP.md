@@ -37,8 +37,8 @@ This guide contains all environment variables required for the **production** de
 | `WHATSAPP_WEBHOOK_VERIFY_TOKEN` | String | ✅ | Verify token for webhook | Manual (Self-generated) | Generate a random string: `openssl rand -base64 24` |
 | `WHATSAPP_APP_SECRET` | String | ⚠️ | App secret (may be empty) | Manual if using Meta | Only needed if using Meta as WHATSAPP_PROVIDER |
 | `CATALOG_API_URL` | String | ✅ | Meta Graph API endpoint | Hardcoded in render.yaml | Set to `https://graph.facebook.com/v25.0` |
-| `CATALOG_BUSINESS_ID` | String | ⚠️ | Meta business account ID | Manual (if using Meta catalogs) | Optional if only using 360Dialog |
-| `CATALOG_ACCESS_TOKEN` | String | ⚠️ | Meta catalog access token | Manual (if using Meta catalogs) | Optional if only using 360Dialog |
+| `CATALOG_BUSINESS_ID` | String | ⚠️ | Meta business account ID | Manual (Meta Business Suite) | See: Optional Catalog Credentials Section |
+| `CATALOG_ACCESS_TOKEN` | String | ⚠️ | Meta catalog access token | Manual (Meta Graph API) | See: Optional Catalog Credentials Section |
 | `CLOUDINARY_CLOUD_NAME` | String | ✅ | Cloudinary cloud name | Manual (Cloudinary dashboard) | From Cloudinary → Settings → Cloud name |
 | `CLOUDINARY_API_KEY` | String | ✅ | Cloudinary API key | Manual (Cloudinary dashboard) | From Cloudinary → Settings → API Keys |
 | `CLOUDINARY_API_SECRET` | String | ✅ | Cloudinary API secret | Manual (Cloudinary dashboard) | ⚠️ Keep secret |
@@ -105,12 +105,141 @@ UCM configuration is managed through the admin dashboard at `/admin/ucm`:
 ## Optional Environment Variables (Can Skip Initially)
 
 | Variable | Purpose | Impact if Missing |
-|----------|---------|-------------------|
+|----------|---------|-------------------||
 | `CATALOG_BUSINESS_ID` | Meta business account ID | Only needed for Meta catalog integration |
 | `CATALOG_ACCESS_TOKEN` | Meta catalog access token | Only needed for Meta catalog integration |
 | `WHATSAPP_APP_SECRET` | Meta app secret | Only needed if using Meta provider |
 
 **Recommendation**: Skip Meta-related variables initially. Focus on 360Dialog production setup first.
+
+---
+
+## Optional: Meta Catalog Credentials (For Advanced Integration)
+
+### When You Need These
+
+You only need `CATALOG_BUSINESS_ID` and `CATALOG_ACCESS_TOKEN` if:
+- ✅ You want products synced to Meta's native WhatsApp catalog
+- ✅ Customers will browse products from business profile catalog
+- ✅ You need bidirectional integration (product clicks tracked)
+
+If using **360Dialog alone** without Meta catalog sync, **skip these for now**.
+
+### How to Obtain Meta Credentials
+
+#### Step 1: Get Your Meta Business Account ID
+
+1. Go to [https://business.facebook.com](https://business.facebook.com)
+2. Login with Meta/Facebook account
+3. Top-left: Verify you're in correct Business Account (dropdown)
+4. Click **Settings** (gear icon, bottom-left)
+5. Click **Business Settings**
+6. In left menu, go to **Business Information**
+7. Find **"Business ID"** - Copy this
+   - **This is your CATALOG_BUSINESS_ID**
+
+**Example Format**: `123456789012345`
+
+#### Step 2: Get Your Catalog Access Token
+
+**Method A: Via Meta Business Suite** (Easiest)
+
+1. In Business Settings, go to **Apps and Websites**
+2. Click **Apps**
+3. Find your WhatsApp Business app (or create new if needed)
+4. Click on the app
+5. Go to **Settings** → **Basic**
+6. Find **App ID** and **App Secret** - keep these
+7. Scroll down to find **Access Tokens** section
+8. Click **Generate Token** (if available)
+9. Copy the **Long-Lived Token**
+   - **This is your CATALOG_ACCESS_TOKEN**
+
+**Method B: Via Meta Graph API** (Programmatic)
+
+```bash
+# Prerequisites: You have App ID and App Secret from Settings → Basic
+
+# Command to generate token:
+curl -X GET "https://graph.facebook.com/oauth/access_token" \
+  -d "client_id=YOUR_APP_ID" \
+  -d "client_secret=YOUR_APP_SECRET" \
+  -d "grant_type=client_credentials"
+
+# Replace YOUR_APP_ID and YOUR_APP_SECRET with actual values
+
+# Response:
+# {
+#   "access_token": "VERY_LONG_STRING_HERE",
+#   "token_type": "bearer"
+# }
+
+# The access_token value is your CATALOG_ACCESS_TOKEN
+```
+
+**Method C: Via 360Dialog** (If Using as Provider)
+
+1. Go to [360Dialog Hub](https://hub.360dialog.io)
+2. Login with production account
+3. Go to **Settings** → **Connected Catalogs**
+4. If 360Dialog manages Meta integration, they may provide these values
+5. Contact 360Dialog support for exact values
+
+#### Step 3: Verify Your Credentials Work
+
+```bash
+# Test your catalog access token:
+curl -X GET "https://graph.facebook.com/me" \
+  -H "Authorization: Bearer YOUR_CATALOG_ACCESS_TOKEN"
+
+# If successful, response will show your account info:
+# {
+#   "name": "Your Business Name",
+#   "id": "YOUR_BUSINESS_ID",
+#   ...
+# }
+
+# If fails, check:
+# - Token is correct and not expired
+# - App has necessary permissions
+# - Business Account is active
+```
+
+---
+
+## How Catalog Credentials Are Used in Production
+
+### Backend Sync Flow
+
+1. Admin creates/updates product in dashboard
+2. Backend triggers UCM sync
+3. Backend uses these credentials:
+   - **CATALOG_ACCESS_TOKEN** → Authenticates to Meta
+   - **CATALOG_BUSINESS_ID** → Identifies which catalog to update
+   - **WHATSAPP_D360_API_KEY** → (If proxying through 360Dialog)
+4. Backend sends product to catalog:
+   ```json
+   {
+     "retailer_id": "local_product_id",
+     "name": "Product Name",
+     "price": 499,
+     "image": "https://..."
+   }
+   ```
+5. Meta updates WhatsApp catalog
+6. Product appears on business profile
+
+### Customer Interaction Flow
+
+1. Customer opens business chat on WhatsApp
+2. Sees products from business profile catalog
+3. Clicks a product
+4. WhatsApp sends webhook with `catalog_product_id`
+5. Backend maps `catalog_product_id` → `local_product_id`
+6. Chatbot retrieves product from local MongoDB
+7. Renders product in chat
+
+**Key Point**: Backend maps back to local database, ensuring data consistency and control.
 
 ---
 

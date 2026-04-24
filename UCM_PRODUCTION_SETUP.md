@@ -87,7 +87,45 @@ From the same 360Dialog Hub:
 2. Find **WABA ID** (WhatsApp Business Account ID)
 3. Keep this for reference (may be needed for catalog configuration)
 
-### 3. Verify 360Dialog Webhook URL
+### 3. Optional: Get Meta Catalog Credentials
+
+**Only needed if you want products synced to Meta's native WhatsApp catalog.** If using 360Dialog alone, skip for now.
+
+#### Get CATALOG_BUSINESS_ID
+
+1. Go to [https://business.facebook.com](https://business.facebook.com)
+2. Login with Meta/Facebook account
+3. Click **Settings** (gear icon, bottom-left)
+4. Click **Business Settings**
+5. Go to **Business Information** in left menu
+6. Find **"Business ID"** - Copy this
+   - This is your **CATALOG_BUSINESS_ID**
+   - Example: `123456789012345`
+
+#### Get CATALOG_ACCESS_TOKEN
+
+**Option A: Via Meta Business Suite (Easiest)**
+
+1. In Business Settings, go to **Apps and Websites** → **Apps**
+2. Find your WhatsApp Business app (create if needed)
+3. Go to **Settings** → **Basic**
+4. Find **App ID** and **App Secret** - Save these
+5. In **Access Tokens** section, click **Generate Token**
+6. Copy the **Long-Lived Token**
+   - This is your **CATALOG_ACCESS_TOKEN**
+
+**Option B: Via API Command**
+
+```bash
+curl -X GET "https://graph.facebook.com/oauth/access_token" \
+  -d "client_id=YOUR_APP_ID" \
+  -d "client_secret=YOUR_APP_SECRET" \
+  -d "grant_type=client_credentials"
+
+# Response includes "access_token" - this is your CATALOG_ACCESS_TOKEN
+```
+
+### 4. Verify 360Dialog Webhook URL
 
 1. In 360Dialog Hub → **Settings** → **Webhooks**
 2. Ensure webhook URL is set to: `https://store-backend-prod-XXXX.onrender.com/api/v1/webhook/whatsapp`
@@ -254,6 +292,180 @@ If production mode has issues:
 │  - Link to WhatsApp                 │
 └─────────────────────────────────────┘
 ```
+
+## Architecture Overview
+
+### How UCM Works
+
+```
+┌─────────────────────────────────────┐
+│  Admin Dashboard                    │
+│  - Edit Products                    │
+│  - UCM Dashboard                    │
+└────────────┬────────────────────────┘
+             │
+             ↓
+┌─────────────────────────────────────┐
+│  Backend - UCM Module               │
+│  - ProductsService Hook             │
+│  - UcmService (sync logic)          │
+│  - 360Dialog API Integration        │
+└────────────┬────────────────────────┘
+             │
+      Dry-run │ Production
+      Mode    │ Mode
+             ↓
+┌─────────────────────────────────────┐
+│  360Dialog Catalog API              │
+│  - Upsert Products                  │
+│  - Manage Catalogs                  │
+│  - Link to WhatsApp                 │
+└─────────────────────────────────────┘
+```
+
+### Complete Sync Flow (Simple Explanation)
+
+```
+STEP 1: TRIGGER
+├─ Admin creates/edits/deletes product in dashboard
+└─ Backend ProductsService hook fires
+
+STEP 2: CHECK MODE
+├─ Is UCM in DRY_RUN? → Simulate only (no real changes)
+└─ Is UCM in PRODUCTION? → Really sync to catalog
+
+STEP 3A: DRY-RUN MODE (SAFE TESTING)
+├─ Format product data for catalog
+├─ Create sync request (don't send to Meta)
+├─ Log what WOULD happen
+├─ Save to sync_history as "SIMULATED"
+└─ No actual changes to any catalog
+
+STEP 3B: PRODUCTION MODE (REAL SYNC)
+├─ Format product data:
+│  ├─ retailer_id: product._id (local product ID)
+│  ├─ name: product.name
+│  ├─ price: product.price
+│  ├─ image: product.image_url
+│  └─ stock: product.stock_quantity
+│
+├─ Send to Meta Graph API via 360Dialog:
+│  └─ POST /v25.0/{CATALOG_ID}/products
+│
+├─ Meta responds with:
+│  ├─ id: "catalog_product_id"
+│  └─ success: true
+│
+├─ Save mapping in database:
+│  ├─ local_product_id (MongoDB)
+│  └─ ↔ catalog_product_id (Meta)
+│
+└─ Log sync result in sync_history
+
+STEP 4: RESULT ON WHATSAPP
+├─ Product appears in business profile catalog
+├─ Customer sees it on WhatsApp Business App
+└─ Clicking it sends catalog_product_id to chatbot
+```
+
+### The Key Mapping (Why It's Important)
+
+```
+LOCAL PRODUCT (MongoDB)        CATALOG PRODUCT (Meta)
+┌──────────────────────┐       ┌──────────────────────┐
+│ _id: "abc123"        │ ←───→ │ id: "9876543210"     │
+│ name: "Dry Fruits"   │       │ retailer_id: "abc123"│
+│ price: 499           │       │ name: "Dry Fruits"   │
+│ stock: 50            │       │ price: 499           │
+│ image: "url/img.jpg" │       │ image: "url/img.jpg" │
+└──────────────────────┘       └──────────────────────┘
+```
+
+**Why this matters:**
+- Local database (`products` collection) = Single source of truth
+- Catalog = Mirror/reflection of local data
+- When syncing: Local data → Catalog
+- When customer selects: Catalog ID → Maps back to local ID
+- Chatbot reads from local database (ensures consistency)
+
+### Customer Interaction With Catalog
+
+```
+CUSTOMER'S WHATSAPP
+├─ Opens business chat
+├─ Sees WhatsApp Catalog on business profile
+│  (This catalog is populated by UCM sync)
+└─ Clicks a product in catalog
+
+        ↓ Sends webhook with catalog_product_id
+
+BACKEND WEBHOOK
+├─ Receives message with catalog product selected
+├─ Message includes: catalog_product_id="9876543210"
+└─ Calls UCM mapping service
+
+        ↓ Maps catalog_id → local_id
+
+MAPPING SERVICE
+├─ Looks up: "9876543210" (from catalog)
+├─ Finds: "abc123" (from local database)
+└─ Returns local product ID
+
+        ↓ Retrieves product from MongoDB
+
+CHATBOT SERVICE
+├─ Queries: db.products.findById("abc123")
+├─ Gets all product details from local database
+│  ├─ name, price, image, stock, description
+│  └─ Any other local attributes
+└─ Renders product in WhatsApp chat
+
+        ↓ Customer sees
+
+CUSTOMER'S CHAT
+├─ [Product Image]
+├─ Product Name
+├─ Price: ₹499
+├─ "In Stock"
+├─ [Add to Cart Button]
+└─ Can proceed with purchase
+```
+
+### Data Flow Summary
+
+```
+Admin Dashboard
+      ↓
+Edit Product (Name, Price, Image, Stock)
+      ↓
+ProductsService Hook (on create/update/delete)
+      ↓
+UCM Service
+      ├─ Mode: dry_run? → Simulate
+      └─ Mode: production? → Really sync
+      ↓
+Meta Graph API (via 360Dialog)
+      ├─ Send product data
+      └─ Receive catalog product ID
+      ↓
+Mapping Saved (local_id ↔ catalog_id)
+      ↓
+WhatsApp Business Profile Catalog Updated
+      ↓
+Customer Sees Product in Catalog
+      ↓
+Customer Clicks Product
+      ↓
+Webhook Received (catalog_product_id)
+      ↓
+UCM Maps Back (catalog_id → local_id)
+      ↓
+Chatbot Retrieves from Local Database
+      ↓
+Product Rendered in Chat
+```
+
+---
 
 ### Data Flow
 
