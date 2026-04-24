@@ -37,8 +37,8 @@ This guide contains all environment variables required for the **production** de
 | `WHATSAPP_WEBHOOK_VERIFY_TOKEN` | String | ✅ | Verify token for webhook | Manual (Self-generated) | Generate a random string: `openssl rand -base64 24` |
 | `WHATSAPP_APP_SECRET` | String | ⚠️ | App secret (may be empty) | Manual if using Meta | Only needed if using Meta as WHATSAPP_PROVIDER |
 | `CATALOG_API_URL` | String | ✅ | Meta Graph API endpoint | Hardcoded in render.yaml | Set to `https://graph.facebook.com/v25.0` |
-| `CATALOG_BUSINESS_ID` | String | ⚠️ | Meta business account ID | Manual (Meta Business Suite) | See: Optional Catalog Credentials Section |
-| `CATALOG_ACCESS_TOKEN` | String | ⚠️ | Meta catalog access token | Manual (Meta Graph API) | See: Optional Catalog Credentials Section |
+| `CATALOG_BUSINESS_ID` | String | ✅ | Meta business account ID | Manual (Meta Business Suite) | REQUIRED for catalog sync - See: Meta Catalog Credentials Section |
+| `CATALOG_ACCESS_TOKEN` | String | ✅ | Meta catalog access token | Manual (Meta Graph API) | REQUIRED for catalog sync - See: Meta Catalog Credentials Section |
 | `CLOUDINARY_CLOUD_NAME` | String | ✅ | Cloudinary cloud name | Manual (Cloudinary dashboard) | From Cloudinary → Settings → Cloud name |
 | `CLOUDINARY_API_KEY` | String | ✅ | Cloudinary API key | Manual (Cloudinary dashboard) | From Cloudinary → Settings → API Keys |
 | `CLOUDINARY_API_SECRET` | String | ✅ | Cloudinary API secret | Manual (Cloudinary dashboard) | ⚠️ Keep secret |
@@ -106,26 +106,59 @@ UCM configuration is managed through the admin dashboard at `/admin/ucm`:
 
 | Variable | Purpose | Impact if Missing |
 |----------|---------|-------------------||
-| `CATALOG_BUSINESS_ID` | Meta business account ID | Only needed for Meta catalog integration |
-| `CATALOG_ACCESS_TOKEN` | Meta catalog access token | Only needed for Meta catalog integration |
-| `WHATSAPP_APP_SECRET` | Meta app secret | Only needed if using Meta provider |
+| `WHATSAPP_APP_SECRET` | Meta app secret | Only needed if using Meta as WHATSAPP_PROVIDER |
 
-**Recommendation**: Skip Meta-related variables initially. Focus on 360Dialog production setup first.
+**Recommendation**: Only skip WHATSAPP_APP_SECRET. You must configure CATALOG_BUSINESS_ID and CATALOG_ACCESS_TOKEN if you want catalog sync feature.
 
 ---
 
-## Optional: Meta Catalog Credentials (For Advanced Integration)
+## REQUIRED: Meta Catalog Credentials (For Catalog Sync Feature)
+
+### Critical Architecture Note
+
+**You MUST have `CATALOG_BUSINESS_ID` and `CATALOG_ACCESS_TOKEN` if you want the catalog sync feature to work.**
+
+Understanding why:
+- **Messaging System**: Uses 360Dialog API (configured via WHATSAPP_D360_API_KEY)
+- **Catalog System**: Uses Meta Graph API ONLY (configured via CATALOG_* credentials)
+- **These are two separate systems** - you need BOTH for full functionality
+
+The catalog is hosted on Meta's servers and can ONLY be accessed via Meta's Graph API. 360Dialog cannot manage catalogs - they only handle messaging.
 
 ### When You Need These
 
-You only need `CATALOG_BUSINESS_ID` and `CATALOG_ACCESS_TOKEN` if:
-- ✅ You want products synced to Meta's native WhatsApp catalog
-- ✅ Customers will browse products from business profile catalog
-- ✅ You need bidirectional integration (product clicks tracked)
+You **MUST** configure `CATALOG_BUSINESS_ID` and `CATALOG_ACCESS_TOKEN` if:
+- ✅ You want products synced from admin dashboard to WhatsApp business profile catalog
+- ✅ Customers should see products when opening business profile
+- ✅ You want catalog edits to reflect in WhatsApp within minutes
 
-If using **360Dialog alone** without Meta catalog sync, **skip these for now**.
+You **CAN'T skip** these if your business relies on catalog browsing feature.
+
+### Do I Need to Create a Separate Meta App?
+
+**YES - you need a separate Meta App** for catalog credentials, even though you're using 360Dialog for messaging.
+
+**IMPORTANT**: The app does **NOT** need to be published:
+- Development Mode = Fine for production use ✅
+- Published Mode = Only for third-party integrations
+- For your use case, keep it in Development
 
 ### How to Obtain Meta Credentials
+
+#### Creating Your Meta App (Required Once)
+
+1. Go to https://developers.facebook.com
+2. Click **"My Apps"** (top-left corner)
+3. Click **"Create App"**
+4. Choose **App Type**: Business
+5. Fill in details:
+   - **App Name**: `naturelite-whatsapp-catalog` (or similar)
+   - **App Contact Email**: your-email@company.com
+   - **Purpose**: WhatsApp Catalog Integration
+6. Click **"Create App"**
+7. Add **WhatsApp** product to your app (in app dashboard)
+
+**Do NOT publish this app** - Development Mode is fine for production use.
 
 #### Step 1: Get Your Meta Business Account ID
 

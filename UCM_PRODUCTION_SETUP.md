@@ -87,9 +87,26 @@ From the same 360Dialog Hub:
 2. Find **WABA ID** (WhatsApp Business Account ID)
 3. Keep this for reference (may be needed for catalog configuration)
 
-### 3. Optional: Get Meta Catalog Credentials
+### 3. REQUIRED: Get Meta Catalog Credentials
 
-**Only needed if you want products synced to Meta's native WhatsApp catalog.** If using 360Dialog alone, skip for now.
+**REQUIRED if you want catalog sync to work.** This is NOT optional - if you want products synced from dashboard to business profile, you must configure these.
+
+**Why Meta is needed**: The catalog is hosted on Meta's servers and only accessible via Meta Graph API. 360Dialog handles messaging only, not catalogs. These are two separate systems.
+
+#### Create Your Meta App (Required)
+
+1. Go to https://developers.facebook.com
+2. Click **"My Apps"** (top-left corner)
+3. Click **"Create App"**
+4. Choose **App Type**: Business
+5. Fill in:
+   - **App Name**: `naturelite-whatsapp-catalog`
+   - **App Contact Email**: your@email.com
+   - **Purpose**: WhatsApp Catalog Integration
+6. Click **"Create App"**
+7. Add **WhatsApp** to your app via Products
+
+**IMPORTANT**: Do NOT publish this app. Development Mode is fine for production use.
 
 #### Get CATALOG_BUSINESS_ID
 
@@ -107,23 +124,30 @@ From the same 360Dialog Hub:
 **Option A: Via Meta Business Suite (Easiest)**
 
 1. In Business Settings, go to **Apps and Websites** → **Apps**
-2. Find your WhatsApp Business app (create if needed)
+2. Find your newly created app
 3. Go to **Settings** → **Basic**
-4. Find **App ID** and **App Secret** - Save these
-5. In **Access Tokens** section, click **Generate Token**
-6. Copy the **Long-Lived Token**
+4. In **Access Tokens** section, click **Generate Token**
+5. Copy the **Long-Lived Token**
    - This is your **CATALOG_ACCESS_TOKEN**
 
 **Option B: Via API Command**
 
 ```bash
-curl -X GET "https://graph.facebook.com/oauth/access_token" \
+# Get from Settings → Basic: App ID and App Secret
+curl -X POST "https://graph.facebook.com/oauth/access_token" \
   -d "client_id=YOUR_APP_ID" \
   -d "client_secret=YOUR_APP_SECRET" \
   -d "grant_type=client_credentials"
 
 # Response includes "access_token" - this is your CATALOG_ACCESS_TOKEN
 ```
+
+**Option C: Via Meta Business Suite (from app dashboard)**
+
+1. Go to https://business.facebook.com
+2. Settings → Apps and Websites → Apps → Your App
+3. Settings → Basic → App Roles
+4. Generate System User Token with "Manage" permissions
 
 ### 4. Verify 360Dialog Webhook URL
 
