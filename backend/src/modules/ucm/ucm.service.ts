@@ -131,8 +131,17 @@ export class UcmService {
   }
 
   async syncAllProducts(reason = 'manual_sync'): Promise<SyncSummary> {
-    const products = await this.productRepository.findAllForSync();
+    // Validate catalog configuration before syncing
     const state = await this.getCatalogState();
+    
+    if (state.syncMode === 'meta' && !state.selectedCatalogId?.trim()) {
+      this.logger.error('Sync attempted in meta mode without catalog selection');
+      throw new BadRequestException('Select one catalog in UCM before syncing products.');
+    }
+
+    this.logger.log(`Starting UCM sync (mode: ${state.syncMode}, reason: ${reason})`);
+    const products = await this.productRepository.findAllForSync();
+    this.logger.log(`Found ${products.length} products for sync`);
 
     if (state.syncMode === 'dry_run') {
       const details = products.map((product) => ({
@@ -185,25 +194,29 @@ export class UcmService {
 
   private async syncProductsToRemote(products: ProductDocument[], reason: string): Promise<SyncSummary> {
     const state = await this.getCatalogState();
-    let remoteCatalogId = state.selectedCatalogId.trim();
-    let remoteCatalogName = state.selectedCatalogName.trim();
+    let remoteCatalogId = state.selectedCatalogId?.trim() || '';
+    let remoteCatalogName = state.selectedCatalogName?.trim() || '';
 
     if (!remoteCatalogId) {
       const catalogs = await this.listRemoteCatalogs();
       if (catalogs.length === 1) {
+        this.logger.log(`Auto-selecting single catalog: ${catalogs[0].id} (${catalogs[0].name})`);
         await this.updateCatalogConfig({
           selectedCatalogId: catalogs[0].id,
           selectedCatalogName: catalogs[0].name,
         });
         const nextState = await this.getCatalogState();
-        remoteCatalogId = nextState.selectedCatalogId.trim();
-        remoteCatalogName = nextState.selectedCatalogName.trim();
+        remoteCatalogId = nextState.selectedCatalogId?.trim() || '';
+        remoteCatalogName = nextState.selectedCatalogName?.trim() || '';
       }
     }
 
     if (!remoteCatalogId) {
+      this.logger.error('No catalog ID available for sync');
       throw new BadRequestException('Select one catalog in UCM before syncing products.');
     }
+
+    this.logger.log(`Syncing ${products.length} products to catalog ${remoteCatalogId} (${remoteCatalogName})`);
 
     let syncedProducts = 0;
     let failedProducts = 0;
@@ -232,6 +245,8 @@ export class UcmService {
       remoteCatalogName,
       details,
     };
+
+    this.logger.log(`Sync completed: ${syncedProducts}/${products.length} products synced, ${failedProducts} failed`);
 
     await this.writeSyncState(
       failedProducts > 0 ? 'failed' : 'success',

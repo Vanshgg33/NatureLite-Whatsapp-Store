@@ -21,7 +21,12 @@ export class ProductRepository extends BaseRepository<ProductDocument> {
   }
 
   async findAllForSync(): Promise<ProductDocument[]> {
-    return this.model.find().populate('category', 'name slug').sort({ createdAt: 1 }).exec();
+    // Filter out products with invalid (empty or non-ObjectId) category refs to avoid CastError during populate
+    return this.model
+      .find({ category: { $type: 'objectId' } })
+      .populate('category', 'name slug')
+      .sort({ createdAt: 1 })
+      .exec();
   }
 
   async findOneBySku(sku: string): Promise<ProductDocument | null> {
