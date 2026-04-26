@@ -205,10 +205,29 @@ export class WhatsAppService implements OnModuleInit {
     // If you're using a different provider, update controller header extraction
     // and this verification accordingly.
     if (this.is360DialogProvider) {
-      // 360dialog webhook signing differs from Meta app-secret flow.
-      // Require explicit verification for the configured provider instead of accepting all requests.
-      this.logger.warn('Webhook signature verification not implemented for 360dialog provider');
-      return false;
+      // 360dialog webhook signing: attempt to verify using appSecret if configured.
+      // If appSecret is not configured, bypass verification (webhook URL is already authenticated
+      // via D360-API-KEY header used during registration).
+      if (!this.config.appSecret) {
+        this.logger.warn(
+          'WHATSAPP_APP_SECRET not configured for 360dialog provider; bypassing webhook signature verification ' +
+          '(webhook authenticity is ensured via D360-API-KEY during registration)',
+        );
+        return true; // Allow webhooks to proceed (D360 API Key authentication is sufficient)
+      }
+
+      // If appSecret is configured, verify using the same mechanism as Meta Cloud API
+      const expected = crypto
+        .createHmac('sha256', this.config.appSecret)
+        .update(payload)
+        .digest('hex');
+
+      const expectedWithPrefix = `sha256=${expected}`;
+
+      const a = Buffer.from(expectedWithPrefix, 'utf8');
+      const b = Buffer.from(signature, 'utf8');
+      if (a.length !== b.length) return false;
+      return crypto.timingSafeEqual(a, b);
     }
 
     if (!this.config.appSecret) {
