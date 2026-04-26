@@ -58,9 +58,6 @@ export class UcmService {
       headers: {
         'Content-Type': 'application/json',
       },
-      params: {
-        access_token: catalogConfig.accessToken || '',
-      },
     });
   }
 
@@ -109,6 +106,7 @@ export class UcmService {
 
     const response = await this.graphClient.get(`/${catalogConfig.businessId}/owned_product_catalogs`, {
       params: {
+        access_token: catalogConfig.accessToken,
         fields: 'id,name,product_count,vertical',
       },
     });
@@ -129,7 +127,11 @@ export class UcmService {
       throw new BadRequestException('Catalog access token is not configured');
     }
 
-    await this.graphClient.delete(`/${catalogId}`);
+    await this.graphClient.delete(`/${catalogId}`, {
+      params: {
+        access_token: catalogConfig.accessToken,
+      },
+    });
   }
 
   async syncAllProducts(reason = 'manual_sync'): Promise<SyncSummary> {
@@ -318,8 +320,10 @@ export class UcmService {
       throw new BadRequestException('Catalog access token is not configured');
     }
 
+    // Ensure access_token is included in the params
     await this.graphClient.post(`/${catalogId}/products`, item, {
       params: {
+        access_token: catalogConfig.accessToken,
         allow_upsert: true,
       },
     });
