@@ -715,7 +715,14 @@ class ApiClient {
   }
 
   async updateUcmConfig(updates: Partial<CatalogSettings>): Promise<CatalogSettings> {
-    const response = await this.client.put<ApiResponse<CatalogSettings>>('/ucm/config', updates);
+    // Only send fields that the backend DTO accepts
+    const payload = {
+      ...(updates.syncMode !== undefined && { syncMode: updates.syncMode }),
+      ...(updates.autoSyncEnabled !== undefined && { autoSyncEnabled: updates.autoSyncEnabled }),
+      ...(updates.selectedCatalogId !== undefined && { selectedCatalogId: updates.selectedCatalogId }),
+      ...(updates.selectedCatalogName !== undefined && { selectedCatalogName: updates.selectedCatalogName }),
+    };
+    const response = await this.client.put<ApiResponse<CatalogSettings>>('/ucm/config', payload);
     return response.data.data;
   }
 
