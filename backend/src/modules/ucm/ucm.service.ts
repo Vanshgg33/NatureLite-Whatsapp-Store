@@ -56,8 +56,10 @@ export class UcmService {
       baseURL: catalogConfig.apiUrl.replace(/\/$/, ''),
       timeout: 20_000,
       headers: {
-        Authorization: catalogConfig.accessToken ? `Bearer ${catalogConfig.accessToken}` : '',
         'Content-Type': 'application/json',
+      },
+      params: {
+        access_token: catalogConfig.accessToken || '',
       },
     });
   }
@@ -265,7 +267,7 @@ export class UcmService {
     const baseUrl = frontendUrl.split(',')[0]?.trim().replace(/\/$/, '') || '';
     const unavailable = archived || product.isActive === false || (product.trackStock && (product.stock || 0) <= 0);
 
-    return {
+    const item: Record<string, unknown> = {
       retailer_id: product._id.toString(),
       name: product.name,
       description: (product.description || product.shortDescription || '').toString().slice(0, 5000),
@@ -273,20 +275,32 @@ export class UcmService {
       availability: unavailable ? 'out of stock' : 'in stock',
       condition: 'new',
       currency: 'INR',
-      image_url: product.images?.[0],
       price: Math.max(0, Math.round((product.price || 0) * 100)),
-      sale_price: product.compareAtPrice && product.compareAtPrice > product.price
-        ? Math.max(0, Math.round(product.price * 100))
-        : undefined,
-      url: baseUrl ? `${baseUrl}/products/${product.slug}` : undefined,
       visibility: unavailable ? 'staging' : 'published',
-      inventory: product.trackStock ? Math.max(0, product.stock || 0) : undefined,
-      product_type: typeof product.category === 'object' && product.category && 'name' in product.category
-        ? String((product.category as { name?: string }).name || '')
-        : undefined,
-      custom_label_0: catalogConfig.businessId || undefined,
       custom_label_1: product.sku,
     };
+
+    // Only add optional fields if they have values
+    if (product.images?.[0]) {
+      item.image_url = product.images[0];
+    }
+    if (product.compareAtPrice && product.compareAtPrice > product.price) {
+      item.sale_price = Math.max(0, Math.round(product.price * 100));
+    }
+    if (baseUrl) {
+      item.url = `${baseUrl}/products/${product.slug}`;
+    }
+    if (product.trackStock) {
+      item.inventory = Math.max(0, product.stock || 0);
+    }
+    if (typeof product.category === 'object' && product.category && 'name' in product.category) {
+      item.product_type = String((product.category as { name?: string }).name || '');
+    }
+    if (catalogConfig.businessId) {
+      item.custom_label_0 = catalogConfig.businessId;
+    }
+
+    return item;
   }
 
   private async upsertRemoteProduct(
