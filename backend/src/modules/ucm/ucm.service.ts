@@ -235,7 +235,14 @@ export class UcmService {
       } catch (error) {
         failedProducts += 1;
         const message = error instanceof Error ? error.message : 'Unknown sync error';
-        this.logger.warn(`Catalog sync failed for ${product._id.toString()}: ${message}`);
+        if (axios.isAxiosError(error)) {
+          const responseBody = error.response?.data;
+          this.logger.warn(
+            `Catalog sync failed for ${product._id.toString()}: ${message} status=${error.response?.status ?? 'unknown'} body=${JSON.stringify(responseBody)}`,
+          );
+        } else {
+          this.logger.warn(`Catalog sync failed for ${product._id.toString()}: ${message}`);
+        }
         details.push({ retailerId: product._id.toString(), status: 'failed', message });
       }
     }
@@ -273,12 +280,10 @@ export class UcmService {
       retailer_id: product._id.toString(),
       name: product.name,
       description: (product.description || product.shortDescription || '').toString().slice(0, 5000),
-      short_description: (product.shortDescription || product.description || '').toString().slice(0, 1000),
       availability: unavailable ? 'out of stock' : 'in stock',
       condition: 'new',
       currency: 'INR',
-      price: Math.max(0, Math.round((product.price || 0) * 100)),
-      visibility: unavailable ? 'staging' : 'published',
+      price: Math.max(0, Number((product.price || 0).toFixed(2))),
       custom_label_1: product.sku,
     };
 
@@ -287,16 +292,13 @@ export class UcmService {
       item.image_url = product.images[0];
     }
     if (product.compareAtPrice && product.compareAtPrice > product.price) {
-      item.sale_price = Math.max(0, Math.round(product.price * 100));
+      item.sale_price = Math.max(0, Number(product.price.toFixed(2)));
     }
     if (baseUrl) {
       item.url = `${baseUrl}/products/${product.slug}`;
     }
     if (product.trackStock) {
       item.inventory = Math.max(0, product.stock || 0);
-    }
-    if (typeof product.category === 'object' && product.category && 'name' in product.category) {
-      item.product_type = String((product.category as { name?: string }).name || '');
     }
     if (catalogConfig.businessId) {
       item.custom_label_0 = catalogConfig.businessId;
