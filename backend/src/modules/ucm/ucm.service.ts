@@ -322,13 +322,59 @@ export class UcmService {
       throw new BadRequestException('Catalog access token is not configured');
     }
 
-    // Ensure access_token is included in the params
-    await this.graphClient.post(`/${catalogId}/products`, item, {
-      params: {
-        access_token: catalogConfig.accessToken,
-        allow_upsert: true,
-      },
-    });
+    const payload = new URLSearchParams();
+    for (const [key, value] of Object.entries(item)) {
+      if (value === undefined || value === null) {
+        continue;
+      }
+
+      if (Array.isArray(value)) {
+        payload.set(key, JSON.stringify(value));
+      } else {
+        payload.set(key, String(value));
+      }
+    }
+
+    const candidatePaths = [
+      `/${catalogId}/products`,
+      `/${catalogId}/items`,
+      `/${catalogId}/product_items`,
+    ];
+
+    let lastError: unknown;
+
+    for (const path of candidatePaths) {
+      try {
+        await this.graphClient.post(path, payload, {
+          params: {
+            access_token: catalogConfig.accessToken,
+            allow_upsert: true,
+          },
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+        });
+        return;
+      } catch (error) {
+        lastError = error;
+        if (!this.isUnknownCatalogPathError(error)) {
+          throw error;
+        }
+
+        this.logger.warn(`Catalog write route rejected for ${path}; trying next fallback path`);
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new BadRequestException('Catalog sync failed');
+  }
+
+  private isUnknownCatalogPathError(error: unknown): boolean {
+    if (!axios.isAxiosError(error)) {
+      return false;
+    }
+
+    const response = error.response?.data as { error?: { code?: number; message?: string } } | undefined;
+    return response?.error?.code === 2500 && typeof response.error.message === 'string' && response.error.message.includes('Unknown path components');
   }
 
   private async writeSyncState(
