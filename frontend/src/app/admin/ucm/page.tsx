@@ -58,20 +58,39 @@ export default function UcmPage() {
     },
   });
 
-  const syncMutation = useMutation({
-    mutationFn: () => api.syncUcmCatalog(),
+  const pullMutation = useMutation({
+    mutationFn: () => api.pullUcmCatalog(),
     onSuccess: (result) => {
       setLastSyncResult(result);
       queryClient.invalidateQueries({ queryKey: ['ucm-dashboard'] });
       toast({
-        title: result.mode === 'dry_run' ? 'Dry run completed' : 'Catalog synced',
+        title: 'Catalog pulled',
+        description: `${result.syncedProducts}/${result.totalProducts} products imported from Commerce Manager.`,
+      });
+    },
+    onError: (error: unknown) => {
+      toast({
+        title: 'Pull failed',
+        description: error instanceof Error ? error.message : 'Unable to pull catalog right now.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const pushMutation = useMutation({
+    mutationFn: () => api.pushUcmCatalog(),
+    onSuccess: (result) => {
+      setLastSyncResult(result);
+      queryClient.invalidateQueries({ queryKey: ['ucm-dashboard'] });
+      toast({
+        title: result.mode === 'dry_run' ? 'Dry run completed' : 'Catalog pushed',
         description: `${result.syncedProducts}/${result.totalProducts} products processed.`,
       });
     },
     onError: (error: unknown) => {
       toast({
-        title: 'Sync failed',
-        description: error instanceof Error ? error.message : 'Unable to sync catalog right now.',
+        title: 'Push failed',
+        description: error instanceof Error ? error.message : 'Unable to push catalog right now.',
         variant: 'destructive',
       });
     },
@@ -262,9 +281,13 @@ export default function UcmPage() {
                 <Save className="mr-2 h-4 w-4" />
                 {saveMutation.isPending ? 'Saving...' : 'Save UCM settings'}
               </Button>
-              <Button variant="outline" onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending || isFetching}>
+              <Button variant="outline" onClick={() => pullMutation.mutate()} disabled={pullMutation.isPending || isFetching}>
                 <RefreshCw className="mr-2 h-4 w-4" />
-                {syncMutation.isPending ? 'Syncing...' : 'Sync now'}
+                {pullMutation.isPending ? 'Pulling...' : 'Pull catalog'}
+              </Button>
+              <Button variant="outline" onClick={() => pushMutation.mutate()} disabled={pushMutation.isPending || isFetching}>
+                <Sparkles className="mr-2 h-4 w-4" />
+                {pushMutation.isPending ? 'Pushing...' : 'Push catalog'}
               </Button>
               <Button
                 variant="outline"

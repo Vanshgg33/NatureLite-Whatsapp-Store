@@ -727,7 +727,17 @@ class ApiClient {
   }
 
   async syncUcmCatalog(): Promise<UcmSyncSummary> {
-    const response = await this.client.post<ApiResponse<UcmSyncSummary>>('/ucm/sync', {});
+    const response = await this.client.post<ApiResponse<UcmSyncSummary>>('/ucm/sync/push', {});
+    return response.data.data;
+  }
+
+  async pushUcmCatalog(): Promise<UcmSyncSummary> {
+    const response = await this.client.post<ApiResponse<UcmSyncSummary>>('/ucm/sync/push', {});
+    return response.data.data;
+  }
+
+  async pullUcmCatalog(): Promise<UcmSyncSummary> {
+    const response = await this.client.post<ApiResponse<UcmSyncSummary>>('/ucm/sync/pull', {});
     return response.data.data;
   }
 

@@ -34,7 +34,17 @@ export class UcmController {
 
   @Post('sync')
   async syncAll() {
-    return this.ucmService.syncAllProducts('manual_sync');
+    return this.ucmService.pushCatalogToMeta('manual_sync');
+  }
+
+  @Post('sync/pull')
+  async pullCatalog() {
+    return this.ucmService.pullCatalogToDatabase('manual_pull');
+  }
+
+  @Post('sync/push')
+  async pushCatalog() {
+    return this.ucmService.pushCatalogToMeta('manual_push');
   }
 
   @Post('sync/:productId')

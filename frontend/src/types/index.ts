@@ -347,6 +347,8 @@ export interface WhatsAppSettings {
 
 export type CatalogSyncMode = 'dry_run' | 'meta';
 
+export type UcmSyncRunMode = 'dry_run' | 'pull' | 'push';
+
 export interface CatalogSettings {
   syncMode: CatalogSyncMode;
   autoSyncEnabled: boolean;
@@ -377,7 +379,7 @@ export interface UcmSyncDetail {
 }
 
 export interface UcmSyncSummary {
-  mode: CatalogSyncMode;
+  mode: UcmSyncRunMode;
   totalProducts: number;
   syncedProducts: number;
   failedProducts: number;

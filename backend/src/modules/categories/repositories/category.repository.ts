@@ -19,6 +19,22 @@ export class CategoryRepository extends BaseRepository<CategoryDocument> {
     return this.model.findOne({ slug }).exec();
   }
 
+  async findOrCreateBySlug(name: string, slug: string, description?: string): Promise<CategoryDocument> {
+    const existing = await this.findOneBySlug(slug);
+    if (existing) {
+      return existing;
+    }
+
+    return this.create({
+      name,
+      slug,
+      description,
+      isActive: true,
+      sortOrder: 0,
+      metadata: {},
+    } as Partial<CategoryDocument>);
+  }
+
   async findAllPaginated(query: CategoryQueryDto) {
     const { page = 1, limit = 50, isActive, parent, rootOnly } = query;
     const filter: Record<string, unknown> = {};

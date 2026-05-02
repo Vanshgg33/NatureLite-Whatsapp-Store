@@ -110,7 +110,7 @@ export default (): Configuration => ({
     appSecret: process.env.WHATSAPP_APP_SECRET || '',
   },
   catalog: {
-    apiUrl: process.env.CATALOG_API_URL || 'https://graph.facebook.com/v25.0',
+    apiUrl: process.env.CATALOG_API_URL || 'https://graph.facebook.com/v27.0',
     businessId: process.env.CATALOG_BUSINESS_ID || process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
     accessToken:
       process.env.CATALOG_ACCESS_TOKEN ||
