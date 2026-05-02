@@ -509,7 +509,9 @@ export class UcmService {
       return undefined;
     }
 
-    return Math.max(0, Number((amount / 100).toFixed(2)));
+    const result = Math.max(0, Number((amount / 100).toFixed(2)));
+    // Convert NaN to undefined so ?? 0 fallback can catch it
+    return Number.isNaN(result) ? undefined : result;
   }
 
   private toCatalogAmount(amount?: number): number | undefined {
