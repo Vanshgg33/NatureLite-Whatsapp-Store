@@ -212,8 +212,11 @@ export class UcmService {
   async pullCatalogToDatabase(reason = 'manual_pull'): Promise<SyncSummary> {
     const state = await this.getCatalogState();
     const { remoteCatalogId, remoteCatalogName } = await this.resolveCatalogSelection(state);
+    const catalogConfig = this.configService.get<CatalogConfig>('catalog')!;
 
-    this.logger.log(`Starting UCM pull sync for catalog ${remoteCatalogId} (${remoteCatalogName}), reason: ${reason}`);
+    this.logger.log(
+      `Starting UCM pull sync for catalog ${remoteCatalogId} (${remoteCatalogName}), businessId=${catalogConfig.businessId}, reason: ${reason}`,
+    );
 
     const remoteProducts = await this.listRemoteCatalogProducts(remoteCatalogId);
     this.logger.log(`Found ${remoteProducts.length} products for pull sync`);
@@ -425,8 +428,8 @@ export class UcmService {
 
     const categoryLabel = (remoteProduct.product_type || remoteProduct.category || 'Imported Commerce Manager Items').trim();
     const category = await this.resolveCategoryForRemoteItem(categoryLabel);
-    const currentPrice = this.catalogAmountToLocal(remoteProduct.sale_price ?? remoteProduct.price);
-    const originalPrice = this.catalogAmountToLocal(remoteProduct.price);
+    const currentPrice = this.catalogAmountToLocal(remoteProduct.sale_price ?? remoteProduct.price) ?? 0;
+    const originalPrice = this.catalogAmountToLocal(remoteProduct.price) ?? 0;
     const existing = await this.productRepository.findOne({
       $or: [
         { sku: retailerId },
@@ -454,7 +457,7 @@ export class UcmService {
       category: category._id,
       images: remoteProduct.image_url ? [remoteProduct.image_url] : [],
       price: currentPrice,
-      compareAtPrice: originalPrice !== undefined && currentPrice !== undefined && originalPrice > currentPrice ? originalPrice : undefined,
+      compareAtPrice: originalPrice > currentPrice ? originalPrice : undefined,
       sku: retailerId,
       stock: remoteProduct.inventory ?? 0,
       trackStock: typeof remoteProduct.inventory === 'number',
