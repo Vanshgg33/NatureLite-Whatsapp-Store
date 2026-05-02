@@ -382,20 +382,32 @@ export class UcmService {
     let pageCount = 0;
 
     do {
-      const response = await this.graphClient.get<RemoteProductsResponse>(`/${catalogId}/products`, {
-        params: {
-          access_token: catalogConfig.accessToken,
-          fields: 'id,retailer_id,name,description,short_description,price,sale_price,availability,condition,currency,image_url,inventory,url,product_type,category,custom_label_0,custom_label_1,custom_data',
-          summary: 'total_count',
-          limit: 100,
-          ...(after ? { after } : {}),
-        },
-      });
+      try {
+        const fieldsArray = ['id', 'retailer_id', 'name', 'description', 'short_description', 'price', 'sale_price', 'availability', 'condition', 'currency', 'image_url', 'inventory', 'url', 'product_type', 'category', 'custom_label_0', 'custom_label_1', 'custom_data'];
+        const response = await this.graphClient.get<RemoteProductsResponse>(`/${catalogId}/products`, {
+          params: {
+            access_token: catalogConfig.accessToken,
+            fields: JSON.stringify(fieldsArray),
+            summary: 'total_count',
+            limit: 100,
+            ...(after ? { after } : {}),
+          },
+        });
 
-      const batch = Array.isArray(response.data?.data) ? response.data.data : [];
-      products.push(...batch);
-      after = response.data?.paging?.cursors?.after;
-      pageCount += 1;
+        const batch = Array.isArray(response.data?.data) ? response.data.data : [];
+        products.push(...batch);
+        after = response.data?.paging?.cursors?.after;
+        pageCount += 1;
+      } catch (error) {
+        if (axios.isAxiosError(error)) {
+          const errorData = error.response?.data;
+          this.logger.error(
+            `Meta catalog products API error: status=${error.response?.status}, message=${error.message}, body=${JSON.stringify(errorData)}`,
+          );
+          throw new BadRequestException(`Failed to fetch catalog products from Meta: ${error.message}`);
+        }
+        throw error;
+      }
     } while (after && pageCount < 20);
 
     return products;
