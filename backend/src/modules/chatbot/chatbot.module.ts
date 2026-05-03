@@ -18,6 +18,7 @@ import { FeedbackModule } from '../feedback/feedback.module';
 import { StoresModule } from '../stores/stores.module';
 import { StoreStockModule } from '../store-stock/store-stock.module';
 import { CouponsModule } from '../coupons/coupons.module';
+import { UcmModule } from '../ucm/ucm.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { CouponsModule } from '../coupons/coupons.module';
     StoresModule,
     StoreStockModule,
     CouponsModule,
+    UcmModule,
   ],
   controllers: [ChatbotController],
   providers: [ChatSessionRepository, ChatbotService, ChatbotAnalyticsService],

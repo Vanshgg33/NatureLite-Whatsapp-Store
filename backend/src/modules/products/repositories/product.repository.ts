@@ -33,6 +33,10 @@ export class ProductRepository extends BaseRepository<ProductDocument> {
     return this.model.findOne({ sku }).exec();
   }
 
+  async findOneByRemoteRetailerId(retailerId: string): Promise<ProductDocument | null> {
+    return this.model.findOne({ 'metadata.remoteCatalogRetailerId': retailerId }).exec();
+  }
+
   async findOneBySlug(slug: string): Promise<ProductDocument | null> {
     return this.model.findOne({ slug }).exec();
   }

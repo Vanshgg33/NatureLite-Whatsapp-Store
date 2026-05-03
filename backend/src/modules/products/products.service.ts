@@ -136,6 +136,29 @@ export class ProductsService implements OnModuleInit {
     return this.productRepository.findByCategoryId(parseObjectId(categoryId, 'categoryId')) as Promise<Product[]>;
   }
 
+  /**
+   * Resolve a Meta-catalog `retailer_id` back to a local product. UCM push
+   * uses sku as retailer_id; UCM pull stamps it on `metadata.remoteCatalogRetailerId`.
+   * Falls back to ObjectId for legacy retailer_ids that are Mongo ids.
+   */
+  async findByRetailerId(retailerId: string): Promise<Product | null> {
+    const trimmed = (retailerId || '').trim();
+    if (!trimmed) return null;
+
+    if (isValidObjectIdString(trimmed)) {
+      const byId = await this.productRepository.findByIdString(trimmed);
+      if (byId) return byId as Product;
+    }
+
+    const bySku = await this.productRepository.findOneBySku(trimmed);
+    if (bySku) return bySku as Product;
+
+    const byMetadata = await this.productRepository.findOneByRemoteRetailerId(trimmed);
+    if (byMetadata) return byMetadata as Product;
+
+    return null;
+  }
+
   async findFeatured(limit: number = 10): Promise<Product[]> {
     return this.productRepository.findFeatured(limit) as Promise<Product[]>;
   }

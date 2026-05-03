@@ -18,6 +18,7 @@ import { FeedbackService } from '../feedback/feedback.service';
 import { StoresService } from '../stores/stores.service';
 import { StoreStockService } from '../store-stock/store-stock.service';
 import { CouponsService } from '../coupons/coupons.service';
+import { UcmService } from '../ucm/ucm.service';
 import { WhatsAppMessage } from '../whatsapp/dto/whatsapp.dto';
 import { CHATBOT_FLOWS, FAQ_RESPONSES } from './chatbot.flows';
 import {
@@ -109,7 +110,36 @@ export class ChatbotService {
     private readonly storesService: StoresService,
     private readonly storeStockService: StoreStockService,
     private readonly couponsService: CouponsService,
+    private readonly ucmService: UcmService,
   ) {}
+
+  private readonly catalogIdCache = new TtlCache<string>(60_000);
+  private isCatalogBrowseEnabled(): boolean {
+    return (process.env.CHATBOT_USE_CATALOG_MESSAGES || 'true').toLowerCase() !== 'false';
+  }
+  private async getActiveCatalogId(): Promise<string> {
+    const cached = this.catalogIdCache.get();
+    if (cached !== undefined) return cached;
+    try {
+      const state = await this.ucmService.getCatalogState();
+      const id = state.syncMode === 'meta' && state.selectedCatalogId ? state.selectedCatalogId : '';
+      this.catalogIdCache.set(id);
+      return id;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to load UCM catalog state: ${error instanceof Error ? error.message : 'unknown'}`,
+      );
+      this.catalogIdCache.set('');
+      return '';
+    }
+  }
+  private retailerIdForProduct(product: { sku?: string; metadata?: unknown; _id: { toString(): string } }): string {
+    const meta = product.metadata as Record<string, unknown> | undefined;
+    const remote = typeof meta?.remoteCatalogRetailerId === 'string' ? meta.remoteCatalogRetailerId.trim() : '';
+    if (remote) return remote;
+    if (product.sku) return product.sku;
+    return product._id.toString();
+  }
 
   /** Resolve the main store id once per process (the Raipur store). Cached so every
    *  product-list render doesn't round-trip to `stores.findMainStore`. */
@@ -417,10 +447,23 @@ export class ChatbotService {
     const buttonId = message.content.buttonId || message.content.listId;
     const transitionKey = buttonId || this.mapTextToTransitionKey(currentState, inputText);
 
+    // Catalog "send cart" → arrives as type=order with productItems[]. One product tap arrives
+    // as interactive=product or product_list_reply (productItems often has length 1).
+    const catalogItems = (message.content.productItems || []).filter((it) => it.productRetailerId);
+    if (message.type === 'order' || catalogItems.length > 1) {
+      if (catalogItems.length > 0) {
+        await this.handleCatalogOrder(session, message.phone, catalogItems);
+        return;
+      }
+    }
+
     if (message.content.productRetailerId) {
-      const productId = message.content.productRetailerId.split('::')[0];
+      const rawRetailerId = message.content.productRetailerId.split('::')[0];
       try {
-        const product = await this.productsService.findById(productId);
+        const product = await this.productsService.findByRetailerId(rawRetailerId);
+        if (!product) {
+          throw new Error(`No local product matched retailer_id ${rawRetailerId}`);
+        }
         session.currentProductId = product._id.toString();
         await session.save();
         await this.transitionToState(session, 'product_detail');
@@ -614,7 +657,7 @@ export class ChatbotService {
     switch (input) {
       case 'browse':
         await this.transitionToState(session, 'browsing');
-        await this.sendCategoryList(phone, session);
+        await this.sendBrowseSurface(phone, session);
         break;
 
       case 'cart':
@@ -696,7 +739,7 @@ export class ChatbotService {
       return;
     }
 
-    await this.sendCategoryList(phone, session);
+    await this.sendBrowseSurface(phone, session);
   }
 
   private async handleProductDetail(
@@ -2855,6 +2898,226 @@ export class ChatbotService {
   }
 
   // ─── Original Senders (Category/Product) ──────────────────────────
+
+  /**
+   * Browse entry point. Prefers Meta catalog message when UCM is configured;
+   * falls back to the legacy interactive category list when the catalog ID
+   * is missing or the env flag disables it. Catalog ID and stock are
+   * resolved at send time so live config changes are picked up.
+   */
+  private async sendBrowseSurface(phone: string, session: ChatSessionDocument): Promise<void> {
+    if (!this.isCatalogBrowseEnabled()) {
+      await this.sendCategoryList(phone, session);
+      return;
+    }
+
+    const catalogId = await this.getActiveCatalogId();
+    if (!catalogId) {
+      this.logger.warn('Catalog browse requested but UCM has no selectedCatalogId / syncMode!=meta — falling back to interactive list');
+      await this.sendCategoryList(phone, session);
+      return;
+    }
+
+    try {
+      await this.sendCatalogProductList(phone, session, catalogId);
+    } catch (error) {
+      this.logger.warn(
+        `sendCatalogProductList failed (${error instanceof Error ? error.message : 'unknown'}); falling back to interactive list`,
+      );
+      await this.sendCategoryList(phone, session);
+    }
+  }
+
+  /**
+   * Render the merchant's Meta catalog inside WhatsApp as one product_list
+   * message. Sections = categories. Caps at 30 product items / 10 sections
+   * to respect WhatsApp interactive limits. Only items that the main store
+   * can fulfil are surfaced.
+   */
+  private async sendCatalogProductList(
+    phone: string,
+    session: ChatSessionDocument,
+    catalogId: string,
+  ): Promise<void> {
+    const MAX_SECTIONS = 10;
+    const MAX_ITEMS_TOTAL = 30;
+
+    let categories = this.categoryCache.get();
+    if (!categories) {
+      categories = await this.categoriesService.findActiveCategories();
+      this.categoryCache.set(categories);
+    }
+    if (categories.length === 0) {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: 'No products are available right now. Please try again later.',
+      });
+      return;
+    }
+
+    const mainStoreId = await this.getMainStoreId();
+    const sections: Array<{ title: string; productRetailerIds: string[] }> = [];
+    let itemsRemaining = MAX_ITEMS_TOTAL;
+
+    for (const cat of categories.slice(0, MAX_SECTIONS)) {
+      if (itemsRemaining <= 0) break;
+      let products: Product[] = [];
+      try {
+        products = await this.productsService.findByCategory(cat._id.toString());
+      } catch (error) {
+        this.logger.warn(
+          `catalog browse: findByCategory failed for ${cat._id.toString()}: ${error instanceof Error ? error.message : 'unknown'}`,
+        );
+        continue;
+      }
+      if (products.length === 0) continue;
+
+      const trackedIds = products.filter((p) => p.trackStock !== false).map((p) => p._id.toString());
+      let stockMap: Map<string, unknown> = new Map();
+      if (trackedIds.length) {
+        try {
+          stockMap = await this.storeStockService.getStockMapForStoreProducts(mainStoreId, trackedIds);
+        } catch (error) {
+          this.logger.warn(
+            `catalog browse: stock lookup failed for category ${cat._id.toString()}: ${error instanceof Error ? error.message : 'unknown'} — skipping category`,
+          );
+          continue;
+        }
+      }
+
+      const fulfillable = products.filter((p) => {
+        if (p.isActive === false) return false;
+        if (p.trackStock === false) return true;
+        return this.resolveStoreAvailableStock(stockMap.get(p._id.toString())) > 0;
+      });
+      if (fulfillable.length === 0) continue;
+
+      const productRetailerIds: string[] = [];
+      for (const p of fulfillable) {
+        if (productRetailerIds.length >= itemsRemaining) break;
+        productRetailerIds.push(this.retailerIdForProduct(p));
+      }
+      if (productRetailerIds.length === 0) continue;
+
+      sections.push({ title: clip(cat.name, 24), productRetailerIds });
+      itemsRemaining -= productRetailerIds.length;
+    }
+
+    if (sections.length === 0) {
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        headerText: 'No stock',
+        bodyText: 'No products are in stock at our store right now. Please check back soon.',
+        buttons: [{ id: BTN.MENU, title: '🏠 Menu' }],
+      });
+      return;
+    }
+
+    await this.whatsappService.sendProductListMessage({
+      phone,
+      catalogId,
+      headerText: 'Browse our store',
+      bodyText: 'Tap any item below to add it to your cart, then send the cart back to place your order.',
+      footerText: 'Powered by O·Connect',
+      sections,
+    });
+  }
+
+  /**
+   * Customer tapped "Send" on the WhatsApp catalog basket. We get a single
+   * webhook with all product_items[] and quantities. Replace the local cart
+   * (their basket on WhatsApp is the new source of truth) and jump straight
+   * to the coupon/checkout flow. Items that can't be resolved or are out of
+   * stock are reported back so the customer knows what was dropped.
+   */
+  private async handleCatalogOrder(
+    session: ChatSessionDocument,
+    phone: string,
+    items: Array<{ productRetailerId: string; quantity?: number }>,
+  ): Promise<void> {
+    if (!session.user) {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: 'Please share your name to start ordering, then resend your cart.',
+      });
+      return;
+    }
+
+    const userId = session.user.toString();
+    try {
+      await this.cartService.clearCart(userId);
+    } catch (error) {
+      this.logger.error(
+        `catalog order: clearCart failed for ${userId}: ${error instanceof Error ? error.message : 'unknown'}`,
+      );
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        headerText: 'Cart unavailable',
+        bodyText: 'We hit a snag preparing your cart. Please try sending it again in a moment.',
+        buttons: [{ id: BTN.MENU, title: '🏠 Menu' }],
+      });
+      return;
+    }
+
+    const failures: Array<{ retailerId: string; reason: string }> = [];
+    let addedCount = 0;
+
+    for (const item of items) {
+      const retailerId = (item.productRetailerId || '').trim();
+      if (!retailerId) continue;
+      const qty = Math.max(1, Math.min(Math.floor(item.quantity || 1), 99));
+
+      const product = await this.productsService.findByRetailerId(retailerId).catch(() => null);
+      if (!product) {
+        failures.push({ retailerId, reason: 'no longer available' });
+        continue;
+      }
+
+      try {
+        await this.cartService.addItem(userId, {
+          productId: product._id.toString(),
+          quantity: qty,
+        });
+        addedCount += 1;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'add to cart failed';
+        failures.push({ retailerId: product.name || retailerId, reason: /stock/i.test(msg) ? msg : 'could not be added' });
+      }
+    }
+
+    this.analytics.track('chatbot.catalog_order_received', {
+      userId,
+      itemsRequested: items.length,
+      itemsAdded: addedCount,
+      itemsFailed: failures.length,
+    });
+
+    if (addedCount === 0) {
+      const detail = failures.slice(0, 5).map((f) => `• ${f.retailerId}: ${f.reason}`).join('\n');
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        headerText: 'Cart unavailable',
+        bodyText: `We couldn’t add any of those items right now.${detail ? `\n\n${detail}` : ''}`,
+        buttons: [{ id: BTN.BROWSE, title: '🛍 Browse again' }],
+      });
+      await this.transitionToState(session, 'main_menu');
+      return;
+    }
+
+    if (failures.length > 0) {
+      const detail = failures.slice(0, 5).map((f) => `• ${f.retailerId}: ${f.reason}`).join('\n');
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: `Some items couldn’t be added:\n${detail}\n\nReview your cart below before checking out.`,
+      });
+      await this.transitionToState(session, 'cart');
+      await this.sendCartSummary(phone, session);
+      return;
+    }
+
+    await this.transitionToState(session, 'coupon_prompt');
+    await this.sendFlowResponse(phone, 'coupon_prompt', session);
+  }
 
   private async sendCategoryList(phone: string, session: ChatSessionDocument): Promise<void> {
     let categories = this.categoryCache.get();
