@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { CartDocument, CartItem } from './schemas/cart.schema';
 import { CartRepository } from './repositories/cart.repository';
 import { ProductsService } from '../products/products.service';
 import { CouponsService } from '../coupons/coupons.service';
+import { OrderRepository } from '../orders/repositories/order.repository';
 import { AddToCartDto, UpdateCartItemDto, CartResponse } from './dto/cart.dto';
 import { parseObjectId } from '../../common/utils/objectid.util';
 
@@ -14,16 +15,26 @@ export class CartService {
     private readonly cartRepository: CartRepository,
     private productsService: ProductsService,
     private couponsService: CouponsService,
+    @Inject(forwardRef(() => OrderRepository))
+    private readonly orderRepository: OrderRepository,
   ) {}
 
   private async revalidateOrClearCoupon(cart: CartDocument, userId: string): Promise<void> {
     const code = cart.couponCode?.trim();
     if (!code) return;
 
+    const [userOrderCount, userCouponUsageCount] = await Promise.all([
+      this.orderRepository.countNonCancelledOrdersByUser(userId),
+      this.orderRepository.countCouponUsesByUser(userId, code),
+    ]);
+
     const validation = await this.couponsService.validateCoupon({
       code,
       orderAmount: cart.subtotal,
       userId,
+      productIds: cart.items.map((i) => i.product.toString()),
+      userOrderCount,
+      userCouponUsageCount,
     });
 
     if (!validation.valid) {
@@ -202,17 +213,25 @@ export class CartService {
       throw new BadRequestException('Cart is empty');
     }
 
+    const [userOrderCount, userCouponUsageCount] = await Promise.all([
+      this.orderRepository.countNonCancelledOrdersByUser(userId),
+      this.orderRepository.countCouponUsesByUser(userId, couponCode),
+    ]);
+
     const validation = await this.couponsService.validateCoupon({
       code: couponCode,
       orderAmount: cart.subtotal,
       userId,
+      productIds: cart.items.map((i) => i.product.toString()),
+      userOrderCount,
+      userCouponUsageCount,
     });
 
     if (!validation.valid) {
       throw new BadRequestException(validation.message);
     }
 
-    cart.couponCode = couponCode;
+    cart.couponCode = couponCode.toUpperCase();
     cart.discount = validation.discountAmount;
 
     this.recalculateCart(cart);

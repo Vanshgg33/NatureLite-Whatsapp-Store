@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { ClientSession } from 'mongoose';
 import { parseObjectId, parseObjectIdArray } from '../../common/utils/objectid.util';
 import { Coupon } from './schemas/coupon.schema';
 import { CouponRepository } from './repositories/coupon.repository';
@@ -88,14 +89,61 @@ export class CouponsService {
         return { valid: false, message: 'Coupon is not valid for your account', discountAmount: 0 };
       }
     }
+    if (coupon.isFirstOrderOnly && typeof dto.userOrderCount === 'number' && dto.userOrderCount > 0) {
+      return {
+        valid: false,
+        message: 'This coupon is for first orders only',
+        discountAmount: 0,
+      };
+    }
+    if (
+      coupon.maxUsagePerUser &&
+      coupon.maxUsagePerUser > 0 &&
+      typeof dto.userCouponUsageCount === 'number' &&
+      dto.userCouponUsageCount >= coupon.maxUsagePerUser
+    ) {
+      return {
+        valid: false,
+        message: 'You have already used this coupon the maximum number of times',
+        discountAmount: 0,
+      };
+    }
+    if (coupon.allowedProducts && coupon.allowedProducts.length > 0) {
+      // If the coupon is product-restricted but the caller didn't supply the
+      // cart's productIds, conservatively reject — silently accepting would
+      // mean the restriction is unenforceable.
+      const cartProductIds = new Set((dto.productIds || []).map((id) => id.toString()));
+      const matches = coupon.allowedProducts.some((id) => cartProductIds.has(id.toString()));
+      if (!matches) {
+        return {
+          valid: false,
+          message: 'Coupon is not valid for the items in your cart',
+          discountAmount: 0,
+        };
+      }
+    }
+    if (coupon.allowedCategories && coupon.allowedCategories.length > 0) {
+      const cartCategoryIds = new Set((dto.categoryIds || []).map((id) => id.toString()));
+      const matches = coupon.allowedCategories.some((id) => cartCategoryIds.has(id.toString()));
+      if (!matches) {
+        return {
+          valid: false,
+          message: 'Coupon is not valid for the categories in your cart',
+          discountAmount: 0,
+        };
+      }
+    }
     let discountAmount: number;
     if (coupon.discountType === 'percentage') {
-      discountAmount = (dto.orderAmount * coupon.discountValue) / 100;
+      // Cap percentage at 100% defensively so a misconfigured coupon can't
+      // exceed the order amount before the Math.min clamp below.
+      const pct = Math.min(Math.max(0, coupon.discountValue), 100);
+      discountAmount = (dto.orderAmount * pct) / 100;
       if (coupon.maxDiscount && discountAmount > coupon.maxDiscount) {
         discountAmount = coupon.maxDiscount;
       }
     } else {
-      discountAmount = coupon.discountValue;
+      discountAmount = Math.max(0, coupon.discountValue);
     }
     discountAmount = Math.min(discountAmount, dto.orderAmount);
     return {
@@ -106,8 +154,17 @@ export class CouponsService {
     };
   }
 
-  async incrementUsageCount(couponCode: string): Promise<void> {
-    const result = await this.couponRepository.incrementUsageCount(couponCode);
+  /**
+   * Atomically reserves a usage slot on a coupon. The conditional update
+   * succeeds only if `usedCount < maxUsageCount` (or no cap is set), so
+   * concurrent callers cannot both reserve the last slot. When called inside
+   * a Mongo transaction (pass `session`), the reservation is rolled back if
+   * the surrounding transaction aborts — meaning a failed order won't burn a
+   * coupon use. Throws `BadRequestException('Coupon usage limit reached')`
+   * when the cap was just hit by another caller.
+   */
+  async incrementUsageCount(couponCode: string, session?: ClientSession): Promise<void> {
+    const result = await this.couponRepository.incrementUsageCount(couponCode, session);
     if (result.modifiedCount === 0) {
       throw new BadRequestException('Coupon usage limit reached');
     }

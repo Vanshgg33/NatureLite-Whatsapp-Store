@@ -25,6 +25,33 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
     return doc.save({ session });
   }
 
+  /**
+   * Counts orders the user has placed (excluding cancelled). Used to enforce
+   * coupon `isFirstOrderOnly` rules at coupon-validation time.
+   */
+  async countNonCancelledOrdersByUser(userId: string): Promise<number> {
+    if (!isValidObjectIdString(userId)) return 0;
+    return this.model.countDocuments({
+      user: parseObjectId(userId, 'userId'),
+      status: { $ne: 'cancelled' },
+    }).exec();
+  }
+
+  /**
+   * Counts how many times this user has redeemed a specific coupon code on
+   * non-cancelled orders. Case-insensitive (legacy records may not be
+   * normalized to uppercase).
+   */
+  async countCouponUsesByUser(userId: string, couponCode: string): Promise<number> {
+    if (!isValidObjectIdString(userId) || !couponCode) return 0;
+    const escaped = couponCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return this.model.countDocuments({
+      user: parseObjectId(userId, 'userId'),
+      couponCode: { $regex: `^${escaped}$`, $options: 'i' },
+      status: { $ne: 'cancelled' },
+    }).exec();
+  }
+
   async findAllPaginated(query: OrderQueryDto): Promise<PaginatedResult<Order>> {
     const {
       page = 1,

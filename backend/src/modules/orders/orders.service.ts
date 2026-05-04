@@ -151,6 +151,19 @@ export class OrdersService implements OnModuleInit {
       // for this product" when no StoreStock row exists for it.
       const tracksStockByProductId = new Map<string, boolean>();
 
+      // Track product + category IDs for downstream coupon validation
+      // (allowedProducts / allowedCategories restrictions).
+      const orderProductIds: string[] = [];
+      const orderCategoryIds: string[] = [];
+      const collectCategoryId = (rawCategory: unknown): void => {
+        if (!rawCategory) return;
+        if (typeof rawCategory === 'object' && rawCategory !== null && '_id' in rawCategory) {
+          orderCategoryIds.push(String((rawCategory as { _id: unknown })._id));
+        } else {
+          orderCategoryIds.push(String(rawCategory));
+        }
+      };
+
       if (dto.cartId) {
         // cartId integrity: verify referenced cart belongs to user
         const cart = await this.cartService.getCartById(userId, dto.cartId);
@@ -163,6 +176,8 @@ export class OrdersService implements OnModuleInit {
           const productId = item.product.toString();
           const product = await this.productsService.findById(productId);
           tracksStockByProductId.set(productId, product.trackStock !== false);
+          orderProductIds.push(productId);
+          collectCategoryId(product.category);
 
           const orderItem: OrderItem = {
             product: new Types.ObjectId(productId),
@@ -183,6 +198,8 @@ export class OrdersService implements OnModuleInit {
           const productIdObj = parseObjectId(item.productId, 'items[].productId');
           const product = await this.productsService.findById(item.productId);
           tracksStockByProductId.set(item.productId, product.trackStock !== false);
+          orderProductIds.push(item.productId);
+          collectCategoryId(product.category);
           let price = product.price;
 
           if (item.variantSku) {
@@ -226,15 +243,32 @@ export class OrdersService implements OnModuleInit {
       let discount = 0;
       let appliedCouponCode: string | undefined;
       if (dto.couponCode) {
+        // Precompute per-user counts so the coupon service can enforce
+        // `maxUsagePerUser` and `isFirstOrderOnly` without itself depending on
+        // the orders module (avoids circular imports).
+        const [userOrderCount, userCouponUsageCount] = await Promise.all([
+          this.orderRepository.countNonCancelledOrdersByUser(userId),
+          this.orderRepository.countCouponUsesByUser(userId, dto.couponCode),
+        ]);
+
         const validation = await this.couponsService.validateCoupon({
           code: dto.couponCode,
           orderAmount: subtotal,
           userId,
+          productIds: orderProductIds,
+          categoryIds: orderCategoryIds,
+          userOrderCount,
+          userCouponUsageCount,
         });
 
         if (validation.valid) {
           discount = validation.discountAmount;
-          appliedCouponCode = dto.couponCode;
+          appliedCouponCode = dto.couponCode.toUpperCase();
+        } else {
+          // Bug fix: previously this silently dropped the discount and let the
+          // order go through at full price. Customers expecting a discount got
+          // billed full and had no idea why. Surface the real reason instead.
+          throw new BadRequestException(`Coupon could not be applied: ${validation.message}`);
         }
       }
 
@@ -330,7 +364,7 @@ export class OrdersService implements OnModuleInit {
         paymentMethod: dto.paymentMethod,
         subtotal,
         discount,
-        couponCode: dto.couponCode,
+        couponCode: appliedCouponCode,
         shippingCharge,
         gstTotal,
         walletUsed: walletUsedPaise,
@@ -406,19 +440,16 @@ export class OrdersService implements OnModuleInit {
         );
       }
 
-      await session.commitTransaction();
-
-      // Best-effort side effects after commit (avoid transaction drift on abort).
+      // Atomically reserve the coupon usage slot inside the transaction so
+      // concurrent orders cannot both pass the `maxUsageCount` check, both
+      // commit, and only one's increment land. If the conditional update
+      // modifies 0 rows the cap was just hit by another order; aborting the
+      // transaction rolls back this order entirely.
       if (appliedCouponCode) {
-        try {
-          await this.couponsService.incrementUsageCount(appliedCouponCode);
-        } catch (couponErr) {
-          this.logger.warn(
-            `Post-commit coupon usage increment failed for ${appliedCouponCode}`,
-            couponErr,
-          );
-        }
+        await this.couponsService.incrementUsageCount(appliedCouponCode, session);
       }
+
+      await session.commitTransaction();
       try {
         for (const item of orderItems) {
           await this.productsService.incrementTotalSold(item.product.toString(), item.quantity);

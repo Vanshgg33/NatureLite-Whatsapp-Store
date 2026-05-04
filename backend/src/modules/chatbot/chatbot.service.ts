@@ -911,6 +911,16 @@ export class ChatbotService {
       return;
     }
 
+    // Cart-screen coupon button: jump into the coupon flow without going
+    // through Checkout. Show the full available-codes list directly so the
+    // customer can browse what's on offer; the auto-suggest screen is only
+    // used after Checkout.
+    if (input === BTN.COUPON_LIST) {
+      await this.transitionToState(session, 'coupon_prompt');
+      await this.sendAvailableCouponsList(phone, session);
+      return;
+    }
+
     const btn = parseButton(input);
     if (btn.kind === 'manageItem') {
       if (!Number.isFinite(btn.idx) || btn.idx < 0) {
@@ -3440,8 +3450,67 @@ export class ChatbotService {
         ? '\n\n\uD83C\uDF89 Free delivery unlocked'
         : `\n\n${italic(`Add ${this.formatCurrency(FREE_SHIP_THRESHOLD - cart.subtotal)} more for free delivery`)}`;
 
+    // Coupon nudge on the cart screen so customers can discover savings
+    // before committing to checkout. Only shown when no coupon is yet
+    // applied \u2014 once one is applied the discount line in `breakdown` already
+    // surfaces it. Falls back silently on any failure (cart UX must work
+    // even if the coupons module is degraded).
+    let couponHint = '';
+    let couponButton: { id: string; title: string } | null = null;
+    if (!cart.couponCode) {
+      try {
+        const applicable = await this.findApplicableCoupons(session);
+        const best = applicable[0];
+        if (best) {
+          couponHint =
+            `\n\n\uD83D\uDCA1 ${bold(`${this.formatCurrency(best.discount)} off available`)} with ${bold(best.code)} \u2014 tap \uD83C\uDFF7 to apply`;
+          couponButton = {
+            id: BTN.COUPON_LIST,
+            title: clip(`\uD83C\uDFF7 Save ${this.formatCurrency(best.discount)}`, WA.BUTTON_TITLE),
+          };
+        } else {
+          // No coupon currently fits the cart \u2014 but if one is gated by
+          // minOrderAmount and the customer is close (within 30% of cart
+          // subtotal), surface an "almost there" upsell.
+          const active = await this.couponsService.getActiveCoupons();
+          const gapWindow = Math.max(50, cart.subtotal * 0.3);
+          let nearest: { code: string; gap: number; saving: number } | null = null;
+          for (const c of active) {
+            const gap = (c.minOrderAmount || 0) - cart.subtotal;
+            if (gap <= 0 || gap > gapWindow) continue;
+            // Estimate savings if they hit the threshold; for percentage
+            // coupons assume they reach exactly the minOrderAmount.
+            const projectedSubtotal = (c.minOrderAmount || 0);
+            const saving = c.discountType === 'percentage'
+              ? Math.min(
+                  c.maxDiscount ?? Number.POSITIVE_INFINITY,
+                  (projectedSubtotal * Math.min(Math.max(0, c.discountValue), 100)) / 100,
+                )
+              : Math.max(0, c.discountValue);
+            if (!nearest || gap < nearest.gap) {
+              nearest = { code: c.code, gap, saving };
+            }
+          }
+          if (nearest) {
+            couponHint =
+              `\n\n\uD83D\uDCA1 ${italic(`Add ${this.formatCurrency(nearest.gap)} more to unlock ${this.formatCurrency(nearest.saving)} off with ${nearest.code}`)}`;
+          }
+          if (active.length > 0) {
+            couponButton = { id: BTN.COUPON_LIST, title: '\uD83C\uDFF7 Coupons' };
+          }
+        }
+      } catch (error) {
+        this.logger.warn(
+          `cart coupon hint failed: ${error instanceof Error ? error.message : 'unknown'}`,
+        );
+      }
+    } else {
+      // Already-applied coupon: give a one-tap path to swap or remove it.
+      couponButton = { id: BTN.COUPON_LIST, title: '\uD83C\uDFF7 Change coupon' };
+    }
+
     const header = `\uD83D\uDED2 Your cart \u00B7 ${cart.itemCount} item${cart.itemCount === 1 ? '' : 's'}`;
-    const body = `${itemList}\n\n${breakdown.join('\n')}${shippingLine}`;
+    const body = `${itemList}\n\n${breakdown.join('\n')}${shippingLine}${couponHint}`;
 
     // Show the edit-tip once per session to keep follow-up renders clean.
     const tipSeen = session.context?.cartTipSeen === true;
@@ -3451,6 +3520,11 @@ export class ChatbotService {
       await session.save();
     }
 
+    // 3-button budget on WhatsApp interactive messages: Checkout + Manage are
+    // always present; the third slot is the highest-value contextual action
+    // \u2014 coupons when relevant, otherwise the familiar "Add More" entry.
+    const thirdButton = couponButton ?? { id: BTN.KEEP_SHOPPING, title: '\u2795 Add More' };
+
     await this.whatsappService.sendInteractiveButtons({
       phone,
       headerText: clip(header, WA.HEADER),
@@ -3459,7 +3533,7 @@ export class ChatbotService {
       buttons: [
         { id: BTN.CHECKOUT, title: '\u2705 Checkout' },
         { id: BTN.MANAGE_CART, title: '\u270F\uFE0F Manage' },
-        { id: BTN.KEEP_SHOPPING, title: '\u2795 Add More' },
+        thirdButton,
       ],
     });
   }
@@ -3988,6 +4062,8 @@ export class ChatbotService {
         '2': 'remove', 'remove': 'remove',
         '3': 'clear', 'clear': 'clear', 'empty': 'clear',
         continue: 'continue', 'continue shopping': 'continue',
+        coupon: 'coupon_list', coupons: 'coupon_list', 'apply coupon': 'coupon_list',
+        promo: 'coupon_list', 'promo code': 'coupon_list',
         back: 'back',
       },
       coupon_prompt: {
@@ -4100,6 +4176,7 @@ export class ChatbotService {
           key === 'back' ||
           key === 'continue' ||
           key === 'continue_shopping' ||
+          key === 'coupon_list' ||
           key.startsWith('mi_') ||
           key.startsWith('inc_') ||
           key.startsWith('dec_') ||

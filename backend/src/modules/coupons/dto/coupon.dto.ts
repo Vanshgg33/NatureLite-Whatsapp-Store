@@ -170,6 +170,26 @@ export class ValidateCouponDto {
   @IsString({ each: true })
   @IsOptional()
   categoryIds?: string[];
+
+  /**
+   * Total non-cancelled orders the user has placed. Used to enforce
+   * `isFirstOrderOnly`. Caller (orders/cart service) precomputes this.
+   * If undefined, the first-order check is skipped (i.e. assumed satisfied).
+   */
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  userOrderCount?: number;
+
+  /**
+   * Times this user has already redeemed THIS coupon on non-cancelled orders.
+   * Used to enforce `maxUsagePerUser`. If undefined, the per-user-cap check
+   * is skipped.
+   */
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  userCouponUsageCount?: number;
 }
 
 export class CouponQueryDto {

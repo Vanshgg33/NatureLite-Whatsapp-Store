@@ -36,8 +36,12 @@ type RemoteCatalogProduct = {
   availability?: string;
   condition?: string;
   currency?: string;
-  price?: number;
-  sale_price?: number;
+  // Meta's Graph API for catalog products returns price/sale_price either as
+  // an integer (minor units, e.g. paise) or as a formatted string ("250.00 INR")
+  // depending on API version and field selection. Accept both shapes; the
+  // parser in catalogAmountToLocal normalises them.
+  price?: number | string;
+  sale_price?: number | string;
   image_url?: string;
   inventory?: number;
   url?: string;
@@ -504,13 +508,29 @@ export class UcmService {
     return product.sku || product._id.toString();
   }
 
-  private catalogAmountToLocal(amount?: number): number | undefined {
+  private catalogAmountToLocal(amount?: number | string): number | undefined {
     if (amount === undefined || amount === null) {
       return undefined;
     }
 
-    const result = Math.max(0, Number((amount / 100).toFixed(2)));
-    // Convert NaN to undefined so ?? 0 fallback can catch it
+    let paise: number;
+    if (typeof amount === 'number') {
+      paise = amount;
+    } else {
+      // Meta sometimes returns a formatted price string like "250.00 INR" or
+      // "₹250.50". Strip currency symbols/codes, parse the remainder. If the
+      // value contains a decimal point we treat it as major units (rupees) and
+      // multiply by 100 so the divide-by-100 below restores it; integer-only
+      // strings (no decimal) are treated as minor units (paise) directly.
+      const cleaned = amount.replace(/[^0-9.\-]/g, '').trim();
+      if (!cleaned) return undefined;
+      const parsed = Number(cleaned);
+      if (!Number.isFinite(parsed)) return undefined;
+      paise = cleaned.includes('.') ? Math.round(parsed * 100) : parsed;
+    }
+
+    if (!Number.isFinite(paise)) return undefined;
+    const result = Math.max(0, Number((paise / 100).toFixed(2)));
     return Number.isNaN(result) ? undefined : result;
   }
 
@@ -571,6 +591,12 @@ export class UcmService {
       item.sale_price = catalogPrice ?? 0;
     } else {
       item.price = catalogPrice ?? 0;
+      // Always emit sale_price so a previously-synced discount value gets
+      // overwritten when the discount is removed locally. Setting it equal
+      // to price means Meta won't render a "sale" badge (sale_price !<
+      // price), and we avoid sending nullable/empty-string values that some
+      // Meta API versions reject.
+      item.sale_price = catalogPrice ?? 0;
     }
 
     // Only add optional fields if they have values
