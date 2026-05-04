@@ -432,14 +432,31 @@ export class UcmService {
 
     const categoryLabel = (remoteProduct.product_type || remoteProduct.category || 'Imported Commerce Manager Items').trim();
     const category = await this.resolveCategoryForRemoteItem(categoryLabel);
-    const currentPrice = this.catalogAmountToLocal(remoteProduct.sale_price ?? remoteProduct.price) ?? 0;
-    const originalPrice = this.catalogAmountToLocal(remoteProduct.price) ?? 0;
+    const remoteCurrent = this.catalogAmountToLocal(remoteProduct.sale_price ?? remoteProduct.price);
+    const remoteOriginal = this.catalogAmountToLocal(remoteProduct.price);
     const existing = await this.productRepository.findOne({
       $or: [
         { sku: retailerId },
         { 'metadata.remoteCatalogRetailerId': retailerId },
       ],
     });
+
+    // Only trust a remote price when it parses to a positive number. If Meta
+    // returns no price (or zero), keep the existing local price rather than
+    // silently overwriting it with 0 — a 0 price quietly breaks catalog cart
+    // checkout because the cart total drops to ₹0 and trips the discount-too-large
+    // guard in the chatbot payment step.
+    const currentPrice = typeof remoteCurrent === 'number' && remoteCurrent > 0
+      ? remoteCurrent
+      : (existing?.price ?? 0);
+    const originalPrice = typeof remoteOriginal === 'number' && remoteOriginal > 0
+      ? remoteOriginal
+      : (existing?.compareAtPrice ?? 0);
+    if (!(typeof remoteCurrent === 'number' && remoteCurrent > 0)) {
+      this.logger.warn(
+        `UCM pull: remote item ${retailerId} returned no usable price; keeping local price=${currentPrice}`,
+      );
+    }
 
     const baseSlug = this.slugify(remoteProduct.name || retailerId);
     const slug = existing?.slug || await this.resolveUniqueProductSlug(baseSlug, retailerId);

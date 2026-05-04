@@ -25,6 +25,12 @@ export interface ChatSessionContext {
   cartTipSeen?: boolean;
   /** Suggested coupon code offered on coupon_prompt (stored so apply can use it). */
   suggestedCoupon?: string;
+  /**
+   * Last WhatsApp catalog `order` webhook messageId we processed. Used to
+   * short-circuit duplicate redeliveries (360dialog/Meta retry on network
+   * blips), which would otherwise wipe the cart and any applied coupon.
+   */
+  lastCatalogOrderMessageId?: string;
 }
 
 export function mergeChatContext(

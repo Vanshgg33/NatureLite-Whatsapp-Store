@@ -405,6 +405,8 @@ export class WhatsAppService implements OnModuleInit {
               .map((item: any) => ({
                 productRetailerId: item.product_retailer_id,
                 quantity: typeof item.quantity === 'number' ? item.quantity : undefined,
+                itemPrice: this.parseCatalogItemPrice(item.item_price),
+                currency: typeof item.currency === 'string' ? item.currency : undefined,
               }))
               .filter((item) => Boolean(item.productRetailerId));
           }
@@ -419,6 +421,8 @@ export class WhatsAppService implements OnModuleInit {
             .map((item: any) => ({
               productRetailerId: item.product_retailer_id,
               quantity: typeof item.quantity === 'number' ? item.quantity : undefined,
+              itemPrice: this.parseCatalogItemPrice(item.item_price),
+              currency: typeof item.currency === 'string' ? item.currency : undefined,
             }))
             .filter((item) => Boolean(item.productRetailerId));
           baseMessage.content.productRetailerId = baseMessage.content.productItems[0]?.productRetailerId;
@@ -707,6 +711,27 @@ export class WhatsAppService implements OnModuleInit {
    * fallback (used when 360dialog rejects interactive payloads) stays
    * clean on devices that render emojis as placeholders.
    */
+  /**
+   * Meta sends order/product item_price either as a number (major units, e.g.
+   * 250) or as a string ("250.00", sometimes "250.00 INR"). Normalise to a
+   * positive rupee number; return undefined for missing/unparseable/non-positive.
+   */
+  private parseCatalogItemPrice(raw: unknown): number | undefined {
+    if (raw === undefined || raw === null) return undefined;
+    let value: number;
+    if (typeof raw === 'number') {
+      value = raw;
+    } else if (typeof raw === 'string') {
+      const cleaned = raw.replace(/[^0-9.\-]/g, '').trim();
+      if (!cleaned) return undefined;
+      value = Number(cleaned);
+    } else {
+      return undefined;
+    }
+    if (!Number.isFinite(value) || value <= 0) return undefined;
+    return Number(value.toFixed(2));
+  }
+
   private stripEmoji(text: string): string {
     return text
       .replace(

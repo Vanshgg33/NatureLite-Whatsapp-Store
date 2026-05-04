@@ -23,9 +23,10 @@ export class CartService {
     const code = cart.couponCode?.trim();
     if (!code) return;
 
-    const [userOrderCount, userCouponUsageCount] = await Promise.all([
+    const [userOrderCount, userCouponUsageCount, categoryIds] = await Promise.all([
       this.orderRepository.countNonCancelledOrdersByUser(userId),
       this.orderRepository.countCouponUsesByUser(userId, code),
+      this.collectCartCategoryIds(cart),
     ]);
 
     const validation = await this.couponsService.validateCoupon({
@@ -33,6 +34,7 @@ export class CartService {
       orderAmount: cart.subtotal,
       userId,
       productIds: cart.items.map((i) => i.product.toString()),
+      categoryIds,
       userOrderCount,
       userCouponUsageCount,
     });
@@ -47,7 +49,54 @@ export class CartService {
 
   async getCart(userId: string): Promise<CartResponse> {
     const cart = await this.findOrCreateCart(userId);
+    await this.refreshStalePrices(cart, userId);
     return this.formatCartResponse(cart);
+  }
+
+  /**
+   * Detects cart items whose stored `price` no longer matches the live
+   * product/variant (admin edit or UCM pull happened after the item was
+   * captured) and rewrites the stored price. Subtotal/total/discount are
+   * recomputed and any applied coupon is revalidated against the new
+   * subtotal so the customer never sees a stale ₹ on the cart screen.
+   * Read-side only — write-side races are still possible, but the
+   * authoritative recompute at order-create time (orders.service) catches
+   * any divergence before billing.
+   */
+  private async refreshStalePrices(cart: CartDocument, userId: string): Promise<void> {
+    if (!cart.items.length) return;
+    let mutated = false;
+    for (const item of cart.items) {
+      try {
+        const product = await this.productsService.findById(item.product.toString());
+        if (!product?.isActive) continue;
+        let livePrice = product.price;
+        if (item.variantSku) {
+          const variant = product.variants.find((v) => v.sku === item.variantSku);
+          if (variant && Number.isFinite(variant.price) && variant.price > 0) {
+            livePrice = variant.price;
+          }
+        }
+        if (
+          Number.isFinite(livePrice) &&
+          livePrice > 0 &&
+          Math.abs((item.price ?? 0) - livePrice) > 0.005
+        ) {
+          item.price = livePrice;
+          item.priceCapturedAt = new Date();
+          mutated = true;
+        }
+      } catch {
+        // Product lookup failed (deleted between cart save and read);
+        // leave the cart-captured price untouched. Order-create will
+        // surface the failure if it persists.
+      }
+    }
+    if (mutated) {
+      this.recalculateCart(cart);
+      await this.revalidateOrClearCoupon(cart, userId);
+      await cart.save();
+    }
   }
 
   async getCartById(userId: string, cartId: string): Promise<CartDocument> {
@@ -60,7 +109,11 @@ export class CartService {
     return cart;
   }
 
-  async addItem(userId: string, dto: AddToCartDto): Promise<CartResponse> {
+  async addItem(
+    userId: string,
+    dto: AddToCartDto,
+    options?: { unitPriceOverride?: number },
+  ): Promise<CartResponse> {
     const productIdObj = parseObjectId(dto.productId, 'productId');
     const cart = await this.findOrCreateCart(userId);
     const product = await this.productsService.findById(dto.productId);
@@ -84,6 +137,27 @@ export class CartService {
       stock = variant.stock;
     }
 
+    // The override is a *fallback*, not a blind override: it only applies when
+    // the local price is missing/zero (the original symptom — products imported
+    // from Meta with no price field). Trusting the WhatsApp echo over a valid
+    // local price would let an admin price-cut be ignored at checkout.
+    const overridePrice = options?.unitPriceOverride;
+    const localPriceUnusable = !Number.isFinite(price) || price <= 0;
+    if (
+      localPriceUnusable &&
+      typeof overridePrice === 'number' &&
+      Number.isFinite(overridePrice) &&
+      overridePrice > 0
+    ) {
+      price = overridePrice;
+    }
+
+    if (!Number.isFinite(price) || price <= 0) {
+      throw new BadRequestException(
+        `Price unavailable for ${product.name}. Please contact support so we can fix this product's pricing.`,
+      );
+    }
+
     if (product.trackStock && stock < dto.quantity) {
       throw new BadRequestException('Not enough stock available');
     }
@@ -94,6 +168,7 @@ export class CartService {
         item.variantSku === dto.variantSku,
     );
 
+    const now = new Date();
     if (existingItemIndex >= 0) {
       const newQuantity = cart.items[existingItemIndex].quantity + dto.quantity;
 
@@ -101,7 +176,12 @@ export class CartService {
         throw new BadRequestException('Not enough stock available');
       }
 
+      // Refresh price/capture-time on quantity bump too — otherwise a customer
+      // who adds, sees an admin price change, then adds again would still be
+      // pinned to the original price for the whole row.
       cart.items[existingItemIndex].quantity = newQuantity;
+      cart.items[existingItemIndex].price = price;
+      cart.items[existingItemIndex].priceCapturedAt = now;
     } else {
       const cartItem: CartItem = {
         product: productIdObj,
@@ -110,7 +190,8 @@ export class CartService {
         price,
         name: product.name,
         image: product.images[0],
-        addedAt: new Date(),
+        addedAt: now,
+        priceCapturedAt: now,
       };
 
       cart.items.push(cartItem);
@@ -213,9 +294,10 @@ export class CartService {
       throw new BadRequestException('Cart is empty');
     }
 
-    const [userOrderCount, userCouponUsageCount] = await Promise.all([
+    const [userOrderCount, userCouponUsageCount, categoryIds] = await Promise.all([
       this.orderRepository.countNonCancelledOrdersByUser(userId),
       this.orderRepository.countCouponUsesByUser(userId, couponCode),
+      this.collectCartCategoryIds(cart),
     ]);
 
     const validation = await this.couponsService.validateCoupon({
@@ -223,6 +305,7 @@ export class CartService {
       orderAmount: cart.subtotal,
       userId,
       productIds: cart.items.map((i) => i.product.toString()),
+      categoryIds,
       userOrderCount,
       userCouponUsageCount,
     });
@@ -296,6 +379,34 @@ export class CartService {
       } as Partial<CartDocument>);
     }
     return cart;
+  }
+
+  /**
+   * Resolve the distinct category ids for the products currently in the cart.
+   * Used to feed coupon validation so cart-time validation matches the
+   * order-time check (which already passes categoryIds). Without this, a
+   * category-restricted coupon can pass at apply-time and only fail at
+   * place-order — confusing for customers who saw the discount on cart.
+   */
+  private async collectCartCategoryIds(cart: CartDocument): Promise<string[]> {
+    if (!cart.items.length) return [];
+    const seen = new Set<string>();
+    for (const item of cart.items) {
+      try {
+        const product = await this.productsService.findById(item.product.toString());
+        const raw = product?.category as unknown;
+        if (!raw) continue;
+        const id =
+          typeof raw === 'object' && raw !== null && '_id' in raw
+            ? String((raw as { _id: unknown })._id)
+            : String(raw);
+        if (id) seen.add(id);
+      } catch {
+        // A product may have been deleted between cart save and this lookup;
+        // skip it rather than blocking the entire validation.
+      }
+    }
+    return Array.from(seen);
   }
 
   private recalculateCart(cart: CartDocument): void {

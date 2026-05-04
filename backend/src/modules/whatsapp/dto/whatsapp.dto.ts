@@ -30,8 +30,6 @@ export class SendTemplateMessageDto {
   phone: string;
 
   @IsString()
-    productRetailerId?: string;
-    productItems?: Array<{ productRetailerId: string; quantity?: number }>;
   @IsNotEmpty()
   templateName: string;
 
@@ -44,11 +42,8 @@ export class SendTemplateMessageDto {
   headerParams?: string[];
 
   @IsArray()
-      product?: { product_retailer_id: string; quantity?: number };
-      product_list_reply?: { title?: string; description?: string; product_items?: Array<{ product_retailer_id: string; quantity?: number }> };
   @IsOptional()
   bodyParams?: string[];
-    order?: { catalog_id?: string; text?: string; product_items?: Array<{ product_retailer_id: string; quantity?: number }> };
 
   @IsArray()
   @IsOptional()
@@ -176,11 +171,11 @@ export interface WebhookEntry {
           type: 'button_reply' | 'list_reply';
           button_reply?: { id: string; title: string };
           list_reply?: { id: string; title: string; description?: string };
-          product?: { product_retailer_id: string; quantity?: number };
-          product_list_reply?: { title?: string; description?: string; product_items?: Array<{ product_retailer_id: string; quantity?: number }> };
+          product?: { product_retailer_id: string; quantity?: number; item_price?: number | string; currency?: string };
+          product_list_reply?: { title?: string; description?: string; product_items?: Array<{ product_retailer_id: string; quantity?: number; item_price?: number | string; currency?: string }> };
         };
         button?: { text: string; payload: string };
-        order?: { catalog_id?: string; text?: string; product_items?: Array<{ product_retailer_id: string; quantity?: number }> };
+        order?: { catalog_id?: string; text?: string; product_items?: Array<{ product_retailer_id: string; quantity?: number; item_price?: number | string; currency?: string }> };
       }>;
       statuses?: Array<{
         id: string;
@@ -224,7 +219,7 @@ export interface WhatsAppMessage {
     listId?: string;
     listTitle?: string;
     productRetailerId?: string;
-    productItems?: Array<{ productRetailerId: string; quantity?: number }>;
+    productItems?: Array<{ productRetailerId: string; quantity?: number; itemPrice?: number; currency?: string }>;
     templateName?: string;
     templateParams?: string[];
     location?: {

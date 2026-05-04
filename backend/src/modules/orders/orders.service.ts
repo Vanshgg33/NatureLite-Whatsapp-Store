@@ -179,15 +179,36 @@ export class OrdersService implements OnModuleInit {
           orderProductIds.push(productId);
           collectCategoryId(product.category);
 
+          // Recompute price from the live product/variant rather than trusting
+          // cart.items[].price, which can be stale (price was captured when the
+          // item was added; admin edits or UCM pulls in between would
+          // silently leave the order at the old price). If the live price is
+          // missing/zero we fall back to the cart-captured price (last-known
+          // good) rather than billing zero.
+          let livePrice = product.price;
+          if (item.variantSku) {
+            const variant = product.variants.find((v) => v.sku === item.variantSku);
+            if (variant && Number.isFinite(variant.price) && variant.price > 0) {
+              livePrice = variant.price;
+            }
+          }
+          const resolvedPrice =
+            Number.isFinite(livePrice) && livePrice > 0 ? livePrice : item.price;
+          if (!Number.isFinite(resolvedPrice) || resolvedPrice <= 0) {
+            throw new BadRequestException(
+              `Price unavailable for ${product.name}. Please remove this item or contact support.`,
+            );
+          }
+
           const orderItem: OrderItem = {
             product: new Types.ObjectId(productId),
             name: product.name,
             variantSku: item.variantSku,
             quantity: item.quantity,
-            price: item.price,
-            total: item.price * item.quantity,
+            price: resolvedPrice,
+            total: resolvedPrice * item.quantity,
             image: product.images[0],
-            gstAmount: (item.price * item.quantity * product.gstPercentage) / 100,
+            gstAmount: (resolvedPrice * item.quantity * product.gstPercentage) / 100,
           };
 
           orderItems.push(orderItem);
@@ -562,6 +583,11 @@ export class OrdersService implements OnModuleInit {
   async findUserOrders(userId: string, limit: number = 10): Promise<Order[]> {
     const userObjId = parseObjectId(userId, 'userId');
     return this.orderRepository.findUserOrders(userObjId, limit);
+  }
+
+  async findUserOrdersExcludingCancelled(userId: string, limit: number = 10): Promise<Order[]> {
+    const userObjId = parseObjectId(userId, 'userId');
+    return this.orderRepository.findUserOrdersExcludingCancelled(userObjId, limit);
   }
 
   async createGuestOrder(dto: GuestCreateOrderDto): Promise<Order> {

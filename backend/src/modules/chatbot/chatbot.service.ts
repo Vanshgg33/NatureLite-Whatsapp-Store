@@ -452,7 +452,7 @@ export class ChatbotService {
     const catalogItems = (message.content.productItems || []).filter((it) => it.productRetailerId);
     if (message.type === 'order' || catalogItems.length > 1) {
       if (catalogItems.length > 0) {
-        await this.handleCatalogOrder(session, message.phone, catalogItems);
+        await this.handleCatalogOrder(session, message.phone, catalogItems, message.messageId);
         return;
       }
     }
@@ -1535,6 +1535,65 @@ export class ChatbotService {
       return;
     }
 
+    // Cross-state escape hatches: a customer who typed obvious navigation
+    // words ("menu", "cart", "cod", "back", "browse"…) almost certainly
+    // didn't mean them as a coupon code. Without this guard, the chatbot
+    // would happily run "COD" or "MENU" through coupon validation and
+    // surface a misleading "Invalid coupon" error, leaving the customer
+    // stuck typing the same word repeatedly.
+    const navWord = code.toLowerCase();
+    const navMap: Record<string, () => Promise<void>> = {
+      menu: async () => {
+        await this.transitionToState(session, 'main_menu');
+        await this.sendFlowResponse(phone, 'main_menu', session);
+      },
+      'main menu': async () => {
+        await this.transitionToState(session, 'main_menu');
+        await this.sendFlowResponse(phone, 'main_menu', session);
+      },
+      cart: async () => {
+        await this.transitionToState(session, 'cart');
+        await this.sendCartSummary(phone, session);
+      },
+      back: async () => {
+        await this.transitionToState(session, 'cart');
+        await this.sendCartSummary(phone, session);
+      },
+      browse: async () => {
+        await this.transitionToState(session, 'browsing');
+        await this.sendCategoryList(phone, session);
+      },
+      skip: async () => {
+        await this.transitionToState(session, 'checkout');
+        await this.sendCheckoutOptions(phone, session);
+      },
+      cod: async () => {
+        await this.transitionToState(session, 'checkout');
+        await this.sendCheckoutOptions(phone, session);
+      },
+      prepaid: async () => {
+        await this.transitionToState(session, 'checkout');
+        await this.sendCheckoutOptions(phone, session);
+      },
+      upi: async () => {
+        await this.transitionToState(session, 'checkout');
+        await this.sendCheckoutOptions(phone, session);
+      },
+      orders: async () => {
+        await this.transitionToState(session, 'order_tracking');
+        await this.sendFlowResponse(phone, 'order_tracking', session);
+      },
+      support: async () => {
+        await this.transitionToState(session, 'support');
+        await this.sendFlowResponse(phone, 'support', session);
+      },
+    };
+    const navHandler = navMap[navWord];
+    if (navHandler) {
+      await navHandler();
+      return;
+    }
+
     try {
       await this.whatsappService.sendTextMessage({
         phone,
@@ -1865,7 +1924,7 @@ export class ChatbotService {
       return;
     }
 
-    const cart = await this.cartService.getCart(session.user.toString());
+    let cart = await this.cartService.getCart(session.user.toString());
 
     if (cart.items.length === 0) {
       await this.whatsappService.sendTextMessage({
@@ -1877,9 +1936,45 @@ export class ChatbotService {
       return;
     }
 
-    // Guard against free-order exploits: an aggressive coupon can drive the
-    // total to zero or negative. Force the user to remove the coupon or add
-    // items instead of letting the order create at ₹0.
+    // Re-run coupon validation against the current cart subtotal *before* the
+    // ₹0 guard. Without this, a coupon that has since become invalid
+    // (expired, exceeded usage cap, or cart subtotal dropped below
+    // minOrderAmount) still leaves a discount on `cart.total`, and the
+    // customer gets the misleading "discount exceeds cart total" message
+    // even though removing the coupon would resolve it.
+    if (cart.couponCode) {
+      try {
+        await this.cartService.applyCoupon(session.user.toString(), cart.couponCode);
+      } catch {
+        await this.cartService.removeCoupon(session.user.toString());
+        await this.whatsappService.sendTextMessage({
+          phone,
+          message: '_Coupon is no longer valid and was removed from your cart._',
+        });
+      }
+      cart = await this.cartService.getCart(session.user.toString());
+    }
+
+    // After revalidation: if total is still <= 0 and a coupon is applied, the
+    // coupon genuinely covers the whole cart — ask user to remove or top up.
+    // If no coupon is applied, the cart subtotal itself is zero (e.g. all
+    // items had price=0); send them to cart/support since "remove coupon"
+    // wouldn't fix anything and the previous wording was misleading.
+    if ((cart.total ?? 0) <= 0 && !cart.couponCode) {
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        headerText: 'We cannot price your cart',
+        bodyText:
+          'Your cart total is ₹0. Some items may be unavailable right now — please review your cart or contact support.',
+        buttons: [
+          { id: BTN.CART, title: 'View Cart' },
+          { id: BTN.SUPPORT, title: 'Support' },
+        ],
+      });
+      await this.transitionToState(session, 'cart');
+      return;
+    }
+
     if ((cart.total ?? 0) <= 0) {
       await this.whatsappService.sendInteractiveButtons({
         phone,
@@ -1955,7 +2050,9 @@ export class ChatbotService {
     }
 
     const ctx = session.context;
-    const recent = await this.ordersService.findUserOrders(session.user.toString(), 1);
+    // Exclude cancelled orders so a customer who just cancelled (or whose order
+    // was admin-cancelled) isn't blocked by the cooldown popup with no live order.
+    const recent = await this.ordersService.findUserOrdersExcludingCancelled(session.user.toString(), 1);
     if (recent.length > 0 && !ctx.allowAnotherOrderOnce) {
       const createdRaw = recent[0].createdAt;
       const createdMs =
@@ -3043,13 +3140,23 @@ export class ChatbotService {
   private async handleCatalogOrder(
     session: ChatSessionDocument,
     phone: string,
-    items: Array<{ productRetailerId: string; quantity?: number }>,
+    items: Array<{ productRetailerId: string; quantity?: number; itemPrice?: number; currency?: string }>,
+    messageId?: string,
   ): Promise<void> {
     if (!session.user) {
       await this.whatsappService.sendTextMessage({
         phone,
         message: 'Please share your name to start ordering, then resend your cart.',
       });
+      return;
+    }
+
+    // Idempotency: 360dialog/Meta can redeliver the same `order` webhook on
+    // network blips. Without this guard the second delivery would clear the
+    // cart again (wiping any coupon the user applied between deliveries) and
+    // re-add items, confusing the customer.
+    if (messageId && session.context?.lastCatalogOrderMessageId === messageId) {
+      this.logger.log(`catalog order: skipping duplicate delivery for message ${messageId}`);
       return;
     }
 
@@ -3083,16 +3190,42 @@ export class ChatbotService {
         continue;
       }
 
+      // Prefer the price the customer actually saw on WhatsApp's catalog
+      // (Meta echoes it back as item_price in the order webhook). Falls
+      // through to the local product/variant price if Meta omitted it.
+      // Currency is INR-only for this store; ignore mismatched currencies
+      // rather than trusting a foreign-denominated number.
+      const catalogPrice = (!item.currency || item.currency.toUpperCase() === 'INR')
+        ? item.itemPrice
+        : undefined;
+
       try {
-        await this.cartService.addItem(userId, {
-          productId: product._id.toString(),
-          quantity: qty,
-        });
+        await this.cartService.addItem(
+          userId,
+          {
+            productId: product._id.toString(),
+            quantity: qty,
+          },
+          { unitPriceOverride: catalogPrice },
+        );
         addedCount += 1;
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'add to cart failed';
-        failures.push({ retailerId: product.name || retailerId, reason: /stock/i.test(msg) ? msg : 'could not be added' });
+        let reason: string;
+        if (/price unavailable/i.test(msg)) {
+          reason = 'price unavailable — please contact support';
+        } else if (/stock/i.test(msg)) {
+          reason = msg;
+        } else {
+          reason = 'could not be added';
+        }
+        failures.push({ retailerId: product.name || retailerId, reason });
       }
+    }
+
+    if (messageId) {
+      session.context = mergeChatContext(session.context, { lastCatalogOrderMessageId: messageId });
+      await session.save();
     }
 
     this.analytics.track('chatbot.catalog_order_received', {

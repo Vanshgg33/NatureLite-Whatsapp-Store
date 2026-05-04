@@ -25,6 +25,16 @@ export class CartItem {
 
   @Prop()
   addedAt: Date;
+
+  /**
+   * When this item's `price` was captured from the live product/variant.
+   * Used by `CartService.getCart` to detect a stale price (admin or UCM
+   * mutated the product since) and refresh on read so the customer never
+   * sees a stale ₹ on the cart screen. The fix is read-side only — the
+   * authoritative recompute still happens at order-create time.
+   */
+  @Prop()
+  priceCapturedAt?: Date;
 }
 
 export const CartItemSchema = SchemaFactory.createForClass(CartItem);
