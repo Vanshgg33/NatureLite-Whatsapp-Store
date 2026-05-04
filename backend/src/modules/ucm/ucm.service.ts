@@ -8,6 +8,8 @@ import { ProductDocument } from '../products/schemas/product.schema';
 import { CategoryRepository } from '../categories/repositories/category.repository';
 import { CatalogConfig } from '../../config/configuration';
 import { UpdateUcmCatalogConfigDto, UcmSyncMode } from './dto/ucm.dto';
+import { StoresService } from '../stores/stores.service';
+import { StoreStockService } from '../store-stock/store-stock.service';
 
 type CatalogState = {
   syncMode?: UcmSyncMode | 'dry_run' | 'meta';
@@ -85,11 +87,15 @@ export class UcmService {
   private readonly logger = new Logger(UcmService.name);
   private readonly graphClient: AxiosInstance;
 
+  private mainStoreIdCached: string | null = null;
+
   constructor(
     private readonly configService: ConfigService,
     private readonly settingsService: SettingsService,
     private readonly productRepository: ProductRepository,
     private readonly categoryRepository: CategoryRepository,
+    private readonly storesService: StoresService,
+    private readonly storeStockService: StoreStockService,
   ) {
     const catalogConfig = this.configService.get<CatalogConfig>('catalog')!;
     this.graphClient = axios.create({
@@ -295,7 +301,7 @@ export class UcmService {
       return;
     }
 
-    await this.upsertRemoteProduct(state, this.buildCatalogItem(product, true));
+    await this.upsertRemoteProduct(state, this.buildCatalogItem(product, true, 0));
   }
 
   private async syncProductsToRemote(products: ProductDocument[], reason: string, mode: 'push'): Promise<SyncSummary> {
@@ -304,13 +310,28 @@ export class UcmService {
 
     this.logger.log(`Syncing ${products.length} products to catalog ${remoteCatalogId} (${remoteCatalogName})`);
 
+    let stockMap: Map<string, number | null>;
+    try {
+      stockMap = await this.resolveMainStoreStockMap(products);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'unknown';
+      this.logger.warn(`Main-store stock lookup failed; defaulting tracked products to 0 stock: ${msg}`);
+      stockMap = new Map();
+      for (const p of products) {
+        stockMap.set(p._id.toString(), p.trackStock === false ? null : 0);
+      }
+    }
+
     let syncedProducts = 0;
     let failedProducts = 0;
     const details: SyncDetail[] = [];
 
     for (const product of products) {
       try {
-        const item = this.buildCatalogItem(product, false);
+        const stockForItem = stockMap.has(product._id.toString())
+          ? stockMap.get(product._id.toString())!
+          : product.trackStock === false ? null : 0;
+        const item = this.buildCatalogItem(product, false, stockForItem);
         await this.upsertRemoteProduct(state, item, remoteCatalogId);
         syncedProducts += 1;
         details.push({ retailerId: item.retailer_id as string, status: 'synced' });
@@ -592,11 +613,49 @@ export class UcmService {
     return slug;
   }
 
-  private buildCatalogItem(product: ProductDocument, archived: boolean): Record<string, unknown> {
+  private async getMainStoreId(): Promise<string> {
+    if (this.mainStoreIdCached) return this.mainStoreIdCached;
+    const store = await this.storesService.findMainStore();
+    const id = (store as { _id: Types.ObjectId | string })._id.toString();
+    this.mainStoreIdCached = id;
+    return id;
+  }
+
+  /** Per-product main-store stock for the products being synced. Returns null
+   * for products with `trackStock=false` (always available). */
+  private async resolveMainStoreStockMap(
+    products: ProductDocument[],
+  ): Promise<Map<string, number | null>> {
+    const out = new Map<string, number | null>();
+    const tracked = products.filter((p) => p.trackStock !== false);
+    for (const p of products) {
+      if (p.trackStock === false) out.set(p._id.toString(), null);
+    }
+    if (tracked.length === 0) return out;
+    const mainStoreId = await this.getMainStoreId();
+    const ids = tracked.map((p) => p._id.toString());
+    const stockMap = await this.storeStockService.getStockMapForStoreProducts(mainStoreId, ids);
+    for (const p of tracked) {
+      const entry = stockMap.get(p._id.toString());
+      out.set(p._id.toString(), entry?.stock ?? 0);
+    }
+    return out;
+  }
+
+  private buildCatalogItem(
+    product: ProductDocument,
+    archived: boolean,
+    mainStoreStock: number | null,
+  ): Record<string, unknown> {
     const catalogConfig = this.configService.get<CatalogConfig>('catalog')!;
     const frontendUrl = this.configService.get<string>('frontendUrl') || '';
     const baseUrl = frontendUrl.split(',')[0]?.trim().replace(/\/$/, '') || '';
-    const unavailable = archived || product.isActive === false || (product.trackStock && (product.stock || 0) <= 0);
+    const stockTracked = product.trackStock !== false;
+    const effectiveStock = stockTracked ? Math.max(0, mainStoreStock ?? 0) : null;
+    const unavailable =
+      archived ||
+      product.isActive === false ||
+      (stockTracked && (effectiveStock ?? 0) <= 0);
     const remoteRetailerId = this.resolveRemoteRetailerId(product);
     const catalogPrice = this.toCatalogAmount(product.price);
     const categoryName = typeof product.category === 'object' && product.category && 'name' in product.category
@@ -636,8 +695,8 @@ export class UcmService {
     if (baseUrl) {
       item.url = `${baseUrl}/products/${product.slug}`;
     }
-    if (product.trackStock) {
-      item.inventory = Math.max(0, product.stock || 0);
+    if (stockTracked) {
+      item.inventory = effectiveStock ?? 0;
     }
     if (catalogConfig.businessId) {
       item.custom_label_0 = catalogConfig.businessId;

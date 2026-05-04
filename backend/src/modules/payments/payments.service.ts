@@ -48,12 +48,24 @@ export class PaymentsService {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const RazorpayCtor = require('razorpay') as new (cfg: { key_id: string; key_secret: string }) => RazorpayClient;
         this.razorpay = new RazorpayCtor({ key_id: keyId, key_secret: keySecret });
-        this.logger.log('Razorpay initialized successfully');
+        // Print the keyId prefix only — never the secret. Lets the operator
+        // verify in deploy logs which key (test vs live) is actually loaded.
+        const mode = keyId.startsWith('rzp_live_') ? 'LIVE' : keyId.startsWith('rzp_test_') ? 'TEST' : 'unknown';
+        const safeId = `${keyId.slice(0, 12)}…${keyId.slice(-4)}`;
+        this.logger.log(`Razorpay initialized (mode=${mode}, keyId=${safeId})`);
+        const webhookSecret = this.configService.get<string>('razorpay.webhookSecret') ?? '';
+        if (!webhookSecret) {
+          this.logger.warn(
+            'Razorpay webhook secret not configured — payment.captured webhook deliveries will be rejected (400). Set RAZORPAY_WEBHOOK_SECRET to enable.',
+          );
+        }
       } catch (error) {
-        this.logger.warn('Razorpay initialization failed - payment features will be unavailable');
+        this.logger.error('Razorpay initialization failed - payment features will be unavailable', error as Error);
       }
     } else {
-      this.logger.warn('Razorpay credentials not configured');
+      this.logger.warn(
+        `Razorpay credentials not configured (keyId set=${Boolean(keyId)}, keySecret set=${Boolean(keySecret)}). Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET (or razorpay_key / razorpay_secret) on the backend service.`,
+      );
     }
   }
 

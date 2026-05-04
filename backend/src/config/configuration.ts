@@ -128,7 +128,10 @@ export default (): Configuration => ({
   razorpay: {
   keyId: process.env.RAZORPAY_KEY_ID || process.env.razorpay_key || '',
   keySecret: process.env.RAZORPAY_KEY_SECRET || process.env.razorpay_secret || '',
-  webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
+  // Same lowercase fallback as keyId/keySecret so deployments that use the
+  // `razorpay_*` naming convention pick this up without the chatbot pay
+  // confirmation webhook silently 400ing on every Razorpay delivery.
+  webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || process.env.razorpay_webhook_secret || '',
   },
   interakt: {
   apiKey: process.env.INTERAKT_API_KEY || process.env.interakt_api_key || '',

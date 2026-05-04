@@ -1346,7 +1346,9 @@ export class ChatbotService {
     sections.push({
       title: 'Actions',
       rows: [
+        { id: BTN.COUPON_CUSTOM, title: '🏷 Enter code', description: 'Type a promo code yourself' },
         { id: BTN.COUPON_SKIP, title: 'Skip', description: 'Continue without a coupon' },
+        { id: BTN.BACK, title: '↩ Back', description: 'Return to previous screen' },
       ],
     });
 

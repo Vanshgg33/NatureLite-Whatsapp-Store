@@ -23,6 +23,7 @@ import { StoreStockService } from '../store-stock/store-stock.service';
 import { StoreSalesService } from '../store-sales/store-sales.service';
 import { WalletService } from '../wallet/wallet.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { UcmService } from '../ucm/ucm.service';
 import { UpdateUserDto } from '../users/dto/user.dto';
 import {
   CreateOrderDto,
@@ -105,6 +106,7 @@ export class OrdersService implements OnModuleInit {
     private storeSalesService: StoreSalesService,
     private walletService: WalletService,
     private readonly notificationsService: NotificationsService,
+    private readonly ucmService: UcmService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -481,6 +483,26 @@ export class OrdersService implements OnModuleInit {
           soldErr,
         );
       }
+
+      // Push fresh availability/inventory to Meta catalog so out-of-stock
+      // products stop being selectable on the storefront. Fire-and-forget —
+      // failure here must not block the order response.
+      const productIdsToSync = Array.from(
+        new Set(
+          orderItems
+            .filter((i) => tracksStockByProductId.get(i.product.toString()) !== false)
+            .map((i) => i.product.toString()),
+        ),
+      );
+      void Promise.all(
+        productIdsToSync.map((pid) =>
+          this.ucmService.syncProductById(pid, 'order_committed').catch((err) => {
+            this.logger.warn(
+              `UCM sync failed for product ${pid} after order ${savedOrder.orderNumber}: ${err instanceof Error ? err.message : 'unknown'}`,
+            );
+          }),
+        ),
+      );
 
       if (dto.cartId) {
         try {
