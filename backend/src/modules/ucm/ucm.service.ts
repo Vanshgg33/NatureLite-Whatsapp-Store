@@ -390,11 +390,17 @@ export class UcmService {
 
     do {
       try {
+        // Meta's Graph API expects `fields` as a comma-separated string. A
+        // JSON-encoded array (e.g. `["id","price",...]`) is silently
+        // accepted as an *unrecognised single field name*, and Meta then
+        // returns only the default fields (id, name) — every imported
+        // product ends up with price=0 because the price field never
+        // arrived in the response. Keep this as a plain CSV.
         const fieldsArray = ['id', 'retailer_id', 'name', 'description', 'short_description', 'price', 'sale_price', 'availability', 'condition', 'currency', 'image_url', 'inventory', 'url', 'product_type', 'category', 'custom_label_0', 'custom_label_1', 'custom_data'];
         const response = await this.graphClient.get<RemoteProductsResponse>(`/${catalogId}/products`, {
           params: {
             access_token: catalogConfig.accessToken,
-            fields: JSON.stringify(fieldsArray),
+            fields: fieldsArray.join(','),
             summary: 'total_count',
             limit: 100,
             ...(after ? { after } : {}),
@@ -402,6 +408,12 @@ export class UcmService {
         });
 
         const batch = Array.isArray(response.data?.data) ? response.data.data : [];
+        if (batch.length > 0) {
+          const sample = batch[0];
+          this.logger.log(
+            `Meta catalog page ${pageCount + 1}: ${batch.length} products, sample retailer_id=${sample?.retailer_id}, price=${JSON.stringify(sample?.price)}, sale_price=${JSON.stringify(sample?.sale_price)}, currency=${sample?.currency}`,
+          );
+        }
         products.push(...batch);
         after = response.data?.paging?.cursors?.after;
         pageCount += 1;
@@ -452,9 +464,10 @@ export class UcmService {
     const originalPrice = typeof remoteOriginal === 'number' && remoteOriginal > 0
       ? remoteOriginal
       : (existing?.compareAtPrice ?? 0);
-    if (!(typeof remoteCurrent === 'number' && remoteCurrent > 0)) {
+    const remotePriceUsable = typeof remoteCurrent === 'number' && remoteCurrent > 0;
+    if (!remotePriceUsable) {
       this.logger.warn(
-        `UCM pull: remote item ${retailerId} returned no usable price; keeping local price=${currentPrice}`,
+        `UCM pull: remote item ${retailerId} returned no usable price (raw price=${JSON.stringify(remoteProduct.price)}, sale_price=${JSON.stringify(remoteProduct.sale_price)}); resolved price=${currentPrice}`,
       );
     }
 
