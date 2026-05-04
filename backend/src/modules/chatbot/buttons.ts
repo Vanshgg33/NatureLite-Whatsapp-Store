@@ -34,8 +34,6 @@ export const BTN = {
   MORE_ORDERS: 'more_orders',
 
   ADD_NEW_ADDRESS: 'new_address',
-
-  CLEAR_CART: 'clear',
 } as const;
 
 export const Btn = {
@@ -43,11 +41,8 @@ export const Btn = {
   category: (id: string) => `cat_${id}`,
   order: (id: string) => `order_${id}`,
   reorder: (id: string) => `reorder_${id}`,
+  payOrder: (id: string) => `pay_${id}`,
   address: (i: number) => `address_${i}`,
-  manageItem: (i: number) => `mi_${i}`,
-  incItem: (i: number) => `inc_${i}`,
-  decItem: (i: number) => `dec_${i}`,
-  delItem: (i: number) => `del_${i}`,
   applyCoupon: (code: string) => `capply_${code}`,
   addQty: (n: number) => `qty_${n}`,
 };
@@ -57,16 +52,13 @@ export type ParsedButton =
   | { kind: 'category'; id: string }
   | { kind: 'order'; id: string }
   | { kind: 'reorder'; id: string }
+  | { kind: 'payOrder'; id: string }
   | { kind: 'address'; idx: number }
-  | { kind: 'manageItem'; idx: number }
-  | { kind: 'incItem'; idx: number }
-  | { kind: 'decItem'; idx: number }
-  | { kind: 'delItem'; idx: number }
   | { kind: 'applyCoupon'; code: string }
   | { kind: 'addQty'; qty: number }
   | { kind: 'static'; value: string };
 
-const PREFIX_RE = /^(prod|cat|order|reorder|address|addr|mi|inc|dec|del|rm|capply|qty)_(.+)$/;
+const PREFIX_RE = /^(prod|cat|order|reorder|pay|address|addr|capply|qty)_(.+)$/;
 
 export function parseButton(id: string | undefined | null): ParsedButton {
   const raw = (id ?? '').trim();
@@ -80,13 +72,9 @@ export function parseButton(id: string | undefined | null): ParsedButton {
     case 'cat':      return { kind: 'category', id: rest };
     case 'order':    return { kind: 'order', id: rest };
     case 'reorder':  return { kind: 'reorder', id: rest };
+    case 'pay':      return { kind: 'payOrder', id: rest };
     case 'address':
     case 'addr':     return { kind: 'address', idx };
-    case 'mi':       return { kind: 'manageItem', idx };
-    case 'inc':      return { kind: 'incItem', idx };
-    case 'dec':      return { kind: 'decItem', idx };
-    case 'del':
-    case 'rm':       return { kind: 'delItem', idx };
     case 'capply':   return { kind: 'applyCoupon', code: rest };
     case 'qty': {
       const qty = Number.parseInt(rest, 10);

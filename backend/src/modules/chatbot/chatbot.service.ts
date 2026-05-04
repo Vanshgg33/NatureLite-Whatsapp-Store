@@ -501,6 +501,7 @@ export class ChatbotService {
       'account',
       'orders',
       'support',
+      'pay',
     ]);
 
     // If a user taps an old or fabricated button/list id, do not mutate state; re-show current options.
@@ -534,6 +535,35 @@ export class ChatbotService {
       await session.save();
       await this.transitionToState(session, 'order_tracking');
       await this.sendOrdersList(message.phone, session);
+      return;
+    }
+    if (transitionKey === 'pay') {
+      // "pay" shortcut: re-issue a fresh pay link for the customer's most
+      // recent unpaid prepaid order. If none exists, route to orders so they
+      // can pick one. Without this, a customer whose 48h link expired had no
+      // chatbot path to retry payment.
+      if (!session.user) {
+        await this.whatsappService.sendTextMessage({
+          phone: message.phone,
+          message: 'Please share your name to continue, then type *pay* again.',
+        });
+        return;
+      }
+      const recent = await this.ordersService.findUserOrders(session.user.toString(), 10);
+      const target = recent.find(
+        (o) =>
+          o.paymentMethod === 'prepaid' &&
+          o.paymentStatus !== 'paid' &&
+          o.status !== 'cancelled',
+      );
+      if (target) {
+        await this.sendFreshPayLink(session, message.phone, target._id.toString());
+      } else {
+        await this.whatsappService.sendTextMessage({
+          phone: message.phone,
+          message: 'You have no pending online payments. Type *orders* to see your orders.',
+        });
+      }
       return;
     }
     // Post-delivery feedback: if a user has a recent delivered order with a pending
@@ -907,7 +937,8 @@ export class ChatbotService {
     }
 
     if (input === 'manage' || input === 'remove') {
-      await this.sendManageCartList(phone, session);
+      await this.transitionToState(session, 'browsing');
+      await this.sendBrowseSurface(phone, session);
       return;
     }
 
@@ -918,28 +949,6 @@ export class ChatbotService {
     if (input === BTN.COUPON_LIST) {
       await this.transitionToState(session, 'coupon_prompt');
       await this.sendAvailableCouponsList(phone, session);
-      return;
-    }
-
-    const btn = parseButton(input);
-    if (btn.kind === 'manageItem') {
-      if (!Number.isFinite(btn.idx) || btn.idx < 0) {
-        await this.sendManageCartList(phone, session);
-        return;
-      }
-      await this.sendCartItemManage(phone, session, btn.idx);
-      return;
-    }
-    if (btn.kind === 'incItem') {
-      await this.adjustCartItemQuantity(phone, session, btn.idx, +1);
-      return;
-    }
-    if (btn.kind === 'decItem') {
-      await this.adjustCartItemQuantity(phone, session, btn.idx, -1);
-      return;
-    }
-    if (btn.kind === 'delItem') {
-      await this.removeCartItemByIndex(phone, session, btn.idx);
       return;
     }
 
@@ -1001,11 +1010,10 @@ export class ChatbotService {
           message: italic('Couldn\u2019t update the quantity. Please try again.'),
         });
       }
-      await this.sendCartItemManage(phone, session, idx);
+      await this.sendCartSummary(phone, session);
       return;
     }
-    // Re-render the item panel with new quantity (same index still valid — no list reorder).
-    await this.sendCartItemManage(phone, session, idx);
+    await this.sendCartSummary(phone, session);
   }
 
   /** Remove item at idx; notifies if a coupon got invalidated; returns to cart summary. */
@@ -2208,6 +2216,105 @@ export class ChatbotService {
     await this.transitionToState(session, 'main_menu');
   }
 
+  /**
+   * Re-issue a fresh WhatsApp pay link for an unpaid prepaid order. Triggered
+   * by the "Pay now" button on the order-tracking screen and by the `pay`
+   * text shortcut on the most recent unpaid order. Verifies ownership,
+   * already-paid state, and that a frontend base URL + JWT_SECRET exist
+   * before constructing the link.
+   */
+  private async sendFreshPayLink(
+    session: ChatSessionDocument,
+    phone: string,
+    orderId: string,
+  ): Promise<void> {
+    if (!session.user) {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: 'Please register or log in to continue with payment.',
+      });
+      return;
+    }
+
+    let order;
+    try {
+      order = await this.ordersService.findById(orderId);
+    } catch {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: 'That order is no longer available.',
+      });
+      return;
+    }
+
+    const orderUserId = this.getOrderUserId(order);
+    if (!orderUserId || orderUserId !== session.user.toString()) {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: 'You do not have access to this order.',
+      });
+      return;
+    }
+    if (order.status === 'cancelled') {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: `Order #${order.orderNumber} has been cancelled.`,
+      });
+      return;
+    }
+    if (order.paymentStatus === 'paid') {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: `Order #${order.orderNumber} is already paid. Thank you!`,
+      });
+      return;
+    }
+    if (order.paymentMethod !== 'prepaid') {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: `Order #${order.orderNumber} is Cash on Delivery — no online payment needed.`,
+      });
+      return;
+    }
+
+    let payUrl = '';
+    try {
+      const payToken = this.paymentsService.signWhatsAppPayToken(
+        order._id.toString(),
+        session.user.toString(),
+      );
+      const base = this.resolveFrontendBaseUrl();
+      if (base) {
+        payUrl = `${base}/pay/${encodeURIComponent(order._id.toString())}?t=${encodeURIComponent(payToken)}`;
+      }
+    } catch (signErr) {
+      this.logger.warn('Re-issue WhatsApp pay token failed', signErr);
+    }
+
+    if (!payUrl) {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message:
+          `We couldn't generate a payment link right now. Please contact support to complete payment for #${order.orderNumber}.`,
+      });
+      return;
+    }
+
+    await this.whatsappService.sendInteractiveButtons({
+      phone,
+      headerText: '💳 Complete payment',
+      bodyText:
+        `${bold(`#${order.orderNumber}`)}\n` +
+        `Total ${bold(this.formatCurrency(order.total))}\n\n` +
+        `Tap the link to pay securely:\n${payUrl}\n\n` +
+        `${italic('Link expires in 48 hours.')}`,
+      buttons: [
+        { id: Btn.order(order._id.toString()), title: '📦 Track Order' },
+        { id: BTN.MENU, title: '🏠 Menu' },
+      ],
+    });
+  }
+
   private async handleOrderTracking(
     session: ChatSessionDocument,
     phone: string,
@@ -2266,15 +2373,36 @@ export class ChatbotService {
 
       const message = this.buildOrderTrackingMessage(order);
 
+      // For an unpaid prepaid order, expose a "Pay now" action on the
+      // tracking screen. Without this, a customer who dismissed (or whose
+      // 48h pay link expired) had no chatbot path to retry payment and was
+      // forced to log in on the web. WhatsApp interactive buttons cap at 3.
+      const isUnpaidPrepaid =
+        order.paymentMethod === 'prepaid' &&
+        order.paymentStatus !== 'paid' &&
+        order.status !== 'cancelled';
+      const trackingButtons = isUnpaidPrepaid
+        ? [
+            { id: Btn.payOrder(orderId), title: '\uD83D\uDCB3 Pay now' },
+            { id: Btn.reorder(orderId), title: '\uD83D\uDD01 Reorder' },
+            { id: BTN.BACK, title: '\u21A9 Back' },
+          ]
+        : [
+            { id: Btn.reorder(orderId), title: '\uD83D\uDD01 Reorder' },
+            { id: BTN.SUPPORT, title: '\uD83D\uDC64 Help' },
+            { id: BTN.BACK, title: '\u21A9 Back' },
+          ];
+
       await this.whatsappService.sendInteractiveButtons({
         phone,
         bodyText: message,
-        buttons: [
-          { id: Btn.reorder(orderId), title: '\uD83D\uDD01 Reorder' },
-          { id: BTN.SUPPORT, title: '\uD83D\uDC64 Help' },
-          { id: BTN.BACK, title: '\u21A9 Back' },
-        ],
+        buttons: trackingButtons,
       });
+      return;
+    }
+
+    if (btn.kind === 'payOrder') {
+      await this.sendFreshPayLink(session, phone, btn.id);
       return;
     }
 
@@ -3802,73 +3930,6 @@ export class ChatbotService {
     });
   }
 
-  /** Item list for the "Manage Items" flow — user picks an item to adjust. */
-  private async sendManageCartList(phone: string, session: ChatSessionDocument): Promise<void> {
-    if (!session.user) return;
-    const cart = await this.cartService.getCart(session.user.toString());
-    if (cart.items.length === 0) {
-      await this.sendCartSummary(phone, session);
-      return;
-    }
-
-    const itemRows = cart.items.slice(0, 8).map((item, idx) => ({
-      id: Btn.manageItem(idx),
-      title: clip(item.product.name, WA.LIST_ROW_TITLE),
-      description: clip(
-        `\u00D7${item.quantity}  \u00B7  ${this.formatCurrency(item.total)}`,
-        WA.LIST_ROW_DESC,
-      ),
-    }));
-
-    const rows = [
-      ...itemRows,
-      { id: BTN.CLEAR_CART, title: 'Clear entire cart', description: 'Remove all items' },
-      { id: BTN.BACK, title: 'Back to cart', description: 'Return to summary' },
-    ];
-
-    await this.whatsappService.sendInteractiveList({
-      phone,
-      headerText: 'Manage cart',
-      bodyText: 'Pick an item to change quantity or remove it.',
-      buttonText: 'Choose item',
-      sections: [{ title: 'Cart items', rows }],
-    });
-  }
-
-  /** Per-item panel with − / + / Remove controls. */
-  private async sendCartItemManage(
-    phone: string,
-    session: ChatSessionDocument,
-    idx: number,
-  ): Promise<void> {
-    if (!session.user) return;
-    const cart = await this.cartService.getCart(session.user.toString());
-    const item = cart.items[idx];
-    if (!item) {
-      await this.sendCartSummary(phone, session);
-      return;
-    }
-
-    const unitPrice = item.quantity > 0 ? item.total / item.quantity : item.price;
-    const firstWord = item.product.name.split(' ')[0].toLowerCase();
-    const body =
-      `\uD83D\uDCE6 ${bold(item.product.name)}\n\n` +
-      `Unit\u2003${this.formatCurrency(unitPrice)}\n` +
-      `Qty\u2003${bold(`\u00D7${item.quantity}`)}\n` +
-      `Total\u2003${bold(this.formatCurrency(item.total))}\n\n` +
-      italic(`Type 'set ${firstWord} 3' to set a specific quantity.`);
-
-    await this.whatsappService.sendInteractiveButtons({
-      phone,
-      bodyText: body,
-      buttons: [
-        { id: Btn.decItem(idx), title: '\u2212' },
-        { id: Btn.incItem(idx), title: '+' },
-        { id: Btn.delItem(idx), title: '\uD83D\uDDD1 Remove' },
-      ],
-    });
-  }
-
   private async sendCheckoutOptions(phone: string, session: ChatSessionDocument): Promise<void> {
     if (!session.user) {
       await this.whatsappService.sendTextMessage({
@@ -4183,6 +4244,7 @@ export class ChatbotService {
         '4': 'account', 'account': 'account', 'my account': 'account', 'profile': 'account',
         '5': 'faq', 'help': 'faq', 'faq': 'faq', 'help & faq': 'faq', 'help and faq': 'faq',
         '6': 'support', 'support': 'support', 'agent': 'support', 'human': 'support',
+        pay: 'pay', 'pay now': 'pay', 'complete payment': 'pay',
       },
       browsing: { back: 'back', more: 'more_products', next: 'more_products' },
       product_detail: {
@@ -4309,12 +4371,7 @@ export class ChatbotService {
           key === 'back' ||
           key === 'continue' ||
           key === 'continue_shopping' ||
-          key === 'coupon_list' ||
-          key.startsWith('mi_') ||
-          key.startsWith('inc_') ||
-          key.startsWith('dec_') ||
-          key.startsWith('del_') ||
-          key.startsWith('rm_')
+          key === 'coupon_list'
         );
       case 'coupon_prompt':
         return (
@@ -4345,7 +4402,7 @@ export class ChatbotService {
           key === 'another_no'
         );
       case 'order_tracking':
-        return key === 'back' || key === 'more_orders' || key === 'browse' || key.startsWith('order_') || key.startsWith('reorder_');
+        return key === 'back' || key === 'more_orders' || key === 'browse' || key.startsWith('order_') || key.startsWith('reorder_') || key.startsWith('pay_');
       case 'reorder':
         return key === 'confirm' || key === 'modify' || key === 'cancel' || key === 'back';
       case 'faq':

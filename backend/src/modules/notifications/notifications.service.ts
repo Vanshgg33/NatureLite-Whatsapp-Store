@@ -97,6 +97,32 @@ export class NotificationsService {
     });
   }
 
+  /**
+   * Sends a "Payment received" message back to the WhatsApp customer when a
+   * Razorpay payment is captured. Plain-text (not template) so it works in
+   * the open 24h customer-service window without needing a Meta-approved
+   * template — payment capture happens minutes after the customer sent the
+   * pay link request, so the window is always open. Idempotent on order id.
+   */
+  async sendPaymentReceived(order: Order, phone: string): Promise<void> {
+    const idempotencyKey = `payment_received_${order._id.toString()}`;
+    if (await this.isDuplicate(idempotencyKey)) {
+      return;
+    }
+    const total = this.formatMoneyInr(order.total);
+    const text =
+      `*Payment received* ✅\n` +
+      `Order #${order.orderNumber}\n` +
+      `Amount: ${total}\n\n` +
+      `We're preparing your order — you'll get an update when it ships.`;
+    await this.sendNotification({
+      phone,
+      text,
+      orderId: order._id.toString(),
+      idempotencyKey,
+    });
+  }
+
   async sendOrderConfirmation(order: Order, phone: string): Promise<void> {
     const idempotencyKey = `order_confirm_${order._id.toString()}`;
 

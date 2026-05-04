@@ -669,7 +669,27 @@ export class OrdersService implements OnModuleInit {
     order.paymentStatus = 'paid';
     order.paymentMethod = 'prepaid';
     this.pushTimelineEntry(order, { status: 'confirmed', message });
-    await order.save();
+    const saved = await order.save();
+
+    // Notify the customer on WhatsApp. Without this, a paid prepaid order
+    // sits in the chat with no confirmation — especially bad when the bank
+    // redirect drops the customer before they see the success page. Wrapped
+    // in try/catch because notification failure must never roll back a
+    // captured payment.
+    try {
+      const phone = saved.shippingAddress?.phone?.trim();
+      if (phone) {
+        await this.notificationsService.sendPaymentReceived(saved.toObject() as Order, phone);
+      } else {
+        this.logger.warn(
+          `Payment confirmation skipped for ${orderId}: no phone on shippingAddress`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Failed to send payment confirmation for ${orderId}: ${err instanceof Error ? err.message : 'unknown'}`,
+      );
+    }
   }
 
   async recordRefundOnOrder(orderId: string, refundAmount: number): Promise<void> {

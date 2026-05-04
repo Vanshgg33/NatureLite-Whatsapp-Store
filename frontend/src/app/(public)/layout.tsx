@@ -21,7 +21,11 @@ export default function PublicLayout({
     <SiteSettingsProvider>
       <LoadingProvider>
         <AddToCartAnimationProvider>
-          <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
+          {/* afterInteractive: WhatsApp /pay page mounts and immediately checks
+              window.Razorpay; lazyOnload defers past hydration, racing the
+              page-mount checkout call and showing a spurious "widget failed
+              to load" error to first-time payers on slower networks. */}
+          <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="afterInteractive" />
           <div className="sticky top-0 z-50 w-full bg-white">
             <AnnouncementBar />
             <PromoBar />

@@ -75,8 +75,22 @@ export default function WhatsAppPayPage() {
         },
       };
 
-      if (typeof window === 'undefined' || !window.Razorpay) {
+      if (typeof window === 'undefined') {
         setError('Payment widget failed to load. Refresh the page or use another browser.');
+        setLoading(false);
+        return;
+      }
+
+      // Razorpay is loaded via next/script in (public)/layout.tsx with
+      // strategy="afterInteractive". On slow connections the script may still
+      // be in flight when this effect fires — poll briefly instead of failing
+      // the customer with a confusing "widget failed to load" message.
+      const startedAt = Date.now();
+      while (!window.Razorpay && Date.now() - startedAt < 8000) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      if (!window.Razorpay) {
+        setError('Payment widget failed to load. Check your connection and tap Try again.');
         setLoading(false);
         return;
       }
