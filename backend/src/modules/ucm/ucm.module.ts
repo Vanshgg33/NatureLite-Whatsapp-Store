@@ -12,7 +12,7 @@ import { UcmService } from './ucm.service';
     SettingsModule,
     CategoriesModule,
     forwardRef(() => ProductsModule),
-    StoresModule,
+    forwardRef(() => StoresModule),
     StoreStockModule,
   ],
   controllers: [UcmController],
