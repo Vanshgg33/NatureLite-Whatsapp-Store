@@ -114,6 +114,48 @@ export class StoreStockRepository extends BaseRepository<StoreStockDocument> {
     return this.model.find({ product: productObjId }).populate('store', 'name code').exec();
   }
 
+  /**
+   * Sum stock across every store for the given products. Returns aggregated
+   * main stock and per-variant-SKU stock keyed by productId. Used by the
+   * Products list to display StoreStock as the single source of truth.
+   */
+  async aggregateStockByProducts(
+    productIds: Types.ObjectId[],
+  ): Promise<
+    Map<string, { stock: number; variantStocks: Map<string, number> }>
+  > {
+    const out = new Map<string, { stock: number; variantStocks: Map<string, number> }>();
+    if (productIds.length === 0) return out;
+
+    const rows = await this.model
+      .find({ product: { $in: productIds } })
+      .select('product stock variantStocks')
+      .lean()
+      .exec();
+
+    for (const row of rows as Array<{
+      product: Types.ObjectId;
+      stock?: number;
+      variantStocks?: Array<{ variantSku: string; stock: number }>;
+    }>) {
+      const key = row.product.toString();
+      let agg = out.get(key);
+      if (!agg) {
+        agg = { stock: 0, variantStocks: new Map<string, number>() };
+        out.set(key, agg);
+      }
+      agg.stock += row.stock ?? 0;
+      for (const v of row.variantStocks ?? []) {
+        if (!v?.variantSku) continue;
+        agg.variantStocks.set(
+          v.variantSku,
+          (agg.variantStocks.get(v.variantSku) ?? 0) + (v.stock ?? 0),
+        );
+      }
+    }
+    return out;
+  }
+
   async findOneByStoreAndProduct(
     storeId: Types.ObjectId,
     productId: Types.ObjectId,
@@ -270,22 +312,31 @@ export class StoreStockRepository extends BaseRepository<StoreStockDocument> {
   async initializeStockForProduct(
     productId: Types.ObjectId,
     storeIds: Types.ObjectId[],
+    mainStoreSeed?: {
+      storeId: Types.ObjectId;
+      stock: number;
+      variantStocks?: Array<{ variantSku: string; stock: number }>;
+    },
   ): Promise<void> {
-    const ops = storeIds.map((storeId) => ({
-      updateOne: {
-        filter: { store: storeId, product: productId },
-        update: {
-          $setOnInsert: {
-            store: storeId,
-            product: productId,
-            stock: 0,
-            variantStocks: [],
-            lowStockThreshold: 5,
+    if (storeIds.length === 0) return;
+    const ops = storeIds.map((storeId) => {
+      const isMain = mainStoreSeed && storeId.equals(mainStoreSeed.storeId);
+      return {
+        updateOne: {
+          filter: { store: storeId, product: productId },
+          update: {
+            $setOnInsert: {
+              store: storeId,
+              product: productId,
+              stock: isMain ? mainStoreSeed!.stock : 0,
+              variantStocks: isMain ? (mainStoreSeed!.variantStocks ?? []) : [],
+              lowStockThreshold: 5,
+            },
           },
+          upsert: true,
         },
-        upsert: true,
-      },
-    }));
+      };
+    });
     await this.model.bulkWrite(ops);
   }
 }

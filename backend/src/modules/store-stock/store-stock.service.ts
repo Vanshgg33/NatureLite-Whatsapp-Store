@@ -148,14 +148,38 @@ export class StoreStockService {
     await this.storeStockRepository.bulkSetStock(storeObjId, items);
   }
 
+  async aggregateStockByProducts(
+    productIds: string[],
+  ): Promise<
+    Map<string, { stock: number; variantStocks: Map<string, number> }>
+  > {
+    const objIds = productIds.map((id) => parseObjectId(id, 'productId'));
+    return this.storeStockRepository.aggregateStockByProducts(objIds);
+  }
+
   async getLowStockByStore(storeId: string): Promise<StoreStock[]> {
     const storeObjId = parseObjectId(storeId, 'storeId');
     return this.storeStockRepository.findLowStockByStore(storeObjId);
   }
 
-  async initializeStockForProduct(productId: string, storeIds: string[]): Promise<void> {
+  async initializeStockForProduct(
+    productId: string,
+    storeIds: string[],
+    mainStoreSeed?: {
+      storeId: string;
+      stock: number;
+      variantStocks?: Array<{ variantSku: string; stock: number }>;
+    },
+  ): Promise<void> {
     const productObjId = parseObjectId(productId, 'productId');
     const storeObjIds = storeIds.map((id) => parseObjectId(id, 'storeId'));
-    await this.storeStockRepository.initializeStockForProduct(productObjId, storeObjIds);
+    const seed = mainStoreSeed
+      ? {
+          storeId: parseObjectId(mainStoreSeed.storeId, 'mainStoreId'),
+          stock: mainStoreSeed.stock,
+          variantStocks: mainStoreSeed.variantStocks,
+        }
+      : undefined;
+    await this.storeStockRepository.initializeStockForProduct(productObjId, storeObjIds, seed);
   }
 }

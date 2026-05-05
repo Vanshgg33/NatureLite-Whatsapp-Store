@@ -16,8 +16,24 @@ export class ProductRepository extends BaseRepository<ProductDocument> {
     super(model);
   }
 
-  async findIdsAndStock(): Promise<Array<{ _id: Types.ObjectId; stock: number }>> {
-    return this.model.find().select('_id stock').lean().exec();
+  async findIdsAndStock(): Promise<
+    Array<{
+      _id: Types.ObjectId;
+      stock: number;
+      variants?: Array<{ sku: string; stock: number }>;
+    }>
+  > {
+    return this.model
+      .find()
+      .select('_id stock variants.sku variants.stock')
+      .lean()
+      .exec() as unknown as Promise<
+      Array<{
+        _id: Types.ObjectId;
+        stock: number;
+        variants?: Array<{ sku: string; stock: number }>;
+      }>
+    >;
   }
 
   async findAllForSync(): Promise<ProductDocument[]> {

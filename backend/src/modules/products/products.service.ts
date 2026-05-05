@@ -35,12 +35,21 @@ export class ProductsService implements OnModuleInit {
     if (stores.length === 0) return;
 
     const storeIds = stores.map((s) => s._id.toString());
+    const mainStore = stores.find((s) => s.isMainStore) ?? stores[0];
     const products = await this.productRepository.findIdsAndStock();
 
     for (const product of products) {
+      const variantStocks = (product.variants ?? [])
+        .filter((v) => !!v?.sku)
+        .map((v) => ({ variantSku: v.sku, stock: v.stock ?? 0 }));
       await this.storeStockService.initializeStockForProduct(
         product._id.toString(),
         storeIds,
+        {
+          storeId: mainStore._id.toString(),
+          stock: product.stock ?? 0,
+          variantStocks,
+        },
       );
     }
 
@@ -73,11 +82,20 @@ export class ProductsService implements OnModuleInit {
       const stores = await this.storesService.findAll();
       const storeIds = stores.map((s) => s._id.toString());
       if (storeIds.length > 0) {
+        const mainStore = stores.find((s) => s.isMainStore) ?? stores[0];
+        const variantStocks = (saved.variants ?? [])
+          .filter((v) => !!v?.sku)
+          .map((v) => ({ variantSku: v.sku, stock: v.stock ?? 0 }));
         await this.storeStockService.initializeStockForProduct(
           saved._id.toString(),
           storeIds,
+          {
+            storeId: mainStore._id.toString(),
+            stock: saved.stock ?? 0,
+            variantStocks,
+          },
         );
-        this.logger.log(`Initialized StoreStock for product ${saved.name} across ${storeIds.length} store(s)`);
+        this.logger.log(`Initialized StoreStock for product ${saved.name} across ${storeIds.length} store(s) (main: ${mainStore.name})`);
       }
     } catch (error) {
       this.logger.error(`Failed to initialize StoreStock for product ${saved.name}: ${(error as Error).message}`);
@@ -88,8 +106,84 @@ export class ProductsService implements OnModuleInit {
     return saved as Product;
   }
 
+  /**
+   * Overlay each product's `stock` and `variants[].stock` with the sum of the
+   * matching StoreStock rows. StoreStock is the source of truth: order
+   * decrements happen there, Stock Management writes happen there. Reading
+   * Product.stock directly produces a value that drifts as orders ship and
+   * was the cause of "Products page shows 100, Stock Management shows 0".
+   */
+  private async overlayStoreStock<T extends { _id: Types.ObjectId; stock?: number; variants?: Array<{ sku: string; stock?: number }> }>(
+    products: T[],
+  ): Promise<void> {
+    if (products.length === 0) return;
+    const productIds = products.map((p) => p._id.toString());
+    let agg: Map<string, { stock: number; variantStocks: Map<string, number> }>;
+    try {
+      agg = await this.storeStockService.aggregateStockByProducts(productIds);
+    } catch (error) {
+      this.logger.warn(
+        `aggregateStockByProducts failed, falling back to Product.stock: ${(error as Error).message}`,
+      );
+      return;
+    }
+    for (const p of products) {
+      const a = agg.get(p._id.toString());
+      if (!a) continue;
+      p.stock = a.stock;
+      if (Array.isArray(p.variants)) {
+        for (const v of p.variants) {
+          if (!v?.sku) continue;
+          v.stock = a.variantStocks.get(v.sku) ?? 0;
+        }
+      }
+    }
+  }
+
+  /** Mirror a stock write to the main store's StoreStock so the read overlay
+   *  reflects it on the Products page. Falls back gracefully if no main store
+   *  is configured — the local Product.stock write is still persisted. */
+  private async mirrorStockToMainStore(
+    productId: string,
+    seed: { stock?: number; variantStocks?: Array<{ variantSku: string; stock: number }> },
+  ): Promise<void> {
+    if (seed.stock === undefined && (!seed.variantStocks || seed.variantStocks.length === 0)) {
+      return;
+    }
+    try {
+      const stores = await this.storesService.findAll();
+      if (stores.length === 0) return;
+      const mainStore = stores.find((s) => s.isMainStore) ?? stores[0];
+      const storeIds = stores.map((s) => s._id.toString());
+      // initializeStockForProduct uses $setOnInsert, so it can't *change* an
+      // existing main-store row — we need a direct setStock for updates.
+      await this.storeStockService.initializeStockForProduct(productId, storeIds);
+      if (seed.stock !== undefined) {
+        await this.storeStockService.setStock({
+          storeId: mainStore._id.toString(),
+          productId,
+          stock: seed.stock,
+        });
+      }
+      for (const v of seed.variantStocks ?? []) {
+        await this.storeStockService.setStock({
+          storeId: mainStore._id.toString(),
+          productId,
+          stock: v.stock,
+          variantSku: v.variantSku,
+        });
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Failed to mirror stock to main store for product ${productId}: ${(error as Error).message}`,
+      );
+    }
+  }
+
   async findAll(query: ProductQueryDto): Promise<PaginatedResult<Product>> {
-    return this.productRepository.findAllPaginated(query) as Promise<PaginatedResult<Product>>;
+    const result = await this.productRepository.findAllPaginated(query) as PaginatedResult<Product>;
+    await this.overlayStoreStock(result.items as Array<Product & { _id: Types.ObjectId }>);
+    return result;
   }
 
   async findById(id: string): Promise<Product> {
@@ -102,6 +196,7 @@ export class ProductsService implements OnModuleInit {
     if (isValidObjectIdString(catId)) {
       await product.populate('category', 'name slug');
     }
+    await this.overlayStoreStock([product as unknown as { _id: Types.ObjectId; stock?: number; variants?: Array<{ sku: string; stock?: number }> }]);
     return product as Product;
   }
 
@@ -114,6 +209,7 @@ export class ProductsService implements OnModuleInit {
     if (isValidObjectIdString(catId)) {
       await product.populate('category', 'name slug');
     }
+    await this.overlayStoreStock([product as unknown as { _id: Types.ObjectId; stock?: number; variants?: Array<{ sku: string; stock?: number }> }]);
     return product as Product;
   }
 
@@ -199,7 +295,18 @@ export class ProductsService implements OnModuleInit {
       throw new NotFoundException('Product not found');
     }
 
+    const variantStocks = Array.isArray(dto.variants)
+      ? dto.variants
+          .filter((v) => v?.sku && v.stock !== undefined)
+          .map((v) => ({ variantSku: v.sku as string, stock: v.stock as number }))
+      : [];
+    await this.mirrorStockToMainStore(product._id.toString(), {
+      stock: dto.stock,
+      variantStocks,
+    });
+
     await this.ucmService.syncProductById(product._id.toString(), 'product_updated');
+    await this.overlayStoreStock([product as unknown as { _id: Types.ObjectId; stock?: number; variants?: Array<{ sku: string; stock?: number }> }]);
     return product as Product;
   }
 
@@ -222,7 +329,12 @@ export class ProductsService implements OnModuleInit {
     }
 
     const saved = await product.save();
+    await this.mirrorStockToMainStore(saved._id.toString(), {
+      stock: dto.variantSku ? undefined : dto.stock,
+      variantStocks: dto.variantSku ? [{ variantSku: dto.variantSku, stock: dto.stock }] : [],
+    });
     await this.ucmService.syncProductById(saved._id.toString(), 'stock_updated');
+    await this.overlayStoreStock([saved as unknown as { _id: Types.ObjectId; stock?: number; variants?: Array<{ sku: string; stock?: number }> }]);
     return saved as Product;
   }
 
