@@ -166,6 +166,27 @@ export class ChatbotService {
     return entry.stock ?? 0;
   }
 
+  /**
+   * Single source of truth for "can this customer order this product right now".
+   * Returns POSITIVE_INFINITY for untracked products, otherwise the main-store
+   * count (which is what `OrdersService` actually decrements). Use this from
+   * every add-to-cart / buy-now / quantity-picker entry point so the customer
+   * never gets a stock error after multiple screens.
+   */
+  private async getMainStoreAvailable(
+    product: { _id: Types.ObjectId | string; trackStock?: boolean } | null | undefined,
+    variantSku?: string,
+  ): Promise<number> {
+    if (!product) return 0;
+    if (product.trackStock === false) return Number.POSITIVE_INFINITY;
+    const mainStoreId = await this.getMainStoreId();
+    const entry = await this.storeStockService.getStockForStoreProduct(
+      mainStoreId,
+      product._id.toString(),
+    );
+    return this.resolveStoreAvailableStock(entry, variantSku);
+  }
+
   /** First origin in FRONTEND_URL (comma-separated supported in main.ts). */
   private resolveFrontendBaseUrl(): string {
     const raw = this.configService.get<string>('frontendUrl') ?? '';
@@ -877,8 +898,11 @@ export class ChatbotService {
         return;
       }
 
-      await this.transitionToState(session, 'coupon_prompt');
-      await this.sendFlowResponse(phone, 'coupon_prompt', session);
+      // Buy Now is a single-item express path \u2014 skip the coupon screen and
+      // jump straight to address selection. Customers can still apply a code
+      // from the cart screen if they go back. Cuts one round-trip.
+      await this.transitionToState(session, 'checkout');
+      await this.sendCheckoutOptions(phone, session);
       return;
     }
 
@@ -904,18 +928,48 @@ export class ChatbotService {
         source: 'cart',
       });
 
-      // Only skip the coupon prompt when the customer already has a coupon
-      // applied. Otherwise always show it so they can see available codes —
-      // sending them straight to the address step hides the promos.
+      // Auto-apply the best eligible coupon at checkout. The cart screen
+      // already surfaces the suggested code and a "Change coupon" button, so
+      // customers who don't want it can remove or swap from there.
+      //   - cart already has a coupon applied → keep it, advance.
+      //   - eligible coupon exists → apply silently, send a one-line
+      //     confirmation, advance.
+      //   - no eligible coupons → advance straight to address.
       const cart = await this.cartService.getCart(session.user.toString());
-      if (cart.couponCode) {
-        await this.transitionToState(session, 'checkout');
-        await this.sendCheckoutOptions(phone, session);
-        return;
+      if (!cart.couponCode) {
+        const applicable = await this.findApplicableCoupons(session);
+        const best = applicable[0];
+        if (best) {
+          try {
+            const updated = await this.cartService.applyCoupon(session.user.toString(), best.code);
+            this.analytics.track('chatbot.coupon_applied', {
+              userId: session.user.toString(),
+              code: best.code,
+              discount: updated.discount,
+              source: 'auto',
+            });
+            await this.whatsappService.sendTextMessage({
+              phone,
+              message:
+                `🏷 ${bold(`${this.formatCurrency(updated.discount)} off`)} with ${bold(best.code)} applied.\n` +
+                italic('Remove from cart if you don’t want it.'),
+            });
+          } catch (err) {
+            // Auto-apply failed (e.g. cap hit since findApplicableCoupons
+            // ran). Fall back to the manual prompt rather than silently
+            // dropping the discount.
+            this.logger.warn(
+              `Auto-apply coupon ${best.code} failed: ${err instanceof Error ? err.message : 'unknown'}`,
+            );
+            await this.transitionToState(session, 'coupon_prompt');
+            await this.sendFlowResponse(phone, 'coupon_prompt', session);
+            return;
+          }
+        }
       }
 
-      await this.transitionToState(session, 'coupon_prompt');
-      await this.sendFlowResponse(phone, 'coupon_prompt', session);
+      await this.transitionToState(session, 'checkout');
+      await this.sendCheckoutOptions(phone, session);
       return;
     }
 
@@ -937,8 +991,29 @@ export class ChatbotService {
     }
 
     if (input === 'manage' || input === 'remove') {
-      await this.transitionToState(session, 'browsing');
-      await this.sendBrowseSurface(phone, session);
+      await this.sendCartItemPicker(phone, session);
+      return;
+    }
+
+    // Tap a cart-item row → show the +1 / -1 / Remove action card.
+    const parsed = parseButton(input);
+    if (parsed.kind === 'cartItem') {
+      await this.sendCartItemActionCard(phone, session, parsed.idx);
+      return;
+    }
+
+    // Per-item action buttons act on the index stashed by the picker.
+    if (input === BTN.CART_INC || input === BTN.CART_DEC || input === BTN.CART_RM) {
+      const idx = session.context.manageCartItemIdx;
+      if (typeof idx !== 'number') {
+        await this.sendCartSummary(phone, session);
+        return;
+      }
+      if (input === BTN.CART_RM) {
+        await this.removeCartItemByIndex(phone, session, idx);
+      } else {
+        await this.adjustCartItemQuantity(phone, session, idx, input === BTN.CART_INC ? 1 : -1);
+      }
       return;
     }
 
@@ -1915,14 +1990,16 @@ export class ChatbotService {
     input: string,
     message: WhatsAppMessage,
   ): Promise<void> {
-    if (input === 'back') {
+    if (input === 'back' || input === BTN.CHANGE_ADDRESS) {
       // Safety: never let the "place another order" override linger.
       if (session.context.allowAnotherOrderOnce) {
         session.context = mergeChatContext(session.context, { allowAnotherOrderOnce: false });
         await session.save();
       }
       await this.transitionToState(session, 'checkout');
-      await this.sendCheckoutOptions(phone, session);
+      // Force the address list — the auto-pick in sendCheckoutOptions would
+      // otherwise bounce the customer right back to this screen.
+      await this.sendCheckoutOptions(phone, session, { forceShowList: true });
       return;
     }
 
@@ -3665,8 +3742,26 @@ export class ChatbotService {
       price: product.price,
     });
 
+    // When out of stock, don't dangle Add/Buy buttons that lead to a dead-end
+    // \u2014 surface a recovery action immediately instead of letting the customer
+    // discover it 3 screens later at order placement.
+    if (!inStock) {
+      const followUpBody = product.images[0]
+        ? `${stockBadge} \u00B7 "${product.name}" is unavailable right now.`
+        : `${caption}\n\n${stockBadge} \u00B7 unavailable right now.`;
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        bodyText: followUpBody,
+        buttons: [
+          { id: BTN.BROWSE, title: '\uD83D\uDECD Browse' },
+          { id: BTN.BACK, title: '\u21A9 Back' },
+        ],
+      });
+      return;
+    }
+
     const followUpBody = product.images[0]
-      ? `${bold(product.name)} \u00B7 ${this.formatCurrency(product.price)} \u00B7 ${stockBadge}\n\nReady to add?`
+      ? 'Ready to add?'
       : `${caption}\n\nReady to add?`;
 
     await this.whatsappService.sendInteractiveButtons({
@@ -3801,6 +3896,72 @@ export class ChatbotService {
     });
   }
 
+  /** Interactive list of cart items so the customer can tap one to adjust
+   *  qty / remove without typing. Replaces the older "type 'remove ghee'"
+   *  shortcut as the primary edit path; the typed parser still works. */
+  private async sendCartItemPicker(
+    phone: string,
+    session: ChatSessionDocument,
+  ): Promise<void> {
+    if (!session.user) {
+      await this.sendEmptyCart(phone);
+      return;
+    }
+    const cart = await this.cartService.getCart(session.user.toString());
+    if (cart.items.length === 0) {
+      await this.sendEmptyCart(phone);
+      return;
+    }
+
+    const rows = cart.items.slice(0, WA.MAX_ROWS_PER_SECTION).map((item, idx) => ({
+      id: Btn.cartItem(idx),
+      title: clip(`${item.product.name} ×${item.quantity}`, WA.LIST_ROW_TITLE),
+      description: clip(this.formatCurrency(item.total), WA.LIST_ROW_DESC),
+    }));
+
+    await this.whatsappService.sendInteractiveList({
+      phone,
+      headerText: 'Edit cart',
+      bodyText: 'Tap an item to adjust quantity or remove.',
+      buttonText: 'Pick item',
+      sections: [
+        { title: 'Items', rows },
+        {
+          title: 'Done',
+          rows: [{ id: BTN.BACK, title: '↩ Back to cart' }],
+        },
+      ],
+    });
+  }
+
+  /** 3-button card for a single cart item: +1 / −1 / Remove. The handler at
+   *  `BTN.CART_INC/DEC/RM` reads the stashed index and applies the action. */
+  private async sendCartItemActionCard(
+    phone: string,
+    session: ChatSessionDocument,
+    idx: number,
+  ): Promise<void> {
+    if (!session.user) return;
+    const cart = await this.cartService.getCart(session.user.toString());
+    const item = cart.items[idx];
+    if (!item) {
+      await this.sendCartSummary(phone, session);
+      return;
+    }
+    session.context = mergeChatContext(session.context, { manageCartItemIdx: idx });
+    await session.save();
+    await this.whatsappService.sendInteractiveButtons({
+      phone,
+      headerText: clip(item.product.name, WA.HEADER),
+      bodyText: `×${item.quantity} · ${this.formatCurrency(item.total)}`,
+      buttons: [
+        { id: BTN.CART_INC, title: '➕ +1' },
+        { id: BTN.CART_DEC, title: '➖ −1' },
+        { id: BTN.CART_RM, title: '🗑 Remove' },
+      ],
+    });
+  }
+
   /** Empty cart with high-intent recovery CTAs. */
   /**
    * Add N units of the session's current product to the cart and render the
@@ -3828,6 +3989,33 @@ export class ChatbotService {
         message: 'This product is no longer available.',
       });
       await this.sendCategoryList(phone, session);
+      return;
+    }
+
+    // Main-store stock is the only source that survives to order placement
+    // (`OrdersService.decrementStock` only touches StoreStock at the main
+    // store). cartService.addItem checks the aggregate Product.stock, which
+    // can pass even when the main store is empty — the failure then surfaces
+    // 4 screens later at order placement. Gate it here, once.
+    const available = await this.getMainStoreAvailable(product);
+    if (available <= 0) {
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        headerText: 'Out of stock',
+        bodyText: `"${product.name}" is unavailable right now.`,
+        buttons: [
+          { id: BTN.BROWSE, title: '🛍 Browse' },
+          { id: BTN.BACK, title: '↩ Back' },
+        ],
+      });
+      return;
+    }
+    if (qty > available) {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: `Only ${available} in stock — try a smaller quantity.`,
+      });
+      await this.sendProductDetail(phone, productId, session);
       return;
     }
 
@@ -3865,14 +4053,11 @@ export class ChatbotService {
 
     await this.whatsappService.sendInteractiveButtons({
       phone,
-      headerText: `\u2705 Added ${qty > 1 ? `\u00D7${qty} ` : ''}to cart`,
       bodyText:
-        `\uD83D\uDCE6 ${product.name}\n` +
-        `\uD83D\uDED2 ${bold(`${cart.itemCount} item${cart.itemCount === 1 ? '' : 's'}`)} \u00B7 ${this.formatCurrency(cart.total)}`,
+        `\u2713 Added \u00B7 ${bold(`${cart.itemCount} item${cart.itemCount === 1 ? '' : 's'}`)} \u00B7 ${this.formatCurrency(cart.total)}`,
       buttons: [
         { id: BTN.CHECKOUT, title: '\u2705 Checkout' },
-        { id: BTN.VIEW_CART, title: '\uD83D\uDED2 View Cart' },
-        { id: BTN.KEEP_SHOPPING, title: '\u2795 Keep Shopping' },
+        { id: BTN.KEEP_SHOPPING, title: '\u2795 Add more' },
       ],
     });
   }
@@ -3892,7 +4077,22 @@ export class ChatbotService {
       return;
     }
 
-    const QTY_CHOICES = [1, 2, 3, 5, 10];
+    const available = await this.getMainStoreAvailable(product);
+    if (available <= 0) {
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        headerText: 'Out of stock',
+        bodyText: `"${product.name}" is unavailable right now.`,
+        buttons: [
+          { id: BTN.BROWSE, title: '\uD83D\uDECD Browse' },
+          { id: BTN.BACK, title: '\u21A9 Back' },
+        ],
+      });
+      return;
+    }
+    const cap = Number.isFinite(available) ? available : Number.POSITIVE_INFINITY;
+    const QTY_CHOICES = [1, 2, 3, 5, 10].filter((n) => n <= cap);
+    if (QTY_CHOICES.length === 0) QTY_CHOICES.push(1);
     const rows = QTY_CHOICES.map((n) => ({
       id: Btn.addQty(n),
       title: clip(`\u00D7${n}   ${this.formatCurrency(product.price * n)}`, WA.LIST_ROW_TITLE),
@@ -3932,7 +4132,11 @@ export class ChatbotService {
     });
   }
 
-  private async sendCheckoutOptions(phone: string, session: ChatSessionDocument): Promise<void> {
+  private async sendCheckoutOptions(
+    phone: string,
+    session: ChatSessionDocument,
+    options: { forceShowList?: boolean } = {},
+  ): Promise<void> {
     if (!session.user) {
       await this.whatsappService.sendTextMessage({
         phone,
@@ -3956,6 +4160,23 @@ export class ChatbotService {
         ],
       });
       return;
+    }
+
+    // Auto-pick when the choice is unambiguous: exactly one saved address,
+    // or one explicitly marked default. Skips a list screen on every repeat
+    // order. Customers can still change it from the payment screen via
+    // "Change address". `forceShowList` overrides this for the explicit
+    // change path.
+    if (!options.forceShowList) {
+      const defaultIdx = user.addresses.findIndex((a) => a.isDefault);
+      const autoIdx = user.addresses.length === 1 ? 0 : defaultIdx;
+      if (autoIdx >= 0) {
+        session.context = mergeChatContext(session.context, { selectedAddressIndex: autoIdx });
+        await session.save();
+        await this.transitionToState(session, 'payment_selection');
+        await this.sendFlowResponse(phone, 'payment_selection', session);
+        return;
+      }
     }
 
     const savedRows = user.addresses.slice(0, 8).map((addr, i) => {
@@ -4286,6 +4507,7 @@ export class ChatbotService {
       payment_selection: {
         '1': 'cod', cod: 'cod', cash: 'cod', 'cash on delivery': 'cod',
         '2': 'prepaid', prepaid: 'prepaid', online: 'prepaid', pay: 'prepaid', upi: 'prepaid',
+        change_address: 'change_address', 'change address': 'change_address',
         yes: 'another_yes', no: 'another_no',
         back: 'back',
       },
@@ -4373,7 +4595,11 @@ export class ChatbotService {
           key === 'back' ||
           key === 'continue' ||
           key === 'continue_shopping' ||
-          key === 'coupon_list'
+          key === 'coupon_list' ||
+          key === BTN.CART_INC ||
+          key === BTN.CART_DEC ||
+          key === BTN.CART_RM ||
+          key.startsWith('citem_')
         );
       case 'coupon_prompt':
         return (
@@ -4399,6 +4625,7 @@ export class ChatbotService {
         return (
           key === 'cod' ||
           key === 'prepaid' ||
+          key === 'change_address' ||
           key === 'back' ||
           key === 'another_yes' ||
           key === 'another_no'

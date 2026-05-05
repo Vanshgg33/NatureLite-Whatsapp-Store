@@ -25,6 +25,8 @@ export interface ChatSessionContext {
   cartTipSeen?: boolean;
   /** Suggested coupon code offered on coupon_prompt (stored so apply can use it). */
   suggestedCoupon?: string;
+  /** Cart item index currently being managed via the per-item action card. */
+  manageCartItemIdx?: number;
   /**
    * Last WhatsApp catalog `order` webhook messageId we processed. Used to
    * short-circuit duplicate redeliveries (360dialog/Meta retry on network

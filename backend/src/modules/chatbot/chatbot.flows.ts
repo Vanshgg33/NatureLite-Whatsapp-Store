@@ -189,12 +189,13 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
       buttons: [
         { id: BTN.PREPAID, title: '\u26A1 UPI / Card' },
         { id: BTN.COD, title: '\uD83D\uDCB5 Cash on Delivery' },
-        { id: BTN.BACK, title: '\u21A9 Change' },
+        { id: BTN.CHANGE_ADDRESS, title: '\uD83D\uDCCD Change address' },
       ],
     },
     transitions: {
       cod: 'main_menu',
       prepaid: 'main_menu',
+      change_address: 'checkout',
       back: 'checkout',
     },
   },

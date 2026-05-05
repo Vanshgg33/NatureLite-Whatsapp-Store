@@ -34,6 +34,11 @@ export const BTN = {
   MORE_ORDERS: 'more_orders',
 
   ADD_NEW_ADDRESS: 'new_address',
+  CHANGE_ADDRESS: 'change_address',
+
+  CART_INC: 'cart_inc',
+  CART_DEC: 'cart_dec',
+  CART_RM: 'cart_rm',
 } as const;
 
 export const Btn = {
@@ -45,6 +50,7 @@ export const Btn = {
   address: (i: number) => `address_${i}`,
   applyCoupon: (code: string) => `capply_${code}`,
   addQty: (n: number) => `qty_${n}`,
+  cartItem: (i: number) => `citem_${i}`,
 };
 
 export type ParsedButton =
@@ -56,9 +62,10 @@ export type ParsedButton =
   | { kind: 'address'; idx: number }
   | { kind: 'applyCoupon'; code: string }
   | { kind: 'addQty'; qty: number }
+  | { kind: 'cartItem'; idx: number }
   | { kind: 'static'; value: string };
 
-const PREFIX_RE = /^(prod|cat|order|reorder|pay|address|addr|capply|qty)_(.+)$/;
+const PREFIX_RE = /^(prod|cat|order|reorder|pay|address|addr|capply|qty|citem)_(.+)$/;
 
 export function parseButton(id: string | undefined | null): ParsedButton {
   const raw = (id ?? '').trim();
@@ -82,6 +89,8 @@ export function parseButton(id: string | undefined | null): ParsedButton {
         ? { kind: 'addQty', qty }
         : { kind: 'static', value: raw };
     }
+    case 'citem':
+      return Number.isFinite(idx) ? { kind: 'cartItem', idx } : { kind: 'static', value: raw };
     default:         return { kind: 'static', value: raw };
   }
 }

@@ -9,7 +9,7 @@ import { CategoryRepository } from '../categories/repositories/category.reposito
 import { CatalogConfig } from '../../config/configuration';
 import { UpdateUcmCatalogConfigDto, UcmSyncMode } from './dto/ucm.dto';
 import { StoresService } from '../stores/stores.service';
-itimport { StoreStockService } from '../store-stock/store-stock.service';
+import { StoreStockService } from '../store-stock/store-stock.service';
 
 type CatalogState = {
   syncMode?: UcmSyncMode | 'dry_run' | 'meta';
