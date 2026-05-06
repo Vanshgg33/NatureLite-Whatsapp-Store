@@ -21,12 +21,12 @@ export interface ChatSessionContext {
   editingField?: string;
   /** Address index being edited in account_address_edit state. */
   editingAddressIndex?: number;
-  /** True after the cart-edit tip has been shown once in this session. */
-  cartTipSeen?: boolean;
   /** Suggested coupon code offered on coupon_prompt (stored so apply can use it). */
   suggestedCoupon?: string;
-  /** Cart item index currently being managed via the per-item action card. */
-  manageCartItemIdx?: number;
+  /** Cart item being managed via the per-item action card. Identified by
+   *  productId + variantSku (not array index) so concurrent cart mutations
+   *  in another session don't shift the action onto a different item. */
+  manageCartItem?: { productId: string; variantSku?: string };
   /**
    * Last WhatsApp catalog `order` webhook messageId we processed. Used to
    * short-circuit duplicate redeliveries (360dialog/Meta retry on network

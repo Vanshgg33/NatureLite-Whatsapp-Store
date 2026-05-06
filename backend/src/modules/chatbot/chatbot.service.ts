@@ -346,7 +346,7 @@ export class ChatbotService {
     await this.transitionToState(session, prev);
     switch (prev) {
       case 'browsing':
-        await this.sendCategoryList(phone, session);
+        await this.sendBrowseSurface(phone, session);
         break;
       case 'cart':
         await this.sendCartSummary(phone, session);
@@ -498,7 +498,7 @@ export class ChatbotService {
           phone: message.phone,
           message: 'That catalog item is no longer available. Please browse the latest catalog in chat.',
         });
-        await this.sendCategoryList(message.phone, session);
+        await this.sendBrowseSurface(message.phone, session);
         return;
       }
     }
@@ -538,7 +538,7 @@ export class ChatbotService {
     }
     if (transitionKey === 'continue_shopping' || transitionKey === 'browse') {
       await this.transitionToState(session, 'browsing');
-      await this.sendCategoryList(message.phone, session);
+      await this.sendBrowseSurface(message.phone, session);
       return;
     }
     if (transitionKey === 'menu' || transitionKey === 'main_menu') {
@@ -803,9 +803,8 @@ export class ChatbotService {
       return;
     }
 
-    if ((input === 'add_cart' || input === 'buy_now') && session.currentProductId) {
+    if (input === 'add_cart' && session.currentProductId) {
       const product = await this.productsService.findById(session.currentProductId);
-      // Stock is enforced against the main (Raipur) store, same as browse/detail.
       let mainStoreAvailable = Number.POSITIVE_INFINITY;
       if (product.trackStock !== false) {
         const mainStoreId = await this.getMainStoreId();
@@ -821,7 +820,7 @@ export class ChatbotService {
         await this.whatsappService.sendInteractiveButtons({
           phone,
           headerText: 'Out of stock',
-          bodyText: `"${product.name}" is currently unavailable.\n\nWould you like to browse other products?`,
+          bodyText: `"${product.name}" is unavailable right now. Browse other products?`,
           buttons: [
             { id: BTN.BROWSE, title: '\uD83D\uDECD Browse' },
             { id: BTN.BACK, title: '\u21A9 Back' },
@@ -867,43 +866,6 @@ export class ChatbotService {
           return;
         }
       }
-    }
-
-    if (input === 'buy_now' && session.currentProductId && session.user) {
-      try {
-        await this.cartService.clearCart(session.user.toString());
-        await this.cartService.addItem(session.user.toString(), {
-          productId: session.currentProductId,
-          quantity: 1,
-        });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : '';
-        const stockIssue = /stock/i.test(msg);
-        if (!stockIssue) {
-          this.logger.warn(
-            `Buy-now failed for ${session.user.toString()} / ${session.currentProductId}: ${msg || 'unknown'}`,
-          );
-          await this.whatsappService.sendTextMessage({
-            phone,
-            message: italic('Couldn\u2019t start checkout right now. Please try again.'),
-          });
-          await this.sendProductDetail(phone, session.currentProductId, session);
-          return;
-        }
-        await this.whatsappService.sendTextMessage({
-          phone,
-          message: 'Not enough stock available for this item.',
-        });
-        await this.sendProductDetail(phone, session.currentProductId, session);
-        return;
-      }
-
-      // Buy Now is a single-item express path \u2014 skip the coupon screen and
-      // jump straight to address selection. Customers can still apply a code
-      // from the cart screen if they go back. Cuts one round-trip.
-      await this.transitionToState(session, 'checkout');
-      await this.sendCheckoutOptions(phone, session);
-      return;
     }
 
     await this.sendProductDetail(phone, session.currentProductId || '', session);
@@ -975,18 +937,33 @@ export class ChatbotService {
 
     if (input === 'continue') {
       await this.transitionToState(session, 'browsing');
-      await this.sendCategoryList(phone, session);
+      await this.sendBrowseSurface(phone, session);
       return;
     }
 
     if (input === 'clear') {
+      // Two-step confirmation — wiping the cart is destructive and the typed
+      // shortcut is easy to trigger accidentally ("clear my doubts" etc).
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        headerText: 'Clear cart?',
+        bodyText: 'This removes everything in your cart. Are you sure?',
+        buttons: [
+          { id: 'clear_confirm', title: '🗑 Yes, clear' },
+          { id: BTN.BACK, title: '↩ Keep cart' },
+        ],
+      });
+      return;
+    }
+
+    if (input === 'clear_confirm') {
       await this.cartService.clearCart(session.user.toString());
       await this.whatsappService.sendTextMessage({
         phone,
-        message: 'Cart cleared successfully.',
+        message: 'Cart cleared.',
       });
       await this.transitionToState(session, 'browsing');
-      await this.sendCategoryList(phone, session);
+      await this.sendBrowseSurface(phone, session);
       return;
     }
 
@@ -1002,10 +979,26 @@ export class ChatbotService {
       return;
     }
 
-    // Per-item action buttons act on the index stashed by the picker.
+    // Per-item action buttons resolve the target item by stable identity
+    // (productId + variantSku) so a concurrent cart mutation can't shift the
+    // action onto a different item.
     if (input === BTN.CART_INC || input === BTN.CART_DEC || input === BTN.CART_RM) {
-      const idx = session.context.manageCartItemIdx;
-      if (typeof idx !== 'number') {
+      const target = session.context.manageCartItem;
+      if (!target?.productId) {
+        await this.sendCartSummary(phone, session);
+        return;
+      }
+      const cartNow = session.user
+        ? await this.cartService.getCart(session.user.toString())
+        : null;
+      const idx = cartNow?.items.findIndex(
+        (it) => it.product.id === target.productId && it.variantSku === target.variantSku,
+      ) ?? -1;
+      if (idx < 0) {
+        await this.whatsappService.sendTextMessage({
+          phone,
+          message: italic('That item is no longer in your cart.'),
+        });
         await this.sendCartSummary(phone, session);
         return;
       }
@@ -1052,6 +1045,7 @@ export class ChatbotService {
       return;
     }
     const cart = await this.cartService.getCart(session.user.toString());
+    const previousCoupon = cart.couponCode;
     const item = cart.items[idx];
     if (!item) {
       await this.sendCartSummary(phone, session);
@@ -1087,6 +1081,13 @@ export class ChatbotService {
       }
       await this.sendCartSummary(phone, session);
       return;
+    }
+    const updated = await this.cartService.getCart(session.user.toString());
+    if (previousCoupon && !updated.couponCode) {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: `_Coupon ${previousCoupon} removed \u2014 cart no longer qualifies._`,
+      });
     }
     await this.sendCartSummary(phone, session);
   }
@@ -1129,7 +1130,7 @@ export class ChatbotService {
     if (previousCoupon && !updated.couponCode) {
       await this.whatsappService.sendTextMessage({
         phone,
-        message: '_Coupon removed \u2014 cart was updated._',
+        message: `_Coupon ${previousCoupon} removed \u2014 cart no longer qualifies._`,
       });
     }
     await this.whatsappService.sendTextMessage({
@@ -1378,7 +1379,7 @@ export class ChatbotService {
       await this.whatsappService.sendInteractiveButtons({
         phone,
         headerText: 'No coupons right now',
-        bodyText: 'There are no active promo codes at the moment. You can still type a code to try it.',
+        bodyText: 'No active promo codes at the moment. You can still type a code to try it.',
         buttons: [
           { id: BTN.COUPON_CUSTOM, title: '\uD83C\uDFF7 Enter code' },
           { id: BTN.COUPON_SKIP, title: 'Skip' },
@@ -1646,7 +1647,7 @@ export class ChatbotService {
       },
       browse: async () => {
         await this.transitionToState(session, 'browsing');
-        await this.sendCategoryList(phone, session);
+        await this.sendBrowseSurface(phone, session);
       },
       skip: async () => {
         await this.transitionToState(session, 'checkout');
@@ -1933,6 +1934,19 @@ export class ChatbotService {
     }
     const { name, street, city, state, pincode, landmark } = parsed;
 
+    // Coverage check — empty allowlist means "deliver anywhere" so this is
+    // a no-op until the merchant actually populates SERVICEABLE_PINCODES.
+    const serviceable = this.configService.get<string[]>('delivery.serviceablePincodes') ?? [];
+    if (serviceable.length > 0 && !serviceable.includes(pincode)) {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message:
+          `${bold('We don’t deliver to ' + pincode + ' yet.')}\n\n` +
+          'Send a different address, or reach out to support if you’d like us to add your area.',
+      });
+      return;
+    }
+
     if (!session.user) {
       await this.whatsappService.sendTextMessage({
         phone,
@@ -2050,12 +2064,12 @@ export class ChatbotService {
     if ((cart.total ?? 0) <= 0 && !cart.couponCode) {
       await this.whatsappService.sendInteractiveButtons({
         phone,
-        headerText: 'We cannot price your cart',
+        headerText: 'Cart can’t be priced',
         bodyText:
-          'Your cart total is ₹0. Some items may be unavailable right now — please review your cart or contact support.',
+          'Your cart total is ₹0. Some items may be unavailable — review your cart or reach out to support.',
         buttons: [
-          { id: BTN.CART, title: 'View Cart' },
-          { id: BTN.SUPPORT, title: 'Support' },
+          { id: BTN.CART, title: '🛒 View cart' },
+          { id: BTN.SUPPORT, title: '💬 Support' },
         ],
       });
       await this.transitionToState(session, 'cart');
@@ -2067,10 +2081,10 @@ export class ChatbotService {
         phone,
         headerText: 'Cart total is ₹0',
         bodyText:
-          'Your discount exceeds the cart total. Remove the coupon or add more items to continue.',
+          'The discount exceeds your cart total. Remove the coupon or add more items to continue.',
         buttons: [
-          { id: BTN.CART, title: '\uD83D\uDED2 View Cart' },
-          { id: BTN.BROWSE, title: '\uD83D\uDECD Add More' },
+          { id: BTN.CART, title: '\uD83D\uDED2 View cart' },
+          { id: BTN.BROWSE, title: '\uD83D\uDECD Add more' },
         ],
       });
       await this.transitionToState(session, 'cart');
@@ -2126,10 +2140,10 @@ export class ChatbotService {
       await this.whatsappService.sendInteractiveButtons({
         phone,
         headerText: 'Online payment unavailable',
-        bodyText: 'Please choose Cash on Delivery, or try again later.',
+        bodyText: 'Choose Cash on delivery for now, or try again later.',
         buttons: [
           { id: BTN.COD, title: '\uD83D\uDCB5 Cash on Delivery' },
-          { id: BTN.SUPPORT, title: '\uD83D\uDC64 Support' },
+          { id: BTN.SUPPORT, title: '\uD83D\uDCAC Support' },
           { id: BTN.BACK, title: '\u21A9 Back' },
         ],
       });
@@ -2148,7 +2162,7 @@ export class ChatbotService {
         await this.whatsappService.sendInteractiveButtons({
           phone,
           headerText: 'Recent order detected',
-          bodyText: 'You placed an order just moments ago. Would you like to place another?',
+          bodyText: 'You placed an order moments ago. Place another?',
           buttons: [
             { id: 'another_yes', title: 'Yes, place order' },
             { id: 'another_no', title: 'No' },
@@ -2221,10 +2235,10 @@ export class ChatbotService {
         headerText: 'Order failed',
         bodyText: isExpected
           ? msg
-          : 'We couldn\u2019t place your order right now. Your cart is saved \u2014 please try again or contact support.',
+          : 'Couldn\u2019t place the order right now. Your cart is saved \u2014 try again or reach out to support.',
         buttons: [
-          { id: BTN.CART, title: '\uD83D\uDED2 View Cart' },
-          { id: BTN.SUPPORT, title: '\uD83D\uDC64 Support' },
+          { id: BTN.CART, title: '\uD83D\uDED2 View cart' },
+          { id: BTN.SUPPORT, title: '\uD83D\uDCAC Support' },
           { id: BTN.MENU, title: '\uD83C\uDFE0 Menu' },
         ],
       });
@@ -2240,20 +2254,20 @@ export class ChatbotService {
       paymentMethod,
     });
 
+    const summary =
+      `${bold(`#${order.orderNumber}`)}\n` +
+      `Total ${bold(this.formatCurrency(order.total))}\n` +
+      `Status ${bold(this.formatOrderStatusForCustomer(order))}`;
+
     if (paymentMethod === 'cod') {
       await this.whatsappService.sendInteractiveButtons({
         phone,
         headerText: '\u2705 Order confirmed',
-        bodyText:
-          `${bold(`#${order.orderNumber}`)}\n` +
-          `Total ${bold(this.formatCurrency(order.total))}\n` +
-          `Status ${bold(this.formatOrderStatusForCustomer(order))}\n\n` +
-          `We'll ping you when it ships \uD83D\uDCE6`,
+        bodyText: `${summary}\n\nWe'll ping you when it ships.`,
         footerText: 'Cash on delivery',
         buttons: [
-          { id: Btn.order(order._id.toString()), title: '\uD83D\uDCE6 Track Order' },
-          { id: BTN.BROWSE, title: '\uD83D\uDECD Keep Shopping' },
-          { id: BTN.MENU, title: '\uD83C\uDFE0 Main Menu' },
+          { id: Btn.order(order._id.toString()), title: '\uD83D\uDCE6 Track order' },
+          { id: BTN.BROWSE, title: '\uD83D\uDECD Keep shopping' },
         ],
       });
     } else {
@@ -2273,21 +2287,19 @@ export class ChatbotService {
       }
 
       const body =
-        `${bold(`#${order.orderNumber}`)}\n` +
-        `Total ${bold(this.formatCurrency(order.total))}\n` +
-        `Status ${bold(this.formatOrderStatusForCustomer(order))}\n\n` +
+        `${summary}\n\n` +
         (payUrl
-          ? `Complete your payment securely:\n${payUrl}\n\n${italic('Link expires in 48 hours.')}`
+          ? `Complete your payment:\n${payUrl}`
           : `Sign in to our website and pay for order ${bold(order.orderNumber)} from your account.`);
 
       await this.whatsappService.sendInteractiveButtons({
         phone,
         headerText: '\u2705 Order created',
         bodyText: body,
+        footerText: payUrl ? 'Link expires in 48 hours' : undefined,
         buttons: [
-          { id: Btn.order(order._id.toString()), title: '\uD83D\uDCE6 Track Order' },
-          { id: BTN.BROWSE, title: '\uD83D\uDECD Keep Shopping' },
-          { id: BTN.MENU, title: '\uD83C\uDFE0 Main Menu' },
+          { id: Btn.order(order._id.toString()), title: '\uD83D\uDCE6 Track order' },
+          { id: BTN.BROWSE, title: '\uD83D\uDECD Keep shopping' },
         ],
       });
     }
@@ -2388,7 +2400,7 @@ export class ChatbotService {
         `Tap the link to pay securely:\n${payUrl}\n\n` +
         `${italic('Link expires in 48 hours.')}`,
       buttons: [
-        { id: Btn.order(order._id.toString()), title: '📦 Track Order' },
+        { id: Btn.order(order._id.toString()), title: '📦 Track order' },
         { id: BTN.MENU, title: '🏠 Menu' },
       ],
     });
@@ -2468,7 +2480,7 @@ export class ChatbotService {
           ]
         : [
             { id: Btn.reorder(orderId), title: '\uD83D\uDD01 Reorder' },
-            { id: BTN.SUPPORT, title: '\uD83D\uDC64 Help' },
+            { id: BTN.SUPPORT, title: '\uD83D\uDCAC Help' },
             { id: BTN.BACK, title: '\u21A9 Back' },
           ];
 
@@ -2559,9 +2571,9 @@ export class ChatbotService {
         await this.whatsappService.sendInteractiveButtons({
           phone,
           headerText: 'Reorder failed',
-          bodyText: 'We couldn\u2019t find that order. Please try another one.',
+          bodyText: 'Couldn\u2019t find that order. Try another one.',
           buttons: [
-            { id: BTN.ORDERS, title: '\uD83D\uDCE6 My Orders' },
+            { id: BTN.ORDERS, title: '\uD83D\uDCE6 My orders' },
             { id: BTN.BROWSE, title: '\uD83D\uDECD Browse' },
             { id: BTN.MENU, title: '\uD83C\uDFE0 Menu' },
           ],
@@ -2590,7 +2602,7 @@ export class ChatbotService {
           headerText: 'Reorder unavailable',
           bodyText: 'That order has no items to reorder.',
           buttons: [
-            { id: BTN.ORDERS, title: '\uD83D\uDCE6 My Orders' },
+            { id: BTN.ORDERS, title: '\uD83D\uDCE6 My orders' },
             { id: BTN.BROWSE, title: '\uD83D\uDECD Browse' },
           ],
         });
@@ -2639,7 +2651,7 @@ export class ChatbotService {
             `None of the items from ${bold(`#${originalOrder.orderNumber}`)} are available right now.`,
           buttons: [
             { id: BTN.BROWSE, title: '\uD83D\uDECD Browse' },
-            { id: BTN.ORDERS, title: '\uD83D\uDCE6 My Orders' },
+            { id: BTN.ORDERS, title: '\uD83D\uDCE6 My orders' },
             { id: BTN.MENU, title: '\uD83C\uDFE0 Menu' },
           ],
         });
@@ -2937,7 +2949,7 @@ export class ChatbotService {
           `${address.city}, ${address.state} ${address.pincode}` +
           (address.landmark ? `\n_Landmark: ${address.landmark}_` : ''),
         buttons: [
-          { id: 'set_default', title: 'Set as Default' },
+          { id: 'set_default', title: 'Set as default' },
           { id: 'delete_address', title: 'Delete' },
           { id: 'back', title: 'Back' },
         ],
@@ -3108,8 +3120,8 @@ export class ChatbotService {
       phone,
       bodyText: body,
       buttons: [
-        { id: 'orders', title: 'My Orders' },
-        { id: 'addresses', title: 'My Addresses' },
+        { id: 'orders', title: 'My orders' },
+        { id: 'addresses', title: 'My addresses' },
         { id: 'wallet', title: 'Wallet' },
       ],
     });
@@ -3129,8 +3141,8 @@ export class ChatbotService {
         `Email   ${user.email || '_Not set_'}\n\n` +
         `What would you like to update?`,
       buttons: [
-        { id: 'edit_name', title: 'Change Name' },
-        { id: 'edit_email', title: 'Change Email' },
+        { id: 'edit_name', title: 'Change name' },
+        { id: 'edit_email', title: 'Change email' },
         { id: 'back', title: 'Back' },
       ],
     });
@@ -3151,11 +3163,11 @@ export class ChatbotService {
       await this.whatsappService.sendInteractiveButtons({
         phone,
         bodyText:
-          `*My Addresses*\n` +
+          `*My addresses*\n` +
           `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
           `No saved addresses yet. Add your first one.`,
         buttons: [
-          { id: 'add_address', title: 'Add Address' },
+          { id: 'add_address', title: 'Add address' },
           { id: 'back', title: 'Back' },
         ],
       });
@@ -3168,16 +3180,16 @@ export class ChatbotService {
       description: `${addr.street}, ${addr.city} ${addr.pincode}`.slice(0, 72),
     }));
 
-    rows.push({ id: 'add_address', title: 'Add New Address', description: 'Add a new delivery address' });
+    rows.push({ id: 'add_address', title: 'Add new address', description: 'Add a new delivery address' });
 
     await this.whatsappService.sendInteractiveList({
       phone,
       bodyText:
-        `*My Addresses* (${user.addresses.length})\n` +
+        `*My addresses* (${user.addresses.length})\n` +
         `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
         `Tap an address to manage it.`,
       buttonText: 'View Addresses',
-      sections: [{ title: 'Saved Addresses', rows }],
+      sections: [{ title: 'Saved addresses', rows }],
     });
   }
 
@@ -3271,10 +3283,15 @@ export class ChatbotService {
 
     const mainStoreId = await this.getMainStoreId();
     const sections: Array<{ title: string; productRetailerIds: string[] }> = [];
+    const truncatedCategories: string[] = [];
     let itemsRemaining = MAX_ITEMS_TOTAL;
+    let categoriesSkipped = Math.max(0, categories.length - MAX_SECTIONS);
 
     for (const cat of categories.slice(0, MAX_SECTIONS)) {
-      if (itemsRemaining <= 0) break;
+      if (itemsRemaining <= 0) {
+        categoriesSkipped += 1;
+        continue;
+      }
       let products: Product[] = [];
       try {
         products = await this.productsService.findByCategory(cat._id.toString());
@@ -3315,13 +3332,19 @@ export class ChatbotService {
 
       sections.push({ title: clip(cat.name, 24), productRetailerIds });
       itemsRemaining -= productRetailerIds.length;
+
+      // Track which categories had to drop products so we can prompt the
+      // customer to drill in by typing the category name.
+      if (productRetailerIds.length < fulfillable.length) {
+        truncatedCategories.push(cat.name);
+      }
     }
 
     if (sections.length === 0) {
       await this.whatsappService.sendInteractiveButtons({
         phone,
-        headerText: 'No stock',
-        bodyText: 'No products are in stock at our store right now. Please check back soon.',
+        headerText: 'Out of stock',
+        bodyText: 'Nothing is in stock right now. Check back soon.',
         buttons: [{ id: BTN.MENU, title: '🏠 Menu' }],
       });
       return;
@@ -3331,10 +3354,20 @@ export class ChatbotService {
       phone,
       catalogId,
       headerText: 'Browse our store',
-      bodyText: 'Tap any item below to add it to your cart, then send the cart back to place your order.',
-      footerText: 'Powered by O·Connect',
+      bodyText: 'Tap any item to add it to your cart, then send the cart to place your order.',
       sections,
     });
+
+    // WhatsApp's product_list message caps at 30 items / 10 sections. When
+    // we hit that ceiling, point the customer at typed search so they can
+    // still reach the rest of the catalogue.
+    if (truncatedCategories.length > 0 || categoriesSkipped > 0) {
+      const examples = truncatedCategories.slice(0, 3).join(', ');
+      const hint = examples
+        ? `Type a category (e.g. *${examples}*) or product name to see more.`
+        : 'Type a category or product name to see more.';
+      await this.whatsappService.sendTextMessage({ phone, message: hint });
+    }
   }
 
   /**
@@ -3368,6 +3401,19 @@ export class ChatbotService {
     }
 
     const userId = session.user.toString();
+
+    // Preserve any coupon the customer applied between catalog visits — the
+    // basket replaces items but the customer's intent to use the code shouldn't
+    // silently vanish. Re-applied below after items land; revalidation will
+    // drop it if the new cart no longer qualifies.
+    let preservedCouponCode: string | undefined;
+    try {
+      const existing = await this.cartService.getCart(userId);
+      preservedCouponCode = existing.couponCode;
+    } catch {
+      preservedCouponCode = undefined;
+    }
+
     try {
       await this.cartService.clearCart(userId);
     } catch (error) {
@@ -3377,7 +3423,7 @@ export class ChatbotService {
       await this.whatsappService.sendInteractiveButtons({
         phone,
         headerText: 'Cart unavailable',
-        bodyText: 'We hit a snag preparing your cart. Please try sending it again in a moment.',
+        bodyText: 'Couldn’t prepare your cart just now. Send it again in a moment.',
         buttons: [{ id: BTN.MENU, title: '🏠 Menu' }],
       });
       return;
@@ -3402,9 +3448,36 @@ export class ChatbotService {
       // through to the local product/variant price if Meta omitted it.
       // Currency is INR-only for this store; ignore mismatched currencies
       // rather than trusting a foreign-denominated number.
-      const catalogPrice = (!item.currency || item.currency.toUpperCase() === 'INR')
+      const rawCatalogPrice = (!item.currency || item.currency.toUpperCase() === 'INR')
         ? item.itemPrice
         : undefined;
+
+      // Guard against the propagation race where Meta's catalog hasn't yet
+      // picked up a price update we pushed locally. If Meta echoes a price
+      // that's >10% below our current DB price, the customer is seeing stale
+      // data — reject the line rather than honour a price that costs us
+      // margin without the merchant noticing. Allow Meta-side ↑ overrides
+      // (rare; means our DB lags Meta) since charging less is safer.
+      let catalogPrice = rawCatalogPrice;
+      if (typeof rawCatalogPrice === 'number' && rawCatalogPrice > 0) {
+        const dbPrice = product.price;
+        if (dbPrice > 0 && rawCatalogPrice < dbPrice * 0.9) {
+          this.logger.warn(
+            `catalog_price_mismatch product=${product._id.toString()} catalog=${rawCatalogPrice} db=${dbPrice}`,
+          );
+          this.analytics.track('chatbot.catalog_price_mismatch', {
+            userId,
+            productId: product._id.toString(),
+            catalogPrice: rawCatalogPrice,
+            dbPrice,
+          });
+          failures.push({
+            retailerId: product.name || retailerId,
+            reason: 'price changed — please refresh and add again',
+          });
+          continue;
+        }
+      }
 
       try {
         await this.cartService.addItem(
@@ -3435,6 +3508,20 @@ export class ChatbotService {
       await session.save();
     }
 
+    // Re-apply the preserved coupon. If the new cart no longer qualifies
+    // (e.g. minOrderAmount), tell the customer instead of silently dropping.
+    if (addedCount > 0 && preservedCouponCode) {
+      try {
+        await this.cartService.applyCoupon(userId, preservedCouponCode);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : 'no longer valid';
+        await this.whatsappService.sendTextMessage({
+          phone,
+          message: `Coupon ${preservedCouponCode} couldn't be re-applied — ${reason}.`,
+        });
+      }
+    }
+
     this.analytics.track('chatbot.catalog_order_received', {
       userId,
       itemsRequested: items.length,
@@ -3447,7 +3534,7 @@ export class ChatbotService {
       await this.whatsappService.sendInteractiveButtons({
         phone,
         headerText: 'Cart unavailable',
-        bodyText: `We couldn’t add any of those items right now.${detail ? `\n\n${detail}` : ''}`,
+        bodyText: `Couldn’t add any of those items right now.${detail ? `\n\n${detail}` : ''}`,
         buttons: [{ id: BTN.BROWSE, title: '🛍 Browse again' }],
       });
       await this.transitionToState(session, 'main_menu');
@@ -3589,8 +3676,8 @@ export class ChatbotService {
     if (fulfillableProducts.length === 0) {
       await this.whatsappService.sendInteractiveButtons({
         phone,
-        headerText: 'No stock',
-        bodyText: 'No products in this category are in stock at our store right now.',
+        headerText: 'Out of stock',
+        bodyText: 'Nothing in this category is in stock right now.',
         buttons: [
           { id: BTN.BROWSE, title: '\uD83D\uDECD Other categories' },
           { id: BTN.MENU, title: '\uD83C\uDFE0 Menu' },
@@ -3768,9 +3855,9 @@ export class ChatbotService {
       phone,
       bodyText: followUpBody,
       buttons: [
-        { id: BTN.ADD_CART, title: '\uD83D\uDED2 Add 1 to Cart' },
+        { id: BTN.ADD_CART, title: '\uD83D\uDED2 Add to cart' },
         { id: BTN.PICK_QTY, title: '\uD83D\uDD22 Pick qty' },
-        { id: BTN.BUY_NOW, title: '\u26A1 Buy Now' },
+        { id: BTN.BACK, title: '\u21A9 Back' },
       ],
     });
   }
@@ -3870,24 +3957,15 @@ export class ChatbotService {
     const header = `\uD83D\uDED2 Your cart \u00B7 ${cart.itemCount} item${cart.itemCount === 1 ? '' : 's'}`;
     const body = `${itemList}\n\n${breakdown.join('\n')}${shippingLine}${couponHint}`;
 
-    // Show the edit-tip once per session to keep follow-up renders clean.
-    const tipSeen = session.context?.cartTipSeen === true;
-    const footer = tipSeen ? undefined : "Tip: type 'remove ghee' to edit";
-    if (!tipSeen) {
-      session.context = mergeChatContext(session.context, { cartTipSeen: true });
-      await session.save();
-    }
-
     // 3-button budget on WhatsApp interactive messages: Checkout + Manage are
     // always present; the third slot is the highest-value contextual action
-    // \u2014 coupons when relevant, otherwise the familiar "Add More" entry.
-    const thirdButton = couponButton ?? { id: BTN.KEEP_SHOPPING, title: '\u2795 Add More' };
+    // \u2014 coupons when relevant, otherwise the familiar "Add more" entry.
+    const thirdButton = couponButton ?? { id: BTN.KEEP_SHOPPING, title: '\u2795 Add more' };
 
     await this.whatsappService.sendInteractiveButtons({
       phone,
       headerText: clip(header, WA.HEADER),
       bodyText: body,
-      footerText: footer,
       buttons: [
         { id: BTN.CHECKOUT, title: '\u2705 Checkout' },
         { id: BTN.MANAGE_CART, title: '\u270F\uFE0F Manage' },
@@ -3948,7 +4026,9 @@ export class ChatbotService {
       await this.sendCartSummary(phone, session);
       return;
     }
-    session.context = mergeChatContext(session.context, { manageCartItemIdx: idx });
+    session.context = mergeChatContext(session.context, {
+      manageCartItem: { productId: item.product.id, variantSku: item.variantSku },
+    });
     await session.save();
     await this.whatsappService.sendInteractiveButtons({
       phone,
@@ -3988,7 +4068,7 @@ export class ChatbotService {
         phone,
         message: 'This product is no longer available.',
       });
-      await this.sendCategoryList(phone, session);
+      await this.sendBrowseSurface(phone, session);
       return;
     }
 
@@ -4126,8 +4206,8 @@ export class ChatbotService {
         `Your cart's empty \uD83E\uDEB9\n\n` +
         `Start browsing to find something you'll love.`,
       buttons: [
-        { id: BTN.BROWSE, title: '\uD83D\uDECD Browse All' },
-        { id: BTN.ORDERS, title: '\uD83D\uDCE6 My Orders' },
+        { id: BTN.BROWSE, title: '\uD83D\uDECD Browse' },
+        { id: BTN.ORDERS, title: '\uD83D\uDCE6 My orders' },
       ],
     });
   }
@@ -4227,8 +4307,8 @@ export class ChatbotService {
         headerText: 'My orders',
         bodyText: 'No orders yet. Start shopping to place your first order.',
         buttons: [
-          { id: BTN.BROWSE, title: '\uD83D\uDECD Start Shopping' },
-          { id: BTN.BACK, title: '\u21A9 Main Menu' },
+          { id: BTN.BROWSE, title: '\uD83D\uDECD Start shopping' },
+          { id: BTN.BACK, title: '\uD83C\uDFE0 Menu' },
         ],
       });
       return;
@@ -4378,7 +4458,7 @@ export class ChatbotService {
       buttons: [
         { id: BTN.BROWSE, title: '\uD83D\uDECD Shop Now' },
         { id: BTN.CART, title: clip(cartLabel, WA.BUTTON_TITLE) },
-        { id: BTN.ORDERS, title: '\uD83D\uDCE6 Track Order' },
+        { id: BTN.ORDERS, title: '\uD83D\uDCE6 Track order' },
       ],
     });
   }
@@ -4472,7 +4552,6 @@ export class ChatbotService {
       browsing: { back: 'back', more: 'more_products', next: 'more_products' },
       product_detail: {
         '1': 'add_cart', 'add': 'add_cart', 'add to cart': 'add_cart',
-        '2': 'buy_now', 'buy': 'buy_now', 'buy now': 'buy_now',
         back: 'back',
       },
       cart: {
@@ -4592,6 +4671,7 @@ export class ChatbotService {
           key === 'manage' ||
           key === 'remove' ||
           key === 'clear' ||
+          key === 'clear_confirm' ||
           key === 'back' ||
           key === 'continue' ||
           key === 'continue_shopping' ||
@@ -4646,7 +4726,6 @@ export class ChatbotService {
       case 'product_detail':
         return (
           key === 'add_cart' ||
-          key === 'buy_now' ||
           key === 'pick_qty' ||
           key === 'back' ||
           key.startsWith('qty_')
@@ -4672,7 +4751,7 @@ export class ChatbotService {
     // Always re-show the current state options (no crashes, no silent failures).
     switch (session.currentState) {
       case 'browsing':
-        await this.sendCategoryList(phone, session);
+        await this.sendBrowseSurface(phone, session);
         return;
       case 'cart':
         await this.sendCartSummary(phone, session);
@@ -4783,9 +4862,9 @@ export class ChatbotService {
       phone,
       bodyText: `${thanks}\n\nAnything else we can help with?`,
       buttons: [
-        { id: 'browse', title: 'Browse Products' },
-        { id: 'orders', title: 'My Orders' },
-        { id: 'menu', title: 'Main Menu' },
+        { id: 'browse', title: '🛍 Browse' },
+        { id: 'orders', title: 'My orders' },
+        { id: 'menu', title: 'Menu' },
       ],
     });
     return true;

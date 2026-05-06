@@ -10,7 +10,8 @@ export type AnalyticsEvent =
   | 'chatbot.product_viewed'
   | 'chatbot.item_added_to_cart'
   | 'chatbot.reorder_applied'
-  | 'chatbot.catalog_order_received';
+  | 'chatbot.catalog_order_received'
+  | 'chatbot.catalog_price_mismatch';
 
 @Injectable()
 export class ChatbotAnalyticsService {

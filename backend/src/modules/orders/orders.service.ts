@@ -1277,4 +1277,89 @@ export class OrdersService implements OnModuleInit {
       this.logger.log(`post_delivery_feedback_requested count=${sent}`);
     }
   }
+
+  /**
+   * Reclaim stock from prepaid orders the customer never paid for. Stock is
+   * decremented at order-create time inside the same transaction as the order
+   * row, so a stuck `paymentStatus='pending'` row holds inventory hostage —
+   * other customers see "out of stock" on items that physically exist. After
+   * 48h with no payment we cancel the order, increment the main-store stock
+   * back, and push the fresh availability to Meta so the catalog reflects it.
+   * Runs every 30 minutes; capped at 50 per tick to avoid bursts.
+   */
+  @Cron('*/30 * * * *')
+  async releaseAbandonedPrepaidStock(): Promise<void> {
+    const olderThan = new Date(Date.now() - 48 * 60 * 60 * 1000);
+
+    let orders: OrderDocument[];
+    try {
+      orders = await this.orderRepository.findAbandonedPrepaidOrders({
+        olderThan,
+        limit: 50,
+      });
+    } catch (err) {
+      this.logger.warn('abandoned_prepaid_query_failed', err);
+      return;
+    }
+
+    if (orders.length === 0) return;
+
+    const mainStore = await this.storesService.findMainStore().catch(() => null);
+    if (!mainStore) {
+      this.logger.warn('abandoned_prepaid_skipped: main store not configured');
+      return;
+    }
+    const mainStoreId = mainStore._id.toString();
+
+    let released = 0;
+    const productIdsToSync = new Set<string>();
+
+    for (const order of orders) {
+      try {
+        for (const item of order.items) {
+          try {
+            await this.storeStockService.incrementStock(
+              mainStoreId,
+              item.product.toString(),
+              item.quantity,
+              item.variantSku,
+            );
+            productIdsToSync.add(item.product.toString());
+          } catch (stockErr) {
+            this.logger.warn(
+              `release_stock_increment_failed order=${order._id.toString()} product=${item.product.toString()}`,
+              stockErr,
+            );
+          }
+        }
+
+        order.status = 'cancelled';
+        order.cancelledAt = new Date();
+        order.cancelReason = 'Payment not received within 48 hours';
+        this.pushTimelineEntry(order, {
+          status: 'cancelled',
+          message: 'Auto-cancelled: payment not received within 48 hours',
+        });
+        await order.save();
+        released += 1;
+      } catch (err) {
+        this.logger.warn(
+          `abandoned_prepaid_cancel_failed order=${order._id.toString()}`,
+          err,
+        );
+      }
+    }
+
+    void Promise.all(
+      Array.from(productIdsToSync).map((pid) =>
+        this.ucmService.syncProductById(pid, 'abandoned_order_released').catch((err) => {
+          this.logger.warn(`abandoned_release_ucm_sync_failed product=${pid}`, err);
+        }),
+      ),
+    );
+
+    if (released > 0) {
+      this.logger.log(`abandoned_prepaid_released count=${released}`);
+    }
+  }
 }

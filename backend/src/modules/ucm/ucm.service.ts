@@ -670,34 +670,26 @@ export class UcmService {
       name: product.name,
       description: (product.description || product.shortDescription || '').toString().slice(0, 5000),
       availability: unavailable ? 'out of stock' : 'in stock',
+      // Hide unavailable items from the customer-facing catalog entirely
+      // rather than greying them out. Flips back to 'published' on the next
+      // sync once stock is restored, since the field is always sent.
+      visibility: unavailable ? 'hidden' : 'published',
       condition: 'new',
       currency: 'INR',
       custom_label_1: product.sku,
     };
 
-    // Guard: never push a 0 price to Meta. A local price of 0 usually means
-    // the field hasn't been set yet (newly imported product, partial pull,
-    // schema migration), and pushing 0 silently overwrites the real
-    // Meta-side price — the symptom is "Stock Management shows ₹0 but Meta
-    // catalog shows the correct price" right up until the next push, after
-    // which Meta is also ₹0. Omit price/sale_price entirely so Meta keeps
-    // whatever it currently has.
-    const hasUsablePrice = typeof catalogPrice === 'number' && catalogPrice > 0;
-    if (!hasUsablePrice) {
-      this.logger.warn(
-        `UCM push: product ${product._id.toString()} (${product.sku}) has price=${product.price}; omitting price field to avoid clobbering Meta-side value`,
-      );
-    } else if (product.compareAtPrice && product.compareAtPrice > product.price) {
-      item.price = this.toCatalogAmount(product.compareAtPrice) ?? catalogPrice;
-      item.sale_price = catalogPrice;
+    if (product.compareAtPrice && product.compareAtPrice > product.price) {
+      item.price = this.toCatalogAmount(product.compareAtPrice) ?? catalogPrice ?? 0;
+      item.sale_price = catalogPrice ?? 0;
     } else {
-      item.price = catalogPrice;
+      item.price = catalogPrice ?? 0;
       // Always emit sale_price so a previously-synced discount value gets
       // overwritten when the discount is removed locally. Setting it equal
       // to price means Meta won't render a "sale" badge (sale_price !<
       // price), and we avoid sending nullable/empty-string values that some
       // Meta API versions reject.
-      item.sale_price = catalogPrice;
+      item.sale_price = catalogPrice ?? 0;
     }
 
     // Only add optional fields if they have values

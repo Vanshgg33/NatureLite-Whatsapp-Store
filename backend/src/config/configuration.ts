@@ -65,6 +65,11 @@ export interface SmtpConfig {
   from: string;
 }
 
+export interface DeliveryConfig {
+  /** Allowlist of serviceable pincodes. Empty = no restriction. */
+  serviceablePincodes: string[];
+}
+
 export interface Configuration {
   app: AppConfig;
   database: DatabaseConfig;
@@ -77,6 +82,7 @@ export interface Configuration {
   interakt?: InteraktConfig;
   razorpayX?: RazorpayXConfig;
   smtp: SmtpConfig;
+  delivery: DeliveryConfig;
   frontendUrl: string;
 }
 
@@ -146,6 +152,15 @@ export default (): Configuration => ({
     user: process.env.SMTP_USER || '',
     pass: process.env.SMTP_PASS || '',
     from: process.env.SMTP_FROM || 'Naturelite Store <noreply@naturelite.com>',
+  },
+  delivery: {
+    // Comma-separated 6-digit pincodes you ship to. Leave empty to accept all
+    // — useful while building out coverage. Validated as 6-digit strings; any
+    // junk values are dropped silently rather than blocking startup.
+    serviceablePincodes: (process.env.SERVICEABLE_PINCODES || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => /^\d{6}$/.test(s)),
   },
   // Frontend URL used for CORS/CSRF checks. Must be set explicitly in env.
   frontendUrl: process.env.FRONTEND_URL || '',

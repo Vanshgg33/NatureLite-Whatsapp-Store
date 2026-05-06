@@ -14,7 +14,6 @@ export const BTN = {
   VIEW_CART: 'view_cart',
 
   ADD_CART: 'add_cart',
-  BUY_NOW: 'buy_now',
   PICK_QTY: 'pick_qty',
 
   COUPON_APPLY_SUGGESTED: 'coupon_apply_suggested',

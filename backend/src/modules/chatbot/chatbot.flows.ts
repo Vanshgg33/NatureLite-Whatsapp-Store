@@ -38,9 +38,9 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
         `Quick access: *orders* \u00B7 *account* \u00B7 *help*`,
       footer: 'Type menu anytime',
       buttons: [
-        { id: BTN.BROWSE, title: '\uD83D\uDECD Shop Now' },
-        { id: BTN.CART, title: '\uD83D\uDED2 My Cart' },
-        { id: BTN.ORDERS, title: '\uD83D\uDCE6 Track Order' },
+        { id: BTN.BROWSE, title: '\uD83D\uDECD Shop now' },
+        { id: BTN.CART, title: '\uD83D\uDED2 Cart' },
+        { id: BTN.ORDERS, title: '\uD83D\uDCE6 Track order' },
       ],
     },
     transitions: {
@@ -73,14 +73,14 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
       type: 'buttons',
       content: 'Ready to add this to your cart?',
       buttons: [
-        { id: BTN.ADD_CART, title: '\uD83D\uDED2 Add to Cart' },
-        { id: BTN.BUY_NOW, title: '\u26A1 Buy Now' },
+        { id: BTN.ADD_CART, title: '\uD83D\uDED2 Add to cart' },
+        { id: BTN.PICK_QTY, title: '\uD83D\uDD22 Pick qty' },
         { id: BTN.BACK, title: '\u21A9 More products' },
       ],
     },
     transitions: {
       add_cart: 'cart',
-      buy_now: 'checkout',
+      pick_qty: 'product_detail',
       back: 'browsing',
     },
   },
@@ -92,7 +92,7 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
       buttons: [
         { id: BTN.CHECKOUT, title: '\u2705 Checkout' },
         { id: BTN.MANAGE_CART, title: '\u270F\uFE0F Manage' },
-        { id: BTN.KEEP_SHOPPING, title: '\u2795 Add More' },
+        { id: BTN.KEEP_SHOPPING, title: '\u2795 Add more' },
       ],
     },
     transitions: {
@@ -151,7 +151,7 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
       content: 'Select a saved address or add a new one.',
       buttons: [
         { id: 'address_0', title: 'Home' },
-        { id: BTN.ADD_NEW_ADDRESS, title: '\u2795 New address' },
+        { id: BTN.ADD_NEW_ADDRESS, title: '\u2795 Add address' },
         { id: BTN.BACK, title: '\u21A9 Back' },
       ],
     },
@@ -187,8 +187,8 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
       content: 'How would you like to pay?',
       footer: 'Secure payment \u00B7 Razorpay',
       buttons: [
-        { id: BTN.PREPAID, title: '\u26A1 UPI / Card' },
-        { id: BTN.COD, title: '\uD83D\uDCB5 Cash on Delivery' },
+        { id: BTN.PREPAID, title: '\uD83D\uDCB3 UPI / Card' },
+        { id: BTN.COD, title: '\uD83D\uDCB5 Cash on delivery' },
         { id: BTN.CHANGE_ADDRESS, title: '\uD83D\uDCCD Change address' },
       ],
     },
@@ -242,10 +242,10 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
         {
           title: 'Common questions',
           rows: [
-            { id: 'faq_shipping', title: 'Shipping & Delivery', description: 'Delivery times, costs & coverage' },
-            { id: 'faq_returns', title: 'Returns & Refunds', description: 'Return policy & refund timelines' },
-            { id: 'faq_payment', title: 'Payment Methods', description: 'All accepted payment options' },
-            { id: 'faq_contact', title: 'Contact Us', description: 'Reach our support team' },
+            { id: 'faq_shipping', title: 'Shipping & delivery', description: 'Delivery times, costs & coverage' },
+            { id: 'faq_returns', title: 'Returns & refunds', description: 'Return policy & refund timelines' },
+            { id: 'faq_payment', title: 'Payment methods', description: 'All accepted payment options' },
+            { id: 'faq_contact', title: 'Contact us', description: 'Reach our support team' },
           ],
         },
       ],

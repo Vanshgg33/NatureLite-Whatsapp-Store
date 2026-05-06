@@ -300,4 +300,22 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
       .updateOne({ _id: orderId }, { $set: { feedbackRequestedAt: new Date() } })
       .exec();
   }
+
+  /** Prepaid orders that never received payment within the abandonment window.
+   *  Restricted to status='placed' so we don't trample orders that admins have
+   *  manually progressed (confirmed / preparing / out_for_delivery). */
+  async findAbandonedPrepaidOrders(input: {
+    olderThan: Date;
+    limit: number;
+  }): Promise<OrderDocument[]> {
+    return this.model
+      .find({
+        paymentMethod: 'prepaid',
+        paymentStatus: 'pending',
+        status: 'placed',
+        createdAt: { $lte: input.olderThan },
+      })
+      .limit(input.limit)
+      .exec();
+  }
 }
