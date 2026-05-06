@@ -1767,6 +1767,7 @@ export class ChatbotService {
         addressIdx: btn.idx,
       });
       await this.transitionToState(session, 'payment_selection');
+      await this.sendOrderBillSummary(phone, session);
       await this.sendFlowResponse(phone, 'payment_selection', session);
       return;
     }
@@ -2007,6 +2008,7 @@ export class ChatbotService {
       session.context = mergeChatContext(session.context, { selectedAddressIndex: newIdx });
       await session.save();
       await this.transitionToState(session, 'payment_selection');
+      await this.sendOrderBillSummary(phone, session);
       await this.sendFlowResponse(phone, 'payment_selection', session);
     }
   }
@@ -4267,6 +4269,42 @@ export class ChatbotService {
       buttonText: 'Pick quantity',
       sections: [{ title: 'Quantity', rows }],
     });
+  }
+
+  private async sendOrderBillSummary(phone: string, session: ChatSessionDocument): Promise<void> {
+    if (!session.user) return;
+    try {
+      const cart = await this.cartService.getCart(session.user.toString());
+      if (cart.items.length === 0) return;
+
+      const itemLines = cart.items
+        .map((item) => `• ${item.product.name}  ×${item.quantity}  —  ${this.formatCurrency(item.total)}`)
+        .join('\n');
+
+      const lines: string[] = [`Subtotal\u2003${this.formatCurrency(cart.subtotal)}`];
+      if (cart.discount > 0) {
+        lines.push(`🏷 ${cart.couponCode || 'Discount'}\u2003−${this.formatCurrency(cart.discount)}`);
+      }
+      lines.push(bold(`Total\u2003${this.formatCurrency(cart.total)}`));
+
+      const FREE_SHIP_THRESHOLD = 500;
+      const shippingLine = cart.subtotal >= FREE_SHIP_THRESHOLD
+        ? '\n🎉 Free delivery'
+        : `\n${italic(`Add ${this.formatCurrency(FREE_SHIP_THRESHOLD - cart.subtotal)} more for free delivery`)}`;
+
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message:
+          `🧾 *Order Summary*\n` +
+          `${'─'.repeat(27)}\n\n` +
+          `${itemLines}\n\n` +
+          `${'─'.repeat(27)}\n` +
+          `${lines.join('\n')}` +
+          shippingLine,
+      });
+    } catch (err) {
+      this.logger.warn(`sendOrderBillSummary failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    }
   }
 
   private async sendEmptyCart(phone: string): Promise<void> {

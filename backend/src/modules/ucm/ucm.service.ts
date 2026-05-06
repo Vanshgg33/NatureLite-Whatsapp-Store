@@ -732,6 +732,7 @@ export class UcmService {
     const batchRequest = [{
       retailer_id: String(item.retailer_id),
       method: 'CREATE',
+      item_type: 'PRODUCT_ITEM',
       data: item,
     }];
 
