@@ -47,7 +47,7 @@ export default function WhatsAppPayPage() {
         key: data.keyId,
         amount: data.amount,
         currency: data.currency,
-        name: 'Store',
+        name: 'Naturelite Store',
         description: `Order #${data.orderNumber}`,
         order_id: data.razorpayOrderId,
         handler: async (response: RazorpayCheckoutResponse) => {
@@ -66,6 +66,10 @@ export default function WhatsAppPayPage() {
           } finally {
             setLoading(false);
           }
+        },
+        prefill: {
+          ...(data.customerName ? { name: data.customerName } : {}),
+          ...(data.customerPhone ? { contact: data.customerPhone } : {}),
         },
         theme: { color: '#D4A574' },
         modal: {

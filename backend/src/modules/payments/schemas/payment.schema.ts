@@ -54,7 +54,34 @@ export class Payment {
   refundReason?: string;
 
   @Prop()
+  refundProcessedAt?: Date;
+
+  @Prop()
+  refundFailedAt?: Date;
+
+  @Prop()
+  refundFailureReason?: string;
+
+  @Prop()
   failureReason?: string;
+
+  @Prop()
+  disputeId?: string;
+
+  @Prop()
+  disputeStatus?: string;
+
+  @Prop()
+  disputeAmount?: number;
+
+  @Prop()
+  disputeReasonCode?: string;
+
+  @Prop()
+  disputePhase?: string;
+
+  @Prop()
+  disputeRaisedAt?: Date;
 
   @Prop({ type: Object, default: {} })
   metadata: Record<string, string | number | boolean | null>;
@@ -69,3 +96,5 @@ PaymentSchema.index({ user: 1, createdAt: -1 });
 PaymentSchema.index({ status: 1 });
 PaymentSchema.index({ gatewayOrderId: 1 });
 PaymentSchema.index({ gatewayPaymentId: 1 }, { unique: true, sparse: true });
+PaymentSchema.index({ refundId: 1 }, { sparse: true });
+PaymentSchema.index({ disputeId: 1 }, { sparse: true });

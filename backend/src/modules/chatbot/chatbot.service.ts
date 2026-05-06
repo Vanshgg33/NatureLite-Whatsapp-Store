@@ -111,7 +111,18 @@ export class ChatbotService {
     private readonly storeStockService: StoreStockService,
     private readonly couponsService: CouponsService,
     private readonly ucmService: UcmService,
-  ) {}
+  ) {
+    // Loud boot-time warning if FRONTEND_URL is unset while Razorpay is wired
+    // up. Without it, the chatbot prepaid flow falls back to a "sign in to
+    // our website" message that most WhatsApp-only customers can't act on —
+    // making the order silently unpayable. Surface it in deploy logs so ops
+    // notices before customers do.
+    if (this.paymentsService.isRazorpayConfigured() && !this.resolveFrontendBaseUrl()) {
+      this.logger.error(
+        'FRONTEND_URL is not set but Razorpay is configured — WhatsApp pay links cannot be generated. Set FRONTEND_URL on the backend service.',
+      );
+    }
+  }
 
   private readonly catalogIdCache = new TtlCache<string>(60_000);
   private isCatalogBrowseEnabled(): boolean {
@@ -575,7 +586,9 @@ export class ChatbotService {
         (o) =>
           o.paymentMethod === 'prepaid' &&
           o.paymentStatus !== 'paid' &&
-          o.status !== 'cancelled',
+          o.paymentStatus !== 'refunded' &&
+          o.status !== 'cancelled' &&
+          o.status !== 'refunded',
       );
       if (target) {
         await this.sendFreshPayLink(session, message.phone, target._id.toString());
@@ -2174,6 +2187,23 @@ export class ChatbotService {
 
     const paymentMethod = input === 'cod' ? 'cod' : 'prepaid';
 
+    // Atomic lock against double-tap on the "UPI / Card" or "COD" button. The
+    // recent-order cooldown above is a read-then-decide check, so two near-
+    // simultaneous taps can both pass it before either order is committed.
+    // The lock auto-expires after 60s so a crashed handler never strands the
+    // session.
+    const checkoutLockAcquired = await this.chatSessionRepository.tryAcquireCheckoutLock(
+      session._id,
+      60_000,
+    );
+    if (!checkoutLockAcquired) {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: '_We’re already placing your order — please wait a moment..._',
+      });
+      return;
+    }
+
     let order;
     try {
       await this.whatsappService.sendTextMessage({
@@ -2243,6 +2273,7 @@ export class ChatbotService {
         ],
       });
       await this.transitionToState(session, 'cart');
+      await this.chatSessionRepository.releaseCheckoutLock(session._id);
       return;
     }
 
@@ -2280,31 +2311,64 @@ export class ChatbotService {
         const base = this.resolveFrontendBaseUrl();
         if (base) {
           payUrl = `${base}/pay/${encodeURIComponent(order._id.toString())}?t=${encodeURIComponent(payToken)}`;
+        } else {
+          this.logger.error(
+            `FRONTEND_URL missing \u2014 cannot build pay link for order ${order._id.toString()}`,
+          );
         }
       } catch (signErr) {
         this.logger.warn('WhatsApp pay token failed', signErr);
         payUrl = '';
       }
 
+      // When we have a link, offer the customer the link directly. When we
+      // don't (token failure, missing FRONTEND_URL), tell them to reply *pay*
+      // \u2014 that triggers `sendFreshPayLink` which retries link generation. The
+      // old "sign in to our website" copy was a dead-end for chat-only
+      // customers who never registered on the web.
       const body =
         `${summary}\n\n` +
         (payUrl
           ? `Complete your payment:\n${payUrl}`
-          : `Sign in to our website and pay for order ${bold(order.orderNumber)} from your account.`);
+          : `Reply *pay* to retry generating your payment link, or contact support with order ${bold(order.orderNumber)}.`);
 
-      await this.whatsappService.sendInteractiveButtons({
-        phone,
-        headerText: '\u2705 Order created',
-        bodyText: body,
-        footerText: payUrl ? 'Link expires in 48 hours' : undefined,
-        buttons: [
-          { id: Btn.order(order._id.toString()), title: '\uD83D\uDCE6 Track order' },
-          { id: BTN.BROWSE, title: '\uD83D\uDECD Keep shopping' },
-        ],
-      });
+      try {
+        await this.whatsappService.sendInteractiveButtons({
+          phone,
+          headerText: '\u2705 Order created',
+          bodyText: body,
+          footerText: payUrl ? 'Link expires in 48 hours' : undefined,
+          buttons: [
+            { id: Btn.order(order._id.toString()), title: '\uD83D\uDCE6 Track order' },
+            { id: BTN.BROWSE, title: '\uD83D\uDECD Keep shopping' },
+          ],
+        });
+      } catch (sendErr) {
+        // The order is already saved \u2014 losing this confirmation message must
+        // not strand the customer. Log + try a plain text fallback so they at
+        // least know the order exists and can reply *pay* to retry.
+        this.logger.error(
+          `Order created (${order._id.toString()}) but post-order WhatsApp send failed: ${
+            sendErr instanceof Error ? sendErr.message : 'unknown'
+          }`,
+        );
+        try {
+          await this.whatsappService.sendTextMessage({
+            phone,
+            message: `Order ${bold(order.orderNumber)} created. Reply *pay* to get your payment link.`,
+          });
+        } catch (fallbackErr) {
+          this.logger.error(
+            `Plain-text fallback also failed for ${order._id.toString()}: ${
+              fallbackErr instanceof Error ? fallbackErr.message : 'unknown'
+            }`,
+          );
+        }
+      }
     }
 
     await this.transitionToState(session, 'main_menu');
+    await this.chatSessionRepository.releaseCheckoutLock(session._id);
   }
 
   /**
@@ -2350,6 +2414,13 @@ export class ChatbotService {
       await this.whatsappService.sendTextMessage({
         phone,
         message: `Order #${order.orderNumber} has been cancelled.`,
+      });
+      return;
+    }
+    if (order.status === 'refunded' || order.paymentStatus === 'refunded') {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: `Order #${order.orderNumber} has been refunded — no further payment is needed.`,
       });
       return;
     }

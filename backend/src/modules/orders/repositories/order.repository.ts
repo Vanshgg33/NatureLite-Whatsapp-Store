@@ -215,6 +215,35 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
       .exec();
   }
 
+  /**
+   * Atomically transition the order to paid + prepaid and append a timeline
+   * row. Returns the updated doc only if this call was the one that flipped
+   * it; returns null if another caller (webhook vs. client-verify race) had
+   * already marked it paid. This is the dedupe point for the post-payment
+   * notification — only the winning caller should send the WhatsApp confirmation.
+   */
+  async claimRazorpayPaymentApplied(
+    orderId: Types.ObjectId,
+    message: string,
+  ): Promise<OrderDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        { _id: orderId, paymentStatus: { $ne: 'paid' } },
+        {
+          $set: { paymentStatus: 'paid', paymentMethod: 'prepaid' },
+          $push: {
+            timeline: {
+              status: 'confirmed',
+              message,
+              timestamp: new Date(),
+            },
+          },
+        },
+        { new: true },
+      )
+      .exec();
+  }
+
   /** One-time migration: legacy status strings → Phase 1 canonical values. */
   async migrateLegacyOrderStatuses(): Promise<number> {
     let n = 0;

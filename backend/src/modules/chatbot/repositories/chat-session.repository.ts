@@ -48,6 +48,41 @@ export class ChatSessionRepository extends BaseRepository<ChatSessionDocument> {
     ).exec();
   }
 
+  /**
+   * Atomically claim the checkout lock for a session. Returns true only if
+   * this call won the race — losing callers see false and should reject the
+   * checkout. Lock auto-expires `ttlMs` after the lock timestamp so a crashed
+   * checkout can never strand the session.
+   */
+  async tryAcquireCheckoutLock(
+    sessionId: Types.ObjectId,
+    ttlMs: number,
+  ): Promise<boolean> {
+    const now = Date.now();
+    const cutoff = now - ttlMs;
+    const result = await this.model
+      .findOneAndUpdate(
+        {
+          _id: sessionId,
+          $or: [
+            { 'context.checkoutLockedAt': { $exists: false } },
+            { 'context.checkoutLockedAt': null },
+            { 'context.checkoutLockedAt': { $lt: cutoff } },
+          ],
+        },
+        { $set: { 'context.checkoutLockedAt': now } },
+        { new: true },
+      )
+      .exec();
+    return result !== null;
+  }
+
+  async releaseCheckoutLock(sessionId: Types.ObjectId): Promise<void> {
+    await this.model
+      .updateOne({ _id: sessionId }, { $unset: { 'context.checkoutLockedAt': '' } })
+      .exec();
+  }
+
   async updateOneByPhone(
     phone: string,
     update: Partial<ChatSession>,

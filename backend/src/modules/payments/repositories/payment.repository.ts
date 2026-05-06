@@ -52,6 +52,29 @@ export class PaymentRepository extends BaseRepository<PaymentDocument> {
     return this.model.findOne({ order: orderId }).sort({ createdAt: -1 }).exec();
   }
 
+  /**
+   * Find the most recent `initiated` Razorpay payment row for an order that
+   * was created within `withinMs`. Used to reuse an existing Razorpay order
+   * id when a customer reopens the pay page within the freshness window —
+   * avoids creating a fresh Razorpay order on every retry.
+   */
+  async findRecentInitiatedForOrder(
+    orderId: Types.ObjectId,
+    withinMs: number,
+  ): Promise<PaymentDocument | null> {
+    const cutoff = new Date(Date.now() - withinMs);
+    return this.model
+      .findOne({
+        order: orderId,
+        gateway: 'razorpay',
+        status: 'initiated',
+        gatewayOrderId: { $exists: true, $ne: null },
+        createdAt: { $gte: cutoff },
+      })
+      .sort({ createdAt: -1 })
+      .exec();
+  }
+
   async findOneByOrderAndStatus(
     orderId: Types.ObjectId,
     status: string,

@@ -678,20 +678,20 @@ export class OrdersService implements OnModuleInit {
 
   /**
    * Razorpay / webhooks: apply paid + prepaid + one timeline note (do not $push timeline from PaymentsService).
+   *
+   * Atomic: webhook + client-verify can race. Whichever call flips paymentStatus
+   * from anything-but-paid to paid is the unique "winner" and is the only one
+   * that sends the WhatsApp confirmation. The losing call sees a null result and
+   * returns silently.
    */
   async recordRazorpayPaymentApplied(orderId: string, message: string): Promise<void> {
     const idObj = parseObjectId(orderId, 'orderId');
-    const order = await this.orderRepository.findById(idObj);
-    if (!order) {
-      throw new NotFoundException('Order not found');
-    }
-    if (order.paymentStatus === 'paid') {
+    const saved = await this.orderRepository.claimRazorpayPaymentApplied(idObj, message);
+    if (!saved) {
+      // Either the order doesn't exist, or another concurrent caller already
+      // marked it paid. Either way: nothing more to do (no double-notify).
       return;
     }
-    order.paymentStatus = 'paid';
-    order.paymentMethod = 'prepaid';
-    this.pushTimelineEntry(order, { status: 'confirmed', message });
-    const saved = await order.save();
 
     // Notify the customer on WhatsApp. Without this, a paid prepaid order
     // sits in the chat with no confirmation — especially bad when the bank

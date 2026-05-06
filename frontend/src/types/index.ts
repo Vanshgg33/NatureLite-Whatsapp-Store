@@ -780,6 +780,8 @@ export interface WhatsAppCheckoutPrepareResult {
   keyId: string;
   orderNumber: string;
   alreadyPaid: boolean;
+  customerName?: string;
+  customerPhone?: string;
 }
 
 export interface RazorpayCheckoutResponse {

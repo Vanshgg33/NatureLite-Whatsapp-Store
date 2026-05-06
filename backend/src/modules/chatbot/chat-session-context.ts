@@ -33,6 +33,13 @@ export interface ChatSessionContext {
    * blips), which would otherwise wipe the cart and any applied coupon.
    */
   lastCatalogOrderMessageId?: string;
+  /**
+   * Epoch ms when a chatbot checkout (order create + pay link) acquired its
+   * lock. Set atomically before order creation; cleared after the order is
+   * persisted. Prevents a fast double-tap on the "UPI / Card" button from
+   * placing two orders.
+   */
+  checkoutLockedAt?: number;
 }
 
 export function mergeChatContext(
