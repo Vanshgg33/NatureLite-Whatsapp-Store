@@ -1054,7 +1054,8 @@ export class ChatbotService {
     }
 
     if (input === 'manage' || input === 'remove') {
-      await this.sendCartItemPicker(phone, session);
+      await this.transitionToState(session, 'browsing');
+      await this.sendBrowseSurface(phone, session);
       return;
     }
 
@@ -4254,10 +4255,10 @@ export class ChatbotService {
     const header = `\uD83D\uDED2 Your cart \u00B7 ${cart.itemCount} item${cart.itemCount === 1 ? '' : 's'}`;
     const body = `${itemList}\n\n${breakdown.join('\n')}${shippingLine}${couponHint}`;
 
-    // 3-button budget on WhatsApp interactive messages: Checkout + Manage are
+    // 3-button budget on WhatsApp interactive messages: Checkout + Add more are
     // always present; the third slot is the highest-value contextual action
-    // \u2014 coupons when relevant, otherwise the familiar "Add more" entry.
-    const thirdButton = couponButton ?? { id: BTN.KEEP_SHOPPING, title: '\u2795 Add more' };
+    // \u2014 coupons when relevant, otherwise the familiar "Menu" entry.
+    const thirdButton = couponButton ?? { id: BTN.MENU, title: '\uD83C\uDFE0 Menu' };
 
     await this.whatsappService.sendInteractiveButtons({
       phone,
@@ -4265,7 +4266,7 @@ export class ChatbotService {
       bodyText: body,
       buttons: [
         { id: BTN.CHECKOUT, title: '\u2705 Checkout' },
-        { id: BTN.MANAGE_CART, title: '\u270F\uFE0F Manage' },
+        { id: BTN.MANAGE_CART, title: '\u2795 Add more' },
         thirdButton,
       ],
     });
