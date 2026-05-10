@@ -13,7 +13,7 @@ import { AuthBrandingPanel } from '@/components/admin/auth-branding-panel';
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const { setUser } = useAdminAuthStore();
+  const { setUser, setTokens } = useAdminAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -35,6 +35,8 @@ export default function AdminLoginPage() {
         storeName: response.user.storeName,
         departmentType: response.user.departmentType,
       });
+      setTokens(response.accessToken, response.refreshToken);
+      
       if (response.user.departmentType === 'packing') {
         router.push('/department/packing');
       } else if (response.user.departmentType === 'billing') {

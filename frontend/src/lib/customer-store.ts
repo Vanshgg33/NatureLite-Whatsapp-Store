@@ -14,11 +14,14 @@ export interface CustomerUser {
 
 interface CustomerAuthState {
   customer: CustomerUser | null;
+  accessToken: string | null;
+  refreshToken: string | null;
   isAuthenticated: boolean;
   lastVisitedPage: string | null;
 
   // Actions
   setCustomer: (customer: CustomerUser) => void;
+  setTokens: (accessToken: string, refreshToken: string) => void;
   updateCustomer: (updates: Partial<CustomerUser>) => void;
   addAddress: (address: Address) => void;
   updateAddress: (index: number, address: Address) => void;
@@ -32,11 +35,17 @@ export const useCustomerStore = create<CustomerAuthState>()(
   persist(
     (set, get) => ({
       customer: null,
+      accessToken: null,
+      refreshToken: null,
       isAuthenticated: false,
       lastVisitedPage: null,
 
       setCustomer: (customer) => {
         set({ customer, isAuthenticated: true });
+      },
+
+      setTokens: (accessToken, refreshToken) => {
+        set({ accessToken, refreshToken });
       },
 
       updateCustomer: (updates) => {
@@ -145,6 +154,8 @@ export const useCustomerStore = create<CustomerAuthState>()(
       logout: () => {
         set({
           customer: null,
+          accessToken: null,
+          refreshToken: null,
           isAuthenticated: false,
           lastVisitedPage: null,
         });

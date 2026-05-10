@@ -12,7 +12,7 @@ type DepartmentTarget = 'packing' | 'billing' | 'delivery';
 
 export default function DepartmentLoginPage() {
   const router = useRouter();
-  const { setUser } = useAdminAuthStore();
+  const { setUser, setTokens } = useAdminAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -35,6 +35,7 @@ export default function DepartmentLoginPage() {
         storeName: response.user.storeName,
         departmentType: response.user.departmentType,
       });
+      setTokens(response.accessToken, response.refreshToken);
 
       const department = (response.user.departmentType as DepartmentTarget | undefined) ?? target;
 

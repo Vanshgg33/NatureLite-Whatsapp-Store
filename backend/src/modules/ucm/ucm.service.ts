@@ -738,6 +738,7 @@ export class UcmService {
 
     const payload = new URLSearchParams();
     payload.set('allow_upsert', 'true');
+    payload.set('item_type', 'PRODUCT_ITEM');
     payload.set('requests', JSON.stringify(batchRequest));
 
     await this.graphClient.post(`/${catalogId}/items_batch`, payload, {

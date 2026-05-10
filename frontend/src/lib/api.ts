@@ -81,7 +81,36 @@ class ApiClient {
         'Content-Type': 'application/json',
       },
       // Rely on HttpOnly cookies for auth (access + refresh)
+      // We also fall back to Bearer tokens for browsers that aggressively block 3rd-party cookies (ITP)
       withCredentials: true,
+    });
+
+    // Request interceptor to attach Bearer token fallback if available
+    this.client.interceptors.request.use((config) => {
+      if (typeof window !== 'undefined') {
+        try {
+          // Check admin store first
+          const adminStorage = localStorage.getItem('admin-auth-storage');
+          if (adminStorage) {
+            const parsed = JSON.parse(adminStorage);
+            if (parsed?.state?.accessToken) {
+              config.headers.Authorization = `Bearer ${parsed.state.accessToken}`;
+              return config;
+            }
+          }
+          // Fallback to customer store
+          const customerStorage = localStorage.getItem('customer-auth-storage');
+          if (customerStorage) {
+            const parsed = JSON.parse(customerStorage);
+            if (parsed?.state?.accessToken) {
+              config.headers.Authorization = `Bearer ${parsed.state.accessToken}`;
+            }
+          }
+        } catch {
+          // ignore parsing errors
+        }
+      }
+      return config;
     });
 
     // Response interceptor with refresh token retry
@@ -95,12 +124,53 @@ class ApiClient {
 
           if (!this.isRefreshing) {
             this.isRefreshing = true;
+
+            let refreshTokenToSend: string | undefined;
+            if (typeof window !== 'undefined') {
+              try {
+                const adminStorage = localStorage.getItem('admin-auth-storage');
+                if (adminStorage) {
+                  const parsed = JSON.parse(adminStorage);
+                  if (parsed?.state?.refreshToken) {
+                    refreshTokenToSend = parsed.state.refreshToken;
+                  }
+                }
+                const customerStorage = localStorage.getItem('customer-auth-storage');
+                if (customerStorage && !refreshTokenToSend) {
+                  const parsed = JSON.parse(customerStorage);
+                  if (parsed?.state?.refreshToken) {
+                    refreshTokenToSend = parsed.state.refreshToken;
+                  }
+                }
+              } catch {
+                // ignore parsing errors
+              }
+            }
+
+            const payload = refreshTokenToSend ? { refreshToken: refreshTokenToSend } : {};
+
             // Swallow rejection here so all awaiters observe a settled promise
             // without triggering unhandled-rejection warnings. The boolean result
             // lets awaiters know whether they should retry the original request.
             this.refreshPromise = axios
-              .post(`${API_URL}/auth/refresh`, {}, { withCredentials: true })
-              .then(() => true as const)
+              .post(`${API_URL}/auth/refresh`, payload, { withCredentials: true })
+              .then(async (res) => {
+                const newTokens = res.data?.data;
+                if (newTokens && typeof window !== 'undefined') {
+                  try {
+                    if (newTokens.user?.role === 'customer') {
+                      const { useCustomerStore } = await import('./customer-store');
+                      useCustomerStore.getState().setTokens(newTokens.accessToken, newTokens.refreshToken);
+                    } else {
+                      const { useAdminAuthStore } = await import('./admin-store');
+                      useAdminAuthStore.getState().setTokens(newTokens.accessToken, newTokens.refreshToken);
+                    }
+                  } catch {
+                    // ignore module import or state update errors
+                  }
+                }
+                return true as const;
+              })
               .catch(() => false as const)
               .finally(() => {
                 this.isRefreshing = false;

@@ -399,16 +399,23 @@ export class NotificationsService {
     return `₹${value.toFixed(0)}`;
   }
 
+  private formatOrderStatusForNotification(order: Order): string {
+    if (order.paymentMethod === 'prepaid' && order.paymentStatus === 'pending') {
+      return 'Payment Pending';
+    }
+    return this.formatOrderStatus(order.status);
+  }
+
   private formatOrderCreatedMessage(order: Order): string {
     return [
       `Order received: ${order.orderNumber}`,
       `Total: ${this.formatMoneyInr(order.total)}`,
-      `Status: ${this.formatOrderStatus(order.status)}`,
+      `Status: ${this.formatOrderStatusForNotification(order)}`,
     ].join('\n');
   }
 
   private formatOrderStatusUpdateMessage(order: Order): string {
-    return `Update: Your order ${order.orderNumber} is now ${this.formatOrderStatus(order.status)}.`;
+    return `Update: Your order ${order.orderNumber} is now ${this.formatOrderStatusForNotification(order)}.`;
   }
 
   private formatOrderDeliveredMessage(order: Order): string {

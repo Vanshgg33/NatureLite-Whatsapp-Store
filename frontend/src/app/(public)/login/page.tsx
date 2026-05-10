@@ -16,7 +16,7 @@ type LoginMethod = 'email' | 'phone';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { setCustomer, updateCustomer, lastVisitedPage } = useCustomerStore();
+  const { setCustomer, updateCustomer, setTokens, lastVisitedPage } = useCustomerStore();
   const { syncWithServer: syncCart } = useCartStore();
   const { toast } = useToast();
 
@@ -98,6 +98,8 @@ export default function LoginPage() {
         totalSpent: 0,
       });
 
+      setTokens(response.accessToken, response.refreshToken);
+
       // Fetch full profile (addresses, totalOrders, totalSpent)
       try {
         const profile = await api.getMyProfile();
@@ -159,6 +161,8 @@ export default function LoginPage() {
         totalOrders: 0,
         totalSpent: 0,
       });
+
+      setTokens(response.accessToken, response.refreshToken);
 
       // Fetch full profile (addresses, totalOrders, totalSpent)
       try {

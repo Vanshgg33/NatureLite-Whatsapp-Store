@@ -212,8 +212,10 @@ export class ChatbotService {
     return `wa:${crypto.createHash('sha256').update(trimmed, 'utf8').digest('hex')}`;
   }
 
-  /** Customer-facing status line (preparing + packed reads as ready to dispatch). */
-  private formatOrderStatusForCustomer(order: { status: string; packedAt?: Date | null }): string {
+  private formatOrderStatusForCustomer(order: { status: string; paymentMethod?: string; paymentStatus?: string; packedAt?: Date | null }): string {
+    if (order.paymentMethod === 'prepaid' && order.paymentStatus === 'pending') {
+      return 'Payment Pending';
+    }
     if (order.status === 'preparing' && order.packedAt) {
       return 'Ready for delivery';
     }
@@ -2210,7 +2212,7 @@ export class ChatbotService {
     try {
       await this.whatsappService.sendTextMessage({
         phone,
-        message: '_Placing your order..._',
+        message: paymentMethod === 'cod' ? '_Placing your order..._' : '_Generating payment link..._',
       });
       // Consume the one-time override (only for this attempt).
       if (ctx.allowAnotherOrderOnce) {
@@ -2337,7 +2339,7 @@ export class ChatbotService {
       try {
         await this.whatsappService.sendInteractiveButtons({
           phone,
-          headerText: '\u2705 Order created',
+          headerText: '\u23F3 Payment Pending',
           bodyText: body,
           footerText: payUrl ? 'Link expires in 48 hours' : undefined,
           buttons: [
@@ -5020,17 +5022,8 @@ export class ChatbotService {
     }
 
     if (products.length === 0) {
-      await this.whatsappService.sendInteractiveButtons({
-        phone,
-        headerText: 'No matches',
-        bodyText:
-          `Nothing matches "${trimmed.slice(0, 40)}" in stock right now.\n` +
-          `Try a different keyword or browse by category.`,
-        buttons: [
-          { id: BTN.BROWSE, title: '\uD83D\uDECD Browse' },
-          { id: BTN.MENU, title: '\uD83C\uDFE0 Menu' },
-        ],
-      });
+      await this.transitionToState(session, 'main_menu');
+      await this.sendFlowResponse(phone, 'main_menu', session);
       return true;
     }
 

@@ -13,9 +13,12 @@ interface AdminUser {
 
 interface AdminAuthState {
   user: AdminUser | null;
+  accessToken: string | null;
+  refreshToken: string | null;
   isAuthenticated: boolean;
   hasHydrated: boolean;
   setUser: (user: AdminUser) => void;
+  setTokens: (accessToken: string, refreshToken: string) => void;
   logout: () => void;
   setHasHydrated: (value: boolean) => void;
 }
@@ -24,12 +27,15 @@ export const useAdminAuthStore = create<AdminAuthState>()(
   persist(
     (set) => ({
       user: null,
+      accessToken: null,
+      refreshToken: null,
       isAuthenticated: false,
       hasHydrated: false,
       setUser: (user) => set({ user, isAuthenticated: true }),
+      setTokens: (accessToken, refreshToken) => set({ accessToken, refreshToken }),
       logout: () => {
         // Cookie is cleared by calling api.logout() separately
-        set({ user: null, isAuthenticated: false });
+        set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false });
       },
       setHasHydrated: (value) => set({ hasHydrated: value }),
     }),
@@ -37,6 +43,8 @@ export const useAdminAuthStore = create<AdminAuthState>()(
       name: 'admin-auth-storage',
       partialize: (state) => ({
         user: state.user,
+        accessToken: state.accessToken,
+        refreshToken: state.refreshToken,
         isAuthenticated: state.isAuthenticated,
       }),
       onRehydrateStorage: () => (state) => {
