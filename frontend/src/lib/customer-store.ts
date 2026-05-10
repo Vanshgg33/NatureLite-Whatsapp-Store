@@ -21,7 +21,7 @@ interface CustomerAuthState {
 
   // Actions
   setCustomer: (customer: CustomerUser) => void;
-  setTokens: (accessToken: string, refreshToken: string) => void;
+  setTokens: (accessToken: string, refreshToken?: string | null) => void;
   updateCustomer: (updates: Partial<CustomerUser>) => void;
   addAddress: (address: Address) => void;
   updateAddress: (index: number, address: Address) => void;
@@ -45,7 +45,7 @@ export const useCustomerStore = create<CustomerAuthState>()(
       },
 
       setTokens: (accessToken, refreshToken) => {
-        set({ accessToken, refreshToken });
+        set({ accessToken, refreshToken: refreshToken ?? null });
       },
 
       updateCustomer: (updates) => {
