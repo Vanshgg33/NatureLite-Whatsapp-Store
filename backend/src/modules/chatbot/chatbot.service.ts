@@ -594,7 +594,7 @@ export class ChatbotService {
     }
     if (transitionKey === 'continue_shopping' || transitionKey === 'browse') {
       await this.transitionToState(session, 'browsing');
-      await this.sendBrowseSurface(message.phone, session);
+      await this.sendShopNowSurface(message.phone, session);
       return;
     }
     if (transitionKey === 'menu' || transitionKey === 'main_menu') {
@@ -1023,7 +1023,7 @@ export class ChatbotService {
 
     if (input === 'continue') {
       await this.transitionToState(session, 'browsing');
-      await this.sendBrowseSurface(phone, session);
+      await this.sendShopNowSurface(phone, session);
       return;
     }
 
@@ -1055,7 +1055,7 @@ export class ChatbotService {
 
     if (input === 'manage' || input === 'remove') {
       await this.transitionToState(session, 'browsing');
-      await this.sendBrowseSurface(phone, session);
+      await this.sendShopNowSurface(phone, session);
       return;
     }
 
@@ -1101,13 +1101,13 @@ export class ChatbotService {
     if (input === BTN.COUPON_APPLY_BEST) {
       const applicable = await this.findApplicableCoupons(session);
       const best = applicable[0];
+      session.context = mergeChatContext(session.context, { couponFlowTarget: 'cart' });
+      await session.save();
       if (!best) {
         await this.transitionToState(session, 'coupon_prompt');
         await this.sendAvailableCouponsList(phone, session);
         return;
       }
-      session.context = mergeChatContext(session.context, { couponFlowTarget: 'cart' });
-      await session.save();
       await this.transitionToState(session, 'coupon_prompt');
       await this.applyCouponCode(phone, session, best.code, 'suggested');
       return;
@@ -1427,34 +1427,47 @@ export class ChatbotService {
       return;
     }
 
-    // No eligible suggestion. If there are any active coupons at all,
-    // surface "See all" so the customer can discover what's on offer even
-    // when nothing auto-qualifies for their current cart.
+    // No eligible suggestion. Only show the coupon step if live coupons exist;
+    // otherwise skip it so customers don't see a dead promo-code prompt.
     session.context = mergeChatContext(session.context, { suggestedCoupon: undefined });
     await session.save();
 
-    let anyActive = false;
+    let active: Awaited<ReturnType<typeof this.couponsService.getActiveCoupons>> = [];
     try {
-      const active = await this.couponsService.getActiveCoupons();
-      anyActive = active.length > 0;
+      active = await this.couponsService.getActiveCoupons();
     } catch {
-      anyActive = false;
+      active = [];
     }
 
-    const buttons: Array<{ id: string; title: string }> = [];
-    if (anyActive) {
-      buttons.push({ id: BTN.COUPON_LIST, title: '\uD83C\uDFF7 See codes' });
+    if (active.length === 0) {
+      await this.continueAfterCouponStep(phone, session);
+      return;
     }
-    buttons.push({ id: BTN.COUPON_CUSTOM, title: '\uD83C\uDFF7 Enter code' });
-    buttons.push({ id: BTN.COUPON_SKIP, title: 'Skip' });
 
     await this.whatsappService.sendInteractiveButtons({
       phone,
-      bodyText: anyActive
-        ? 'Got a promo code, or want to see what\u2019s available right now?'
-        : 'Got a promo code? Enter it now, or continue to payment.',
-      buttons,
+      bodyText: 'Got a promo code, or want to see what\u2019s available right now?',
+      buttons: [
+        { id: BTN.COUPON_LIST, title: '\uD83C\uDFF7 See codes' },
+        { id: BTN.COUPON_CUSTOM, title: '\uD83C\uDFF7 Enter code' },
+        { id: BTN.COUPON_SKIP, title: 'Skip' },
+      ],
     });
+  }
+
+  private async continueAfterCouponStep(
+    phone: string,
+    session: ChatSessionDocument,
+  ): Promise<void> {
+    const target = session.context?.couponFlowTarget || 'checkout';
+    if (target === 'cart') {
+      await this.transitionToState(session, 'cart');
+      await this.sendCartSummary(phone, session);
+      return;
+    }
+
+    await this.transitionToState(session, 'checkout');
+    await this.sendCheckoutOptions(phone, session);
   }
 
   /**
@@ -1481,16 +1494,7 @@ export class ChatbotService {
     );
 
     if (applicable.length === 0 && nonApplicable.length === 0) {
-      await this.whatsappService.sendInteractiveButtons({
-        phone,
-        headerText: 'No coupons right now',
-        bodyText: 'No active promo codes at the moment. You can still type a code to try it.',
-        buttons: [
-          { id: BTN.COUPON_CUSTOM, title: '\uD83C\uDFF7 Enter code' },
-          { id: BTN.COUPON_SKIP, title: 'Skip' },
-          { id: BTN.BACK, title: '\u21A9 Back' },
-        ],
-      });
+      await this.continueAfterCouponStep(phone, session);
       return;
     }
 
@@ -2123,7 +2127,13 @@ export class ChatbotService {
     input: string,
     message: WhatsAppMessage,
   ): Promise<void> {
-    if (input === 'back' || input === BTN.CHANGE_ADDRESS) {
+    if (input === 'back') {
+      await this.transitionToState(session, 'cart');
+      await this.sendCartSummary(phone, session);
+      return;
+    }
+
+    if (input === BTN.CHANGE_ADDRESS) {
       await this.openAddressPickerFromPayment(phone, session);
       return;
     }
@@ -2399,7 +2409,7 @@ export class ChatbotService {
         bodyText: `${summary}\n\nWe'll ping you when it ships.`,
         footerText: 'Cash on delivery',
         buttons: [
-          { id: Btn.order(order._id.toString()), title: '\uD83D\uDCE6 Track order' },
+          { id: Btn.order(order._id.toString()), title: '\uD83D\uDCE6 Apka last order' },
           { id: BTN.BROWSE, title: '\uD83D\uDECD Keep shopping' },
         ],
       });
@@ -2441,7 +2451,7 @@ export class ChatbotService {
           bodyText: body,
           footerText: payUrl ? 'Link expires in 48 hours' : undefined,
           buttons: [
-            { id: Btn.order(order._id.toString()), title: '\uD83D\uDCE6 Track order' },
+            { id: Btn.order(order._id.toString()), title: '\uD83D\uDCE6 Apka last order' },
             { id: BTN.BROWSE, title: '\uD83D\uDECD Keep shopping' },
           ],
         });
@@ -2611,7 +2621,7 @@ export class ChatbotService {
         `Tap the link to pay securely:\n${payUrl}\n\n` +
         `${italic('Link expires in 48 hours.')}`,
       buttons: [
-        { id: Btn.order(order._id.toString()), title: '📦 Track order' },
+        { id: Btn.order(order._id.toString()), title: '📦 Apka last order' },
         { id: BTN.MENU, title: '🏠 Menu' },
       ],
     });
@@ -4266,7 +4276,7 @@ export class ChatbotService {
       bodyText: body,
       buttons: [
         { id: BTN.CHECKOUT, title: '\u2705 Checkout' },
-        { id: BTN.MANAGE_CART, title: '\u2795 Add more' },
+        { id: BTN.KEEP_SHOPPING, title: '\u2795 Add more' },
         thirdButton,
       ],
     });
@@ -4789,7 +4799,7 @@ export class ChatbotService {
       buttons: [
         { id: BTN.BROWSE, title: '\uD83D\uDECD Shop Now' },
         { id: BTN.CART, title: clip(cartLabel, WA.BUTTON_TITLE) },
-        { id: BTN.ORDERS, title: '\uD83D\uDCE6 Track order' },
+        { id: BTN.ORDERS, title: '\uD83D\uDCE6 Apka last order' },
       ],
     });
   }

@@ -60,6 +60,7 @@ export class CouponRepository extends BaseRepository<CouponDocument> {
       validUntil: { $gte: now },
       $or: [
         { maxUsageCount: { $exists: false } },
+        { maxUsageCount: null },
         { $expr: { $lt: ['$usedCount', '$maxUsageCount'] } },
       ],
     }).exec();

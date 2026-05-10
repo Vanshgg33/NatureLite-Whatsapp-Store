@@ -40,7 +40,7 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
       buttons: [
         { id: BTN.BROWSE, title: '\uD83D\uDECD Shop now' },
         { id: BTN.CART, title: '\uD83D\uDED2 Cart' },
-        { id: BTN.ORDERS, title: '\uD83D\uDCE6 Track order' },
+        { id: BTN.ORDERS, title: '\uD83D\uDCE6 Apka last order' },
       ],
     },
     transitions: {

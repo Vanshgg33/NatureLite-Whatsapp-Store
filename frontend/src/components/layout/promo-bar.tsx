@@ -25,6 +25,20 @@ function formatCoupon(coupon: Coupon): string {
   return parts.join(' ');
 }
 
+function isCouponActive(coupon: Coupon, now = new Date()): boolean {
+  const validFrom = new Date(coupon.validFrom);
+  const validUntil = new Date(coupon.validUntil);
+  const hasUsageLeft =
+    !coupon.maxUsageCount || coupon.usedCount < coupon.maxUsageCount;
+
+  return (
+    coupon.isActive &&
+    validFrom <= now &&
+    validUntil >= now &&
+    hasUsageLeft
+  );
+}
+
 /**
  * Promo bar: shows live store settings + active coupons from admin.
  * - Free shipping threshold from public settings
@@ -48,7 +62,7 @@ export function PromoBar() {
 
         const threshold = publicSettings.store?.freeShippingThreshold;
         setFreeShippingThreshold(typeof threshold === 'number' ? threshold : null);
-        setCoupons(activeCoupons || []);
+        setCoupons((activeCoupons || []).filter((coupon) => isCouponActive(coupon)));
       } catch (error) {
         console.error('Failed to load promo data:', error);
       }
