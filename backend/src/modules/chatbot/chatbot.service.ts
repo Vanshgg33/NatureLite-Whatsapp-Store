@@ -4778,25 +4778,17 @@ export class ChatbotService {
     const body =
       `Hey ${name} \uD83D\uDC4B\n` +
       `What are you in the mood for today?\n\n` +
-      `Quick access: ${bold('orders')} \u00B7 ${bold('reorder')} \u00B7 ${bold('support')}`;
+      `Quick access: ${bold('orders')} \u00B7 ${bold('account')} \u00B7 ${bold('help')}`;
 
-    await this.whatsappService.sendInteractiveList({
+    await this.whatsappService.sendInteractiveButtons({
       phone,
       headerText: clip(action.header, WA.HEADER) || undefined,
       bodyText: body,
       footerText: clip(action.footer, WA.FOOTER) || undefined,
-      buttonText: 'Open menu',
-      sections: [
-        {
-          title: 'Quick actions',
-          rows: [
-            { id: BTN.BROWSE, title: '\uD83D\uDECD Shop Now' },
-            { id: BTN.CART, title: clip(cartLabel, WA.LIST_ROW_TITLE) },
-            { id: BTN.ORDERS, title: '\uD83D\uDCE6 Track order' },
-            { id: 'reorder', title: '\uD83D\uDD01 Reorder' },
-            { id: BTN.SUPPORT, title: '\uD83D\uDCAC Support' },
-          ],
-        },
+      buttons: [
+        { id: BTN.BROWSE, title: '\uD83D\uDECD Shop Now' },
+        { id: BTN.CART, title: clip(cartLabel, WA.BUTTON_TITLE) },
+        { id: BTN.ORDERS, title: '\uD83D\uDCE6 Track order' },
       ],
     });
   }
