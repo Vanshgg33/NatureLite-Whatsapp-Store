@@ -326,27 +326,38 @@ export class UcmService {
     let failedProducts = 0;
     const details: SyncDetail[] = [];
 
-    for (const product of products) {
+    // Meta rate limits catalog batch uploads (#80014). Avoid per-product
+    // `items_batch` calls; instead upsert in chunks with retry/backoff.
+    const items: Array<{ product: ProductDocument; item: Record<string, unknown> }> = products.map((product) => {
+      const stockForItem = stockMap.has(product._id.toString())
+        ? stockMap.get(product._id.toString())!
+        : product.trackStock === false ? null : 0;
+      return { product, item: this.buildCatalogItem(product, false, stockForItem) };
+    });
+
+    const chunkSize = 25;
+    for (let i = 0; i < items.length; i += chunkSize) {
+      const chunk = items.slice(i, i + chunkSize);
       try {
-        const stockForItem = stockMap.has(product._id.toString())
-          ? stockMap.get(product._id.toString())!
-          : product.trackStock === false ? null : 0;
-        const item = this.buildCatalogItem(product, false, stockForItem);
-        await this.upsertRemoteProduct(state, item, remoteCatalogId);
-        syncedProducts += 1;
-        details.push({ retailerId: item.retailer_id as string, status: 'synced' });
+        await this.upsertRemoteProductsBatch(state, chunk.map((c) => c.item), remoteCatalogId);
+        syncedProducts += chunk.length;
+        for (const { item } of chunk) {
+          details.push({ retailerId: String(item.retailer_id), status: 'synced' });
+        }
       } catch (error) {
-        failedProducts += 1;
+        failedProducts += chunk.length;
         const message = error instanceof Error ? error.message : 'Unknown sync error';
         if (axios.isAxiosError(error)) {
           const responseBody = error.response?.data;
           this.logger.warn(
-            `Catalog sync failed for ${product._id.toString()}: ${message} status=${error.response?.status ?? 'unknown'} body=${JSON.stringify(responseBody)}`,
+            `Catalog batch sync failed for ${chunk.length} items: ${message} status=${error.response?.status ?? 'unknown'} body=${JSON.stringify(responseBody)}`,
           );
         } else {
-          this.logger.warn(`Catalog sync failed for ${product._id.toString()}: ${message}`);
+          this.logger.warn(`Catalog batch sync failed for ${chunk.length} items: ${message}`);
         }
-        details.push({ retailerId: product._id.toString(), status: 'failed', message });
+        for (const { product } of chunk) {
+          details.push({ retailerId: product._id.toString(), status: 'failed', message });
+        }
       }
     }
 
@@ -719,6 +730,14 @@ export class UcmService {
     item: Record<string, unknown>,
     overrideCatalogId?: string,
   ): Promise<void> {
+    await this.upsertRemoteProductsBatch(state, [item], overrideCatalogId || state.selectedCatalogId);
+  }
+
+  private async upsertRemoteProductsBatch(
+    state: CatalogState,
+    items: Record<string, unknown>[],
+    overrideCatalogId?: string,
+  ): Promise<void> {
     const catalogId = overrideCatalogId || state.selectedCatalogId;
     const catalogConfig = this.configService.get<CatalogConfig>('catalog')!;
 
@@ -729,26 +748,73 @@ export class UcmService {
       throw new BadRequestException('Catalog access token is not configured');
     }
 
-    const batchRequest = [{
+    const requests = items.map((item) => ({
       retailer_id: String(item.retailer_id),
       method: 'CREATE',
       item_type: 'PRODUCT_ITEM',
       data: item,
-    }];
+    }));
 
     const payload = new URLSearchParams();
     payload.set('allow_upsert', 'true');
     payload.set('item_type', 'PRODUCT_ITEM');
-    payload.set('requests', JSON.stringify(batchRequest));
+    payload.set('requests', JSON.stringify(requests));
 
-    await this.graphClient.post(`/${catalogId}/items_batch`, payload, {
-      params: {
-        access_token: catalogConfig.accessToken,
-      },
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-    });
+    await this.withMetaCatalogBatchRetry(async () => {
+      await this.graphClient.post(`/${catalogId}/items_batch`, payload, {
+        params: {
+          access_token: catalogConfig.accessToken,
+        },
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      });
+    }, requests.length);
+  }
+
+  private async withMetaCatalogBatchRetry<T>(fn: () => Promise<T>, itemCount: number): Promise<T> {
+    const maxAttempts = 6;
+    const baseDelayMs = 1_000;
+    const maxDelayMs = 30_000;
+
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        // Small pacing even on success to avoid bursty calls.
+        if (attempt === 1) {
+          await this.sleep(250);
+        }
+        return await fn();
+      } catch (error) {
+        lastError = error;
+        const shouldRetry = this.isMetaCatalogBatchRateLimitError(error);
+        if (!shouldRetry || attempt === maxAttempts) {
+          throw error;
+        }
+
+        const exp = Math.min(maxDelayMs, baseDelayMs * 2 ** (attempt - 1));
+        const jitter = Math.floor(Math.random() * 500);
+        const delay = exp + jitter;
+        this.logger.warn(
+          `Meta catalog batch rate-limited (#80014). Retrying attempt ${attempt}/${maxAttempts} after ${delay}ms (items=${itemCount})`,
+        );
+        await this.sleep(delay);
+      }
+    }
+
+    // Should be unreachable but keeps TS happy.
+    throw lastError instanceof Error ? lastError : new Error('Meta catalog batch retry failed');
+  }
+
+  private isMetaCatalogBatchRateLimitError(error: unknown): boolean {
+    if (!axios.isAxiosError(error)) return false;
+    const code = (error.response?.data as any)?.error?.code;
+    const message = String((error.response?.data as any)?.error?.message || error.message || '');
+    return code === 80014 || message.includes('#80014') || message.toLowerCase().includes('too many calls for the batch uploads');
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private async writeSyncState(

@@ -17,6 +17,11 @@ export interface WhatsAppConfig {
   provider: 'meta' | '360dialog' | '360dialog_sandbox';
   apiUrl: string;
   phoneNumberId: string;
+  /**
+   * Public WhatsApp business number (digits only, includes country code).
+   * Used for wa.me catalog links (e.g. https://wa.me/c/<number>).
+   */
+  businessPhoneNumber: string;
   businessAccountId: string;
   accessToken: string;
   d360ApiKey: string;
@@ -108,6 +113,7 @@ export default (): Configuration => ({
       'meta',
     apiUrl: process.env.WHATSAPP_API_URL || 'https://graph.facebook.com/v18.0',
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
+    businessPhoneNumber: (process.env.WHATSAPP_BUSINESS_PHONE_NUMBER || '').replace(/[^\d]/g, ''),
     businessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
     accessToken: process.env.WHATSAPP_ACCESS_TOKEN || '',
     d360ApiKey: process.env.WHATSAPP_D360_API_KEY || '',

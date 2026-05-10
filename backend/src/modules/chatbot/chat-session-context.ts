@@ -17,6 +17,8 @@ export interface ChatSessionContext {
   newAddress?: ChatCheckoutAddressDraft;
   allowAnotherOrderOnce?: boolean;
   checkoutCouponCode?: string;
+  /** Where to return after applying a coupon from coupon_prompt. */
+  couponFlowTarget?: 'cart' | 'checkout';
   /** Which profile field the user is editing (name / email). */
   editingField?: string;
   /** Address index being edited in account_address_edit state. */

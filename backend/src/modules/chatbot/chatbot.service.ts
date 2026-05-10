@@ -771,17 +771,22 @@ export class ChatbotService {
    * configured or the send fails.
    */
   private async sendShopNowSurface(phone: string, session: ChatSessionDocument): Promise<void> {
-    const catalogId = await this.getActiveCatalogId();
-    if (catalogId) {
-      try {
-        await this.sendCatalogProductList(phone, session, catalogId);
-        return;
-      } catch (error) {
-        this.logger.warn(
-          `sendShopNowSurface: sendCatalogProductList failed (${error instanceof Error ? error.message : 'unknown'}); falling back`,
-        );
-      }
+    // WhatsApp doesn't allow bots to auto-open the native "View items" sheet
+    // for catalog/product-list messages. A wa.me catalog link opens the
+    // catalogue directly in one tap, so prefer that for "Shop now".
+    const businessPhone = (this.configService.get<string>('whatsapp.businessPhoneNumber') || '').trim();
+    if (businessPhone) {
+      const catalogLink = `https://wa.me/c/${businessPhone.replace(/[^\d]/g, '')}`;
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: `Browse our store:\n${catalogLink}`,
+        previewUrl: 'true',
+      });
+      return;
     }
+
+    // Fallback: show browse surface (catalog message / legacy list) when the
+    // public business number isn't configured.
     await this.sendBrowseSurface(phone, session);
   }
 
@@ -964,6 +969,8 @@ export class ChatbotService {
             this.logger.warn(
               `Auto-apply coupon ${best.code} failed: ${err instanceof Error ? err.message : 'unknown'}`,
             );
+            session.context = mergeChatContext(session.context, { couponFlowTarget: 'checkout' });
+            await session.save();
             await this.transitionToState(session, 'coupon_prompt');
             await this.sendFlowResponse(phone, 'coupon_prompt', session);
             return;
@@ -1060,6 +1067,8 @@ export class ChatbotService {
         await this.sendAvailableCouponsList(phone, session);
         return;
       }
+      session.context = mergeChatContext(session.context, { couponFlowTarget: 'cart' });
+      await session.save();
       await this.transitionToState(session, 'coupon_prompt');
       await this.applyCouponCode(phone, session, best.code, 'suggested');
       return;
@@ -1070,6 +1079,8 @@ export class ChatbotService {
     // customer can browse what's on offer; the auto-suggest screen is only
     // used after Checkout.
     if (input === BTN.COUPON_LIST) {
+      session.context = mergeChatContext(session.context, { couponFlowTarget: 'cart' });
+      await session.save();
       await this.transitionToState(session, 'coupon_prompt');
       await this.sendAvailableCouponsList(phone, session);
       return;
@@ -1512,6 +1523,12 @@ export class ChatbotService {
     try {
       const existing = await this.cartService.getCart(userId);
       if (existing.couponCode && existing.couponCode.toUpperCase() === code.toUpperCase()) {
+        const target = session.context?.couponFlowTarget || 'checkout';
+        if (target === 'cart') {
+          await this.transitionToState(session, 'cart');
+          await this.sendCartSummary(phone, session);
+          return;
+        }
         await this.transitionToState(session, 'checkout');
         await this.sendCheckoutOptions(phone, session);
         return;
@@ -1552,6 +1569,12 @@ export class ChatbotService {
           { id: BTN.BACK, title: '\u21A9 Back' },
         ],
       });
+      return;
+    }
+    const target = session.context?.couponFlowTarget || 'checkout';
+    if (target === 'cart') {
+      await this.transitionToState(session, 'cart');
+      await this.sendCartSummary(phone, session);
       return;
     }
     await this.transitionToState(session, 'checkout');
