@@ -13,10 +13,14 @@ export const BTN = {
   KEEP_SHOPPING: 'continue_shopping',
   VIEW_CART: 'view_cart',
 
+  // Order tracking quick actions (avoid embedding long ids in button payloads).
+  REORDER_CURRENT: 'reorder_current',
+
   ADD_CART: 'add_cart',
   PICK_QTY: 'pick_qty',
 
   COUPON_APPLY_SUGGESTED: 'coupon_apply_suggested',
+  COUPON_APPLY_BEST: 'coupon_apply_best',
   COUPON_YES: 'coupon_yes',
   COUPON_NO: 'coupon_no',
   COUPON_CUSTOM: 'coupon_custom',

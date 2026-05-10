@@ -723,7 +723,10 @@ export class ChatbotService {
     switch (input) {
       case 'browse':
         await this.transitionToState(session, 'browsing');
-        await this.sendBrowseSurface(phone, session);
+        // "Shop now" should land on the WhatsApp catalog surface directly when
+        // available (the native "View items" experience). If catalog browsing
+        // isn't configured, fall back to the legacy interactive lists.
+        await this.sendShopNowSurface(phone, session);
         break;
 
       case 'cart':
@@ -757,6 +760,29 @@ export class ChatbotService {
       default:
         await this.sendFlowResponse(phone, 'main_menu', session);
     }
+  }
+
+  /**
+   * Main-menu "Shop now" entry point.
+   *
+   * Prefer the native WhatsApp catalog (product_list message) even if the
+   * broader browse flow has catalog messages disabled, since this button is
+   * explicitly meant to open the catalogue. Fall back safely when UCM isn't
+   * configured or the send fails.
+   */
+  private async sendShopNowSurface(phone: string, session: ChatSessionDocument): Promise<void> {
+    const catalogId = await this.getActiveCatalogId();
+    if (catalogId) {
+      try {
+        await this.sendCatalogProductList(phone, session, catalogId);
+        return;
+      } catch (error) {
+        this.logger.warn(
+          `sendShopNowSurface: sendCatalogProductList failed (${error instanceof Error ? error.message : 'unknown'}); falling back`,
+        );
+      }
+    }
+    await this.sendBrowseSurface(phone, session);
   }
 
   private async handleBrowsing(
@@ -1022,6 +1048,20 @@ export class ChatbotService {
       } else {
         await this.adjustCartItemQuantity(phone, session, idx, input === BTN.CART_INC ? 1 : -1);
       }
+      return;
+    }
+
+    // One-tap best-coupon apply from cart (no intermediate "Apply SAVE20" screen).
+    if (input === BTN.COUPON_APPLY_BEST) {
+      const applicable = await this.findApplicableCoupons(session);
+      const best = applicable[0];
+      if (!best) {
+        await this.transitionToState(session, 'coupon_prompt');
+        await this.sendAvailableCouponsList(phone, session);
+        return;
+      }
+      await this.transitionToState(session, 'coupon_prompt');
+      await this.applyCouponCode(phone, session, best.code, 'suggested');
       return;
     }
 
@@ -2289,10 +2329,14 @@ export class ChatbotService {
       paymentMethod,
     });
 
+    const placedWhen = this.formatStepTimestamp(order.createdAt);
+    const itemsPreview = this.formatOrderItemsPreview(order.items as any[]);
     const summary =
       `${bold(`#${order.orderNumber}`)}\n` +
-      `Total ${bold(this.formatCurrency(order.total))}\n` +
-      `Status ${bold(this.formatOrderStatusForCustomer(order))}`;
+      (placedWhen ? `Placed \u00B7 _${placedWhen}_\n` : '') +
+      `Status \u00B7 ${bold(this.formatOrderStatusForCustomer(order))}\n\n` +
+      `*Items (${order.items.length})*\n${itemsPreview}\n\n` +
+      `Total ${bold(this.formatCurrency(order.total))}`;
 
     if (paymentMethod === 'cod') {
       await this.whatsappService.sendInteractiveButtons({
@@ -2550,14 +2594,19 @@ export class ChatbotService {
       const trackingButtons = isUnpaidPrepaid
         ? [
             { id: Btn.payOrder(orderId), title: '\uD83D\uDCB3 Pay now' },
-            { id: Btn.reorder(orderId), title: '\uD83D\uDD01 Reorder' },
+            { id: BTN.REORDER_CURRENT, title: '\uD83D\uDD01 Reorder' },
             { id: BTN.BACK, title: '\u21A9 Back' },
           ]
         : [
-            { id: Btn.reorder(orderId), title: '\uD83D\uDD01 Reorder' },
+            { id: BTN.REORDER_CURRENT, title: '\uD83D\uDD01 Reorder' },
             { id: BTN.SUPPORT, title: '\uD83D\uDCAC Help' },
             { id: BTN.BACK, title: '\u21A9 Back' },
           ];
+
+      // Persist the selected order id so "Reorder" works even when providers
+      // (e.g. 360dialog fallbacks) don't echo back dynamic button ids.
+      session.pendingOrderId = orderId;
+      await session.save();
 
       await this.whatsappService.sendInteractiveButtons({
         phone,
@@ -2572,8 +2621,8 @@ export class ChatbotService {
       return;
     }
 
-    if (btn.kind === 'reorder') {
-      const orderId = btn.id;
+    if (input === BTN.REORDER_CURRENT && session.pendingOrderId) {
+      const orderId = session.pendingOrderId;
       let order;
       try {
         order = await this.ordersService.findById(orderId);
@@ -2608,6 +2657,16 @@ export class ChatbotService {
         return;
       }
       session.pendingOrderId = orderId;
+      await this.transitionToState(session, 'reorder');
+      await this.sendFlowResponse(phone, 'reorder', session);
+      return;
+    }
+
+    if (btn.kind === 'reorder') {
+      // Backward compatibility: older messages embed reorder_<orderId>.
+      const orderId = btn.id;
+      session.pendingOrderId = orderId;
+      await session.save();
       await this.transitionToState(session, 'reorder');
       await this.sendFlowResponse(phone, 'reorder', session);
       return;
@@ -3985,8 +4044,8 @@ export class ChatbotService {
           couponHint =
             `\n\n\uD83D\uDCA1 ${bold(`${this.formatCurrency(best.discount)} off available`)} with ${bold(best.code)} \u2014 tap \uD83C\uDFF7 to apply`;
           couponButton = {
-            id: BTN.COUPON_LIST,
-            title: clip(`\uD83C\uDFF7 Save ${this.formatCurrency(best.discount)}`, WA.BUTTON_TITLE),
+            id: BTN.COUPON_APPLY_BEST,
+            title: clip(`\uD83C\uDFF7 Apply ${best.code}`, WA.BUTTON_TITLE),
           };
         } else {
           // No coupon currently fits the cart \u2014 but if one is gated by
@@ -4786,6 +4845,7 @@ export class ChatbotService {
           key === 'back' ||
           key === 'continue' ||
           key === 'continue_shopping' ||
+          key === BTN.COUPON_APPLY_BEST ||
           key === 'coupon_list' ||
           key === BTN.CART_INC ||
           key === BTN.CART_DEC ||
@@ -4822,7 +4882,7 @@ export class ChatbotService {
           key === 'another_no'
         );
       case 'order_tracking':
-        return key === 'back' || key === 'more_orders' || key === 'browse' || key.startsWith('order_') || key.startsWith('reorder_') || key.startsWith('pay_');
+        return key === 'back' || key === 'more_orders' || key === 'browse' || key === BTN.REORDER_CURRENT || key.startsWith('order_') || key.startsWith('reorder_') || key.startsWith('pay_');
       case 'reorder':
         return key === 'confirm' || key === 'modify' || key === 'cancel' || key === 'back';
       case 'faq':
