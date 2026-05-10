@@ -12,7 +12,11 @@ import { Roles } from '../../common/decorators/roles.decorator';
 class BroadcastDto {
   phones: string[];
   templateName: string;
-  params: string[];
+  params?: string[];
+  languageCode?: string;
+  headerParams?: string[];
+  bodyParams?: string[];
+  buttonParams?: string[];
 }
 
 @Controller('notifications')
@@ -28,7 +32,13 @@ export class NotificationsController {
     return this.notificationsService.sendBroadcast(
       dto.phones,
       dto.templateName,
-      dto.params,
+      dto.params ?? [],
+      {
+        languageCode: dto.languageCode,
+        headerParams: dto.headerParams,
+        bodyParams: dto.bodyParams,
+        buttonParams: dto.buttonParams,
+      },
     );
   }
 }

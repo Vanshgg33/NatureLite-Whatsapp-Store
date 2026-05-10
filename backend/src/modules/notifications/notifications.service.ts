@@ -8,6 +8,10 @@ interface NotificationPayload {
   phone: string;
   templateName?: string;
   params?: string[];
+  languageCode?: string;
+  headerParams?: string[];
+  bodyParams?: string[];
+  buttonParams?: string[];
   text?: string;
   orderId?: string;
   idempotencyKey?: string;
@@ -286,22 +290,44 @@ export class NotificationsService {
   async sendBroadcast(
     phones: string[],
     templateName: string,
-    params: string[],
+    params: string[] = [],
+    options: {
+      languageCode?: string;
+      headerParams?: string[];
+      bodyParams?: string[];
+      buttonParams?: string[];
+    } = {},
   ): Promise<{ queued: number; skipped: number }> {
     let queued = 0;
     let skipped = 0;
+    const seenPhones = new Set<string>();
 
     for (const phone of phones) {
-      const idempotencyKey = `broadcast_${templateName}_${phone}_${Date.now()}`;
+      const normalizedPhone = String(phone || '').replace(/[^\d]/g, '');
+      if (!normalizedPhone || seenPhones.has(normalizedPhone)) {
+        skipped++;
+        continue;
+      }
+      seenPhones.add(normalizedPhone);
+
+      const idempotencyKey = `broadcast_${templateName}_${normalizedPhone}_${Date.now()}`;
 
       try {
-        await this.sendNotification({
-          phone,
+        const sent = await this.sendNotification({
+          phone: normalizedPhone,
           templateName,
           params,
+          languageCode: options.languageCode,
+          headerParams: options.headerParams,
+          bodyParams: options.bodyParams,
+          buttonParams: options.buttonParams,
           idempotencyKey,
         });
-        queued++;
+        if (sent) {
+          queued++;
+        } else {
+          skipped++;
+        }
       } catch {
         skipped++;
       }
@@ -335,7 +361,10 @@ export class NotificationsService {
       const messageId = await this.whatsappService.sendTemplateMessage({
         phone: payload.phone,
         templateName: payload.templateName,
-        bodyParams: payload.params,
+        languageCode: payload.languageCode,
+        headerParams: payload.headerParams,
+        bodyParams: payload.bodyParams ?? payload.params,
+        buttonParams: payload.buttonParams,
         meta: payload.idempotencyKey ? { idempotencyKey: payload.idempotencyKey } : undefined,
       });
 

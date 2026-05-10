@@ -999,12 +999,19 @@ class ApiClient {
   async sendBroadcast(
     phones: string[],
     templateName: string,
-    params: string[]
+    params: string[],
+    options?: {
+      languageCode?: string;
+      headerParams?: string[];
+      bodyParams?: string[];
+      buttonParams?: string[];
+    }
   ): Promise<{ queued: number; skipped: number }> {
     const response = await this.client.post<ApiResponse<{ queued: number; skipped: number }>>('/notifications/broadcast', {
       phones,
       templateName,
       params,
+      ...options,
     });
     return response.data.data;
   }

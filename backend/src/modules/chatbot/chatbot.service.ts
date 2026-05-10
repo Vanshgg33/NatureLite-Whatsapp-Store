@@ -225,6 +225,32 @@ export class ChatbotService {
     return order.status.replace(/_/g, ' ');
   }
 
+  private formatOrderListDate(dateValue?: Date | string | null): string {
+    const date = dateValue ? new Date(dateValue) : new Date();
+    if (Number.isNaN(date.getTime())) return 'Recent order';
+
+    const datePart = date.toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+    });
+    const timePart = date.toLocaleTimeString('en-IN', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+    return `${datePart}, ${timePart}`;
+  }
+
+  private formatOrderItemsForList(items: Array<{ name: string; quantity: number }>): string {
+    if (!items.length) return 'Order items';
+    const preview = items
+      .slice(0, 2)
+      .map((it) => `${it.name} x${it.quantity}`)
+      .join(', ');
+    const more = items.length > 2 ? ` +${items.length - 2} more` : '';
+    return `${preview}${more}`;
+  }
+
   /** Preview up to 4 items for the tracking message. */
   private formatOrderItemsPreview(items: Array<{ name: string; quantity: number }>): string {
     const preview = items
@@ -480,6 +506,7 @@ export class ChatbotService {
 
     const buttonId = message.content.buttonId || message.content.listId;
     const transitionKey = buttonId || this.mapTextToTransitionKey(currentState, inputText);
+    const normalizedInput = this.normalizeInput(inputText);
 
     // Catalog "send cart" → arrives as type=order with productItems[]. One product tap arrives
     // as interactive=product or product_list_reply (productItems often has length 1).
@@ -530,13 +557,24 @@ export class ChatbotService {
       'view_cart',
       'continue_shopping',
       'browse',
+      'cart',
       'menu',
       'main_menu',
       'account',
       'orders',
+      'reorder',
+      BTN.CHANGE_ADDRESS,
       'support',
       'pay',
     ]);
+
+    if (
+      transitionKey === BTN.CHANGE_ADDRESS ||
+      normalizedInput === 'change address'
+    ) {
+      await this.openAddressPickerFromPayment(message.phone, session);
+      return;
+    }
 
     // If a user taps an old or fabricated button/list id, do not mutate state; re-show current options.
     if (buttonId && !globalKeys.has(buttonId) && !this.isValidTransitionKeyForState(currentState, buttonId)) {
@@ -545,6 +583,11 @@ export class ChatbotService {
     }
 
     if (transitionKey === 'view_cart') {
+      await this.transitionToState(session, 'cart');
+      await this.sendCartSummary(message.phone, session);
+      return;
+    }
+    if (transitionKey === 'cart') {
       await this.transitionToState(session, 'cart');
       await this.sendCartSummary(message.phone, session);
       return;
@@ -569,6 +612,10 @@ export class ChatbotService {
       await session.save();
       await this.transitionToState(session, 'order_tracking');
       await this.sendOrdersList(message.phone, session);
+      return;
+    }
+    if (transitionKey === 'reorder') {
+      await this.startReorderFromLatestOrder(message.phone, session);
       return;
     }
     if (transitionKey === 'pay') {
@@ -739,6 +786,10 @@ export class ChatbotService {
         await session.save();
         await this.transitionToState(session, 'order_tracking');
         await this.sendOrdersList(phone, session);
+        break;
+
+      case 'reorder':
+        await this.startReorderFromLatestOrder(phone, session);
         break;
 
       case 'help':
@@ -2072,15 +2123,7 @@ export class ChatbotService {
     message: WhatsAppMessage,
   ): Promise<void> {
     if (input === 'back' || input === BTN.CHANGE_ADDRESS) {
-      // Safety: never let the "place another order" override linger.
-      if (session.context.allowAnotherOrderOnce) {
-        session.context = mergeChatContext(session.context, { allowAnotherOrderOnce: false });
-        await session.save();
-      }
-      await this.transitionToState(session, 'checkout');
-      // Force the address list — the auto-pick in sendCheckoutOptions would
-      // otherwise bounce the customer right back to this screen.
-      await this.sendCheckoutOptions(phone, session, { forceShowList: true });
+      await this.openAddressPickerFromPayment(phone, session);
       return;
     }
 
@@ -2427,6 +2470,44 @@ export class ChatbotService {
 
     await this.transitionToState(session, 'main_menu');
     await this.chatSessionRepository.releaseCheckoutLock(session._id);
+  }
+
+  private async openAddressPickerFromPayment(
+    phone: string,
+    session: ChatSessionDocument,
+  ): Promise<void> {
+    // Safety: never let the "place another order" override linger after the
+    // customer explicitly leaves payment to adjust delivery details.
+    if (session.context.allowAnotherOrderOnce) {
+      session.context = mergeChatContext(session.context, { allowAnotherOrderOnce: false });
+      await session.save();
+    }
+
+    if (!session.user) {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: 'Please register to choose a delivery address.',
+      });
+      await this.transitionToState(session, 'main_menu');
+      await this.sendFlowResponse(phone, 'main_menu', session);
+      return;
+    }
+
+    const cart = await this.cartService.getCart(session.user.toString());
+    if (cart.items.length === 0) {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: 'Your cart is empty. Browse products to get started.',
+      });
+      await this.transitionToState(session, 'main_menu');
+      await this.sendFlowResponse(phone, 'main_menu', session);
+      return;
+    }
+
+    await this.transitionToState(session, 'checkout');
+    // Force the address list — the auto-pick in sendCheckoutOptions would
+    // otherwise bounce the customer right back to payment_selection.
+    await this.sendCheckoutOptions(phone, session, { forceShowList: true });
   }
 
   /**
@@ -2839,6 +2920,39 @@ export class ChatbotService {
       return;
     }
 
+    await this.sendFlowResponse(phone, 'reorder', session);
+  }
+
+  private async startReorderFromLatestOrder(
+    phone: string,
+    session: ChatSessionDocument,
+  ): Promise<void> {
+    if (!session.user) {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: 'Please register first, then you can reorder from your recent orders.',
+      });
+      await this.sendFlowResponse(phone, 'main_menu', session);
+      return;
+    }
+
+    const recent = await this.ordersService.findUserOrders(session.user.toString(), 1);
+    const latest = recent[0];
+    if (!latest) {
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        headerText: 'No orders yet',
+        bodyText: 'You do not have any previous orders to reorder.',
+        buttons: [
+          { id: BTN.BROWSE, title: '\uD83D\uDECD Shop Now' },
+          { id: BTN.ORDERS, title: '\uD83D\uDCE6 My orders' },
+        ],
+      });
+      return;
+    }
+
+    session.pendingOrderId = latest._id.toString();
+    await this.transitionToState(session, 'reorder');
     await this.sendFlowResponse(phone, 'reorder', session);
   }
 
@@ -4548,11 +4662,8 @@ export class ChatbotService {
 
     const rows = slice.map((order) => ({
       id: Btn.order(order._id.toString()),
-      title: clip(order.orderNumber, WA.LIST_ROW_TITLE),
-      description: clip(
-        `${this.formatOrderStatusForCustomer(order)}  \u00B7  ${this.formatCurrency(order.total)}`,
-        WA.LIST_ROW_DESC,
-      ),
+      title: clip(this.formatOrderListDate(order.createdAt), WA.LIST_ROW_TITLE),
+      description: clip(this.formatOrderItemsForList(order.items), WA.LIST_ROW_DESC),
     }));
 
     if (hasMore) {
@@ -4667,17 +4778,25 @@ export class ChatbotService {
     const body =
       `Hey ${name} \uD83D\uDC4B\n` +
       `What are you in the mood for today?\n\n` +
-      `Quick access: ${bold('orders')} \u00B7 ${bold('account')} \u00B7 ${bold('help')}`;
+      `Quick access: ${bold('orders')} \u00B7 ${bold('reorder')} \u00B7 ${bold('support')}`;
 
-    await this.whatsappService.sendInteractiveButtons({
+    await this.whatsappService.sendInteractiveList({
       phone,
       headerText: clip(action.header, WA.HEADER) || undefined,
       bodyText: body,
       footerText: clip(action.footer, WA.FOOTER) || undefined,
-      buttons: [
-        { id: BTN.BROWSE, title: '\uD83D\uDECD Shop Now' },
-        { id: BTN.CART, title: clip(cartLabel, WA.BUTTON_TITLE) },
-        { id: BTN.ORDERS, title: '\uD83D\uDCE6 Track order' },
+      buttonText: 'Open menu',
+      sections: [
+        {
+          title: 'Quick actions',
+          rows: [
+            { id: BTN.BROWSE, title: '\uD83D\uDECD Shop Now' },
+            { id: BTN.CART, title: clip(cartLabel, WA.LIST_ROW_TITLE) },
+            { id: BTN.ORDERS, title: '\uD83D\uDCE6 Track order' },
+            { id: 'reorder', title: '\uD83D\uDD01 Reorder' },
+            { id: BTN.SUPPORT, title: '\uD83D\uDCAC Support' },
+          ],
+        },
       ],
     });
   }
@@ -4763,9 +4882,10 @@ export class ChatbotService {
         '1': 'browse', 'browse': 'browse', 'browse products': 'browse', 'shop': 'browse', 'products': 'browse',
         '2': 'cart', 'cart': 'cart', 'my cart': 'cart', 'view cart': 'cart',
         '3': 'orders', 'orders': 'orders', 'my orders': 'orders', 'order': 'orders', 'track': 'orders',
-        '4': 'account', 'account': 'account', 'my account': 'account', 'profile': 'account',
-        '5': 'faq', 'help': 'faq', 'faq': 'faq', 'help & faq': 'faq', 'help and faq': 'faq',
-        '6': 'support', 'support': 'support', 'agent': 'support', 'human': 'support',
+        '4': 'reorder', 'reorder': 'reorder', 'order again': 'reorder',
+        '5': 'support', 'support': 'support', 'agent': 'support', 'human': 'support',
+        '6': 'account', 'account': 'account', 'my account': 'account', 'profile': 'account',
+        '7': 'faq', 'help': 'faq', 'faq': 'faq', 'help & faq': 'faq', 'help and faq': 'faq',
         pay: 'pay', 'pay now': 'pay', 'complete payment': 'pay',
       },
       browsing: { back: 'back', more: 'more_products', next: 'more_products' },
@@ -4953,7 +5073,7 @@ export class ChatbotService {
       case 'address_input':
         return key === 'back' || key === 'submit';
       case 'main_menu':
-        return key === 'browse' || key === 'cart' || key === 'orders' || key === 'account' || key === 'help' || key === 'faq' || key === 'support';
+        return key === 'browse' || key === 'cart' || key === 'orders' || key === 'reorder' || key === 'account' || key === 'help' || key === 'faq' || key === 'support';
       case 'account':
         return key === 'edit_profile' || key === 'addresses' || key === 'wallet' || key === 'orders' || key === 'back';
       case 'account_edit':
