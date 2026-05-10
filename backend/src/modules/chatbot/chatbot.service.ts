@@ -765,28 +765,15 @@ export class ChatbotService {
   /**
    * Main-menu "Shop now" entry point.
    *
-   * Prefer the native WhatsApp catalog (product_list message) even if the
+   * Prefer the native WhatsApp catalog message even if the
    * broader browse flow has catalog messages disabled, since this button is
    * explicitly meant to open the catalogue. Fall back safely when UCM isn't
    * configured or the send fails.
    */
   private async sendShopNowSurface(phone: string, session: ChatSessionDocument): Promise<void> {
-    // WhatsApp doesn't allow bots to auto-open the native "View items" sheet
-    // for catalog/product-list messages. A wa.me catalog link opens the
-    // catalogue directly in one tap, so prefer that for "Shop now".
-    const businessPhone = (this.configService.get<string>('whatsapp.businessPhoneNumber') || '').trim();
-    if (businessPhone) {
-      const catalogLink = `https://wa.me/c/${businessPhone.replace(/[^\d]/g, '')}`;
-      await this.whatsappService.sendTextMessage({
-        phone,
-        message: `Browse our store:\n${catalogLink}`,
-        previewUrl: 'true',
-      });
-      return;
-    }
-
-    // Fallback: show browse surface (catalog message / legacy list) when the
-    // public business number isn't configured.
+    // WhatsApp cannot be forced to "open" the catalog UI without user intent.
+    // The closest to native behavior is sending a single catalog/product-list
+    // message in chat (no extra text message beforehand).
     await this.sendBrowseSurface(phone, session);
   }
 
@@ -3384,9 +3371,9 @@ export class ChatbotService {
 
   /**
    * Browse entry point. Prefers Meta catalog message when UCM is configured;
-   * falls back to the legacy interactive category list when the catalog ID
-   * is missing or the env flag disables it. Catalog ID and stock are
-   * resolved at send time so live config changes are picked up.
+   * falls back to a capped multi-product list / legacy category list when the
+   * catalog ID is missing or the env flag disables it. Catalog ID and stock
+   * are resolved at send time so live config changes are picked up.
    */
   private async sendBrowseSurface(phone: string, session: ChatSessionDocument): Promise<void> {
     if (!this.isCatalogBrowseEnabled()) {
@@ -3402,13 +3389,52 @@ export class ChatbotService {
     }
 
     try {
-      await this.sendCatalogProductList(phone, session, catalogId);
+      await this.whatsappService.sendCatalogMessage({
+        phone,
+        bodyText: 'Browse our store and add items from the full catalogue.',
+        footerText: 'Tap View items to continue.',
+        thumbnailProductRetailerId: await this.findCatalogThumbnailRetailerId(),
+      });
     } catch (error) {
       this.logger.warn(
-        `sendCatalogProductList failed (${error instanceof Error ? error.message : 'unknown'}); falling back to interactive list`,
+        `sendCatalogMessage failed (${error instanceof Error ? error.message : 'unknown'}); falling back to product list`,
       );
-      await this.sendCategoryList(phone, session);
+      try {
+        await this.sendCatalogProductList(phone, session, catalogId);
+      } catch (fallbackError) {
+        this.logger.warn(
+          `sendCatalogProductList failed (${fallbackError instanceof Error ? fallbackError.message : 'unknown'}); falling back to interactive list`,
+        );
+        await this.sendCategoryList(phone, session);
+      }
     }
+  }
+
+  private async findCatalogThumbnailRetailerId(): Promise<string | undefined> {
+    let categories = this.categoryCache.get();
+    if (!categories) {
+      categories = await this.categoriesService.findActiveCategories();
+      this.categoryCache.set(categories);
+    }
+
+    const mainStoreId = await this.getMainStoreId();
+    for (const cat of categories) {
+      const products = await this.productsService.findByCategory(cat._id.toString());
+      for (const product of products) {
+        if (product.isActive === false) continue;
+        if (product.trackStock === false) return this.retailerIdForProduct(product);
+
+        const stock = await this.storeStockService.getStockForStoreProduct(
+          mainStoreId,
+          product._id.toString(),
+        );
+        if (this.resolveStoreAvailableStock(stock) > 0) {
+          return this.retailerIdForProduct(product);
+        }
+      }
+    }
+
+    return undefined;
   }
 
   /**

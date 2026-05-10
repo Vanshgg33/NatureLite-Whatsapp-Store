@@ -480,6 +480,47 @@ export class WhatsAppService implements OnModuleInit {
     });
   }
 
+  async sendCatalogMessage(dto: {
+    phone: string;
+    bodyText: string;
+    footerText?: string;
+    thumbnailProductRetailerId?: string;
+    meta?: { idempotencyKey?: string };
+  }): Promise<string | null> {
+    const phone = this.normalizePhone(dto.phone);
+    if (!phone) return null;
+
+    const action: Record<string, unknown> = {
+      name: 'catalog_message',
+    };
+    if (dto.thumbnailProductRetailerId) {
+      action.parameters = {
+        thumbnail_product_retailer_id: dto.thumbnailProductRetailerId,
+      };
+    }
+
+    const payload: Record<string, unknown> = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: phone,
+      type: 'interactive',
+      interactive: {
+        type: 'catalog_message',
+        body: { text: dto.bodyText },
+        footer: dto.footerText ? { text: dto.footerText } : undefined,
+        action,
+      },
+    };
+
+    return this.sendOutboundWithRetry({
+      phone,
+      messageType: 'interactive',
+      content: { text: dto.bodyText },
+      idempotencyKey: dto.meta?.idempotencyKey,
+      payload,
+    });
+  }
+
   async sendProductListMessage(dto: {
     phone: string;
     catalogId: string;
