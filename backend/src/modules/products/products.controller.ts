@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -15,6 +16,7 @@ import {
   UpdateProductDto,
   ProductQueryDto,
   UpdateStockDto,
+  BulkUpdateCategoryDto,
 } from './dto/product.dto';
 import { Product } from './schemas/product.schema';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -108,6 +110,13 @@ export class ProductsController {
     @Body() dto: UpdateStockDto,
   ): Promise<Product> {
     return this.productsService.updateStock(id, dto);
+  }
+
+  @Patch('bulk-category')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  async bulkUpdateCategory(@Body() dto: BulkUpdateCategoryDto): Promise<{ modifiedCount: number }> {
+    return this.productsService.bulkUpdateCategory(dto.productIds, dto.categoryId);
   }
 
   @Delete(':id')

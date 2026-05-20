@@ -321,7 +321,7 @@ export function PremiumHero({
                   <div className="text-center">
                     <Leaf className="w-12 h-12 text-brand-green mx-auto mb-2" />
                     <span className="font-display text-xl font-bold text-brand-charcoal">
-                      Naturelite
+                      Purity Foods
                     </span>
                   </div>
                 </div>

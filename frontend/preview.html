@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Nature Lite Foods — Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;0,9..144,700;0,9..144,800;1,9..144,600;1,9..144,700&family=DM+Sans:wght@300;400;500;600&family=Noto+Sans+Devanagari:wght@400;600&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --g1:#0d2c07;   /* deepest bottle-forest */
+  --g2:#1a5210;   /* rich hunter green     */
+  --g3:#2d7a1b;   /* logo forest (accents) */
+  --g4:#dce9d4;   /* muted sage            */
+  --g5:#edf4e7;   /* near-white sage       */
+  --o1:#7a5408;   /* deep antique bronze   */
+  --o2:#a07010;   /* rich honey-gold       */
+  --o3:#b88a14;   /* warm saffron          */
+  --o4:#fdf0d8;   /* aged parchment        */
+  --cream:#f2ece0;
+  --warm:#f8f2e8;
+  --ink:#0b1c08;
+  --mid:#2e4225;
+  --muted:rgba(11,28,8,0.40);
+  --border:rgba(26,82,16,0.10);
+  --card-shadow:0 2px 20px -4px rgba(13,44,7,0.12);
+}
+html{scroll-behavior:smooth}
+body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);overflow-x:hidden}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity:0.028;mix-blend-mode:multiply;}
+
+/* ═══════════════════════════════════════════════════
+   ANNOUNCEMENT BAR
+═══════════════════════════════════════════════════ */
+.announce{
+  background:var(--g1);
+  padding:9px 0;
+  text-align:center;
+  font-size:12.5px;
+  font-weight:500;
+  color:rgba(255,255,255,0.88);
+  letter-spacing:0.04em;
+  position:relative;overflow:hidden;
+}
+.announce span{color:var(--o3);font-weight:600}
+.announce::before{
+  content:'';position:absolute;top:0;left:-100%;width:60%;height:100%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.06),transparent);
+  animation:shimmer 3s ease-in-out infinite;
+}
+@keyframes shimmer{to{left:150%}}
+
+/* ═══════════════════════════════════════════════════
+   HEADER
+═══════════════════════════════════════════════════ */
+.header{
+  background:var(--warm);
+  border-bottom:1px solid rgba(26,82,16,0.09);
+  box-shadow:0 2px 18px -4px rgba(13,44,7,0.10);
+  position:sticky;top:0;z-index:200;
+}
+.header-inner{
+  max-width:1280px;margin:0 auto;padding:0 28px;
+  display:flex;align-items:center;justify-content:space-between;
+  height:70px;gap:20px;
+}
+/* Logo */
+.logo{display:flex;align-items:center;gap:12px;text-decoration:none;flex-shrink:0}
+.logo-circle{
+  width:52px;height:52px;border-radius:50%;
+  border:2.5px solid var(--g2);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:6px;gap:0;
+}
+.logo-n{font-family:'Fraunces',serif;font-size:10px;font-weight:700;color:var(--g2);line-height:1.1;letter-spacing:-0.01em}
+.logo-lite{font-family:'Fraunces',serif;font-size:13px;font-weight:800;color:var(--o2);line-height:1;letter-spacing:-0.02em}
+.logo-foods{font-size:6.5px;font-weight:600;letter-spacing:0.12em;color:var(--g1);text-transform:uppercase;line-height:1.2}
+.logo-text-block{display:flex;flex-direction:column;gap:1px}
+.logo-title{font-family:'Fraunces',serif;font-size:22px;font-weight:700;line-height:1;letter-spacing:-0.02em}
+.logo-title .n{color:var(--g2)}.logo-title .l{color:var(--o2)}.logo-title .f{color:var(--g1)}
+.logo-tagline{font-size:10px;font-weight:500;letter-spacing:0.06em;color:var(--o2)}
+
+/* Nav */
+.nav{display:flex;gap:2px;list-style:none}
+.nav a{
+  text-decoration:none;font-size:13.5px;font-weight:500;
+  padding:6px 12px;border-radius:8px;color:var(--mid);
+  transition:all 0.18s;white-space:nowrap;
+}
+.nav a:hover{color:var(--g2);background:var(--g5)}
+.nav a.active{color:var(--g2);font-weight:600}
+.nav a.highlight{color:var(--o1);font-weight:600}
+
+/* Header actions */
+.h-actions{display:flex;align-items:center;gap:6px}
+.h-btn{
+  width:40px;height:40px;border-radius:10px;border:none;
+  background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  color:var(--mid);transition:all 0.18s;position:relative;
+}
+.h-btn:hover{background:var(--g5);color:var(--g2)}
+.h-btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8}
+.h-badge{
+  position:absolute;top:-2px;right:-2px;
+  width:18px;height:18px;border-radius:50%;
+  background:var(--g2);color:#fff;
+  font-size:10px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+}
+.signin-btn{
+  padding:9px 20px;border-radius:10px;
+  background:var(--g1);color:#fff;
+  font-size:13px;font-weight:600;border:none;cursor:pointer;
+  transition:all 0.18s;margin-left:4px;
+}
+.signin-btn:hover{background:var(--g2)}
+
+/* ═══════════════════════════════════════════════════
+   HERO
+═══════════════════════════════════════════════════ */
+.hero{
+  position:relative;overflow:hidden;
+  background:linear-gradient(145deg,#050f03 0%,#0d2c07 42%,#0a2206 100%);
+  min-height:520px;
+}
+/* Leaf pattern overlay */
+.hero::before{
+  content:'';position:absolute;inset:0;
+  background-image:radial-gradient(circle at 20% 80%,rgba(255,255,255,0.04) 0%,transparent 50%),
+    radial-gradient(circle at 80% 20%,rgba(255,255,255,0.04) 0%,transparent 50%);
+  pointer-events:none;
+}
+.hero-light{
+  position:absolute;top:-20%;right:-5%;
+  width:55%;height:160%;
+  background:linear-gradient(135deg,rgba(160,112,16,0.09) 0%,rgba(184,138,20,0.04) 40%,transparent 70%);
+  transform:skewX(-8deg);
+  pointer-events:none;
+}
+.hero-inner{
+  position:relative;z-index:2;
+  max-width:1280px;margin:0 auto;padding:60px 28px;
+  display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center;
+}
+/* Left */
+.hero-badge{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:7px 16px;border-radius:999px;
+  background:rgba(160,112,16,0.15);border:1px solid rgba(160,112,16,0.30);
+  margin-bottom:20px;
+}
+.hero-badge-dot{width:6px;height:6px;border-radius:50%;background:var(--o3);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.6;transform:scale(1.3)}}
+.hero-badge span{font-size:12px;font-weight:600;color:var(--o3);letter-spacing:0.06em;text-transform:uppercase}
+.hero-new{
+  display:inline-block;padding:4px 12px;border-radius:6px;
+  background:var(--o2);color:#fff;
+  font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
+  margin-bottom:14px;
+}
+.hero-h1{
+  font-family:'Fraunces',serif;
+  font-size:clamp(2.4rem,4.5vw,4rem);
+  font-weight:700;line-height:1.1;
+  color:#fff;letter-spacing:-0.025em;
+  margin-bottom:8px;
+}
+.hero-h1 em{font-style:italic;color:var(--o3)}
+.hero-h2{
+  font-family:'Fraunces',serif;
+  font-size:clamp(1.2rem,2.5vw,1.9rem);
+  font-weight:600;font-style:italic;
+  color:rgba(184,138,20,0.88);
+  margin-bottom:16px;line-height:1.3;
+}
+.hero-sub{
+  font-size:15px;line-height:1.7;
+  color:rgba(255,255,255,0.55);
+  margin-bottom:28px;max-width:460px;
+}
+.hero-hindi{
+  font-family:'Noto Sans Devanagari',sans-serif;
+  font-size:15px;font-weight:600;
+  color:rgba(184,138,20,0.72);
+  margin-bottom:28px;
+}
+.hero-ctas{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:36px}
+.btn-green{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:13px 28px;border-radius:10px;
+  background:var(--o2);color:#fff;
+  font-size:14px;font-weight:700;border:none;cursor:pointer;
+  box-shadow:0 4px 24px -4px rgba(160,112,16,0.50);
+  transition:all 0.2s;letter-spacing:0.01em;
+}
+.btn-green:hover{background:var(--o1);transform:translateY(-2px);box-shadow:0 8px 30px -4px rgba(122,84,8,0.55)}
+.btn-outline-light{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:13px 28px;border-radius:10px;
+  background:rgba(255,255,255,0.10);color:#fff;
+  font-size:14px;font-weight:600;
+  border:1.5px solid rgba(255,255,255,0.28);cursor:pointer;
+  transition:all 0.2s;backdrop-filter:blur(4px);
+}
+.btn-outline-light:hover{background:rgba(255,255,255,0.18);border-color:rgba(255,255,255,0.45)}
+.hero-stats{display:flex;gap:28px;flex-wrap:wrap}
+.hero-stat{display:flex;align-items:center;gap:8px}
+.stat-num{font-family:'Fraunces',serif;font-size:20px;font-weight:700;color:rgba(255,255,255,0.92);letter-spacing:-0.02em}
+.stat-label{font-size:11.5px;color:rgba(255,255,255,0.42);line-height:1.3;letter-spacing:0.01em}
+
+/* Right — visual */
+.hero-visual{position:relative;display:flex;align-items:center;justify-content:center}
+.hero-product-stage{
+  position:relative;
+  width:380px;height:380px;
+  display:flex;align-items:center;justify-content:center;
+}
+.hero-glow-ring{
+  position:absolute;inset:0;border-radius:50%;
+  background:radial-gradient(circle,rgba(160,112,16,0.16) 0%,rgba(160,112,16,0.05) 50%,transparent 70%);
+  animation:glow-pulse 4s ease-in-out infinite;
+}
+@keyframes glow-pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.06);opacity:0.7}}
+.hero-product-svg{
+  width:72%;height:72%;
+  filter:drop-shadow(0 24px 48px rgba(0,0,0,0.35));
+  animation:product-float 7s ease-in-out infinite;
+}
+@keyframes product-float{0%,100%{transform:translateY(0) rotate(-1.5deg)}50%{transform:translateY(-16px) rotate(1.5deg)}}
+
+/* Floating badges */
+.fl-badge{
+  position:absolute;
+  background:rgba(8,22,4,0.52);
+  border-radius:10px;padding:8px 14px;
+  font-size:12px;font-weight:600;color:rgba(255,255,255,0.88);
+  box-shadow:0 4px 24px rgba(0,0,0,0.30);
+  backdrop-filter:blur(12px) saturate(1.4);white-space:nowrap;
+  border:1px solid rgba(255,255,255,0.12);
+  letter-spacing:0.01em;
+}
+.fl-badge .fl-icon{font-size:14px;margin-right:5px}
+.fl-1{top:10%;right:-8%;animation:fl1 4.5s ease-in-out infinite}
+.fl-2{bottom:22%;left:-10%;animation:fl2 5.5s ease-in-out infinite 1.2s}
+.fl-3{bottom:42%;right:-5%;animation:fl1 4s ease-in-out infinite 2.4s}
+@keyframes fl1{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+@keyframes fl2{0%,100%{transform:translateY(0)}50%{transform:translateY(8px)}}
+
+/* ═══════════════════════════════════════════════════
+   STRIP: WHY TRUST
+═══════════════════════════════════════════════════ */
+.trust-strip{
+  background:var(--warm);
+  border-bottom:1px solid rgba(26,82,16,0.08);
+}
+.trust-strip-inner{
+  max-width:1280px;margin:0 auto;padding:16px 28px;
+  display:flex;align-items:center;justify-content:center;gap:40px;flex-wrap:wrap;
+}
+.trust-item-s{
+  display:flex;align-items:center;gap:10px;
+  font-size:13px;font-weight:500;color:var(--mid);
+}
+.trust-icon-s{
+  width:32px;height:32px;border-radius:8px;
+  background:var(--g5);display:flex;align-items:center;justify-content:center;
+  font-size:15px;color:var(--g2);
+}
+
+/* ═══════════════════════════════════════════════════
+   CATEGORY TABS
+═══════════════════════════════════════════════════ */
+.cat-section{background:var(--cream);padding:48px 0 0}
+.section-header{text-align:center;margin-bottom:28px;padding:0 28px}
+.section-eyebrow{
+  font-size:11px;font-weight:600;letter-spacing:0.18em;
+  text-transform:uppercase;color:var(--o2);margin-bottom:8px;
+}
+.section-title{
+  font-family:'Fraunces',serif;
+  font-size:clamp(1.5rem,2.8vw,2.2rem);
+  font-weight:700;color:var(--ink);
+  letter-spacing:-0.02em;
+}
+.section-title em{font-style:italic;color:var(--g2)}
+.section-rule{
+  width:52px;height:3px;border-radius:2px;
+  background:linear-gradient(90deg,var(--g2),var(--o2));
+  margin:12px auto 0;
+}
+.cat-chips{
+  max-width:900px;margin:0 auto;padding:0 28px 40px;
+  display:flex;gap:10px;justify-content:center;flex-wrap:wrap;
+}
+.cat-chip{
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  padding:14px 20px;border-radius:14px;cursor:pointer;
+  border:1.5px solid rgba(26,82,16,0.15);
+  background:#fff;transition:all 0.2s;min-width:80px;
+}
+.cat-chip:hover{border-color:var(--g2);background:var(--g5);transform:translateY(-2px)}
+.cat-chip.active{border-color:var(--g2);background:var(--g2);color:#fff}
+.cat-chip-icon{font-size:22px;line-height:1}
+.cat-chip-label{font-size:12px;font-weight:600;color:var(--mid);white-space:nowrap}
+.cat-chip.active .cat-chip-label{color:#fff}
+
+/* ═══════════════════════════════════════════════════
+   PRODUCT GRID
+═══════════════════════════════════════════════════ */
+.products-section{
+  background:var(--cream);padding:0 0 64px;
+}
+.products-inner{max-width:1280px;margin:0 auto;padding:0 28px}
+.products-grid{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:16px;
+}
+
+/* Product card — Anveshan-inspired */
+.pcard{
+  background:var(--warm);border-radius:16px;overflow:hidden;
+  border:1px solid rgba(26,82,16,0.08);
+  box-shadow:var(--card-shadow);
+  transition:transform 0.30s cubic-bezier(0.2,0.7,0.2,1.05),box-shadow 0.30s;
+  cursor:pointer;position:relative;
+}
+.pcard:hover{
+  transform:translateY(-5px);
+  box-shadow:0 18px 44px -8px rgba(13,44,7,0.16),0 4px 16px -4px rgba(13,44,7,0.10);
+}
+.pcard-img-wrap{
+  position:relative;aspect-ratio:1/1;
+  background:linear-gradient(145deg,#f5faf2 0%,#eef7e8 100%);
+  display:flex;align-items:center;justify-content:center;overflow:hidden;
+}
+.pcard-letter{
+  font-family:'Fraunces',serif;font-size:6rem;
+  font-weight:800;color:rgba(26,82,16,0.12);
+  letter-spacing:-0.04em;line-height:1;
+  user-select:none;transition:transform 0.4s;
+}
+.pcard:hover .pcard-letter{transform:scale(1.08)}
+/* Badges */
+.pcard-ribbon{
+  position:absolute;top:0;left:0;
+  background:var(--g2);color:#fff;
+  font-size:10.5px;font-weight:700;padding:5px 12px;
+  border-radius:0 0 12px 0;
+  display:flex;align-items:center;gap:4px;
+}
+.pcard-ribbon.orange{background:var(--o2)}
+.pcard-ribbon.dark{background:var(--g1)}
+.pcard-badge-tr{
+  position:absolute;top:10px;right:10px;
+  background:rgba(255,255,255,0.94);
+  border:1px solid rgba(26,82,16,0.15);
+  border-radius:8px;padding:4px 10px;
+  font-size:11px;font-weight:700;color:var(--g2);
+}
+.pcard-wishlist{
+  position:absolute;top:10px;right:10px;
+  width:32px;height:32px;border-radius:50%;
+  background:rgba(255,255,255,0.92);
+  border:1px solid rgba(26,82,16,0.12);
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;cursor:pointer;transition:all 0.2s;
+}
+.pcard-wishlist:hover{background:#fff;border-color:var(--g2);color:var(--g2)}
+/* Body */
+.pcard-body{padding:12px 14px 14px}
+.pcard-cat{
+  font-size:10px;letter-spacing:0.08em;
+  text-transform:uppercase;color:var(--o2);
+  font-weight:600;margin-bottom:4px;
+}
+.pcard-name{
+  font-family:'Fraunces',serif;
+  font-size:15px;font-weight:600;color:var(--ink);
+  line-height:1.35;margin-bottom:8px;
+}
+.pcard-stars{display:flex;align-items:center;gap:3px;margin-bottom:8px}
+.star{font-size:12px;color:var(--o2)}.star.e{color:rgba(145,110,58,0.22)}
+.pcard-reviews{font-size:11px;color:var(--muted);margin-left:4px}
+.pcard-price-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.pcard-price{font-family:'Fraunces',serif;font-size:18px;font-weight:700;color:var(--ink)}
+.pcard-mrp{font-size:12px;color:var(--muted);text-decoration:line-through}
+.pcard-save{font-size:11px;font-weight:700;color:var(--g3)}
+/* Add button */
+.pcard-add-btn{
+  width:100%;padding:10px;border-radius:10px;
+  background:var(--g1);color:rgba(255,255,255,0.90);
+  font-size:13px;font-weight:700;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  transition:all 0.22s;letter-spacing:0.04em;
+  box-shadow:0 2px 10px -2px rgba(13,44,7,0.28);
+}
+.pcard-add-btn:hover{background:var(--g2);box-shadow:0 4px 16px -2px rgba(26,82,16,0.36)}
+.pcard-add-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.5}
+
+/* ═══════════════════════════════════════════════════
+   WHY CHOOSE
+═══════════════════════════════════════════════════ */
+.why-section{
+  background:var(--cream);
+  border-top:1px solid rgba(26,82,16,0.08);
+  padding:64px 0;
+}
+.why-inner{max-width:1100px;margin:0 auto;padding:0 28px}
+.why-grid{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:28px;
+  margin-top:40px;
+}
+.why-card{
+  background:var(--warm);border-radius:18px;padding:28px 22px;
+  border:1px solid rgba(26,82,16,0.08);
+  box-shadow:0 1px 12px -4px rgba(13,44,7,0.08);
+  text-align:center;transition:all 0.28s;
+}
+.why-card:hover{border-color:rgba(26,82,16,0.22);transform:translateY(-4px);box-shadow:0 14px 36px -8px rgba(13,44,7,0.13)}
+.why-icon{
+  width:64px;height:64px;border-radius:16px;
+  background:var(--g5);
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 16px;font-size:28px;
+  transition:all 0.25s;
+}
+.why-card:hover .why-icon{background:var(--g2)}
+.why-title{
+  font-family:'Fraunces',serif;
+  font-size:16px;font-weight:700;color:var(--ink);
+  margin-bottom:8px;
+}
+.why-desc{font-size:13px;line-height:1.65;color:var(--muted)}
+
+/* ═══════════════════════════════════════════════════
+   PRODUCTS PAGE SECTION
+═══════════════════════════════════════════════════ */
+.page-break{
+  background:#1a1a1a;padding:20px 28px;
+  display:flex;align-items:center;gap:14px;
+}
+.pb-tag{
+  padding:5px 14px;border-radius:999px;
+  font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
+}
+.pb-green{background:rgba(26,82,16,0.25);color:#6dd45a}
+.pb-orange{background:rgba(160,112,16,0.20);color:#f5b535}
+.pb-text{font-size:12px;color:rgba(255,255,255,0.35);font-family:monospace}
+
+.products-page-hero{
+  background:linear-gradient(160deg,#050f03 0%,var(--g1) 100%);padding:52px 0 32px;
+  position:relative;overflow:hidden;
+}
+.products-page-hero::after{
+  content:'';position:absolute;bottom:0;left:0;right:0;height:40px;
+  background:var(--cream);
+  clip-path:ellipse(60% 100% at 50% 100%);
+}
+.pph-inner{
+  max-width:1280px;margin:0 auto;padding:0 28px;
+  position:relative;z-index:1;
+}
+.pph-eyebrow{
+  font-size:11px;letter-spacing:0.22em;text-transform:uppercase;
+  color:rgba(184,138,20,0.65);font-weight:600;margin-bottom:8px;font-family:monospace;
+}
+.pph-title{
+  font-family:'Fraunces',serif;
+  font-size:clamp(1.8rem,3.5vw,2.8rem);font-weight:800;
+  color:#fff;letter-spacing:-0.025em;line-height:1.1;
+  margin-bottom:6px;
+}
+.pph-count{font-size:14px;color:rgba(255,255,255,0.45);margin-bottom:0}
+
+/* Toolbar */
+.pl-toolbar{
+  max-width:1280px;margin:0 auto;padding:24px 28px 16px;
+  display:flex;gap:10px;align-items:center;
+}
+.search-wrap{position:relative;flex:1;max-width:480px}
+.search-input{
+  width:100%;padding:11px 14px 11px 42px;
+  border-radius:12px;font-size:13.5px;
+  background:#fff;border:1.5px solid rgba(26,82,16,0.15);
+  color:var(--ink);outline:none;
+  box-shadow:0 2px 12px -4px rgba(13,44,7,0.08);
+  transition:border-color 0.2s;
+}
+.search-input:focus{border-color:var(--g2)}
+.search-icon{
+  position:absolute;left:13px;top:50%;transform:translateY(-50%);
+  width:16px;height:16px;stroke:var(--muted);fill:none;stroke-width:1.8;
+}
+.sort-btn{
+  display:flex;align-items:center;gap:6px;
+  padding:11px 16px;border-radius:12px;
+  background:#fff;border:1.5px solid rgba(26,82,16,0.15);
+  color:var(--ink);font-size:13.5px;font-weight:500;cursor:pointer;
+  box-shadow:0 2px 12px -4px rgba(13,44,7,0.07);
+}
+.sort-btn svg{width:14px;height:14px;stroke:var(--muted);fill:none;stroke-width:2}
+
+/* Products listing layout */
+.pl-layout{
+  max-width:1280px;margin:0 auto;padding:0 28px 80px;
+  display:flex;gap:24px;
+}
+/* Sidebar */
+.pl-sidebar{width:220px;flex-shrink:0}
+.sidebar-card{
+  position:sticky;top:88px;
+  background:var(--warm);border-radius:20px;
+  border:1.5px solid rgba(26,82,16,0.10);
+  box-shadow:var(--card-shadow);
+  padding:22px;
+}
+.sf-section{margin-bottom:22px}
+.sf-section:last-child{margin-bottom:0}
+.sf-label{
+  font-size:10px;letter-spacing:0.22em;text-transform:uppercase;
+  color:rgba(26,82,16,0.50);font-family:monospace;margin-bottom:12px;
+}
+.sf-cat-btn{
+  display:block;width:100%;text-align:left;
+  padding:9px 12px;border-radius:10px;border:none;
+  font-size:13.5px;color:var(--mid);background:transparent;
+  cursor:pointer;transition:all 0.15s;margin-bottom:2px;
+}
+.sf-cat-btn:hover{background:var(--g5);color:var(--g2)}
+.sf-cat-btn.active{background:rgba(26,82,16,0.12);color:var(--g2);font-weight:600}
+.price-inputs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.price-input{
+  padding:9px 10px;border-radius:10px;font-size:13px;
+  background:var(--g5);border:1.5px solid rgba(26,82,16,0.15);
+  color:var(--ink);outline:none;transition:border-color 0.2s;
+}
+.price-input:focus{border-color:var(--g2)}
+.toggle-row{display:flex;align-items:center;gap:10px}
+.toggle{
+  width:40px;height:22px;border-radius:999px;cursor:pointer;
+  position:relative;transition:background 0.2s;flex-shrink:0;
+}
+.toggle.on{background:var(--g2)}.toggle.off{background:rgba(26,82,16,0.20)}
+.toggle-knob{
+  position:absolute;top:2px;
+  width:18px;height:18px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 4px rgba(0,0,0,0.15);
+  transition:left 0.2s;
+}
+.toggle.on .toggle-knob{left:20px}.toggle.off .toggle-knob{left:2px}
+.toggle-label{font-size:13.5px;color:var(--mid)}
+
+/* Product grid (3-col for listing) */
+.pl-grid{flex:1;min-width:0}
+.results-info{font-size:12px;color:var(--muted);margin-bottom:14px}
+.pg3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+
+/* Pagination */
+.pagination{
+  display:flex;align-items:center;justify-content:center;gap:8px;margin-top:44px;
+}
+.page-btn{
+  width:38px;height:38px;border-radius:10px;border:1.5px solid rgba(26,82,16,0.18);
+  background:transparent;font-size:13.5px;font-weight:600;color:var(--ink);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:all 0.18s;
+}
+.page-btn.active{background:var(--g2);color:#fff;border-color:var(--g2)}
+.page-btn:hover:not(.active){border-color:var(--g2);color:var(--g2)}
+.page-prev-next{
+  padding:10px 20px;border-radius:10px;border:1.5px solid rgba(26,82,16,0.18);
+  background:transparent;font-size:13px;font-weight:600;color:var(--mid);cursor:pointer;transition:all 0.18s;
+}
+.page-prev-next:hover{border-color:var(--g2);color:var(--g2)}
+
+/* ═══════════════════════════════════════════════════
+   PRODUCT DETAIL PAGE
+═══════════════════════════════════════════════════ */
+.detail-page{background:linear-gradient(180deg,var(--cream) 0%,var(--warm) 100%);padding:52px 0 80px}
+.detail-inner{
+  max-width:1200px;margin:0 auto;padding:0 28px;
+  display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:start;
+}
+/* Gallery */
+.d-gallery{}
+.d-main-img{
+  aspect-ratio:1/1;border-radius:24px;overflow:hidden;
+  background:linear-gradient(145deg,#eaf3e2,#ddebd4);
+  border:1px solid rgba(26,82,16,0.10);
+  box-shadow:0 8px 40px -8px rgba(13,44,7,0.14);
+  display:flex;align-items:center;justify-content:center;
+  position:relative;margin-bottom:12px;
+}
+.d-main-letter{
+  font-family:'Fraunces',serif;font-size:11rem;
+  font-weight:800;color:rgba(26,82,16,0.10);
+  letter-spacing:-0.04em;line-height:1;user-select:none;
+}
+.d-img-badge{
+  position:absolute;top:16px;left:16px;
+  padding:6px 14px;border-radius:8px;
+  background:var(--o2);color:#fff;
+  font-size:12px;font-weight:700;
+}
+.d-3d-btn{
+  position:absolute;top:16px;right:16px;
+  display:flex;align-items:center;gap:6px;
+  padding:8px 14px;border-radius:999px;
+  background:rgba(255,255,255,0.92);
+  border:1px solid rgba(26,82,16,0.18);
+  color:var(--g1);font-size:12px;font-weight:600;cursor:pointer;
+  backdrop-filter:blur(6px);
+}
+.d-thumbs{display:flex;gap:8px}
+.d-thumb{
+  width:68px;height:68px;border-radius:14px;
+  background:linear-gradient(145deg,#f0f8ea,#e8f5e0);
+  border:2px solid transparent;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Fraunces',serif;font-size:1.6rem;font-weight:700;
+  color:rgba(26,82,16,0.22);transition:border-color 0.2s;
+}
+.d-thumb.active{border-color:var(--g2)}
+.d-thumb:not(.active){opacity:0.55}
+
+/* Info panel */
+.d-info{}
+.d-cat{
+  font-size:10px;letter-spacing:0.22em;text-transform:uppercase;
+  color:var(--o2);font-weight:600;margin-bottom:10px;font-family:monospace;
+}
+.d-name{
+  font-family:'Fraunces',serif;
+  font-size:clamp(1.8rem,3vw,2.7rem);font-weight:800;
+  color:var(--ink);line-height:1.1;letter-spacing:-0.025em;margin-bottom:14px;
+}
+.d-stars{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+.d-stars-row{display:flex;gap:2px}
+.d-star{font-size:16px;color:var(--o2)}
+.d-rating-text{font-size:13px;color:var(--muted)}
+.d-price-row{
+  display:flex;align-items:baseline;gap:12px;margin-bottom:20px;
+  padding:14px 16px;border-radius:14px;
+  background:linear-gradient(135deg,var(--g5),rgba(255,255,255,0.80));
+  border:1.5px solid rgba(26,82,16,0.12);
+}
+.d-price{
+  font-family:'Fraunces',serif;
+  font-size:clamp(1.8rem,3vw,2.6rem);font-weight:800;
+  color:var(--g1);letter-spacing:-0.02em;
+}
+.d-mrp{font-size:16px;color:var(--muted);text-decoration:line-through}
+.d-save{
+  padding:4px 12px;border-radius:999px;
+  background:rgba(26,82,16,0.12);color:var(--g2);
+  font-size:12.5px;font-weight:700;
+}
+.d-desc{font-size:14.5px;line-height:1.75;color:var(--mid);margin-bottom:20px}
+.d-divider{height:1px;background:rgba(26,82,16,0.10);margin-bottom:20px}
+.d-variant-label{
+  font-size:11px;font-weight:700;text-transform:uppercase;
+  letter-spacing:0.08em;color:var(--muted);margin-bottom:10px;
+}
+.d-variants{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
+.d-var-btn{
+  padding:9px 18px;border-radius:10px;
+  border:1.5px solid rgba(26,82,16,0.18);
+  background:transparent;color:var(--mid);
+  font-size:13.5px;font-weight:500;cursor:pointer;transition:all 0.2s;
+}
+.d-var-btn.active{border-color:var(--g2);background:rgba(26,82,16,0.10);color:var(--g2);font-weight:700}
+.d-qty-row{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.d-qty{
+  display:flex;align-items:center;
+  border:1.5px solid rgba(26,82,16,0.20);border-radius:12px;overflow:hidden;
+}
+.d-qty-btn{
+  width:44px;height:52px;background:transparent;border:none;
+  font-size:20px;font-weight:300;color:var(--ink);cursor:pointer;
+  transition:background 0.15s;
+}
+.d-qty-btn:hover{background:var(--g5)}
+.d-qty-val{
+  width:44px;text-align:center;font-size:16px;font-weight:700;
+  color:var(--ink);border:none;background:transparent;
+}
+.d-cart-btn{
+  flex:1;height:52px;border-radius:12px;
+  background:var(--g2);color:#fff;
+  font-size:15px;font-weight:700;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  box-shadow:0 4px 20px -4px rgba(13,44,7,0.42);
+  transition:all 0.2s;
+}
+.d-cart-btn:hover{background:var(--g1);transform:translateY(-1px)}
+.d-cart-btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2.2}
+.d-wish-btn{
+  width:52px;height:52px;border-radius:12px;flex-shrink:0;
+  border:1.5px solid rgba(26,82,16,0.20);background:transparent;
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;cursor:pointer;transition:all 0.2s;
+}
+.d-wish-btn:hover{border-color:var(--o2);background:rgba(160,112,16,0.08);color:var(--o2)}
+.d-stock-warn{font-size:12px;font-weight:600;color:#b85c38;margin-top:-4px;margin-bottom:12px}
+/* Trust row */
+.d-trust{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:10px;
+  padding:16px;border-radius:16px;margin-top:18px;
+  background:linear-gradient(135deg,var(--g5),rgba(255,255,255,0.80));
+  border:1.5px solid rgba(26,82,16,0.10);
+}
+.d-trust-item{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px}
+.d-trust-icon{
+  width:34px;height:34px;border-radius:50%;
+  background:rgba(26,82,16,0.12);
+  display:flex;align-items:center;justify-content:center;font-size:15px;
+}
+.d-trust-label{font-size:11px;font-weight:700;color:var(--ink)}
+.d-trust-sub{font-size:10px;color:var(--muted)}
+
+/* ═══════════════════════════════════════════════════
+   FOOTER
+═══════════════════════════════════════════════════ */
+.footer{
+  background:var(--g1);position:relative;overflow:hidden;
+}
+.footer-top-line{
+  height:3px;
+  background:linear-gradient(90deg,transparent 0%,var(--o2) 30%,var(--o3) 60%,transparent 100%);
+}
+.footer-inner{
+  max-width:1280px;margin:0 auto;padding:56px 28px 28px;position:relative;z-index:1;
+}
+.footer-grid{
+  display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;gap:48px;margin-bottom:48px;
+}
+.footer-brand-logo{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.f-logo-circle{
+  width:46px;height:46px;border-radius:50%;
+  border:2px solid rgba(255,255,255,0.25);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:5px;
+}
+.f-logo-n{font-family:'Fraunces',serif;font-size:9px;font-weight:700;color:rgba(255,255,255,0.80);line-height:1}
+.f-logo-l{font-family:'Fraunces',serif;font-size:12px;font-weight:800;color:var(--o3);line-height:1}
+.f-logo-f{font-size:5.5px;letter-spacing:0.10em;color:rgba(255,255,255,0.50);line-height:1.3;text-transform:uppercase}
+.f-brand-title{font-family:'Fraunces',serif;font-size:19px;font-weight:700;color:#fff}
+.f-brand-tagline{font-size:11.5px;color:var(--o3);font-weight:600;margin-top:1px;letter-spacing:0.04em}
+.f-desc{font-size:13.5px;line-height:1.7;color:rgba(255,255,255,0.45);margin-bottom:20px;max-width:290px}
+.f-hindi{
+  font-family:'Noto Sans Devanagari',sans-serif;
+  font-size:13px;font-weight:600;color:rgba(184,138,20,0.70);
+  margin-bottom:18px;
+}
+.f-socials{display:flex;gap:8px}
+.f-social{
+  width:36px;height:36px;border-radius:10px;
+  background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;text-decoration:none;color:rgba(255,255,255,0.50);
+  transition:all 0.2s;
+}
+.f-social:hover{background:rgba(160,112,16,0.20);border-color:rgba(160,112,16,0.35);color:var(--o3)}
+.f-col-title{
+  font-size:10px;letter-spacing:0.22em;text-transform:uppercase;
+  color:rgba(255,255,255,0.30);font-family:monospace;margin-bottom:16px;
+}
+.f-links{list-style:none}
+.f-links li{margin-bottom:10px}
+.f-links a{
+  text-decoration:none;font-size:13.5px;
+  color:rgba(255,255,255,0.48);transition:color 0.2s;
+}
+.f-links a:hover{color:var(--o3)}
+.footer-bottom{
+  border-top:1px solid rgba(255,255,255,0.08);
+  padding-top:20px;display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:12px;
+}
+.f-copy{font-size:12px;color:rgba(255,255,255,0.25)}
+.f-bottom-links{display:flex;gap:20px}
+.f-bottom-links a{
+  text-decoration:none;font-size:12px;
+  color:rgba(255,255,255,0.25);transition:color 0.2s;
+}
+.f-bottom-links a:hover{color:var(--o3)}
+.f-watermark{
+  position:absolute;bottom:16px;right:20px;
+  font-family:'Fraunces',serif;
+  font-size:clamp(4rem,12vw,10rem);font-weight:800;
+  color:rgba(255,255,255,0.025);letter-spacing:-0.04em;
+  pointer-events:none;line-height:1;z-index:0;font-style:italic;
+}
+
+/* ═══════════════════════════════════════════════════
+   STAGGER ANIMATIONS
+═══════════════════════════════════════════════════ */
+@keyframes fadeUp{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:translateY(0)}}
+.fade-up{animation:fadeUp 0.65s cubic-bezier(0.22,1,0.36,1) both}
+.fd1{animation-delay:.08s}.fd2{animation-delay:.16s}.fd3{animation-delay:.24s}
+.fd4{animation-delay:.32s}.fd5{animation-delay:.40s}.fd6{animation-delay:.48s}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════ ANNOUNCE BAR ══════════════════ -->
+<div class="announce">
+  🌿 <span>FREE SHIPPING</span> on orders above ₹499 &nbsp;·&nbsp; Use code <span>PURE15</span> for 15% off first order &nbsp;·&nbsp; 100% Natural | Traditional Processing
+</div>
+
+<!-- ══════════════════ HEADER ══════════════════ -->
+<header class="header">
+  <div class="header-inner">
+    <!-- Logo -->
+    <a href="#" class="logo">
+      <div class="logo-circle">
+        <span class="logo-n">Nature</span>
+        <span class="logo-lite">Lite</span>
+        <span class="logo-foods">FOODS</span>
+      </div>
+      <div class="logo-text-block">
+        <div class="logo-title">
+          <span class="n">Nature </span><span class="l">Lite </span><span class="f">FOODS</span>
+        </div>
+        <div class="logo-tagline">PURE · FRESH · NATURALLY PROCESSED</div>
+      </div>
+    </a>
+
+    <!-- Nav -->
+    <nav>
+      <ul class="nav">
+        <li><a href="#" class="active">All Products</a></li>
+        <li><a href="#">A2 Ghee</a></li>
+        <li><a href="#">Cold-Pressed Oils</a></li>
+        <li><a href="#">Combos</a></li>
+        <li><a href="#" class="highlight">Deals 🔥</a></li>
+        <li><a href="#">Blogs</a></li>
+      </ul>
+    </nav>
+
+    <!-- Actions -->
+    <div class="h-actions">
+      <button class="h-btn" aria-label="Search">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      </button>
+      <button class="h-btn" aria-label="Account">
+        <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </button>
+      <div class="icon-wrap" style="position:relative">
+        <button class="h-btn" aria-label="Cart">
+          <svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        </button>
+        <span class="h-badge">3</span>
+      </div>
+      <button class="signin-btn">Sign In</button>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════════════ HERO ══════════════════ -->
+<section class="hero">
+  <div class="hero-light"></div>
+  <div class="hero-inner">
+    <!-- Left -->
+    <div>
+      <div class="hero-badge fade-up">
+        <div class="hero-badge-dot"></div>
+        <span>New Launch — Cold Pressed Collection</span>
+      </div>
+      <div class="hero-new fade-up fd1">🌿 100% Natural</div>
+      <h1 class="hero-h1 fade-up fd2">India's Purest<br/><em>Traditional Oils</em></h1>
+      <h2 class="hero-h2 fade-up fd2">& Authentic A2 Ghee are Here!</h2>
+      <p class="hero-sub fade-up fd3">
+        Wood-Ghani pressed. Zero heat. Zero chemicals.<br/>
+        Preserving every drop of nutrition from farm to your kitchen.
+      </p>
+      <p class="hero-hindi fade-up fd3">सेहत का वादा स्वाद के साथ..!</p>
+      <div class="hero-ctas fade-up fd4">
+        <button class="btn-green">
+          Shop Now
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </button>
+        <button class="btn-outline-light">
+          Our Story
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </button>
+      </div>
+      <div class="hero-stats fade-up fd5">
+        <div class="hero-stat">
+          <div><div class="stat-num">50k+</div><div class="stat-label">Happy Families</div></div>
+        </div>
+        <div style="width:1px;background:rgba(255,255,255,0.15)"></div>
+        <div class="hero-stat">
+          <div><div class="stat-num">100%</div><div class="stat-label">Natural · No Additives</div></div>
+        </div>
+        <div style="width:1px;background:rgba(255,255,255,0.15)"></div>
+        <div class="hero-stat">
+          <div><div class="stat-num">40+</div><div class="stat-label">Lab Tests · Every Batch</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right — product visual -->
+    <div class="hero-visual fade-up fd3">
+      <div class="hero-product-stage">
+        <div class="hero-glow-ring"></div>
+
+        <!-- SVG oil bottle illustration -->
+        <svg class="hero-product-svg" viewBox="0 0 220 380" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Cap -->
+          <rect x="82" y="8" width="56" height="32" rx="10" fill="#1a4a0e" opacity="0.95"/>
+          <rect x="90" y="4" width="40" height="12" rx="5" fill="#133d09"/>
+          <!-- Neck taper -->
+          <path d="M82 40 L74 98 L54 142 L54 306 C54 328 78 344 110 344 C142 344 166 328 166 306 L166 142 L146 98 L138 40 Z"
+            fill="url(#hero-bottle-grad)"/>
+          <defs>
+            <linearGradient id="hero-bottle-grad" x1="54" y1="40" x2="166" y2="344" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#f5d080"/>
+              <stop offset="35%" stop-color="#e8a020" stop-opacity="0.90"/>
+              <stop offset="75%" stop-color="#c47a0a"/>
+              <stop offset="100%" stop-color="#8b560a"/>
+            </linearGradient>
+          </defs>
+          <!-- Label area -->
+          <rect x="58" y="148" width="104" height="130" rx="12" fill="rgba(255,255,255,0.96)" opacity="0.97"/>
+          <!-- Green label header -->
+          <rect x="58" y="148" width="104" height="36" rx="12" fill="#2a7a1a" opacity="0.92"/>
+          <rect x="58" y="168" width="104" height="16" fill="#2a7a1a" opacity="0.92"/>
+          <text x="110" y="171" text-anchor="middle" font-family="'Fraunces',serif" font-size="13" font-weight="800" fill="#fff">Nature Lite</text>
+          <text x="110" y="184" text-anchor="middle" font-family="monospace" font-size="6.5" fill="rgba(255,255,255,0.75)" letter-spacing="2">FOODS</text>
+          <!-- Label body -->
+          <line x1="68" y1="198" x2="152" y2="198" stroke="rgba(26,82,16,0.20)" stroke-width="1"/>
+          <text x="110" y="214" text-anchor="middle" font-family="'Fraunces',serif" font-size="11.5" font-weight="700" fill="#1a2b14">Cold-Pressed</text>
+          <text x="110" y="228" text-anchor="middle" font-family="'Fraunces',serif" font-size="14" font-weight="800" fill="#2a7a1a">Sesame Oil</text>
+          <line x1="68" y1="238" x2="152" y2="238" stroke="rgba(26,82,16,0.15)" stroke-width="1"/>
+          <text x="110" y="252" text-anchor="middle" font-family="monospace" font-size="7" fill="rgba(26,82,16,0.55)" letter-spacing="1.5">100% PURE · FSSAI</text>
+          <text x="110" y="264" text-anchor="middle" font-family="monospace" font-size="7" fill="rgba(160,112,16,0.80)" letter-spacing="1">500 ML</text>
+          <!-- Shine lines -->
+          <path d="M67 92 L71 220" stroke="rgba(255,255,255,0.28)" stroke-width="5" stroke-linecap="round"/>
+          <path d="M75 80 L78 175" stroke="rgba(255,255,255,0.14)" stroke-width="2.5" stroke-linecap="round"/>
+          <!-- Neck shine -->
+          <ellipse cx="110" cy="140" rx="48" ry="9" fill="rgba(160,112,16,0.28)"/>
+        </svg>
+
+        <!-- Floating badges -->
+        <div class="fl-badge fl-1"><span class="fl-icon">🌿</span>Cold-Pressed</div>
+        <div class="fl-badge fl-2"><span class="fl-icon">✓</span>Lab Tested</div>
+        <div class="fl-badge fl-3"><span class="fl-icon">🏡</span>Farm Direct</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Trust strip -->
+<div class="trust-strip">
+  <div class="trust-strip-inner">
+    <div class="trust-item-s"><div class="trust-icon-s">🏭</div><span>Native Sourcing</span></div>
+    <div style="width:1px;height:28px;background:rgba(26,82,16,0.12)"></div>
+    <div class="trust-item-s"><div class="trust-icon-s">⚙️</div><span>Traditional Processing</span></div>
+    <div style="width:1px;height:28px;background:rgba(26,82,16,0.12)"></div>
+    <div class="trust-item-s"><div class="trust-icon-s">🔬</div><span>40+ Quality Checks</span></div>
+    <div style="width:1px;height:28px;background:rgba(26,82,16,0.12)"></div>
+    <div class="trust-item-s"><div class="trust-icon-s">🚚</div><span>Free Shipping ₹499+</span></div>
+    <div style="width:1px;height:28px;background:rgba(26,82,16,0.12)"></div>
+    <div class="trust-item-s"><div class="trust-icon-s">↩️</div><span>Easy Returns</span></div>
+  </div>
+</div>
+
+<!-- ══════════════════ CATEGORY + PRODUCTS (Homepage) ══════════════════ -->
+<section class="cat-section">
+  <div class="section-header">
+    <div class="section-eyebrow">Welcome to Nature Lite Foods</div>
+    <h2 class="section-title">You're One Step Closer to <em>Purity</em></h2>
+    <div class="section-rule"></div>
+  </div>
+  <div class="cat-chips">
+    <div class="cat-chip active"><div class="cat-chip-icon">🛒</div><div class="cat-chip-label">All</div></div>
+    <div class="cat-chip"><div class="cat-chip-icon">🫙</div><div class="cat-chip-label">A2 Ghee</div></div>
+    <div class="cat-chip"><div class="cat-chip-icon">🫒</div><div class="cat-chip-label">Oils</div></div>
+    <div class="cat-chip"><div class="cat-chip-icon">📦</div><div class="cat-chip-label">Combos</div></div>
+    <div class="cat-chip"><div class="cat-chip-icon">🌾</div><div class="cat-chip-label">Grains</div></div>
+    <div class="cat-chip"><div class="cat-chip-icon">🏷️</div><div class="cat-chip-label">Deals</div></div>
+    <div class="cat-chip"><div class="cat-chip-icon">⭐</div><div class="cat-chip-label">Superfoods</div></div>
+  </div>
+</section>
+
+<section class="products-section">
+  <div class="products-inner">
+    <div class="products-grid">
+
+      <!-- Card 1 -->
+      <div class="pcard">
+        <div class="pcard-img-wrap">
+          <div class="pcard-letter">S</div>
+          <div class="pcard-ribbon"><svg width="10" height="10" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Top Rated</div>
+          <div class="pcard-wishlist">♡</div>
+        </div>
+        <div class="pcard-body">
+          <div class="pcard-cat">Cold-Pressed Oils</div>
+          <div class="pcard-name">Wood-Pressed Sesame Oil — 500ml</div>
+          <div class="pcard-stars">
+            <span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span>
+            <span class="pcard-reviews">(128)</span>
+          </div>
+          <div class="pcard-price-row">
+            <span class="pcard-price">₹399</span>
+            <span class="pcard-mrp">₹499</span>
+            <span class="pcard-save">Save 20%</span>
+          </div>
+          <button class="pcard-add-btn">
+            ADD
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Card 2 -->
+      <div class="pcard">
+        <div class="pcard-img-wrap" style="background:linear-gradient(145deg,#eef8e6,#ddf0d2)">
+          <div class="pcard-letter">G</div>
+          <div class="pcard-ribbon orange">Best Seller</div>
+          <div class="pcard-wishlist">♡</div>
+          <div class="pcard-badge-tr" style="top:10px;right:44px;font-size:11px;color:#e8960f;border-color:rgba(160,112,16,0.25)">5% OFF</div>
+        </div>
+        <div class="pcard-body">
+          <div class="pcard-cat">A2 Ghee</div>
+          <div class="pcard-name">A2 Gir Cow Bilona Ghee — 500ml Jar</div>
+          <div class="pcard-stars">
+            <span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span>
+            <span class="pcard-reviews">(312)</span>
+          </div>
+          <div class="pcard-price-row">
+            <span class="pcard-price">₹879</span>
+            <span class="pcard-mrp">₹925</span>
+            <span class="pcard-save">Save ₹46</span>
+          </div>
+          <button class="pcard-add-btn">
+            ADD
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Card 3 -->
+      <div class="pcard">
+        <div class="pcard-img-wrap" style="background:linear-gradient(145deg,#f8f3e8,#f0e8d0)">
+          <div class="pcard-letter">M</div>
+          <div class="pcard-ribbon dark">New Launch</div>
+          <div class="pcard-wishlist">♡</div>
+        </div>
+        <div class="pcard-body">
+          <div class="pcard-cat">Cold-Pressed Oils</div>
+          <div class="pcard-name">Cold-Pressed Mustard Oil — 1L</div>
+          <div class="pcard-stars">
+            <span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star e">★</span>
+            <span class="pcard-reviews">(64)</span>
+          </div>
+          <div class="pcard-price-row">
+            <span class="pcard-price">₹299</span>
+          </div>
+          <button class="pcard-add-btn">
+            ADD
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Card 4 -->
+      <div class="pcard">
+        <div class="pcard-img-wrap" style="background:linear-gradient(145deg,#e8f4f0,#d0eae4)">
+          <div class="pcard-letter">C</div>
+          <div class="pcard-ribbon"><svg width="10" height="10" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Top Rated</div>
+          <div class="pcard-wishlist" style="color:#e8960f">♥</div>
+        </div>
+        <div class="pcard-body">
+          <div class="pcard-cat">Cold-Pressed Oils</div>
+          <div class="pcard-name">Cold-Pressed Coconut Oil — 500ml</div>
+          <div class="pcard-stars">
+            <span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span>
+            <span class="pcard-reviews">(89)</span>
+          </div>
+          <div class="pcard-price-row">
+            <span class="pcard-price">₹449</span>
+            <span class="pcard-mrp">₹549</span>
+            <span class="pcard-save">Save 18%</span>
+          </div>
+          <button class="pcard-add-btn">
+            ADD
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- View all -->
+    <div style="text-align:center;margin-top:36px">
+      <button style="padding:13px 36px;border-radius:12px;background:transparent;border:2px solid var(--g2);color:var(--g2);font-size:14px;font-weight:700;cursor:pointer;transition:all 0.2s;display:inline-flex;align-items:center;gap:8px;"
+        onmouseover="this.style.background='var(--g2)';this.style.color='#fff'"
+        onmouseout="this.style.background='transparent';this.style.color='var(--g2)'">
+        View All Products
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ WHY CHOOSE ══════════════════ -->
+<section class="why-section">
+  <div class="why-inner">
+    <div class="section-header" style="padding:0">
+      <div class="section-eyebrow">Our Promise</div>
+      <h2 class="section-title">Why Choose <em>Nature Lite Foods?</em></h2>
+      <div class="section-rule"></div>
+    </div>
+    <div class="why-grid">
+      <div class="why-card">
+        <div class="why-icon">🌱</div>
+        <div class="why-title">Native Sourcing</div>
+        <div class="why-desc">Highest quality raw materials sourced directly from native farming regions across India.</div>
+      </div>
+      <div class="why-card">
+        <div class="why-icon">⚙️</div>
+        <div class="why-title">Traditional Processing</div>
+        <div class="why-desc">Minimally processed using time-tested wooden Ghani methods, made better for maximum nutrition.</div>
+      </div>
+      <div class="why-card">
+        <div class="why-icon">🔬</div>
+        <div class="why-title">40+ Quality Checks</div>
+        <div class="why-desc">Everything goes through extensive lab tests. So you get only what is best and purest.</div>
+      </div>
+      <div class="why-card">
+        <div class="why-icon">👨‍🌾</div>
+        <div class="why-title">Better Rural Lives</div>
+        <div class="why-desc">5000+ farmer families are empowered and supported with every Nature Lite product you buy.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ PAGE 2: PRODUCTS LISTING ══════════════════ -->
+<div class="page-break">
+  <span class="pb-tag pb-green">PAGE 2</span>
+  <span class="pb-text">PRODUCTS LISTING — Sidebar filters + staggered card grid</span>
+</div>
+
+<div class="products-page-hero">
+  <div class="pph-inner">
+    <div class="pph-eyebrow">Nature Lite Foods</div>
+    <h1 class="pph-title">Our Collection</h1>
+    <p class="pph-count">42 products available · Free shipping on ₹499+</p>
+  </div>
+</div>
+
+<div class="pl-toolbar">
+  <div class="search-wrap">
+    <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    <input class="search-input" type="text" placeholder="Search products…"/>
+  </div>
+  <button class="sort-btn">
+    Newest First
+    <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+  </button>
+</div>
+
+<div class="pl-layout">
+  <!-- Sidebar -->
+  <aside class="pl-sidebar">
+    <div class="sidebar-card">
+      <div class="sf-section">
+        <div class="sf-label">Category</div>
+        <button class="sf-cat-btn active">All Products</button>
+        <button class="sf-cat-btn">A2 Ghee</button>
+        <button class="sf-cat-btn">Cold-Pressed Oils</button>
+        <button class="sf-cat-btn">Wood-Pressed Oils</button>
+        <button class="sf-cat-btn">Combos</button>
+        <button class="sf-cat-btn">Superfoods</button>
+      </div>
+      <div class="sf-section">
+        <div class="sf-label">Price Range</div>
+        <div class="price-inputs">
+          <input class="price-input" type="number" placeholder="Min ₹"/>
+          <input class="price-input" type="number" placeholder="Max ₹"/>
+        </div>
+      </div>
+      <div class="sf-section">
+        <div class="sf-label">Availability</div>
+        <div class="toggle-row">
+          <div class="toggle on"><div class="toggle-knob"></div></div>
+          <span class="toggle-label">In stock only</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Grid -->
+  <div class="pl-grid">
+    <div class="results-info">Showing 12 of 42 products</div>
+    <div class="pg3">
+      <div class="pcard"><div class="pcard-img-wrap"><div class="pcard-letter">S</div><div class="pcard-ribbon">Top Rated</div><div class="pcard-wishlist">♡</div></div><div class="pcard-body"><div class="pcard-cat">Cold-Pressed</div><div class="pcard-name">Wood-Pressed Sesame Oil</div><div class="pcard-stars"><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="pcard-reviews">(128)</span></div><div class="pcard-price-row"><span class="pcard-price">₹399</span><span class="pcard-mrp">₹499</span></div><button class="pcard-add-btn">ADD <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button></div></div>
+
+      <div class="pcard"><div class="pcard-img-wrap" style="background:linear-gradient(145deg,#eef8e6,#ddf0d2)"><div class="pcard-letter">G</div><div class="pcard-ribbon orange">Best Seller</div><div class="pcard-wishlist">♡</div></div><div class="pcard-body"><div class="pcard-cat">A2 Ghee</div><div class="pcard-name">A2 Gir Cow Bilona Ghee</div><div class="pcard-stars"><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="pcard-reviews">(312)</span></div><div class="pcard-price-row"><span class="pcard-price">₹879</span><span class="pcard-mrp">₹925</span></div><button class="pcard-add-btn">ADD <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button></div></div>
+
+      <div class="pcard"><div class="pcard-img-wrap" style="background:linear-gradient(145deg,#f8f3e8,#f0e8d0)"><div class="pcard-letter">M</div><div class="pcard-ribbon dark">New Launch</div><div class="pcard-wishlist">♡</div></div><div class="pcard-body"><div class="pcard-cat">Cold-Pressed</div><div class="pcard-name">Cold-Pressed Mustard Oil</div><div class="pcard-stars"><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star e">★</span><span class="pcard-reviews">(64)</span></div><div class="pcard-price-row"><span class="pcard-price">₹299</span></div><button class="pcard-add-btn">ADD <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button></div></div>
+
+      <div class="pcard"><div class="pcard-img-wrap" style="background:linear-gradient(145deg,#e8f4f0,#d0eae4)"><div class="pcard-letter">C</div><div class="pcard-wishlist">♡</div></div><div class="pcard-body"><div class="pcard-cat">Cold-Pressed</div><div class="pcard-name">Cold-Pressed Coconut Oil</div><div class="pcard-stars"><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="pcard-reviews">(89)</span></div><div class="pcard-price-row"><span class="pcard-price">₹449</span><span class="pcard-mrp">₹549</span></div><button class="pcard-add-btn">ADD <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button></div></div>
+
+      <div class="pcard"><div class="pcard-img-wrap" style="background:linear-gradient(145deg,#fce8d0,#f0d0a8)"><div class="pcard-letter">P</div><div class="pcard-wishlist">♡</div></div><div class="pcard-body"><div class="pcard-cat">Cold-Pressed</div><div class="pcard-name">Wood-Pressed Peanut Oil</div><div class="pcard-stars"><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star e">★</span><span class="pcard-reviews">(47)</span></div><div class="pcard-price-row"><span class="pcard-price">₹349</span></div><button class="pcard-add-btn">ADD <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button></div></div>
+
+      <div class="pcard"><div class="pcard-img-wrap" style="background:linear-gradient(145deg,#ede8f8,#ddd0f0)"><div class="pcard-letter">F</div><div class="pcard-ribbon orange">New</div><div class="pcard-wishlist">♡</div></div><div class="pcard-body"><div class="pcard-cat">Superfoods</div><div class="pcard-name">Flaxseed Oil — 250ml</div><div class="pcard-stars"><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="pcard-reviews">(33)</span></div><div class="pcard-price-row"><span class="pcard-price">₹499</span></div><button class="pcard-add-btn">ADD <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button></div></div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination">
+      <button class="page-prev-next">← Previous</button>
+      <button class="page-btn active">1</button>
+      <button class="page-btn">2</button>
+      <button class="page-btn">3</button>
+      <span style="font-size:13px;color:var(--muted)">…</span>
+      <button class="page-btn">8</button>
+      <button class="page-prev-next">Next →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ PAGE 3: PRODUCT DETAIL ══════════════════ -->
+<div class="page-break">
+  <span class="pb-tag pb-orange">PAGE 3</span>
+  <span class="pb-text">PRODUCT DETAIL — Cinematic split layout with sticky info panel</span>
+</div>
+
+<section class="detail-page">
+  <div style="max-width:1200px;margin:0 auto;padding:0 28px 20px">
+    <a href="#" style="display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:500;color:var(--muted);text-decoration:none;">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+      Back to Products
+    </a>
+  </div>
+
+  <div class="detail-inner">
+    <!-- Gallery -->
+    <div class="d-gallery">
+      <div class="d-main-img">
+        <span class="d-main-letter">S</span>
+        <div class="d-img-badge">-20% OFF</div>
+        <button class="d-3d-btn">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          View 3D
+        </button>
+      </div>
+      <div class="d-thumbs">
+        <div class="d-thumb active">S</div>
+        <div class="d-thumb">S</div>
+        <div class="d-thumb">S</div>
+        <div class="d-thumb">S</div>
+      </div>
+    </div>
+
+    <!-- Info -->
+    <div class="d-info">
+      <div class="d-cat">Cold-Pressed Oils · Nature Lite Foods</div>
+      <h1 class="d-name">Wood-Pressed<br/>Sesame Oil</h1>
+
+      <div class="d-stars">
+        <div class="d-stars-row">
+          <span class="d-star">★</span><span class="d-star">★</span><span class="d-star">★</span><span class="d-star">★</span><span class="d-star">★</span>
+        </div>
+        <span class="d-rating-text">4.9 · 128 reviews · <span style="color:var(--g2);font-weight:600">Verified Purchases</span></span>
+      </div>
+
+      <div class="d-price-row">
+        <span class="d-price">₹399</span>
+        <span class="d-mrp">₹499</span>
+        <span class="d-save">Save ₹100 (20%)</span>
+      </div>
+
+      <p class="d-desc">
+        Extracted using age-old wooden Ghani churners at room temperature. Zero heat processing ensures all natural antioxidants, vitamin E, and omega fatty acids are perfectly preserved. Rich in sesamin and sesamolin for deep nutrition.
+      </p>
+
+      <div class="d-divider"></div>
+
+      <div class="d-variant-label">Choose Size</div>
+      <div class="d-variants">
+        <button class="d-var-btn active">250 ml</button>
+        <button class="d-var-btn">500 ml</button>
+        <button class="d-var-btn">1 Litre</button>
+        <button class="d-var-btn">5 Litre</button>
+      </div>
+
+      <div class="d-qty-row">
+        <div class="d-qty">
+          <button class="d-qty-btn">−</button>
+          <span class="d-qty-val">1</span>
+          <button class="d-qty-btn">+</button>
+        </div>
+        <button class="d-cart-btn">
+          <svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+          Add to Cart
+        </button>
+        <button class="d-wish-btn">♡</button>
+      </div>
+
+      <p class="d-stock-warn">⚡ Only 4 left in stock — order soon!</p>
+
+      <div class="d-trust">
+        <div class="d-trust-item">
+          <div class="d-trust-icon">🚚</div>
+          <div class="d-trust-label">Free Delivery</div>
+          <div class="d-trust-sub">orders ₹499+</div>
+        </div>
+        <div class="d-trust-item">
+          <div class="d-trust-icon">🔬</div>
+          <div class="d-trust-label">Lab Tested</div>
+          <div class="d-trust-sub">every batch</div>
+        </div>
+        <div class="d-trust-item">
+          <div class="d-trust-icon">🌿</div>
+          <div class="d-trust-label">100% Pure</div>
+          <div class="d-trust-sub">no additives</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ FOOTER ══════════════════ -->
+<footer class="footer">
+  <div class="footer-top-line"></div>
+  <div class="f-watermark">Pure.</div>
+  <div class="footer-inner">
+    <div class="footer-grid">
+      <div>
+        <div class="footer-brand-logo">
+          <div class="f-logo-circle">
+            <span class="f-logo-n">Nature</span>
+            <span class="f-logo-l">Lite</span>
+            <span class="f-logo-f">FOODS</span>
+          </div>
+          <div>
+            <div class="f-brand-title">Nature Lite Foods</div>
+            <div class="f-brand-tagline">Pure · Fresh · Naturally Processed</div>
+          </div>
+        </div>
+        <p class="f-desc">Bringing you the purest traditional foods — wood-pressed oils and Bilona ghee crafted with age-old methods. From Indian farms to your kitchen.</p>
+        <p class="f-hindi">सेहत का वादा स्वाद के साथ..!</p>
+        <div class="f-socials">
+          <a href="#" class="f-social">📸</a>
+          <a href="#" class="f-social">f</a>
+          <a href="#" class="f-social">▶</a>
+          <a href="#" class="f-social">𝕏</a>
+        </div>
+        <div style="margin-top:16px">
+          <a href="mailto:hello@naturelitefoods.in" style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:rgba(255,255,255,0.38);text-decoration:none;">✉ hello@naturelitefoods.in</a>
+        </div>
+      </div>
+      <div>
+        <div class="f-col-title">Shop</div>
+        <ul class="f-links">
+          <li><a href="#">All Products</a></li>
+          <li><a href="#">Cold-Pressed Oils</a></li>
+          <li><a href="#">A2 Ghee</a></li>
+          <li><a href="#">Superfoods</a></li>
+          <li><a href="#">Combos & Bundles</a></li>
+        </ul>
+      </div>
+      <div>
+        <div class="f-col-title">Company</div>
+        <ul class="f-links">
+          <li><a href="#">About Us</a></li>
+          <li><a href="#">Our Process</a></li>
+          <li><a href="#">Farm Partners</a></li>
+          <li><a href="#">Blogs</a></li>
+          <li><a href="#">Contact</a></li>
+        </ul>
+      </div>
+      <div>
+        <div class="f-col-title">Support</div>
+        <ul class="f-links">
+          <li><a href="#">Track Order</a></li>
+          <li><a href="#">Shipping Policy</a></li>
+          <li><a href="#">Returns & Refunds</a></li>
+          <li><a href="#">Privacy Policy</a></li>
+          <li><a href="#">FAQs</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <p class="f-copy">© 2026 Nature Lite Foods. All rights reserved. · FSSAI License #XXXXXXXXXX</p>
+      <div class="f-bottom-links">
+        <a href="#">Privacy</a>
+        <a href="#">Terms</a>
+        <a href="#">Sitemap</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

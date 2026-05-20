@@ -287,6 +287,45 @@ export class NotificationsService {
     });
   }
 
+  async sendMediaBroadcast(
+    phones: string[],
+    imageUrl: string,
+    caption?: string,
+  ): Promise<{ queued: number; skipped: number }> {
+    let queued = 0;
+    let skipped = 0;
+    const seenPhones = new Set<string>();
+
+    for (const phone of phones) {
+      const normalizedPhone = String(phone || '').replace(/[^\d]/g, '');
+      if (!normalizedPhone || seenPhones.has(normalizedPhone)) {
+        skipped++;
+        continue;
+      }
+      seenPhones.add(normalizedPhone);
+
+      const idempotencyKey = `broadcast_media_${normalizedPhone}_${Date.now()}`;
+      try {
+        const messageId = await this.whatsappService.sendMediaMessage({
+          phone: normalizedPhone,
+          mediaType: 'image',
+          mediaUrl: imageUrl,
+          caption,
+          meta: { idempotencyKey },
+        });
+        if (messageId) {
+          queued++;
+        } else {
+          skipped++;
+        }
+      } catch {
+        skipped++;
+      }
+    }
+
+    return { queued, skipped };
+  }
+
   async sendBroadcast(
     phones: string[],
     templateName: string,

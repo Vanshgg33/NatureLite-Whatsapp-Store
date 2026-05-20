@@ -89,21 +89,29 @@ class ApiClient {
     this.client.interceptors.request.use((config) => {
       if (typeof window !== 'undefined') {
         try {
-          // Check admin store first
-          const adminStorage = localStorage.getItem('admin-auth-storage');
-          if (adminStorage) {
-            const parsed = JSON.parse(adminStorage);
-            if (parsed?.state?.accessToken) {
-              config.headers.Authorization = `Bearer ${parsed.state.accessToken}`;
-              return config;
+          const url = (config.url || '').replace(/^\/+/, '');
+          const isAdminRoute = url.startsWith('admin/') || url.startsWith('admin?') || url === 'admin';
+
+          if (isAdminRoute) {
+            const adminStorage = localStorage.getItem('admin-auth-storage');
+            if (adminStorage) {
+              const parsed = JSON.parse(adminStorage);
+              if (parsed?.state?.accessToken) {
+                config.headers.Authorization = `Bearer ${parsed.state.accessToken}`;
+              }
             }
-          }
-          // Fallback to customer store
-          const customerStorage = localStorage.getItem('customer-auth-storage');
-          if (customerStorage) {
-            const parsed = JSON.parse(customerStorage);
-            if (parsed?.state?.accessToken) {
-              config.headers.Authorization = `Bearer ${parsed.state.accessToken}`;
+          } else {
+            // Customer route: only attach customer token — never fall back to admin token.
+            // An admin browsing the storefront must NOT send their admin JWT to customer
+            // endpoints (e.g. /wallet) or the backend will look up the wrong user.
+            // If no customer token exists, leave Authorization unset and rely on the
+            // HttpOnly refresh-cookie path (withCredentials: true).
+            const customerStorage = localStorage.getItem('customer-auth-storage');
+            if (customerStorage) {
+              const parsed = JSON.parse(customerStorage);
+              if (parsed?.state?.accessToken) {
+                config.headers.Authorization = `Bearer ${parsed.state.accessToken}`;
+              }
             }
           }
         } catch {
@@ -125,19 +133,16 @@ class ApiClient {
           if (!this.isRefreshing) {
             this.isRefreshing = true;
 
+            const failedUrl = (originalRequest.url || '').replace(/^\/+/, '');
+            const failedRouteIsAdmin = failedUrl.startsWith('admin/') || failedUrl.startsWith('admin?') || failedUrl === 'admin';
+
             let refreshTokenToSend: string | undefined;
             if (typeof window !== 'undefined') {
               try {
-                const adminStorage = localStorage.getItem('admin-auth-storage');
-                if (adminStorage) {
-                  const parsed = JSON.parse(adminStorage);
-                  if (parsed?.state?.refreshToken) {
-                    refreshTokenToSend = parsed.state.refreshToken;
-                  }
-                }
-                const customerStorage = localStorage.getItem('customer-auth-storage');
-                if (customerStorage && !refreshTokenToSend) {
-                  const parsed = JSON.parse(customerStorage);
+                const storageKey = failedRouteIsAdmin ? 'admin-auth-storage' : 'customer-auth-storage';
+                const storage = localStorage.getItem(storageKey);
+                if (storage) {
+                  const parsed = JSON.parse(storage);
                   if (parsed?.state?.refreshToken) {
                     refreshTokenToSend = parsed.state.refreshToken;
                   }
@@ -498,6 +503,11 @@ class ApiClient {
 
   async deleteProduct(id: string): Promise<void> {
     await this.client.delete(`/products/${id}`);
+  }
+
+  async bulkUpdateProductCategory(productIds: string[], categoryId: string): Promise<{ modifiedCount: number }> {
+    const res = await this.client.patch('/products/bulk-category', { productIds, categoryId });
+    return res.data;
   }
 
   // ==================== CATEGORIES ====================
@@ -1016,6 +1026,23 @@ class ApiClient {
     return response.data.data;
   }
 
+  async sendMediaBroadcast(
+    phones: string[],
+    imageUrl: string,
+    message?: string,
+    options?: {
+      caption?: string;
+    }
+  ): Promise<{ queued: number; skipped: number }> {
+    const response = await this.client.post<ApiResponse<{ queued: number; skipped: number }>>('/notifications/broadcast/media', {
+      phones,
+      imageUrl,
+      message,
+      ...options,
+    });
+    return response.data.data;
+  }
+
   // ==================== PAYMENTS ====================
   async createPaymentOrder(orderId: string): Promise<{
     razorpayOrderId: string;
@@ -1243,6 +1270,16 @@ class ApiClient {
   async getTopCustomersOverall(): Promise<TopCustomer[]> {
     const response = await this.client.get<ApiResponse<TopCustomer[]>>('/analytics/stores/top-customers');
     return response.data.data;
+  }
+
+  async resetDashboardMetrics(): Promise<{ deletedSnapshots: number }> {
+    const res = await this.client.delete('/analytics/reset/dashboard');
+    return res.data.data;
+  }
+
+  async resetCustomerMetrics(): Promise<{ usersReset: number; productsReset: number }> {
+    const res = await this.client.delete('/analytics/reset/customers');
+    return res.data.data;
   }
 
   // ==================== WISHLIST ====================

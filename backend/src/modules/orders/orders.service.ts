@@ -1219,7 +1219,8 @@ export class OrdersService implements OnModuleInit {
   }
 
   async getOrdersByStatus(): Promise<Record<OrderStatus, number>> {
-    return this.orderRepository.getOrdersByStatus();
+    const resetAt = await this.settingsService.getMetricsResetAt();
+    return this.orderRepository.getOrdersByStatus(resetAt);
   }
 
   private async generateOrderNumber(): Promise<string> {

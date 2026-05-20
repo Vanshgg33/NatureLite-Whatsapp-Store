@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { CategoriesModule } from '../categories/categories.module';
+import { MediaModule } from '../media/media.module';
 import { ProductsModule } from '../products/products.module';
 import { SettingsModule } from '../settings/settings.module';
 import { StoresModule } from '../stores/stores.module';
@@ -11,6 +12,7 @@ import { UcmService } from './ucm.service';
   imports: [
     SettingsModule,
     CategoriesModule,
+    MediaModule,
     forwardRef(() => ProductsModule),
     forwardRef(() => StoresModule),
     StoreStockModule,

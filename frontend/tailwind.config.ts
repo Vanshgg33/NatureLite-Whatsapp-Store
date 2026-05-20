@@ -51,8 +51,47 @@ const config: Config = {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
-        // Brand Design System Colors (public storefront)
+        // Brand Design System Colors (Premium Earthy Theme)
         brand: {
+          // Text Hierarchy
+          'text-primary': 'hsl(var(--brand-text-primary))',
+          'text-secondary': 'hsl(var(--brand-text-secondary))',
+          'text-tertiary': 'hsl(var(--brand-text-tertiary))',
+          'text-muted': 'hsl(var(--brand-text-muted))',
+          'text-subtle': 'hsl(var(--brand-text-subtle))',
+          
+          // Premium Accents
+          'accent-primary': 'hsl(var(--brand-accent-primary))',
+          'accent-secondary': 'hsl(var(--brand-accent-secondary))',
+          'accent-subtle': 'hsl(var(--brand-accent-subtle))',
+          
+          // Core Brand Colors
+          'brown-primary': 'hsl(var(--brand-brown-primary))',
+          'brown-secondary': 'hsl(var(--brand-brown-secondary))',
+          'brown-subtle': 'hsl(var(--brand-brown-subtle))',
+          'green-primary': 'hsl(var(--brand-green-primary))',
+          'green-secondary': 'hsl(var(--brand-green-secondary))',
+          
+          // Premium Surfaces
+          'surface-primary': 'hsl(var(--brand-surface-primary))',
+          'surface-secondary': 'hsl(var(--brand-surface-secondary))',
+          'surface-tertiary': 'hsl(var(--brand-surface-tertiary))',
+          'surface-elevated': 'hsl(var(--brand-surface-elevated))',
+          
+          // Premium Borders
+          'border-primary': 'hsl(var(--brand-border-primary))',
+          'border-secondary': 'hsl(var(--brand-border-secondary))',
+          'border-subtle': 'hsl(var(--brand-border-subtle))',
+          
+          // Semantic Colors
+          'success': 'hsl(var(--brand-success))',
+          'success-subtle': 'hsl(var(--brand-success-subtle))',
+          'warning': 'hsl(var(--brand-warning))',
+          'warning-subtle': 'hsl(var(--brand-warning-subtle))',
+          'error': 'hsl(var(--brand-error))',
+          'error-subtle': 'hsl(var(--brand-error-subtle))',
+          
+          // Legacy Compatibility (maintain existing references)
           mustard: {
             DEFAULT: 'hsl(var(--brand-mustard))',
             dark: 'hsl(var(--brand-mustard-dark))',
@@ -88,9 +127,6 @@ const config: Config = {
             dark: 'hsl(var(--brand-border-dark))',
           },
           highlight: 'hsl(var(--brand-highlight))',
-          success: 'hsl(var(--brand-success))',
-          warning: 'hsl(var(--brand-warning))',
-          error: 'hsl(var(--brand-error))',
         },
       },
       fontFamily: {
@@ -99,12 +135,27 @@ const config: Config = {
         sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
       },
       fontSize: {
-        'display-xl': ['4.5rem', { lineHeight: '1.1', letterSpacing: '-0.02em' }],
-        'display-lg': ['3.5rem', { lineHeight: '1.15', letterSpacing: '-0.02em' }],
-        'display-md': ['2.5rem', { lineHeight: '1.2', letterSpacing: '-0.01em' }],
-        'display-sm': ['2rem', { lineHeight: '1.25', letterSpacing: '-0.01em' }],
-        'body-xl': ['1.25rem', { lineHeight: '1.6' }],
-        'body-lg': ['1.125rem', { lineHeight: '1.65' }],
+        // Premium Display Typography - Hero sections
+        'display-xl': ['4.5rem', { lineHeight: '1.1', letterSpacing: '-0.02em', fontWeight: '700' }],
+        'display-lg': ['3.5rem', { lineHeight: '1.15', letterSpacing: '-0.02em', fontWeight: '600' }],
+        'display-md': ['2.75rem', { lineHeight: '1.2', letterSpacing: '-0.01em', fontWeight: '600' }],
+        'display-sm': ['2.25rem', { lineHeight: '1.25', letterSpacing: '-0.01em', fontWeight: '600' }],
+        
+        // Premium Heading Typography - Section titles
+        'heading-xl': ['1.875rem', { lineHeight: '1.3', fontWeight: '600' }],
+        'heading-lg': ['1.5rem', { lineHeight: '1.4', fontWeight: '600' }],
+        'heading-md': ['1.25rem', { lineHeight: '1.4', fontWeight: '500' }],
+        'heading-sm': ['1.125rem', { lineHeight: '1.4', fontWeight: '500' }],
+        
+        // Premium Body Typography - Content
+        'body-xl': ['1.125rem', { lineHeight: '1.7', fontWeight: '400' }],
+        'body-lg': ['1rem', { lineHeight: '1.6', fontWeight: '400' }],
+        'body-md': ['0.875rem', { lineHeight: '1.5', fontWeight: '400' }],
+        'body-sm': ['0.75rem', { lineHeight: '1.5', fontWeight: '400' }],
+        
+        // UI Typography - Labels, buttons
+        'ui-md': ['0.875rem', { lineHeight: '1.4', fontWeight: '500' }],
+        'ui-sm': ['0.75rem', { lineHeight: '1.4', fontWeight: '500' }],
       },
       borderRadius: {
         lg: 'var(--radius)',

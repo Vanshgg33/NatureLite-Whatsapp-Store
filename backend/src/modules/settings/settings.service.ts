@@ -151,4 +151,26 @@ export class SettingsService implements OnModuleInit {
   async getSupportSettings(): Promise<Record<string, unknown>> {
     return (await this.get('support')) || DEFAULT_SETTINGS.support;
   }
+
+  async getMetricsResetAt(): Promise<Date | null> {
+    const raw = await this.get('metrics');
+    const ts = raw?.resetAt;
+    return typeof ts === 'string' ? new Date(ts) : null;
+  }
+
+  async setMetricsResetAt(date: Date): Promise<void> {
+    await this.settingsRepository.getModel().findOneAndUpdate(
+      { key: 'metrics' },
+      {
+        $set: {
+          key: 'metrics',
+          category: 'metrics',
+          value: { resetAt: date.toISOString() },
+          isPublic: false,
+          description: 'Metrics reset configuration',
+        },
+      },
+      { upsert: true, new: true },
+    ).exec();
+  }
 }

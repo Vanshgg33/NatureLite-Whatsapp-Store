@@ -140,7 +140,7 @@ export default function LoginPage() {
       return;
     }
 
-    if (!otp || otp.length < 4) {
+    if (!otp || otp.length < 6) {
       setError('Please enter a valid OTP');
       return;
     }

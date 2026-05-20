@@ -13,6 +13,7 @@ import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { StoreSalesModule } from '../store-sales/store-sales.module';
 import { StoreStockModule } from '../store-stock/store-stock.module';
 import { StoresModule } from '../stores/stores.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { StoresModule } from '../stores/stores.module';
     StoreSalesModule,
     StoreStockModule,
     StoresModule,
+    SettingsModule,
   ],
   controllers: [AnalyticsController],
   providers: [AnalyticsSnapshotRepository, AnalyticsService],

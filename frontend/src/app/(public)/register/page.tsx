@@ -14,7 +14,7 @@ import { api } from '@/lib/api';
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { setCustomer, updateCustomer } = useCustomerStore();
+  const { setCustomer, updateCustomer, setTokens } = useCustomerStore();
   const { syncWithServer: syncCart } = useCartStore();
   const { toast } = useToast();
   const [name, setName] = useState('');
@@ -44,6 +44,7 @@ export default function RegisterPage() {
         phone: phone || undefined,
       });
 
+      setTokens(response.accessToken, response.refreshToken);
       setCustomer({
         id: response.user.id,
         phone: response.user.phone || phone,
@@ -71,7 +72,7 @@ export default function RegisterPage() {
 
       toast({
         title: 'Account created!',
-        description: 'Welcome to Naturelite!',
+        description: 'Welcome to Purity Foods!',
       });
 
       // Sync cart with server after registration

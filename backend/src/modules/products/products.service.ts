@@ -394,6 +394,16 @@ export class ProductsService implements OnModuleInit {
     }
   }
 
+  async bulkUpdateCategory(productIds: string[], categoryId: string): Promise<{ modifiedCount: number }> {
+    const catId = parseObjectId(categoryId, 'categoryId');
+    const ids = productIds.map((id) => parseObjectId(id, 'productId'));
+    const result = await this.productRepository.getModel().updateMany(
+      { _id: { $in: ids } },
+      { $set: { category: catId } },
+    ).exec();
+    return { modifiedCount: result.modifiedCount };
+  }
+
   private generateSlug(name: string): string {
     return name
       .toLowerCase()

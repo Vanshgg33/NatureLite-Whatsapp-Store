@@ -135,7 +135,7 @@ export function StorySection() {
 
           <MaskReveal delay={0.2}>
             <h2 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold text-brand-charcoal mb-6">
-              The Naturelite Story
+              The Purity Foods Story
             </h2>
           </MaskReveal>
 

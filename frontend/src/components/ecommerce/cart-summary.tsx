@@ -4,13 +4,37 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Tag, Truck, ShieldCheck, ArrowRight, X, PartyPopper, Info } from 'lucide-react';
+import { Tag, Truck, ShieldCheck, ArrowRight, X, PartyPopper, Info, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useCartStore } from '@/lib/cart-store';
+import { useCartStore, CartItem } from '@/lib/cart-store';
 import { useToast } from '@/components/ui/use-toast';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
+
+const WHATSAPP_NUMBER = '918817200740';
+
+function buildWhatsAppOrderUrl(items: CartItem[], total: number): string {
+  const fmt = (n: number) =>
+    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
+
+  const lines = items.map((item) => {
+    const variant = item.variantName ? ` (${item.variantName})` : '';
+    return `• ${item.name}${variant} × ${item.quantity} — ${fmt(item.price * item.quantity)}`;
+  });
+
+  const message = [
+    'Hi! I would like to place an order:',
+    '',
+    ...lines,
+    '',
+    `*Total: ${fmt(total)}*`,
+    '',
+    'Please help me complete my order.',
+  ].join('\n');
+
+  return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+}
 
 interface CartSummaryProps {
   showCheckoutButton?: boolean;
@@ -326,12 +350,25 @@ export function CartSummary({
 
       {/* Checkout Button */}
       {showCheckoutButton && (
-        <Link href="/checkout">
-          <Button className="w-full bg-brand-mustard hover:bg-brand-mustard-dark text-white rounded-xl py-6">
-            Proceed to Checkout
-            <ArrowRight className="ml-2 w-4 h-4" />
-          </Button>
-        </Link>
+        <>
+          <Link href="/checkout">
+            <Button className="w-full bg-brand-mustard hover:bg-brand-mustard-dark text-white rounded-xl py-6">
+              Proceed to Checkout
+              <ArrowRight className="ml-2 w-4 h-4" />
+            </Button>
+          </Link>
+
+          <a
+            href={buildWhatsAppOrderUrl(items, totalWithGst + shippingCost)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl font-semibold text-sm transition-all duration-200 hover:-translate-y-0.5"
+            style={{ background: '#25D366', color: '#fff', boxShadow: '0 4px 18px -4px rgba(37,211,102,0.40)' }}
+          >
+            <MessageCircle className="w-4 h-4" />
+            Order via WhatsApp
+          </a>
+        </>
       )}
 
       {/* Trust Badges */}

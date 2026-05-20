@@ -1,0 +1,1066 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>MERCATO — Admin Intelligence / O+Connect</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..900,0..100;1,9..144,300..900,0..100&family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=JetBrains+Mono:ital,wght@0,300..700;1,300..700&display=swap" rel="stylesheet">
+
+<style>
+/* ---------- TOKENS ---------- */
+:root{
+  --ink:        #14110D;
+  --ink-2:      #1B1813;
+  --ink-3:      #221E18;
+  --hair:       #2E2820;
+  --paper:      #F2EAD8;
+  --paper-2:    #E8DDC4;
+  --paper-dim:  #C8B898;
+  --muted:      #8C8473;
+  --muted-2:    #5C564B;
+  --saffron:    #E8A33D;
+  --saffron-2:  #F2BB5E;
+  --terra:      #C56A4A;
+  --moss:       #6E9B5E;
+  --moss-deep:  #3E5E36;
+  --rust:       #8E3A1E;
+  --plum:       #5B2D45;
+  --grid:       rgba(242,234,216,0.06);
+  --hairline:   rgba(242,234,216,0.10);
+  --hairline-2: rgba(242,234,216,0.18);
+  --shadow-1:   0 1px 0 rgba(242,234,216,.04) inset, 0 30px 60px -30px rgba(0,0,0,.6);
+}
+
+@property --num { syntax: '<integer>'; inherits: false; initial-value: 0; }
+@property --pct { syntax: '<percentage>'; inherits: false; initial-value: 0%; }
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--ink);color:var(--paper);font-family:"Instrument Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{
+  position:relative;
+  overflow-x:hidden;
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(232,163,61,.10), transparent 60%),
+    radial-gradient(900px 500px at -10% 30%, rgba(110,155,94,.06), transparent 60%),
+    radial-gradient(700px 400px at 50% 110%, rgba(197,106,74,.08), transparent 60%),
+    var(--ink);
+}
+/* grain overlay */
+body::before{
+  content:"";
+  position:fixed;inset:0;pointer-events:none;z-index:60;
+  opacity:.10;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
+/* hairline grid */
+body::after{
+  content:"";
+  position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:
+    linear-gradient(to right, var(--grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+  background-size: 88px 88px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+}
+
+::selection{background:var(--saffron);color:var(--ink)}
+
+/* ---------- TYPOGRAPHY ---------- */
+.display{font-family:"Fraunces",ui-serif,Georgia,serif;font-variation-settings:"opsz" 144,"SOFT" 50;letter-spacing:-0.02em;line-height:.92;font-weight:400}
+.display-i{font-family:"Fraunces",serif;font-style:italic;font-variation-settings:"opsz" 144,"SOFT" 100;letter-spacing:-0.02em;line-height:.92;font-weight:300}
+.serif{font-family:"Fraunces",serif;font-variation-settings:"opsz" 24}
+.mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-feature-settings:"tnum","ss01"}
+.eyebrow{font-family:"JetBrains Mono",monospace;text-transform:uppercase;letter-spacing:.22em;font-size:10.5px;color:var(--muted)}
+.label{font-family:"Instrument Sans",sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--paper-dim)}
+
+/* ---------- LAYOUT FRAME ---------- */
+.frame{position:relative;z-index:2;max-width:1480px;margin:0 auto;padding:0 56px}
+.hr{height:1px;background:var(--hairline);width:100%}
+.hr-2{height:1px;background:var(--hairline-2);width:100%}
+
+/* ---------- MASTHEAD ---------- */
+.masthead{
+  position:sticky;top:0;z-index:50;
+  backdrop-filter:blur(18px);
+  background:linear-gradient(to bottom, rgba(20,17,13,.92), rgba(20,17,13,.65));
+  border-bottom:1px solid var(--hairline);
+}
+.masthead .row{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:14px 56px;gap:24px}
+.brandmark{display:flex;align-items:center;gap:14px}
+.brandmark .dot{width:8px;height:8px;border-radius:50%;background:var(--saffron);box-shadow:0 0 0 4px rgba(232,163,61,.18);animation:pulseDot 2.4s ease-in-out infinite}
+.brandmark .name{font-family:"Fraunces",serif;font-size:22px;font-variation-settings:"opsz" 144;letter-spacing:-0.01em}
+.brandmark .name em{font-style:italic;font-weight:300;color:var(--saffron)}
+.nav{display:flex;gap:34px;justify-content:center}
+.nav a{color:var(--paper-dim);text-decoration:none;font-size:13px;letter-spacing:.04em;position:relative;padding:6px 0;transition:color .3s}
+.nav a::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--saffron);transform:scaleX(0);transform-origin:left;transition:transform .4s cubic-bezier(.65,0,.35,1)}
+.nav a:hover{color:var(--paper)}
+.nav a:hover::after{transform:scaleX(1)}
+.nav a.active{color:var(--paper)}
+.nav a.active::after{transform:scaleX(1);background:var(--paper)}
+.meta-end{display:flex;justify-content:flex-end;align-items:center;gap:18px;font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--muted)}
+.meta-end .live{display:inline-flex;gap:8px;align-items:center;color:var(--paper)}
+.meta-end .live .ring{width:7px;height:7px;border-radius:50%;background:#74C36A;box-shadow:0 0 0 0 rgba(116,195,106,.6);animation:liveRing 1.8s ease-out infinite}
+.meta-end .avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--terra),var(--saffron));display:grid;place-items:center;color:var(--ink);font-weight:700;font-size:11px;font-family:"Instrument Sans"}
+
+/* ---------- COVER / OVERVIEW ---------- */
+.cover{padding:90px 0 60px;position:relative}
+.cover .issue-line{display:flex;justify-content:space-between;align-items:center;color:var(--muted)}
+.cover .issue-line .l, .cover .issue-line .r{display:flex;gap:22px;align-items:center}
+.cover h1{
+  margin-top:36px;
+  font-size:clamp(64px, 11vw, 168px);
+  line-height:.86;
+  letter-spacing:-0.035em;
+}
+.cover h1 .em{font-style:italic;font-weight:300;color:var(--saffron);font-variation-settings:"opsz" 144,"SOFT" 100}
+.cover h1 .br{display:block}
+.cover h1 .word{display:inline-block;opacity:0;transform:translateY(40px) rotate(2deg);animation:wordIn 1s cubic-bezier(.2,.8,.2,1) forwards}
+.cover h1 .word:nth-child(1){animation-delay:.05s}
+.cover h1 .word:nth-child(2){animation-delay:.18s}
+.cover h1 .word:nth-child(3){animation-delay:.31s}
+.cover h1 .word:nth-child(4){animation-delay:.44s}
+
+.dek{
+  margin-top:34px;
+  display:grid;grid-template-columns:1.3fr .8fr 1fr;gap:50px;align-items:end;
+  padding-bottom:30px;border-bottom:1px solid var(--hairline);
+}
+.dek p{max-width:48ch;color:var(--paper-dim);font-size:15px;line-height:1.55;font-family:"Fraunces",serif;font-variation-settings:"opsz" 16}
+.dek .pull{
+  font-family:"Fraunces",serif;font-style:italic;font-weight:300;
+  font-size:clamp(18px,1.6vw,22px);line-height:1.35;color:var(--paper);
+  border-left:1px solid var(--saffron);padding-left:18px;
+}
+.dek .now{display:flex;flex-direction:column;gap:10px;align-items:flex-end}
+.dek .now .digital{font-family:"JetBrains Mono";font-size:42px;letter-spacing:-0.02em;color:var(--paper)}
+.dek .now .digital .sep{color:var(--saffron);animation:blink 1s steps(2) infinite}
+
+/* hero stat strip */
+.hero-strip{
+  margin-top:64px;
+  display:grid;
+  grid-template-columns: 1.6fr 1fr 1fr 1fr;
+  border-top:1px solid var(--hairline-2);
+  border-bottom:1px solid var(--hairline-2);
+}
+.cell{padding:34px 28px;border-right:1px solid var(--hairline);position:relative;overflow:hidden}
+.cell:last-child{border-right:0}
+.cell .eyebrow{display:flex;justify-content:space-between;align-items:center}
+.cell .delta{font-family:"JetBrains Mono";font-size:11px;padding:3px 8px;border-radius:999px}
+.cell .delta.up{color:var(--moss);background:rgba(110,155,94,.10);border:1px solid rgba(110,155,94,.25)}
+.cell .delta.down{color:var(--terra);background:rgba(197,106,74,.10);border:1px solid rgba(197,106,74,.25)}
+.cell .big{
+  font-family:"Fraunces",serif;font-variation-settings:"opsz" 144;
+  font-size:64px;line-height:1;letter-spacing:-0.03em;margin-top:18px;
+  display:flex;align-items:baseline;gap:6px;
+}
+.cell .big .cur{font-family:"JetBrains Mono";font-size:18px;color:var(--muted);align-self:flex-start;margin-top:8px}
+.cell .big .unit{font-family:"Instrument Sans";font-size:14px;color:var(--muted);margin-left:6px;letter-spacing:.04em}
+.cell .sparkbox{margin-top:20px;height:42px}
+.cell .scribble{position:absolute;right:-30px;bottom:-30px;width:160px;height:160px;opacity:.06;color:var(--saffron);pointer-events:none}
+.cell.feature{background:linear-gradient(135deg, rgba(232,163,61,.10), rgba(232,163,61,0) 60%)}
+.cell.feature .big{color:var(--saffron-2)}
+
+/* counted number */
+.cnum{counter-reset:c var(--num);display:inline-block}
+.cnum::after{content:counter(c)}
+
+/* ---------- SECTION HEADER PATTERN ---------- */
+.section{padding:90px 0;position:relative}
+.sechead{display:grid;grid-template-columns:auto 1fr auto;align-items:end;gap:30px;padding-bottom:24px;border-bottom:1px solid var(--hairline-2);margin-bottom:38px}
+.sechead .num{font-family:"Fraunces",serif;font-style:italic;font-weight:300;font-size:46px;color:var(--saffron);font-variation-settings:"opsz" 144,"SOFT" 100;line-height:1}
+.sechead h2{font-family:"Fraunces",serif;font-size:clamp(30px,3.5vw,52px);letter-spacing:-0.02em;line-height:1;font-variation-settings:"opsz" 96}
+.sechead h2 em{font-style:italic;font-weight:300;color:var(--paper-dim)}
+.sechead .right{display:flex;gap:8px;align-items:center}
+.chip{
+  font-family:"JetBrains Mono";font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  padding:7px 12px;border:1px solid var(--hairline-2);border-radius:999px;color:var(--paper-dim);
+  background:rgba(242,234,216,.02);transition:all .25s;
+}
+.chip:hover{color:var(--paper);border-color:var(--saffron);background:rgba(232,163,61,.06)}
+.chip.on{color:var(--ink);background:var(--paper);border-color:var(--paper)}
+
+/* ---------- REVENUE ATLAS ---------- */
+.atlas{display:grid;grid-template-columns:1.6fr 1fr;gap:36px}
+.card{
+  background:linear-gradient(180deg, var(--ink-2), var(--ink-3));
+  border:1px solid var(--hairline);border-radius:6px;
+  position:relative;overflow:hidden;
+  box-shadow:var(--shadow-1);
+}
+.card .head{padding:22px 24px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--hairline)}
+.card .head .l{display:flex;flex-direction:column;gap:6px}
+.card .head h3{font-family:"Fraunces",serif;font-size:20px;font-variation-settings:"opsz" 24}
+.card .body{padding:22px 24px}
+
+.atlas-chart{height:380px;padding:22px 24px 30px}
+.atlas-foot{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--hairline)}
+.atlas-foot .stat{padding:18px 24px;border-right:1px solid var(--hairline)}
+.atlas-foot .stat:last-child{border-right:0}
+.atlas-foot .v{font-family:"JetBrains Mono";font-size:22px;color:var(--paper);margin-top:6px}
+.atlas-foot .delta-chip{display:inline-flex;gap:6px;align-items:center;font-family:"JetBrains Mono";font-size:11px;color:var(--moss);margin-top:6px}
+
+/* category donut card */
+.donut-wrap{display:grid;grid-template-columns:240px 1fr;gap:22px;align-items:center}
+.donut-wrap svg{width:100%;height:auto}
+.donut-legend{display:flex;flex-direction:column;gap:14px}
+.donut-legend .row{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--hairline);transition:padding .3s}
+.donut-legend .row:hover{padding-left:6px}
+.donut-legend .row:last-child{border-bottom:0}
+.donut-legend .sw{width:9px;height:9px;border-radius:2px}
+.donut-legend .nm{font-size:13px;color:var(--paper)}
+.donut-legend .nm small{display:block;color:var(--muted);font-size:11px;margin-top:2px;letter-spacing:.04em}
+.donut-legend .vl{font-family:"JetBrains Mono";font-size:13px}
+
+/* ---------- PULSE / LIVE ---------- */
+.pulse{display:grid;grid-template-columns:1.4fr 1fr;gap:36px}
+.pulse-chart{padding:22px 24px;height:300px;position:relative;overflow:hidden}
+.pulse-grid{position:absolute;inset:22px 24px;background-image:repeating-linear-gradient(to right,var(--hairline) 0 1px, transparent 1px 60px),repeating-linear-gradient(to bottom,var(--hairline) 0 1px, transparent 1px 40px);opacity:.6;pointer-events:none}
+
+/* ticker */
+.ticker{
+  border:1px solid var(--hairline);border-radius:6px;background:var(--ink-2);
+  overflow:hidden;position:relative;
+}
+.ticker .head{padding:14px 18px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--hairline)}
+.ticker .head .live-tag{display:inline-flex;align-items:center;gap:8px;font-family:"JetBrains Mono";font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:#FF6B6B}
+.ticker .head .live-tag .blob{width:8px;height:8px;background:#FF6B6B;border-radius:50%;box-shadow:0 0 12px #FF6B6B;animation:pulseDot 1.4s ease-in-out infinite}
+.tape{height:340px;overflow:hidden;position:relative}
+.tape .col{position:absolute;left:0;right:0;animation:tape 18s linear infinite}
+.tape .item{padding:14px 18px;border-bottom:1px dashed var(--hairline);display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center}
+.tape .item .tk{font-family:"JetBrains Mono";font-size:11px;color:var(--muted);min-width:62px}
+.tape .item .nm{font-size:13.5px}
+.tape .item .nm small{display:block;color:var(--muted);font-size:11px;margin-top:2px;font-family:"JetBrains Mono"}
+.tape .item .amt{font-family:"JetBrains Mono";font-size:13.5px;color:var(--saffron-2)}
+.tape .item .amt.green{color:#94D384}
+.tape .item .amt.red{color:#FF8E72}
+
+/* status flow */
+.flow{padding:26px 24px}
+.flow-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:0;border:1px solid var(--hairline);border-radius:6px;overflow:hidden;background:var(--ink-3)}
+.flow-cell{padding:22px 18px;border-right:1px solid var(--hairline);position:relative}
+.flow-cell:last-child{border-right:0}
+.flow-cell .badge{display:inline-flex;align-items:center;gap:7px;font-family:"JetBrains Mono";font-size:10.5px;letter-spacing:.14em;text-transform:uppercase}
+.flow-cell .badge .d{width:7px;height:7px;border-radius:50%}
+.flow-cell .num{font-family:"Fraunces",serif;font-size:48px;line-height:1;font-variation-settings:"opsz" 96;margin:14px 0 6px;letter-spacing:-0.02em}
+.flow-cell .sub{font-size:11.5px;color:var(--muted);font-family:"JetBrains Mono"}
+.flow-cell .bar{height:3px;margin-top:18px;background:var(--hair);border-radius:3px;overflow:hidden;position:relative}
+.flow-cell .bar i{position:absolute;left:0;top:0;bottom:0;background:currentColor;width:0;animation:fillBar 1.6s ease-out forwards;animation-delay:var(--d,0s)}
+
+/* ---------- INVENTORY INDEX ---------- */
+.index{padding:0}
+.index .toolbar{padding:18px 24px;display:flex;gap:10px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--hairline)}
+.index .toolbar .search{
+  flex:1;max-width:340px;display:flex;align-items:center;gap:10px;
+  padding:9px 12px;border:1px solid var(--hairline);border-radius:4px;background:rgba(242,234,216,.02);
+}
+.index .toolbar .search input{background:none;border:0;outline:0;color:var(--paper);font-family:"JetBrains Mono";font-size:12px;width:100%}
+.index .toolbar .search input::placeholder{color:var(--muted)}
+.itable{width:100%;border-collapse:collapse}
+.itable th{
+  text-align:left;padding:14px 24px;font-family:"JetBrains Mono";font-size:10.5px;
+  text-transform:uppercase;letter-spacing:.16em;color:var(--muted);border-bottom:1px solid var(--hairline);
+}
+.itable td{padding:18px 24px;border-bottom:1px solid var(--hairline);transition:background .25s}
+.itable tbody tr{transition:background .25s, transform .25s}
+.itable tbody tr:hover{background:linear-gradient(90deg, rgba(232,163,61,.08), transparent 80%)}
+.itable .sku{font-family:"JetBrains Mono";font-size:11.5px;color:var(--muted)}
+.itable .name{font-family:"Fraunces",serif;font-size:18px;font-variation-settings:"opsz" 24;letter-spacing:-0.005em}
+.itable .name small{display:block;font-family:"Instrument Sans";font-size:11px;color:var(--muted);margin-top:3px;letter-spacing:.04em}
+.itable .qty{font-family:"JetBrains Mono";font-size:14px}
+.itable .qty .of{color:var(--muted)}
+.stockbar{height:6px;width:120px;background:var(--hair);border-radius:6px;overflow:hidden;position:relative}
+.stockbar i{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:6px;animation:fillBar 1.4s ease-out forwards;animation-delay:.2s}
+.stockbar.ok i{background:linear-gradient(90deg,var(--moss),#94D384);box-shadow:0 0 16px rgba(110,155,94,.4)}
+.stockbar.warn i{background:linear-gradient(90deg,var(--saffron),var(--saffron-2));box-shadow:0 0 16px rgba(232,163,61,.4)}
+.stockbar.crit i{background:linear-gradient(90deg,var(--rust),#D9583A);box-shadow:0 0 16px rgba(217,88,58,.5)}
+.tag{display:inline-flex;align-items:center;gap:7px;padding:5px 10px;border-radius:999px;font-family:"JetBrains Mono";font-size:10.5px;letter-spacing:.10em;text-transform:uppercase;border:1px solid currentColor;background:rgba(242,234,216,.02)}
+.tag .d{width:6px;height:6px;border-radius:50%;background:currentColor}
+.tag.ok{color:#94D384}
+.tag.warn{color:var(--saffron-2)}
+.tag.crit{color:#FF8E72}
+
+/* ---------- STORE NETWORK ---------- */
+.network{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+.store-card{
+  background:linear-gradient(180deg,var(--ink-2),var(--ink-3));
+  border:1px solid var(--hairline);
+  border-radius:6px;
+  padding:24px 22px;
+  position:relative;
+  overflow:hidden;
+  transition:transform .35s cubic-bezier(.2,.8,.2,1), border-color .25s;
+}
+.store-card::before{
+  content:"";position:absolute;inset:0;
+  background:radial-gradient(400px 200px at 50% -10%, rgba(232,163,61,.10), transparent 60%);
+  opacity:0;transition:opacity .3s;pointer-events:none;
+}
+.store-card:hover{transform:translateY(-4px);border-color:var(--saffron)}
+.store-card:hover::before{opacity:1}
+.store-card .top{display:flex;justify-content:space-between;align-items:flex-start}
+.store-card .city{font-family:"Fraunces",serif;font-size:24px;font-variation-settings:"opsz" 96;letter-spacing:-0.01em}
+.store-card .city em{font-style:italic;font-weight:300;color:var(--saffron-2)}
+.store-card .pin{font-family:"JetBrains Mono";font-size:10.5px;color:var(--muted);letter-spacing:.06em}
+.store-card .ind{display:inline-flex;align-items:center;gap:6px;font-family:"JetBrains Mono";font-size:10.5px;letter-spacing:.14em;text-transform:uppercase}
+.store-card .ind .d{width:6px;height:6px;border-radius:50%}
+.store-card .ind.online .d{background:#94D384;box-shadow:0 0 0 3px rgba(148,211,132,.18);animation:pulseDot 2s ease-in-out infinite}
+.store-card .ind.offline .d{background:var(--muted)}
+.store-card .rev{display:flex;align-items:baseline;gap:5px;margin-top:22px}
+.store-card .rev .cur{font-family:"JetBrains Mono";font-size:14px;color:var(--muted)}
+.store-card .rev .v{font-family:"Fraunces",serif;font-size:42px;line-height:1;font-variation-settings:"opsz" 96;letter-spacing:-0.02em}
+.store-card .sub{display:flex;justify-content:space-between;margin-top:8px;font-family:"JetBrains Mono";font-size:11px;color:var(--muted)}
+.store-card .sub span:last-child{color:#94D384}
+.store-card .mini{margin-top:18px;display:flex;align-items:flex-end;gap:5px;height:60px}
+.store-card .mini i{flex:1;background:linear-gradient(180deg,var(--saffron),var(--terra));border-radius:2px;opacity:.85;transform-origin:bottom;transform:scaleY(0);animation:bar 1s cubic-bezier(.2,.8,.2,1) forwards}
+.store-card .footer{margin-top:18px;padding-top:14px;border-top:1px solid var(--hairline);display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.store-card .footer .it{display:flex;flex-direction:column;gap:3px}
+.store-card .footer .it .lab{font-family:"JetBrains Mono";font-size:9.5px;color:var(--muted);letter-spacing:.10em;text-transform:uppercase}
+.store-card .footer .it .va{font-family:"Fraunces",serif;font-size:16px;font-variation-settings:"opsz" 24}
+
+/* ---------- KEYFRAMES ---------- */
+@keyframes pulseDot{
+  0%,100%{box-shadow:0 0 0 0 rgba(232,163,61,.6)}
+  50%{box-shadow:0 0 0 8px rgba(232,163,61,0)}
+}
+@keyframes liveRing{
+  0%{box-shadow:0 0 0 0 rgba(116,195,106,.6)}
+  70%{box-shadow:0 0 0 8px rgba(116,195,106,0)}
+  100%{box-shadow:0 0 0 0 rgba(116,195,106,0)}
+}
+@keyframes blink{50%{opacity:.3}}
+@keyframes wordIn{to{opacity:1;transform:translateY(0) rotate(0)}}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fillBar{to{width:var(--w,100%)}}
+@keyframes bar{to{transform:scaleY(var(--s,1))}}
+@keyframes tape{from{transform:translateY(0)}to{transform:translateY(-50%)}}
+@keyframes count{to{--num:var(--target)}}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+@keyframes ekg{
+  0%{stroke-dashoffset:2400}
+  100%{stroke-dashoffset:0}
+}
+
+/* path drawings */
+.draw-path{stroke-dasharray:3000;stroke-dashoffset:3000;animation:draw 2.4s cubic-bezier(.65,0,.35,1) forwards .4s}
+.draw-path.slow{animation-duration:3.4s}
+.area-fill{opacity:0;animation:fadeUp 1.2s .9s forwards ease-out}
+.donut-seg{stroke-dasharray:var(--len);stroke-dashoffset:var(--len);animation:draw 1.4s cubic-bezier(.2,.8,.2,1) forwards}
+
+/* number counters */
+.cnum.big-rev{--target:428940;animation:count 2.2s .6s cubic-bezier(.2,.8,.2,1) forwards}
+.cnum.orders-today{--target:147;animation:count 1.6s .8s ease-out forwards}
+.cnum.aov{--target:2918;animation:count 1.8s 1s ease-out forwards}
+.cnum.customers{--target:1284;animation:count 2s 1.2s ease-out forwards}
+
+/* footer */
+.foot{padding:60px 56px;border-top:1px solid var(--hairline);display:grid;grid-template-columns:1fr auto;align-items:end;gap:20px;color:var(--muted)}
+.foot .colophon{font-family:"Fraunces",serif;font-style:italic;font-weight:300;font-size:30px;color:var(--paper);letter-spacing:-0.01em;font-variation-settings:"opsz" 96,"SOFT" 100}
+.foot .small{font-family:"JetBrains Mono";font-size:10.5px;letter-spacing:.12em;text-transform:uppercase}
+.foot .sig{font-family:"Fraunces",serif;font-style:italic;font-size:14px;color:var(--paper-dim)}
+
+/* responsive */
+@media (max-width:1180px){
+  .frame{padding:0 28px}
+  .masthead .row{padding:14px 28px}
+  .nav{display:none}
+  .hero-strip{grid-template-columns:1fr 1fr}
+  .atlas, .pulse{grid-template-columns:1fr}
+  .network{grid-template-columns:repeat(2,1fr)}
+  .cover h1{font-size:74px}
+  .dek{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- ============== MASTHEAD ============== -->
+<header class="masthead">
+  <div class="row">
+    <div class="brandmark">
+      <span class="dot"></span>
+      <span class="name">Mer<em>cato</em></span>
+      <span class="eyebrow" style="margin-left:14px">Admin Intelligence · O+Connect</span>
+    </div>
+    <nav class="nav">
+      <a href="#" class="active">Overview</a>
+      <a href="#atlas">Revenue</a>
+      <a href="#pulse">Pulse</a>
+      <a href="#index">Inventory</a>
+      <a href="#network">Network</a>
+      <a href="#">Customers</a>
+      <a href="#">Settings</a>
+    </nav>
+    <div class="meta-end">
+      <span class="live"><span class="ring"></span> Sync 14s</span>
+      <span>· IST 17:42</span>
+      <div class="avatar">VJ</div>
+    </div>
+  </div>
+</header>
+
+<!-- ============== COVER ============== -->
+<section class="cover frame">
+  <div class="issue-line">
+    <div class="l">
+      <span class="eyebrow">Issue №147</span>
+      <span class="eyebrow">Sunday · 26 April 2026</span>
+      <span class="eyebrow">Volume IV</span>
+    </div>
+    <div class="r">
+      <span class="eyebrow">Edition · Raipur (HQ)</span>
+      <span class="eyebrow">5 stores live</span>
+    </div>
+  </div>
+
+  <h1 class="display">
+    <span class="word">Today's</span>
+    <span class="word em">pulse,</span>
+    <span class="br"></span>
+    <span class="word">in</span>
+    <span class="word">numbers.</span>
+  </h1>
+
+  <div class="dek">
+    <p>A long view of yesterday's tail and this morning's appetite — orders moving through five stores, the slow climb of mustard oil, and one shipment held at the Bhilai gate. Read it with coffee.</p>
+    <p class="pull">"Saturdays have grown 22% on the trailing four weeks — Raipur leads, Bhilai is closing the gap, and your basket size is up ₹140 since the coupon nudge."</p>
+    <div class="now">
+      <span class="eyebrow">As of</span>
+      <div class="digital">17<span class="sep">:</span>42<span class="sep">:</span><span id="sec">08</span></div>
+    </div>
+  </div>
+
+  <!-- HERO STRIP -->
+  <div class="hero-strip">
+    <div class="cell feature">
+      <div class="eyebrow">
+        <span>Revenue · Today</span>
+        <span class="delta up">▲ 18.4%</span>
+      </div>
+      <div class="big">
+        <span class="cur">₹</span><span class="cnum big-rev"></span>
+      </div>
+      <div class="sparkbox">
+        <svg viewBox="0 0 600 60" preserveAspectRatio="none" width="100%" height="100%">
+          <defs>
+            <linearGradient id="sparkA" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0" stop-color="#E8A33D" stop-opacity=".55"/>
+              <stop offset="1" stop-color="#E8A33D" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <path class="draw-path" fill="none" stroke="#E8A33D" stroke-width="2" stroke-linecap="round"
+                d="M0,42 C30,38 50,46 80,40 C110,34 140,28 180,32 C220,36 250,28 290,22 C330,16 360,30 400,24 C440,18 470,10 510,16 C550,22 580,12 600,14"/>
+          <path class="area-fill" fill="url(#sparkA)"
+                d="M0,42 C30,38 50,46 80,40 C110,34 140,28 180,32 C220,36 250,28 290,22 C330,16 360,30 400,24 C440,18 470,10 510,16 C550,22 580,12 600,14 L600,60 L0,60 Z"/>
+        </svg>
+      </div>
+      <svg class="scribble" viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 5"/><circle cx="50" cy="50" r="28" fill="none" stroke="currentColor" stroke-width="1"/></svg>
+    </div>
+    <div class="cell">
+      <div class="eyebrow">
+        <span>Orders · Today</span>
+        <span class="delta up">▲ 12</span>
+      </div>
+      <div class="big"><span class="cnum orders-today"></span></div>
+      <div class="sparkbox">
+        <svg viewBox="0 0 600 60" preserveAspectRatio="none" width="100%" height="100%">
+          <path class="draw-path slow" fill="none" stroke="#94D384" stroke-width="1.7"
+                d="M0,40 L50,40 L50,30 L100,30 L100,42 L150,42 L150,22 L200,22 L200,34 L250,34 L250,18 L300,18 L300,30 L350,30 L350,12 L400,12 L400,26 L450,26 L450,20 L500,20 L500,8 L550,8 L600,18"/>
+        </svg>
+      </div>
+    </div>
+    <div class="cell">
+      <div class="eyebrow">
+        <span>Avg. Order Value</span>
+        <span class="delta up">▲ 4.8%</span>
+      </div>
+      <div class="big"><span class="cur">₹</span><span class="cnum aov"></span></div>
+      <div class="sparkbox">
+        <svg viewBox="0 0 600 60" preserveAspectRatio="none" width="100%" height="100%">
+          <path class="draw-path slow" fill="none" stroke="#C56A4A" stroke-width="1.7" stroke-linecap="round"
+                d="M0,32 Q60,20 120,28 T240,30 T360,18 T480,24 T600,12"/>
+        </svg>
+      </div>
+    </div>
+    <div class="cell">
+      <div class="eyebrow">
+        <span>Active Customers</span>
+        <span class="delta down">▼ 2.1%</span>
+      </div>
+      <div class="big"><span class="cnum customers"></span></div>
+      <div class="sparkbox">
+        <svg viewBox="0 0 600 60" preserveAspectRatio="none" width="100%" height="100%">
+          <path class="draw-path slow" fill="none" stroke="#C8B898" stroke-width="1.7" stroke-linecap="round"
+                d="M0,18 Q60,28 120,22 T240,32 T360,28 T480,40 T600,36"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== REVENUE ATLAS ============== -->
+<section class="section frame" id="atlas">
+  <div class="sechead">
+    <div class="num">№ 01</div>
+    <h2>Revenue <em>atlas,</em> a fortnight read.</h2>
+    <div class="right">
+      <span class="chip on">14d</span>
+      <span class="chip">30d</span>
+      <span class="chip">90d</span>
+      <span class="chip">YTD</span>
+    </div>
+  </div>
+
+  <div class="atlas">
+    <!-- big chart -->
+    <div class="card">
+      <div class="head">
+        <div class="l">
+          <span class="eyebrow">Daily Net · ₹</span>
+          <h3>The fortnight</h3>
+        </div>
+        <div style="display:flex;gap:18px;align-items:center">
+          <span class="chip"><span style="display:inline-block;width:8px;height:8px;background:var(--saffron);border-radius:50%;margin-right:6px"></span>This period</span>
+          <span class="chip"><span style="display:inline-block;width:8px;height:8px;background:var(--muted-2);border-radius:50%;margin-right:6px"></span>Previous</span>
+        </div>
+      </div>
+      <div class="atlas-chart">
+        <svg viewBox="0 0 760 360" width="100%" height="100%" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="atlasArea" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0" stop-color="#E8A33D" stop-opacity=".40"/>
+              <stop offset=".5" stop-color="#E8A33D" stop-opacity=".10"/>
+              <stop offset="1" stop-color="#E8A33D" stop-opacity="0"/>
+            </linearGradient>
+            <linearGradient id="atlasLine" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0" stop-color="#E8A33D"/>
+              <stop offset="1" stop-color="#F2BB5E"/>
+            </linearGradient>
+            <pattern id="dotgrid" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+              <circle cx="2" cy="2" r="1" fill="rgba(242,234,216,0.08)"/>
+            </pattern>
+          </defs>
+          <rect x="0" y="0" width="760" height="320" fill="url(#dotgrid)"/>
+          <!-- y axis labels -->
+          <g font-family="JetBrains Mono" font-size="10" fill="rgba(242,234,216,.45)">
+            <text x="0" y="14">₹ 60k</text>
+            <text x="0" y="84">₹ 45k</text>
+            <text x="0" y="154">₹ 30k</text>
+            <text x="0" y="224">₹ 15k</text>
+            <text x="0" y="294">₹ 0</text>
+          </g>
+          <!-- previous (faint) -->
+          <path fill="none" stroke="rgba(200,184,152,.35)" stroke-width="1.5" stroke-dasharray="3 4"
+                d="M44,260 L96,240 L148,250 L200,210 L252,228 L304,196 L356,210 L408,180 L460,200 L512,160 L564,176 L616,150 L668,168 L720,140"/>
+          <!-- this period area -->
+          <path class="area-fill" fill="url(#atlasArea)"
+                d="M44,250 L96,220 L148,234 L200,180 L252,210 L304,164 L356,186 L408,130 L460,156 L512,108 L564,124 L616,82 L668,100 L720,52
+                   L720,320 L44,320 Z"/>
+          <!-- this period line -->
+          <path class="draw-path" fill="none" stroke="url(#atlasLine)" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"
+                d="M44,250 L96,220 L148,234 L200,180 L252,210 L304,164 L356,186 L408,130 L460,156 L512,108 L564,124 L616,82 L668,100 L720,52"/>
+          <!-- highlight dot at peak -->
+          <g style="animation:fadeUp 1s 2.6s both ease-out">
+            <circle cx="720" cy="52" r="20" fill="rgba(232,163,61,.16)"/>
+            <circle cx="720" cy="52" r="6" fill="#0E0C09" stroke="#E8A33D" stroke-width="2"/>
+            <text x="660" y="34" font-family="JetBrains Mono" font-size="11" fill="#F2BB5E">peak ₹ 58.2k</text>
+            <line x1="720" y1="58" x2="720" y2="320" stroke="#E8A33D" stroke-width="1" stroke-dasharray="2 4" opacity=".5"/>
+          </g>
+          <!-- x axis labels -->
+          <g font-family="JetBrains Mono" font-size="9.5" fill="rgba(242,234,216,.5)">
+            <text x="40" y="346">13 Apr</text>
+            <text x="200" y="346">17</text>
+            <text x="356" y="346">21</text>
+            <text x="512" y="346">23</text>
+            <text x="668" y="346">25</text>
+            <text x="708" y="346">26</text>
+          </g>
+        </svg>
+      </div>
+      <div class="atlas-foot">
+        <div class="stat">
+          <div class="eyebrow">Period revenue</div>
+          <div class="v">₹ 5,84,310</div>
+          <div class="delta-chip">▲ 22.6% vs last 14d</div>
+        </div>
+        <div class="stat">
+          <div class="eyebrow">Best day</div>
+          <div class="v">Sat · 26 Apr</div>
+          <div class="delta-chip" style="color:var(--saffron-2)">★ ₹ 58,210</div>
+        </div>
+        <div class="stat">
+          <div class="eyebrow">Avg. daily</div>
+          <div class="v">₹ 41,736</div>
+          <div class="delta-chip">▲ ₹ 7,690</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- donut category -->
+    <div class="card">
+      <div class="head">
+        <div class="l">
+          <span class="eyebrow">Top Categories</span>
+          <h3>Where the rupee falls</h3>
+        </div>
+        <span class="chip">14 days</span>
+      </div>
+      <div class="body">
+        <div class="donut-wrap">
+          <svg viewBox="0 0 200 200">
+            <defs>
+              <filter id="glow"><feGaussianBlur stdDeviation="3"/></filter>
+            </defs>
+            <!-- track -->
+            <circle cx="100" cy="100" r="76" fill="none" stroke="rgba(242,234,216,.06)" stroke-width="22"/>
+            <!-- segments: 477 ≈ circumference (2πr where r=76) ; we pick lengths totaling segment angles -->
+            <!-- 32% 477*.32=152.6 ; 24% 114.5 ; 18% 85.9 ; 14% 66.8 ; 12% 57.2 -->
+            <g transform="rotate(-90 100 100)" fill="none" stroke-width="22" stroke-linecap="butt">
+              <circle class="donut-seg" cx="100" cy="100" r="76" stroke="#E8A33D" pathLength="100" stroke-dasharray="32 100" stroke-dashoffset="0" style="--len:100;animation-delay:.2s"/>
+              <circle class="donut-seg" cx="100" cy="100" r="76" stroke="#C56A4A" pathLength="100" stroke-dasharray="24 100" stroke-dashoffset="-32" style="--len:100;animation-delay:.4s"/>
+              <circle class="donut-seg" cx="100" cy="100" r="76" stroke="#6E9B5E" pathLength="100" stroke-dasharray="18 100" stroke-dashoffset="-56" style="--len:100;animation-delay:.6s"/>
+              <circle class="donut-seg" cx="100" cy="100" r="76" stroke="#5B2D45" pathLength="100" stroke-dasharray="14 100" stroke-dashoffset="-74" style="--len:100;animation-delay:.8s"/>
+              <circle class="donut-seg" cx="100" cy="100" r="76" stroke="#C8B898" pathLength="100" stroke-dasharray="12 100" stroke-dashoffset="-88" style="--len:100;animation-delay:1s"/>
+            </g>
+            <!-- label -->
+            <text x="100" y="94" text-anchor="middle" font-family="Fraunces" font-size="34" fill="#F2EAD8" style="font-variation-settings:'opsz' 96" letter-spacing="-1">₹5.84L</text>
+            <text x="100" y="118" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#8C8473" letter-spacing="2">14-DAY TOTAL</text>
+          </svg>
+          <div class="donut-legend">
+            <div class="row">
+              <span class="sw" style="background:#E8A33D"></span>
+              <div class="nm">Staples & Grains <small>Atta · Rice · Dal</small></div>
+              <span class="vl">32%</span>
+            </div>
+            <div class="row">
+              <span class="sw" style="background:#C56A4A"></span>
+              <div class="nm">Cooking Oils <small>Mustard · Refined</small></div>
+              <span class="vl">24%</span>
+            </div>
+            <div class="row">
+              <span class="sw" style="background:#6E9B5E"></span>
+              <div class="nm">Fresh Produce <small>Vegetables · Fruit</small></div>
+              <span class="vl">18%</span>
+            </div>
+            <div class="row">
+              <span class="sw" style="background:#5B2D45"></span>
+              <div class="nm">Snacks & Bakery <small>Biscuits · Bread</small></div>
+              <span class="vl">14%</span>
+            </div>
+            <div class="row">
+              <span class="sw" style="background:#C8B898"></span>
+              <div class="nm">Household <small>Soap · Detergent</small></div>
+              <span class="vl">12%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== ORDER PULSE ============== -->
+<section class="section frame" id="pulse">
+  <div class="sechead">
+    <div class="num">№ 02</div>
+    <h2>Order <em>pulse</em> &mdash; live from the floor.</h2>
+    <div class="right">
+      <span class="chip on">All stores</span>
+      <span class="chip">Raipur</span>
+      <span class="chip">Bhilai</span>
+      <span class="chip">Durg</span>
+    </div>
+  </div>
+
+  <div class="pulse">
+    <!-- EKG / pulse chart -->
+    <div class="card">
+      <div class="head">
+        <div class="l">
+          <span class="eyebrow">Orders / minute · last 60</span>
+          <h3>The heartbeat</h3>
+        </div>
+        <span class="chip" style="color:#FF6B6B;border-color:#FF6B6B"><span style="display:inline-block;width:7px;height:7px;background:#FF6B6B;border-radius:50%;margin-right:6px;animation:pulseDot 1.4s infinite"></span>LIVE</span>
+      </div>
+      <div class="pulse-chart">
+        <div class="pulse-grid"></div>
+        <svg viewBox="0 0 1200 240" width="100%" height="100%" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="ekgGrad" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0" stop-color="#FF6B6B" stop-opacity="0"/>
+              <stop offset=".5" stop-color="#FF6B6B" stop-opacity=".5"/>
+              <stop offset="1" stop-color="#FF6B6B"/>
+            </linearGradient>
+          </defs>
+          <path fill="none" stroke="rgba(255,107,107,.3)" stroke-width="1"
+                d="M0,140 L80,140 L100,140 L120,90 L130,170 L140,140 L260,140 L280,140 L300,90 L310,170 L320,140 L460,140 L480,140 L500,90 L510,170 L520,140 L640,140 L660,140 L680,90 L690,170 L700,140 L840,140 L860,140 L880,90 L890,170 L900,140 L1040,140 L1060,140 L1080,90 L1090,170 L1100,140 L1200,140"/>
+          <path fill="none" stroke="url(#ekgGrad)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
+                stroke-dasharray="2400" stroke-dashoffset="2400"
+                style="animation:ekg 4s cubic-bezier(.2,.8,.2,1) forwards .3s"
+                d="M0,140 L80,140 L100,140 L120,90 L130,170 L140,140 L260,140 L280,140 L300,90 L310,170 L320,140 L460,140 L480,140 L500,90 L510,170 L520,140 L640,140 L660,140 L680,90 L690,170 L700,140 L840,140 L860,140 L880,90 L890,170 L900,140 L1040,140 L1060,140 L1080,90 L1090,170 L1100,140 L1200,140"/>
+          <!-- moving dot -->
+          <circle r="6" fill="#FF6B6B">
+            <animateMotion dur="4s" repeatCount="indefinite"
+              path="M0,140 L80,140 L100,140 L120,90 L130,170 L140,140 L260,140 L280,140 L300,90 L310,170 L320,140 L460,140 L480,140 L500,90 L510,170 L520,140 L640,140 L660,140 L680,90 L690,170 L700,140 L840,140 L860,140 L880,90 L890,170 L900,140 L1040,140 L1060,140 L1080,90 L1090,170 L1100,140 L1200,140"/>
+          </circle>
+        </svg>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:24px;margin-top:14px">
+          <div>
+            <div class="eyebrow">Per minute</div>
+            <div class="mono" style="font-size:24px;color:var(--paper);margin-top:4px">3.4</div>
+          </div>
+          <div>
+            <div class="eyebrow">Peak (today)</div>
+            <div class="mono" style="font-size:24px;color:var(--saffron-2);margin-top:4px">12<span style="font-size:13px;color:var(--muted)"> @ 13:14</span></div>
+          </div>
+          <div>
+            <div class="eyebrow">Acceptance</div>
+            <div class="mono" style="font-size:24px;color:#94D384;margin-top:4px">98.4%</div>
+          </div>
+          <div>
+            <div class="eyebrow">Avg prep time</div>
+            <div class="mono" style="font-size:24px;color:var(--paper);margin-top:4px">7m 12s</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ticker -->
+    <div class="ticker">
+      <div class="head">
+        <span class="live-tag"><span class="blob"></span>Order tape</span>
+        <span class="eyebrow">Last 12 min</span>
+      </div>
+      <div class="tape">
+        <div class="col">
+          <div class="item"><span class="tk">17:42:08</span><div class="nm">Anjali V. <small>Raipur · #ORD-9831</small></div><span class="amt green">+ ₹ 1,240</span></div>
+          <div class="item"><span class="tk">17:41:54</span><div class="nm">Rohit S. <small>Bhilai · #ORD-9830</small></div><span class="amt green">+ ₹ 480</span></div>
+          <div class="item"><span class="tk">17:41:30</span><div class="nm">Priya M. <small>Raipur · #ORD-9829</small></div><span class="amt green">+ ₹ 3,180</span></div>
+          <div class="item"><span class="tk">17:40:11</span><div class="nm">Manish K. <small>Durg · #ORD-9828</small></div><span class="amt green">+ ₹ 645</span></div>
+          <div class="item"><span class="tk">17:39:48</span><div class="nm">Suresh P. <small>Raipur · #ORD-9827</small></div><span class="amt red">↺ ₹ 280</span></div>
+          <div class="item"><span class="tk">17:38:02</span><div class="nm">Deepa A. <small>Bilaspur · #ORD-9826</small></div><span class="amt green">+ ₹ 2,460</span></div>
+          <div class="item"><span class="tk">17:37:21</span><div class="nm">Karan G. <small>Bhilai · #ORD-9825</small></div><span class="amt green">+ ₹ 920</span></div>
+          <div class="item"><span class="tk">17:36:09</span><div class="nm">Neha R. <small>Raipur · #ORD-9824</small></div><span class="amt green">+ ₹ 1,510</span></div>
+          <!-- duplicate to seamlessly loop -->
+          <div class="item"><span class="tk">17:42:08</span><div class="nm">Anjali V. <small>Raipur · #ORD-9831</small></div><span class="amt green">+ ₹ 1,240</span></div>
+          <div class="item"><span class="tk">17:41:54</span><div class="nm">Rohit S. <small>Bhilai · #ORD-9830</small></div><span class="amt green">+ ₹ 480</span></div>
+          <div class="item"><span class="tk">17:41:30</span><div class="nm">Priya M. <small>Raipur · #ORD-9829</small></div><span class="amt green">+ ₹ 3,180</span></div>
+          <div class="item"><span class="tk">17:40:11</span><div class="nm">Manish K. <small>Durg · #ORD-9828</small></div><span class="amt green">+ ₹ 645</span></div>
+          <div class="item"><span class="tk">17:39:48</span><div class="nm">Suresh P. <small>Raipur · #ORD-9827</small></div><span class="amt red">↺ ₹ 280</span></div>
+          <div class="item"><span class="tk">17:38:02</span><div class="nm">Deepa A. <small>Bilaspur · #ORD-9826</small></div><span class="amt green">+ ₹ 2,460</span></div>
+          <div class="item"><span class="tk">17:37:21</span><div class="nm">Karan G. <small>Bhilai · #ORD-9825</small></div><span class="amt green">+ ₹ 920</span></div>
+          <div class="item"><span class="tk">17:36:09</span><div class="nm">Neha R. <small>Raipur · #ORD-9824</small></div><span class="amt green">+ ₹ 1,510</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATUS FLOW -->
+  <div style="margin-top:36px" class="card">
+    <div class="head">
+      <div class="l">
+        <span class="eyebrow">Lifecycle</span>
+        <h3>Order flow, this hour</h3>
+      </div>
+      <div style="display:flex;gap:14px">
+        <span class="chip">Total <span class="mono" style="color:var(--saffron-2);margin-left:6px">147</span></span>
+      </div>
+    </div>
+    <div class="flow">
+      <div class="flow-grid">
+        <div class="flow-cell" style="color:#F2BB5E">
+          <div class="badge"><span class="d" style="background:currentColor"></span>Placed</div>
+          <div class="num">38</div>
+          <div class="sub">→ avg dwell 1m 24s</div>
+          <div class="bar"><i style="--w:78%;--d:.2s"></i></div>
+        </div>
+        <div class="flow-cell" style="color:#7DA3D9">
+          <div class="badge"><span class="d" style="background:currentColor"></span>Confirmed</div>
+          <div class="num">42</div>
+          <div class="sub">→ avg dwell 2m 06s</div>
+          <div class="bar"><i style="--w:88%;--d:.4s"></i></div>
+        </div>
+        <div class="flow-cell" style="color:#B093D9">
+          <div class="badge"><span class="d" style="background:currentColor"></span>Preparing</div>
+          <div class="num">31</div>
+          <div class="sub">→ avg dwell 6m 38s</div>
+          <div class="bar"><i style="--w:62%;--d:.6s"></i></div>
+        </div>
+        <div class="flow-cell" style="color:#94D384">
+          <div class="badge"><span class="d" style="background:currentColor"></span>Out for delivery</div>
+          <div class="num">22</div>
+          <div class="sub">→ avg ETA 14m</div>
+          <div class="bar"><i style="--w:46%;--d:.8s"></i></div>
+        </div>
+        <div class="flow-cell" style="color:#74C36A">
+          <div class="badge"><span class="d" style="background:currentColor"></span>Delivered</div>
+          <div class="num">14</div>
+          <div class="sub">↑ +5 since 16:00</div>
+          <div class="bar"><i style="--w:30%;--d:1s"></i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== INVENTORY INDEX ============== -->
+<section class="section frame" id="index">
+  <div class="sechead">
+    <div class="num">№ 03</div>
+    <h2>Inventory, <em>indexed.</em></h2>
+    <div class="right">
+      <span class="chip on">All</span>
+      <span class="chip" style="color:var(--saffron-2);border-color:var(--saffron-2)">Low · 14</span>
+      <span class="chip" style="color:#FF8E72;border-color:#FF8E72">Critical · 3</span>
+    </div>
+  </div>
+
+  <div class="card index">
+    <div class="toolbar">
+      <div class="search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input placeholder="search · sku, name, store..."/>
+      </div>
+      <div style="display:flex;gap:8px">
+        <span class="chip">Sort · Stock ↑</span>
+        <span class="chip">Filter</span>
+        <span class="chip on">+ Add</span>
+      </div>
+    </div>
+    <table class="itable">
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Product</th>
+          <th>Category</th>
+          <th>Stock level</th>
+          <th>Quantity</th>
+          <th>Reorder</th>
+          <th style="text-align:right">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="sku">SKU·8472</td>
+          <td><div class="name">Mustard Oil <em style="font-style:italic;color:var(--paper-dim)">·</em> Kachi Ghani <small>1 L bottle · Pack of 6</small></div></td>
+          <td>Cooking Oils</td>
+          <td><div class="stockbar crit"><i style="--w:8%"></i></div></td>
+          <td class="qty">14<span class="of"> / 200</span></td>
+          <td class="mono" style="color:var(--saffron-2)">+200</td>
+          <td style="text-align:right"><span class="tag crit"><span class="d"></span>Critical</span></td>
+        </tr>
+        <tr>
+          <td class="sku">SKU·8413</td>
+          <td><div class="name">Basmati Rice <em style="font-style:italic;color:var(--paper-dim)">·</em> India Gate Classic <small>5 kg bag</small></div></td>
+          <td>Staples</td>
+          <td><div class="stockbar warn"><i style="--w:28%"></i></div></td>
+          <td class="qty">42<span class="of"> / 150</span></td>
+          <td class="mono" style="color:var(--saffron-2)">+108</td>
+          <td style="text-align:right"><span class="tag warn"><span class="d"></span>Low</span></td>
+        </tr>
+        <tr>
+          <td class="sku">SKU·9221</td>
+          <td><div class="name">Tata Salt <em style="font-style:italic;color:var(--paper-dim)">·</em> Iodised <small>1 kg pack</small></div></td>
+          <td>Staples</td>
+          <td><div class="stockbar ok"><i style="--w:78%"></i></div></td>
+          <td class="qty">312<span class="of"> / 400</span></td>
+          <td class="mono" style="color:var(--muted)">—</td>
+          <td style="text-align:right"><span class="tag ok"><span class="d"></span>Healthy</span></td>
+        </tr>
+        <tr>
+          <td class="sku">SKU·1107</td>
+          <td><div class="name">Aashirvaad <em style="font-style:italic;color:var(--paper-dim)">·</em> Whole Wheat Atta <small>10 kg pack</small></div></td>
+          <td>Staples</td>
+          <td><div class="stockbar ok"><i style="--w:64%"></i></div></td>
+          <td class="qty">186<span class="of"> / 300</span></td>
+          <td class="mono" style="color:var(--muted)">—</td>
+          <td style="text-align:right"><span class="tag ok"><span class="d"></span>Healthy</span></td>
+        </tr>
+        <tr>
+          <td class="sku">SKU·6610</td>
+          <td><div class="name">Amul Butter <em style="font-style:italic;color:var(--paper-dim)">·</em> Salted <small>500 g · Cold chain</small></div></td>
+          <td>Dairy</td>
+          <td><div class="stockbar warn"><i style="--w:34%"></i></div></td>
+          <td class="qty">68<span class="of"> / 200</span></td>
+          <td class="mono" style="color:var(--saffron-2)">+150</td>
+          <td style="text-align:right"><span class="tag warn"><span class="d"></span>Low</span></td>
+        </tr>
+        <tr>
+          <td class="sku">SKU·4493</td>
+          <td><div class="name">Haldiram's <em style="font-style:italic;color:var(--paper-dim)">·</em> Aloo Bhujia <small>200 g packet</small></div></td>
+          <td>Snacks</td>
+          <td><div class="stockbar ok"><i style="--w:88%"></i></div></td>
+          <td class="qty">528<span class="of"> / 600</span></td>
+          <td class="mono" style="color:var(--muted)">—</td>
+          <td style="text-align:right"><span class="tag ok"><span class="d"></span>Healthy</span></td>
+        </tr>
+        <tr>
+          <td class="sku">SKU·3349</td>
+          <td><div class="name">Toor Dal <em style="font-style:italic;color:var(--paper-dim)">·</em> Premium polished <small>1 kg pack</small></div></td>
+          <td>Pulses</td>
+          <td><div class="stockbar crit"><i style="--w:14%"></i></div></td>
+          <td class="qty">22<span class="of"> / 180</span></td>
+          <td class="mono" style="color:var(--saffron-2)">+200</td>
+          <td style="text-align:right"><span class="tag crit"><span class="d"></span>Critical</span></td>
+        </tr>
+        <tr>
+          <td class="sku">SKU·7720</td>
+          <td><div class="name">Parle-G <em style="font-style:italic;color:var(--paper-dim)">·</em> Original Glucose <small>Pack of 12</small></div></td>
+          <td>Bakery</td>
+          <td><div class="stockbar ok"><i style="--w:72%"></i></div></td>
+          <td class="qty">240<span class="of"> / 350</span></td>
+          <td class="mono" style="color:var(--muted)">—</td>
+          <td style="text-align:right"><span class="tag ok"><span class="d"></span>Healthy</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============== STORE NETWORK ============== -->
+<section class="section frame" id="network">
+  <div class="sechead">
+    <div class="num">№ 04</div>
+    <h2>The <em>network,</em> five rooms.</h2>
+    <div class="right">
+      <span class="chip">Map view</span>
+      <span class="chip on">Cards</span>
+    </div>
+  </div>
+
+  <div class="network">
+    <div class="store-card">
+      <div class="top">
+        <div>
+          <div class="city">Raipur <em>·</em></div>
+          <div class="pin">22.7196° N · 81.6263° E</div>
+        </div>
+        <div class="ind online"><span class="d"></span>Online</div>
+      </div>
+      <div class="rev"><span class="cur">₹</span><span class="v">1,84,210</span></div>
+      <div class="sub"><span>Today · 62 orders</span><span>▲ 24%</span></div>
+      <div class="mini">
+        <i style="--s:.4;animation-delay:.1s"></i><i style="--s:.55;animation-delay:.2s"></i><i style="--s:.42;animation-delay:.3s"></i><i style="--s:.78;animation-delay:.4s"></i><i style="--s:.62;animation-delay:.5s"></i><i style="--s:.88;animation-delay:.6s"></i><i style="--s:1;animation-delay:.7s"></i>
+      </div>
+      <div class="footer">
+        <div class="it"><span class="lab">AOV</span><span class="va">₹2,971</span></div>
+        <div class="it"><span class="lab">Returns</span><span class="va">2</span></div>
+        <div class="it"><span class="lab">Stock</span><span class="va">94%</span></div>
+      </div>
+    </div>
+
+    <div class="store-card">
+      <div class="top">
+        <div>
+          <div class="city">Bhilai <em>·</em></div>
+          <div class="pin">21.2092° N · 81.4285° E</div>
+        </div>
+        <div class="ind online"><span class="d"></span>Online</div>
+      </div>
+      <div class="rev"><span class="cur">₹</span><span class="v">1,12,840</span></div>
+      <div class="sub"><span>Today · 41 orders</span><span>▲ 18%</span></div>
+      <div class="mini">
+        <i style="--s:.32;animation-delay:.15s"></i><i style="--s:.5;animation-delay:.25s"></i><i style="--s:.42;animation-delay:.35s"></i><i style="--s:.6;animation-delay:.45s"></i><i style="--s:.7;animation-delay:.55s"></i><i style="--s:.65;animation-delay:.65s"></i><i style="--s:.82;animation-delay:.75s"></i>
+      </div>
+      <div class="footer">
+        <div class="it"><span class="lab">AOV</span><span class="va">₹2,752</span></div>
+        <div class="it"><span class="lab">Returns</span><span class="va">1</span></div>
+        <div class="it"><span class="lab">Stock</span><span class="va">88%</span></div>
+      </div>
+    </div>
+
+    <div class="store-card">
+      <div class="top">
+        <div>
+          <div class="city">Durg <em>·</em></div>
+          <div class="pin">21.1875° N · 81.2849° E</div>
+        </div>
+        <div class="ind online"><span class="d"></span>Online</div>
+      </div>
+      <div class="rev"><span class="cur">₹</span><span class="v">76,420</span></div>
+      <div class="sub"><span>Today · 28 orders</span><span>▲ 6%</span></div>
+      <div class="mini">
+        <i style="--s:.26;animation-delay:.2s"></i><i style="--s:.38;animation-delay:.3s"></i><i style="--s:.32;animation-delay:.4s"></i><i style="--s:.5;animation-delay:.5s"></i><i style="--s:.42;animation-delay:.6s"></i><i style="--s:.55;animation-delay:.7s"></i><i style="--s:.6;animation-delay:.8s"></i>
+      </div>
+      <div class="footer">
+        <div class="it"><span class="lab">AOV</span><span class="va">₹2,729</span></div>
+        <div class="it"><span class="lab">Returns</span><span class="va">0</span></div>
+        <div class="it"><span class="lab">Stock</span><span class="va">79%</span></div>
+      </div>
+    </div>
+
+    <div class="store-card">
+      <div class="top">
+        <div>
+          <div class="city">Bilas<em>pur</em></div>
+          <div class="pin">22.0797° N · 82.1409° E</div>
+        </div>
+        <div class="ind online"><span class="d"></span>Online</div>
+      </div>
+      <div class="rev"><span class="cur">₹</span><span class="v">54,830</span></div>
+      <div class="sub"><span>Today · 19 orders</span><span style="color:#FF8E72">▼ 4%</span></div>
+      <div class="mini">
+        <i style="--s:.42;animation-delay:.25s"></i><i style="--s:.5;animation-delay:.35s"></i><i style="--s:.36;animation-delay:.45s"></i><i style="--s:.42;animation-delay:.55s"></i><i style="--s:.32;animation-delay:.65s"></i><i style="--s:.38;animation-delay:.75s"></i><i style="--s:.34;animation-delay:.85s"></i>
+      </div>
+      <div class="footer">
+        <div class="it"><span class="lab">AOV</span><span class="va">₹2,886</span></div>
+        <div class="it"><span class="lab">Returns</span><span class="va">3</span></div>
+        <div class="it"><span class="lab">Stock</span><span class="va">71%</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== FOOTER / COLOPHON ============== -->
+<footer class="foot">
+  <div>
+    <div class="eyebrow" style="margin-bottom:14px">Colophon</div>
+    <div class="colophon">"Numbers, set in serif. Decisions, made before lunch."</div>
+    <div style="margin-top:18px;color:var(--paper-dim);font-size:13px;max-width:60ch;line-height:1.55;font-family:'Fraunces',serif;font-variation-settings:'opsz' 14">
+      Mercato is a proposed editorial reskin of the O+Connect admin console — typography in Fraunces &amp; Instrument Sans, data in JetBrains Mono. Designed to be read, not just scanned.
+    </div>
+  </div>
+  <div style="text-align:right">
+    <div class="small">26 · 04 · 2026</div>
+    <div class="sig" style="margin-top:8px">Set in Fraunces, Instrument Sans &amp; JetBrains Mono.</div>
+    <div class="small" style="margin-top:14px;color:var(--saffron-2)">END OF ISSUE №147</div>
+  </div>
+</footer>
+
+<script>
+  // tick the seconds
+  const sec = document.getElementById('sec');
+  let s = 8;
+  setInterval(() => { s = (s + 1) % 60; sec.textContent = String(s).padStart(2,'0'); }, 1000);
+
+  // smooth scroll for masthead links
+  document.querySelectorAll('.nav a').forEach(a => {
+    a.addEventListener('click', e => {
+      const href = a.getAttribute('href');
+      if (href && href.startsWith('#') && href.length > 1) {
+        const t = document.querySelector(href);
+        if (t) { e.preventDefault(); t.scrollIntoView({behavior:'smooth', block:'start'}); }
+      }
+    });
+  });
+
+  // intersection-based section reveal: add class when visible
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(en => {
+      if (en.isIntersecting) {
+        en.target.style.animation = 'fadeUp .9s cubic-bezier(.2,.8,.2,1) forwards';
+        obs.unobserve(en.target);
+      }
+    });
+  }, {threshold:.12});
+  document.querySelectorAll('.section, .cell, .store-card').forEach(el => {
+    el.style.opacity = 0;
+    obs.observe(el);
+  });
+</script>
+</body>
+</html>

@@ -18,12 +18,12 @@ export async function generateMetadata({
     const product = json?.data;
     if (!product) throw new Error('No product data');
 
-    const title = product.name ? `${product.name} – Naturelite` : 'Product – Naturelite';
+    const title = product.name ? `${product.name} – Nature Lite Foods` : 'Product – Nature Lite Foods';
     const description =
       product.shortDescription ||
       (typeof product.description === 'string'
         ? product.description.replace(/<[^>]+>/g, '').slice(0, 160)
-        : 'Pure, traditional products from Naturelite.');
+        : 'Pure, traditional products from Nature Lite Foods.');
 
     const image =
       Array.isArray(product.images) && product.images.length > 0 ? product.images[0] : undefined;
@@ -45,8 +45,8 @@ export async function generateMetadata({
     };
   } catch {
     return {
-      title: 'Product – Naturelite',
-      description: 'Pure, traditional products from Naturelite.',
+      title: 'Product – Nature Lite Foods',
+      description: 'Pure, traditional products from Nature Lite Foods.',
     };
   }
 }

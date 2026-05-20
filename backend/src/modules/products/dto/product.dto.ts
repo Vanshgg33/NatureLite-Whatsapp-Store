@@ -43,6 +43,40 @@ export class ProductVariantDto {
   isActive?: boolean;
 }
 
+export class BatchInfoDto {
+  @IsString()
+  @IsOptional()
+  batchNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  batchDate?: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  yieldKg?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  milkLitres?: number;
+
+  @IsString()
+  @IsOptional()
+  origin?: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  nextBatchDays?: number;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  purityClaims?: string[];
+}
+
 export class ProductDimensionsDto {
   @IsNumber()
   @Min(0)
@@ -147,6 +181,11 @@ export class CreateProductDto {
   @IsString()
   @IsOptional()
   hsnCode?: string;
+
+  @ValidateNested()
+  @Type(() => BatchInfoDto)
+  @IsOptional()
+  batchInfo?: BatchInfoDto;
 }
 
 export class UpdateProductDto {
@@ -240,6 +279,11 @@ export class UpdateProductDto {
   @IsString()
   @IsOptional()
   hsnCode?: string;
+
+  @ValidateNested()
+  @Type(() => BatchInfoDto)
+  @IsOptional()
+  batchInfo?: BatchInfoDto;
 }
 
 export class ProductQueryDto {
@@ -308,4 +352,15 @@ export class UpdateStockDto {
   @IsString()
   @IsOptional()
   variantSku?: string;
+}
+
+export class BulkUpdateCategoryDto {
+  @IsArray()
+  @IsString({ each: true })
+  @IsNotEmpty()
+  productIds: string[];
+
+  @IsString()
+  @IsNotEmpty()
+  categoryId: string;
 }

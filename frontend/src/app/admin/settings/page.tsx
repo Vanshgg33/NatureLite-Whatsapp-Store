@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, Lock } from 'lucide-react';
+import { Save, Lock, RotateCcw, AlertTriangle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -218,8 +218,146 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
         <ChangePasswordCard />
+        <ResetMetricsCard />
       </div>
     </div>
+  );
+}
+
+function ResetMetricsCard() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [confirmText, setConfirmText] = useState('');
+  const [activeReset, setActiveReset] = useState<'dashboard' | 'customers' | null>(null);
+
+  const dashboardMutation = useMutation({
+    mutationFn: () => api.resetDashboardMetrics(),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+      toast({ title: 'Dashboard metrics reset', description: `Deleted ${data.deletedSnapshots} snapshots.` });
+      setActiveReset(null);
+      setConfirmText('');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast({ title: 'Reset failed', description: msg || 'Check that the backend is running and try again.', variant: 'destructive' });
+    },
+  });
+
+  const customerMutation = useMutation({
+    mutationFn: () => api.resetCustomerMetrics(),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+      toast({
+        title: 'Customer metrics reset',
+        description: `${data.usersReset} customers and ${data.productsReset} products zeroed.`,
+      });
+      setActiveReset(null);
+      setConfirmText('');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast({ title: 'Reset failed', description: msg || 'Check that the backend is running and try again.', variant: 'destructive' });
+    },
+  });
+
+  const CONFIRM_WORD = 'RESET';
+  const confirmed = confirmText.trim() === CONFIRM_WORD;
+  const isPending = dashboardMutation.isPending || customerMutation.isPending;
+
+  return (
+    <Card className="border-red-200">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-red-600">
+          <RotateCcw className="h-5 w-5" />
+          Reset Metrics
+        </CardTitle>
+        <CardDescription>
+          Zero out analytics data without deleting any customers, orders, or products.
+          This is useful when starting fresh after a test period.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+
+        {/* Action buttons */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-lg border border-red-100 bg-red-50/50 p-4 space-y-2">
+            <p className="text-sm font-semibold text-red-700">Dashboard Metrics</p>
+            <p className="text-xs text-muted-foreground">
+              Deletes all analytics snapshots — graphs and daily/weekly/monthly reports go to zero.
+              Orders and customers are untouched.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-red-300 text-red-600 hover:bg-red-50 w-full"
+              onClick={() => { setActiveReset('dashboard'); setConfirmText(''); }}
+              disabled={isPending}
+            >
+              <RotateCcw className="mr-2 h-3.5 w-3.5" />
+              Reset Dashboard Metrics
+            </Button>
+          </div>
+
+          <div className="rounded-lg border border-red-100 bg-red-50/50 p-4 space-y-2">
+            <p className="text-sm font-semibold text-red-700">Customer &amp; Product Metrics</p>
+            <p className="text-xs text-muted-foreground">
+              Sets totalOrders, totalSpent on all customers to 0. Sets totalSold and viewCount
+              on all products to 0. Does not delete any customer or product.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-red-300 text-red-600 hover:bg-red-50 w-full"
+              onClick={() => { setActiveReset('customers'); setConfirmText(''); }}
+              disabled={isPending}
+            >
+              <RotateCcw className="mr-2 h-3.5 w-3.5" />
+              Reset Customer Metrics
+            </Button>
+          </div>
+        </div>
+
+        {/* Confirmation area */}
+        {activeReset && (
+          <div className="rounded-lg border border-red-300 bg-red-50 p-4 space-y-3">
+            <div className="flex items-start gap-2 text-red-700">
+              <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <p className="text-sm font-medium">
+                You are about to reset{' '}
+                {activeReset === 'dashboard' ? 'all dashboard analytics snapshots' : 'all customer & product metrics'}.
+                This cannot be undone. Type <span className="font-bold font-mono">RESET</span> to confirm.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Input
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value.toUpperCase())}
+                placeholder="Type RESET to confirm"
+                className="font-mono border-red-300 focus-visible:ring-red-400"
+              />
+              <Button
+                variant="destructive"
+                disabled={!confirmed || isPending}
+                onClick={() => {
+                  if (activeReset === 'dashboard') dashboardMutation.mutate();
+                  else customerMutation.mutate();
+                }}
+              >
+                {isPending ? 'Resetting…' : 'Confirm'}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => { setActiveReset(null); setConfirmText(''); }}
+                disabled={isPending}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

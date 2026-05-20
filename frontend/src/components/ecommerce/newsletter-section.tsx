@@ -109,7 +109,7 @@ export function NewsletterSection({
 
   if (variant === 'full-width') {
     return (
-      <section ref={sectionRef} className="relative py-24 overflow-hidden">
+      <section ref={sectionRef} className="relative py-12 sm:py-16 overflow-hidden">
         {/* Background with organic texture */}
         <div className="absolute inset-0 bg-brand-charcoal">
           {/* Decorative pattern */}
@@ -196,7 +196,7 @@ export function NewsletterSection({
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
                   >
-                    Welcome to the Naturelite family!
+                    Welcome to the Nature Lite Foods family!
                   </motion.p>
                 )}
                 {status === 'error' && (

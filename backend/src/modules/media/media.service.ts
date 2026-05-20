@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import axios from 'axios';
 import { v2 as cloudinary, UploadApiResponse, UploadApiErrorResponse } from 'cloudinary';
 import { CloudinaryConfig } from '../../config/configuration';
 
@@ -107,6 +108,55 @@ export class MediaService {
       this.logger.error('Failed to upload from URL', error);
       throw new BadRequestException('Failed to upload image from URL');
     }
+  }
+
+  // Fetches the image ourselves (as a buffer) then uploads to Cloudinary.
+  // Use this instead of uploadFromUrl when the source is a Facebook/Instagram CDN
+  // URL — Cloudinary's remote-fetch can be blocked by those CDNs, whereas a
+  // plain axios GET from our server usually succeeds.
+  async uploadFromUrlViaBuffer(url: string, folder: string = 'products'): Promise<UploadResult> {
+    let buffer: Buffer;
+    try {
+      const response = await axios.get<ArrayBuffer>(url, {
+        responseType: 'arraybuffer',
+        timeout: 15_000,
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StoreMediaFetcher/1.0)' },
+      });
+      buffer = Buffer.from(response.data);
+    } catch (err) {
+      throw new BadRequestException(`Failed to fetch image from URL: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    return new Promise((resolve, reject) => {
+      cloudinary.uploader
+        .upload_stream(
+          {
+            folder,
+            resource_type: 'image',
+            transformation: [
+              { width: 1200, height: 1200, crop: 'limit' },
+              { quality: 'auto' },
+              { fetch_format: 'auto' },
+            ],
+          },
+          (error: UploadApiErrorResponse | undefined, result: UploadApiResponse | undefined) => {
+            if (error || !result) {
+              reject(new BadRequestException('Failed to upload image to Cloudinary'));
+              return;
+            }
+            resolve({
+              publicId: result.public_id,
+              url: result.url,
+              secureUrl: result.secure_url,
+              format: result.format,
+              width: result.width,
+              height: result.height,
+              bytes: result.bytes,
+            });
+          },
+        )
+        .end(buffer);
+    });
   }
 
   async uploadMultiple(

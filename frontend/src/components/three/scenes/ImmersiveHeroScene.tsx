@@ -15,16 +15,16 @@ function Bottle({ tier }: { tier: string }) {
   return (
     <group ref={groupRef}>
       <OilBottleGLB
-        position={[0, -0.5, 0]}
-        scale={1.4}
+        position={[0, -0.1, 0]}
+        scale={1.9}
         autoRotate
-        rotateSpeed={0.2}
+        rotateSpeed={0.18}
         floating
         tier={tier as 'high' | 'medium' | 'low'}
         enableTransmission={false}
         enableEntrance
         enablePulse={false}
-        envMapIntensity={1.2}
+        envMapIntensity={1.4}
       />
     </group>
   );
@@ -35,7 +35,7 @@ function SceneContent() {
 
   return (
     <>
-      <PerspectiveCamera makeDefault position={[0, 0.3, 5.5]} fov={35} />
+      <PerspectiveCamera makeDefault position={[0, 0.2, 5.0]} fov={38} />
 
       {/* Clean natural lighting */}
       <ambientLight intensity={0.8} color="#ffffff" />

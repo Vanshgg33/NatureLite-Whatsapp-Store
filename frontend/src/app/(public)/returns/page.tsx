@@ -4,7 +4,7 @@ import { FadeUp } from '@/components/motion/fade-in-view';
 
 export const metadata: Metadata = {
   title: 'Returns & Refunds',
-  description: 'Our hassle-free return and refund policy for all Naturelite products.',
+  description: 'Our hassle-free return and refund policy for all Purity Foods products.',
 };
 
 const policies = [

@@ -100,6 +100,17 @@ export class Product {
   @Prop({ type: Object, default: {} })
   metadata: Record<string, unknown>;
 
+  @Prop({ type: Object })
+  batchInfo?: {
+    batchNumber?: string;
+    batchDate?: Date;
+    yieldKg?: number;
+    milkLitres?: number;
+    origin?: string;
+    nextBatchDays?: number;
+    purityClaims?: string[];
+  };
+
   @Prop({ default: 0 })
   totalSold: number;
 

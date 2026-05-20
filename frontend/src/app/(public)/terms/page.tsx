@@ -3,13 +3,13 @@ import { FadeUp } from '@/components/motion/fade-in-view';
 
 export const metadata: Metadata = {
   title: 'Terms of Service',
-  description: 'Terms and conditions for using the Naturelite website and purchasing our products.',
+  description: 'Terms and conditions for using the Purity Foods website and purchasing our products.',
 };
 
 const sections = [
   {
     title: '1. Acceptance of Terms',
-    content: 'By accessing and using the Naturelite website, you agree to be bound by these Terms of Service. If you do not agree with any part of these terms, please do not use our website.',
+    content: 'By accessing and using the Purity Foods website, you agree to be bound by these Terms of Service. If you do not agree with any part of these terms, please do not use our website.',
   },
   {
     title: '2. Products & Pricing',
@@ -33,11 +33,11 @@ const sections = [
   },
   {
     title: '7. Intellectual Property',
-    content: 'All content on this website, including text, images, logos, and designs, is the property of Naturelite and is protected by copyright laws. You may not reproduce, distribute, or use any content without our written permission.',
+    content: 'All content on this website, including text, images, logos, and designs, is the property of Purity Foods and is protected by copyright laws. You may not reproduce, distribute, or use any content without our written permission.',
   },
   {
     title: '8. Limitation of Liability',
-    content: 'Naturelite shall not be liable for any indirect, incidental, or consequential damages arising from the use of our website or products. Our total liability shall not exceed the amount paid for the specific product in question.',
+    content: 'Purity Foods shall not be liable for any indirect, incidental, or consequential damages arising from the use of our website or products. Our total liability shall not exceed the amount paid for the specific product in question.',
   },
   {
     title: '9. Changes to Terms',

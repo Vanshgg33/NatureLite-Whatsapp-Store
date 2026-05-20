@@ -18,14 +18,12 @@ export class WalletService {
    */
   async getOrCreateWallet(userId: string): Promise<WalletDocument> {
     const userObjId = parseObjectId(userId, 'userId');
-    let wallet = await this.walletRepository.findByUser(userObjId);
-    if (!wallet) {
-      wallet = await this.walletRepository.create({
-        user: userObjId,
-        balance: 0,
-      } as Partial<WalletDocument>);
-    }
-    return wallet;
+    const wallet = await this.walletRepository.getModel().findOneAndUpdate(
+      { user: userObjId },
+      { $setOnInsert: { user: userObjId, balance: 0 } },
+      { upsert: true, new: true },
+    );
+    return wallet!;
   }
 
   async getBalance(userId: string): Promise<number> {

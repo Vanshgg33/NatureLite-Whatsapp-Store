@@ -9,6 +9,7 @@ import { MessageLogRepository } from '../whatsapp/repositories/message-log.repos
 import { StoreSaleRepository } from '../store-sales/repositories/store-sale.repository';
 import { StoreStockRepository } from '../store-stock/repositories/store-stock.repository';
 import { StoreRepository } from '../stores/repositories/store.repository';
+import { SettingsService } from '../settings/settings.service';
 import { AnalyticsSnapshot, SnapshotPeriod } from './schemas/analytics-snapshot.schema';
 import { parseObjectId } from '../../common/utils/objectid.util';
 import { ORDER_STATUSES_PENDING_FULFILLMENT } from '../../common/constants/order-status';
@@ -27,7 +28,13 @@ export class AnalyticsService {
     private readonly storeSaleRepository: StoreSaleRepository,
     private readonly storeStockRepository: StoreStockRepository,
     private readonly storeRepository: StoreRepository,
+    private readonly settingsService: SettingsService,
   ) {}
+
+  private effectiveStart(nominal: Date, resetAt: Date | null): Date {
+    if (resetAt && resetAt > nominal) return resetAt;
+    return nominal;
+  }
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async generateDailySnapshot(): Promise<void> {
@@ -100,12 +107,17 @@ export class AnalyticsService {
   }
 
   async getDashboardStats(): Promise<Record<string, unknown>> {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const resetAt = await this.settingsService.getMetricsResetAt();
 
-    const thisMonth = new Date();
-    thisMonth.setDate(1);
-    thisMonth.setHours(0, 0, 0, 0);
+    const todayNominal = new Date();
+    todayNominal.setHours(0, 0, 0, 0);
+
+    const thisMonthNominal = new Date();
+    thisMonthNominal.setDate(1);
+    thisMonthNominal.setHours(0, 0, 0, 0);
+
+    const today = this.effectiveStart(todayNominal, resetAt);
+    const thisMonth = this.effectiveStart(thisMonthNominal, resetAt);
 
     const orderModel = this.orderRepository.getModel();
     const storeSaleModel = this.storeSaleRepository.getModel();
@@ -134,11 +146,11 @@ export class AnalyticsService {
         { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$total' } } },
       ]),
       this.userRepository.countDocuments(),
-      orderModel.countDocuments({ status: { $in: [...ORDER_STATUSES_PENDING_FULFILLMENT] } }),
+      orderModel.countDocuments({ status: { $in: [...ORDER_STATUSES_PENDING_FULFILLMENT] }, createdAt: { $gte: resetAt ?? new Date(0) } }),
     ]);
 
     const recentOrders = await orderModel
-      .find()
+      .find(resetAt ? { createdAt: { $gte: resetAt } } : {})
       .sort({ createdAt: -1 })
       .limit(5)
       .populate('user', 'name phone')
@@ -345,9 +357,11 @@ export class AnalyticsService {
   }
 
   async getRevenueByDay(days: number = 30): Promise<Array<{ date: string; revenue: number; orders: number }>> {
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-    startDate.setHours(0, 0, 0, 0);
+    const resetAt = await this.settingsService.getMetricsResetAt();
+    const nominal = new Date();
+    nominal.setDate(nominal.getDate() - days);
+    nominal.setHours(0, 0, 0, 0);
+    const startDate = this.effectiveStart(nominal, resetAt);
 
     const [orderResult, storeSaleResult] = await Promise.all([
       this.orderRepository.getModel().aggregate([
@@ -706,5 +720,35 @@ export class AnalyticsService {
       { $sort: { totalSpent: -1 } },
       { $limit: limit },
     ]);
+  }
+
+  async resetDashboardMetrics(): Promise<{ deletedSnapshots: number }> {
+    const now = new Date();
+    const [snapshotResult] = await Promise.all([
+      this.snapshotRepository.getModel().deleteMany({}).exec(),
+      this.settingsService.setMetricsResetAt(now),
+    ]);
+    this.logger.log(`Reset dashboard metrics: deleted ${snapshotResult.deletedCount} snapshots, baseline set to ${now.toISOString()}`);
+    return { deletedSnapshots: snapshotResult.deletedCount };
+  }
+
+  async resetCustomerMetrics(): Promise<{ usersReset: number; productsReset: number }> {
+    const [usersResult, productsResult] = await Promise.all([
+      this.userRepository.getModel().updateMany(
+        {},
+        { $set: { totalOrders: 0, totalSpent: 0, lastOrderAt: null } },
+      ).exec(),
+      this.productRepository.getModel().updateMany(
+        {},
+        { $set: { totalSold: 0, viewCount: 0 } },
+      ).exec(),
+    ]);
+    this.logger.log(
+      `Reset customer metrics: ${usersResult.modifiedCount} users, ${productsResult.modifiedCount} products`,
+    );
+    return {
+      usersReset: usersResult.modifiedCount,
+      productsReset: productsResult.modifiedCount,
+    };
   }
 }

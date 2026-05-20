@@ -107,6 +107,15 @@ export interface Product {
   viewCount: number;
   createdAt: string;
   updatedAt: string;
+  batchInfo?: {
+    batchNumber?: string;
+    batchDate?: string;
+    yieldKg?: number;
+    milkLitres?: number;
+    origin?: string;
+    nextBatchDays?: number;
+    purityClaims?: string[];
+  };
 }
 
 // ==================== ORDER TYPES ====================

@@ -3,7 +3,7 @@ import { FadeUp } from '@/components/motion/fade-in-view';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy',
-  description: 'How Naturelite collects, uses, and protects your personal information.',
+  description: 'How Purity Foods collects, uses, and protects your personal information.',
 };
 
 const sections = [
@@ -83,7 +83,7 @@ export default function PrivacyPage() {
             <FadeUp delay={0.1}>
               <div className="bg-white rounded-2xl p-8 shadow-brand-sm">
                 <p className="font-body text-brand-muted leading-relaxed mb-8">
-                  At Naturelite, we are committed to protecting your privacy. This policy
+                  At Purity Foods, we are committed to protecting your privacy. This policy
                   explains how we collect, use, and safeguard your personal information when
                   you use our website and services.
                 </p>

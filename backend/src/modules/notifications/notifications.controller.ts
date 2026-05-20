@@ -19,6 +19,13 @@ class BroadcastDto {
   buttonParams?: string[];
 }
 
+class MediaBroadcastDto {
+  phones: string[];
+  imageUrl: string;
+  message?: string;
+  caption?: string;
+}
+
 @Controller('notifications')
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
@@ -39,6 +46,19 @@ export class NotificationsController {
         bodyParams: dto.bodyParams,
         buttonParams: dto.buttonParams,
       },
+    );
+  }
+
+  @Post('broadcast/media')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  async sendMediaBroadcast(
+    @Body() dto: MediaBroadcastDto,
+  ): Promise<{ queued: number; skipped: number }> {
+    return this.notificationsService.sendMediaBroadcast(
+      dto.phones,
+      dto.imageUrl,
+      dto.caption ?? dto.message,
     );
   }
 }

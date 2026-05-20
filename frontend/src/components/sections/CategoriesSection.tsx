@@ -6,6 +6,11 @@ import { motion, useInView } from 'framer-motion';
 import { useRef } from 'react';
 import { ArrowRight, Sparkles } from 'lucide-react';
 import { Category } from '@/types';
+import WoodPressedOilCategoryCard from '@/components/ecommerce/wood-pressed-oil-category-card';
+import BilonaGheeCategoryCard from '@/components/ecommerce/bilona-ghee-category-card';
+
+const WOOD_PRESSED_SLUGS = ['wood-pressed-oils', 'wood-pressed-oil', 'cold-pressed-oils', 'cold-pressed-oil'];
+const BILONA_GHEE_SLUGS = ['bilona-ghee', 'bilona-cow-ghee', 'a2-bilona-ghee', 'ghee'];
 
 export default function CategoriesSection({ categories }: { categories: Category[] }) {
   const sectionRef = useRef<HTMLElement>(null);
@@ -62,40 +67,46 @@ export default function CategoriesSection({ categories }: { categories: Category
                   : ''
               }
             >
-              <Link
-                href={`/products?category=${category._id}`}
-                className="group block relative rounded-3xl overflow-hidden bg-brand-cream h-[280px] sm:h-[320px] lg:h-[360px]"
-              >
-                {/* Background image */}
-                {category.image ? (
-                  <Image
-                    src={category.image}
-                    alt={category.name}
-                    fill
-                    className="object-cover transition-transform duration-700 group-hover:scale-110"
-                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                  />
-                ) : (
-                  <div className="absolute inset-0 bg-gradient-to-br from-brand-cream to-brand-sand" />
-                )}
+              {WOOD_PRESSED_SLUGS.includes(category.slug) ? (
+                <WoodPressedOilCategoryCard categoryId={category._id} />
+              ) : BILONA_GHEE_SLUGS.includes(category.slug) ? (
+                <BilonaGheeCategoryCard categoryId={category._id} />
+              ) : (
+                <Link
+                  href={`/products?category=${category._id}`}
+                  className="group block relative rounded-3xl overflow-hidden bg-brand-cream h-[280px] sm:h-[320px] lg:h-[360px]"
+                >
+                  {/* Background image */}
+                  {category.image ? (
+                    <Image
+                      src={category.image}
+                      alt={category.name}
+                      fill
+                      className="object-cover transition-transform duration-700 group-hover:scale-110"
+                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 bg-gradient-to-br from-brand-cream to-brand-sand" />
+                  )}
 
-                {/* Gradient overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent transition-opacity duration-500 group-hover:from-black/80" />
+                  {/* Gradient overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent transition-opacity duration-500 group-hover:from-black/80" />
 
-                {/* Content */}
-                <div className="absolute inset-0 flex flex-col justify-end p-6 lg:p-8">
-                  <h3 className="font-display text-xl sm:text-2xl lg:text-2xl font-bold text-white mb-2 transition-transform duration-300 group-hover:translate-y-[-4px]">
-                    {category.name}
-                  </h3>
-                  <div className="flex items-center gap-2 text-white/80 text-sm font-medium transition-all duration-300 group-hover:text-brand-mustard group-hover:gap-3">
-                    <span>Shop Now</span>
-                    <ArrowRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" />
+                  {/* Content */}
+                  <div className="absolute inset-0 flex flex-col justify-end p-6 lg:p-8">
+                    <h3 className="font-display text-xl sm:text-2xl lg:text-2xl font-bold text-white mb-2 transition-transform duration-300 group-hover:translate-y-[-4px]">
+                      {category.name}
+                    </h3>
+                    <div className="flex items-center gap-2 text-white/80 text-sm font-medium transition-all duration-300 group-hover:text-brand-mustard group-hover:gap-3">
+                      <span>Shop Now</span>
+                      <ArrowRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" />
+                    </div>
                   </div>
-                </div>
 
-                {/* Hover border effect */}
-                <div className="absolute inset-0 rounded-3xl border-2 border-transparent transition-colors duration-300 group-hover:border-brand-mustard/30" />
-              </Link>
+                  {/* Hover border effect */}
+                  <div className="absolute inset-0 rounded-3xl border-2 border-transparent transition-colors duration-300 group-hover:border-brand-mustard/30" />
+                </Link>
+              )}
             </motion.div>
           ))}
         </div>

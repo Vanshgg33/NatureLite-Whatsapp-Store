@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingBag, ArrowLeft, ArrowRight, Sparkles } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { CartItem } from '@/components/ecommerce/cart-item';
 import { CartSummary } from '@/components/ecommerce/cart-summary';
 import { PremiumProductCardCompact } from '@/components/ecommerce/premium-product-card';
@@ -13,23 +12,16 @@ import { api } from '@/lib/api';
 import { Product, Category } from '@/types';
 
 export default function CartPage() {
-  const items = useCartStore((state) => state.items);
-  const syncCart = useSyncCartOnAuth();
+  const items     = useCartStore((s) => s.items);
+  const syncCart  = useSyncCartOnAuth();
   const [mounted, setMounted] = useState(false);
   const [crossSellProducts, setCrossSellProducts] = useState<Product[]>([]);
 
-  // Handle hydration mismatch with Zustand persist
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => { syncCart(); }, [syncCart]);
 
-  // Always sync cart from server when page mounts (for logged-in users)
-  useEffect(() => {
-    syncCart();
-  }, [syncCart]);
-
-  // Fetch cross-sell products (category-aware, only when cart has items)
   const itemCount = items.length;
+
   useEffect(() => {
     if (!mounted || itemCount === 0) return;
 
@@ -38,51 +30,31 @@ export default function CartPage() {
         const cartProductIds = items.map((i) => i.productId);
         const firstItem = items[0];
         let categoryId: string | undefined;
-
-        // Try to infer category from the first cart product
         try {
           const product = await api.getProduct(firstItem.productId);
-          if (typeof product.category === 'string') {
-            categoryId = product.category;
-          } else if (product.category && typeof product.category === 'object') {
-            categoryId = (product.category as Category)._id;
-          }
-        } catch {
-          // Fallback: ignore category and use generic top sellers
-        }
-
-        const res = await api.getProducts({
-          limit: 12,
-          sortBy: 'totalSold',
-          sortOrder: 'desc',
-          isActive: true,
-          category: categoryId,
-        });
-
-        const filtered = res.items.filter((p: Product) => !cartProductIds.includes(p._id));
-        setCrossSellProducts(filtered.slice(0, 4));
-      } catch {
-        // Ignore cross-sell errors
-      }
+          if (typeof product.category === 'string') categoryId = product.category;
+          else if (product.category && typeof product.category === 'object') categoryId = (product.category as Category)._id;
+        } catch { /* ignore */ }
+        const res = await api.getProducts({ limit: 12, sortBy: 'totalSold', sortOrder: 'desc', isActive: true, category: categoryId });
+        setCrossSellProducts(res.items.filter((p: Product) => !cartProductIds.includes(p._id)).slice(0, 4));
+      } catch { /* ignore */ }
     };
 
     fetchCrossSell();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted, itemCount]);
 
   if (!mounted) {
     return (
-      <div className="min-h-screen pt-20 bg-brand-cream">
-        <div className="brand-container py-12">
-          <div className="animate-pulse">
-            <div className="h-8 bg-brand-sand rounded w-48 mb-8" />
+      <div className="min-h-screen pt-24" style={{ background: '#f2ece0' }}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="animate-pulse space-y-6">
+            <div className="h-6 w-40 rounded-full bg-amber-100" />
             <div className="grid lg:grid-cols-3 gap-8">
               <div className="lg:col-span-2 space-y-4">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-32 bg-brand-sand rounded-xl" />
-                ))}
+                {[1, 2, 3].map((i) => <div key={i} className="h-28 rounded-2xl bg-amber-100/60" />)}
               </div>
-              <div className="h-96 bg-brand-sand rounded-xl" />
+              <div className="h-80 rounded-2xl bg-amber-100/60" />
             </div>
           </div>
         </div>
@@ -92,87 +64,102 @@ export default function CartPage() {
 
   if (items.length === 0) {
     return (
-      <div className="min-h-screen pt-20 bg-brand-cream">
-        <div className="brand-container py-24">
-          <motion.div
-            className="max-w-md mx-auto text-center"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
+      <div className="min-h-screen pt-24 flex items-center justify-center" style={{ background: '#f2ece0' }}>
+        <motion.div
+          className="text-center max-w-sm"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        >
+          {/* Empty state icon */}
+          <div
+            className="w-24 h-24 mx-auto mb-6 rounded-full flex items-center justify-center"
+            style={{ background: 'rgba(160,112,16,0.10)', border: '1px solid rgba(160,112,16,0.20)' }}
           >
-            <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-brand-sand flex items-center justify-center">
-              <ShoppingBag className="w-10 h-10 text-brand-muted" />
-            </div>
-            <h1 className="font-display text-2xl font-bold text-brand-charcoal mb-3">
-              Your cart is empty
-            </h1>
-            <p className="font-body text-brand-muted mb-8">
-              Looks like you haven&apos;t added anything to your cart yet.
-              Explore our collection of pure, traditional products.
-            </p>
-            <Link href="/products">
-              <Button className="bg-brand-mustard hover:bg-brand-mustard-dark text-white rounded-full px-8">
-                Start Shopping
-                <ArrowRight className="ml-2 w-4 h-4" />
-              </Button>
-            </Link>
-          </motion.div>
-        </div>
+            <ShoppingBag className="w-10 h-10" style={{ color: 'rgba(160,112,16,0.60)' }} />
+          </div>
+          <h1 className="font-display text-2xl font-bold mb-3" style={{ color: '#0b1c08' }}>
+            Your cart is empty
+          </h1>
+          <p className="text-sm mb-8 leading-relaxed" style={{ color: 'rgba(46,66,37,0.50)' }}>
+            Looks like you haven&apos;t added anything yet. Explore our collection of pure, traditional products.
+          </p>
+          <Link
+            href="/products"
+            className="inline-flex items-center gap-2 px-7 py-3.5 rounded-full text-sm font-semibold transition-all duration-200 hover:-translate-y-0.5"
+            style={{ background: '#a07010', color: '#fff', boxShadow: '0 4px 20px -4px rgba(160,112,16,0.40)' }}
+          >
+            Start Shopping <ArrowRight className="w-4 h-4" />
+          </Link>
+        </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen pt-20 bg-brand-cream">
-      <div className="brand-container py-12">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <Link
-              href="/products"
-              className="inline-flex items-center gap-2 font-body text-sm text-brand-muted hover:text-brand-charcoal mb-2"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Continue Shopping
-            </Link>
-            <h1 className="font-display text-3xl font-bold text-brand-charcoal">
-              Shopping Cart
-            </h1>
-            <p className="font-body text-brand-muted mt-1">
-              {itemCount} {itemCount === 1 ? 'item' : 'items'}
-            </p>
-          </div>
+    <div className="min-h-screen pt-24" style={{ background: '#f2ece0' }}>
+      {/* Hero bar */}
+      <div className="relative overflow-hidden pb-8 pt-4" style={{ borderBottom: '1px solid rgba(26,82,16,0.08)' }}>
+        <div
+          className="pointer-events-none absolute top-0 right-1/4 w-96 h-96 rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(26,82,16,0.12) 0%, transparent 70%)', filter: 'blur(60px)' }}
+        />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <Link
+            href="/products"
+            className="inline-flex items-center gap-2 text-sm font-medium mb-4 transition-colors duration-200"
+            style={{ color: 'rgba(46,66,37,0.45)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = '#a07010')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(46,66,37,0.45)')}
+          >
+            <ArrowLeft className="w-4 h-4" /> Continue Shopping
+          </Link>
+          <h1 className="font-display text-3xl sm:text-4xl font-bold" style={{ color: '#0b1c08', letterSpacing: '-0.02em' }}>
+            Shopping Cart
+          </h1>
+          <p className="mt-1 text-sm" style={{ color: 'rgba(46,66,37,0.45)' }}>
+            {itemCount} {itemCount === 1 ? 'item' : 'items'} in your cart
+          </p>
         </div>
+      </div>
 
-        {/* Cart Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* Cart Items */}
-          <div className="lg:col-span-2">
-            <motion.div
-              className="bg-white rounded-2xl p-6 shadow-brand-sm"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4 }}
+          {/* Cart items */}
+          <motion.div
+            className="lg:col-span-2"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <div
+              className="rounded-3xl overflow-hidden"
+              style={{ background: 'rgba(255,252,245,0.90)', border: '1px solid rgba(26,82,16,0.10)', boxShadow: '0 4px 24px -8px rgba(13,44,7,0.08)' }}
             >
-              {items.map((item, index) => (
-                <motion.div
-                  key={`${item.productId}-${item.variantSku || ''}`}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.3, delay: index * 0.05 }}
-                >
-                  <CartItem item={item} />
-                </motion.div>
-              ))}
-            </motion.div>
-          </div>
+              <div className="p-5 sm:p-6">
+                <AnimatePresence>
+                  {items.map((item, index) => (
+                    <motion.div
+                      key={`${item.productId}-${item.variantSku || ''}`}
+                      initial={{ opacity: 0, x: -16 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 16, height: 0, marginBottom: 0 }}
+                      transition={{ duration: 0.3, delay: index * 0.05 }}
+                    >
+                      <CartItem item={item} />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+            </div>
+          </motion.div>
 
-          {/* Order Summary */}
+          {/* Order summary */}
           <div className="lg:col-span-1">
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.1 }}
+              transition={{ duration: 0.45, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
               className="sticky top-28"
             >
               <CartSummary />
@@ -180,27 +167,31 @@ export default function CartPage() {
           </div>
         </div>
 
-        {/* Frequently Bought Together */}
+        {/* Cross-sell */}
         {crossSellProducts.length > 0 && (
           <motion.div
-            className="mt-12"
-            initial={{ opacity: 0, y: 20 }}
+            className="mt-16"
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.3 }}
+            transition={{ duration: 0.4, delay: 0.25 }}
           >
-            <div className="flex items-center gap-2 mb-6">
-              <Sparkles className="w-5 h-5 text-brand-mustard" />
-              <h2 className="font-display text-xl font-semibold text-brand-charcoal">
-                Frequently Bought Together
-              </h2>
+            <div
+              className="mb-6 pb-4"
+              style={{ borderBottom: '1px solid rgba(26,82,16,0.10)' }}
+            >
+              <p style={{ fontSize: 10, letterSpacing: '0.30em', textTransform: 'uppercase', color: 'rgba(46,66,37,0.40)', fontFamily: 'monospace', marginBottom: 6 }}>
+                You might also like
+              </p>
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4" style={{ color: '#a07010' }} />
+                <h2 className="font-display text-xl font-bold" style={{ color: '#0b1c08' }}>
+                  Frequently Bought Together
+                </h2>
+              </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {crossSellProducts.map((product, index) => (
-                <PremiumProductCardCompact
-                  key={product._id}
-                  product={product}
-                  index={index}
-                />
+                <PremiumProductCardCompact key={product._id} product={product} index={index} />
               ))}
             </div>
           </motion.div>

@@ -1,0 +1,1769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Naturelite — Redesign Mockup</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300;1,9..40,400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <style>
+    /* ─── RESET & BASE ─── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'DM Sans', system-ui, sans-serif;
+      background: #0a180d;
+      color: #f0e6d0;
+      overflow-x: hidden;
+      cursor: none;
+    }
+
+    /* ─── DESIGN TOKENS ─── */
+    :root {
+      --forest:    #0a180d;
+      --forest-mid:#112016;
+      --forest-lt: #1a3020;
+      --gold:      #c8973a;
+      --gold-lt:   #e4b86a;
+      --gold-pale: #f5e6c8;
+      --cream:     #f0e6d0;
+      --cream-dk:  #d4c5a8;
+      --rust:      #9b4a2a;
+      --white:     #faf8f4;
+      --radius-sm: 8px;
+      --radius-md: 16px;
+      --radius-lg: 28px;
+      --radius-xl: 40px;
+      --ease-out:  cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    /* ─── CUSTOM CURSOR ─── */
+    .cursor-dot {
+      position: fixed;
+      width: 8px; height: 8px;
+      background: var(--gold);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 9999;
+      transform: translate(-50%, -50%);
+      transition: width 0.2s, height 0.2s, background 0.2s;
+    }
+    .cursor-ring {
+      position: fixed;
+      width: 36px; height: 36px;
+      border: 1.5px solid rgba(200, 151, 58, 0.5);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 9998;
+      transform: translate(-50%, -50%);
+      transition: all 0.12s var(--ease-out);
+    }
+    body:has(a:hover) .cursor-dot,
+    body:has(button:hover) .cursor-dot { width: 14px; height: 14px; background: var(--gold-lt); }
+    body:has(a:hover) .cursor-ring,
+    body:has(button:hover) .cursor-ring { width: 56px; height: 56px; border-color: var(--gold); }
+
+    /* ─── GRAIN TEXTURE OVERLAY ─── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 1000;
+      opacity: 0.35;
+    }
+
+    /* ─── ANNOUNCEMENT BAR ─── */
+    .announcement {
+      background: var(--gold);
+      color: var(--forest);
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 10px 20px;
+      overflow: hidden;
+    }
+    .announcement-track {
+      display: flex;
+      gap: 60px;
+      white-space: nowrap;
+      animation: marquee-track 22s linear infinite;
+    }
+    @keyframes marquee-track {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+    .announcement-track span { flex-shrink: 0; }
+    .announcement-track .sep { color: var(--forest); opacity: 0.4; }
+
+    /* ─── NAVIGATION ─── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 48px;
+      height: 72px;
+      background: rgba(10, 24, 13, 0.85);
+      backdrop-filter: blur(24px);
+      border-bottom: 1px solid rgba(200, 151, 58, 0.12);
+      transition: background 0.4s;
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 12px;
+      text-decoration: none;
+      color: var(--cream);
+    }
+    .nav-logo-icon {
+      width: 36px; height: 36px;
+      border: 1.5px solid var(--gold);
+      border-radius: 50%;
+      display: grid; place-items: center;
+      color: var(--gold);
+      font-size: 16px;
+    }
+    .nav-logo-text {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 22px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+    }
+    .nav-links {
+      display: flex; align-items: center; gap: 36px;
+      list-style: none;
+    }
+    .nav-links a {
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 400;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: rgba(240, 230, 208, 0.65);
+      transition: color 0.25s;
+      position: relative;
+    }
+    .nav-links a::after {
+      content: '';
+      position: absolute; bottom: -4px; left: 0; right: 0;
+      height: 1px;
+      background: var(--gold);
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform 0.3s var(--ease-out);
+    }
+    .nav-links a:hover { color: var(--cream); }
+    .nav-links a:hover::after { transform: scaleX(1); }
+    .nav-actions {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .nav-btn {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      border: none; background: transparent;
+      color: rgba(240, 230, 208, 0.65);
+      cursor: none;
+      display: grid; place-items: center;
+      transition: color 0.2s, background 0.2s;
+      font-size: 18px;
+      position: relative;
+    }
+    .nav-btn:hover { color: var(--cream); background: rgba(240, 230, 208, 0.08); }
+    .nav-btn-badge {
+      position: absolute;
+      top: 4px; right: 4px;
+      width: 18px; height: 18px;
+      background: var(--gold);
+      color: var(--forest);
+      border-radius: 50%;
+      font-size: 10px;
+      font-weight: 700;
+      display: grid; place-items: center;
+    }
+    .nav-cta {
+      padding: 10px 24px;
+      background: var(--gold);
+      color: var(--forest);
+      border: none;
+      border-radius: 60px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: none;
+      transition: background 0.25s, transform 0.2s;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .nav-cta:hover { background: var(--gold-lt); transform: translateY(-1px); }
+
+    /* ─── HERO ─── */
+    .hero {
+      min-height: calc(100vh - 108px);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-left {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 80px 64px 80px 80px;
+      position: relative;
+      z-index: 2;
+    }
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 28px;
+      animation: fade-up 0.8s var(--ease-out) 0.1s both;
+    }
+    .hero-eyebrow-line {
+      width: 40px; height: 1px;
+      background: var(--gold);
+    }
+    .hero-headline {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: clamp(52px, 6vw, 88px);
+      font-weight: 300;
+      line-height: 1.05;
+      letter-spacing: -0.01em;
+      color: var(--cream);
+      margin-bottom: 28px;
+      animation: fade-up 0.9s var(--ease-out) 0.2s both;
+    }
+    .hero-headline em {
+      font-style: italic;
+      color: var(--gold-lt);
+    }
+    .hero-sub {
+      font-size: 16px;
+      font-weight: 300;
+      line-height: 1.7;
+      color: var(--cream-dk);
+      max-width: 380px;
+      margin-bottom: 48px;
+      animation: fade-up 0.9s var(--ease-out) 0.3s both;
+    }
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      animation: fade-up 0.9s var(--ease-out) 0.4s both;
+    }
+    .btn-primary {
+      padding: 16px 36px;
+      background: var(--gold);
+      color: var(--forest);
+      border: none;
+      border-radius: 60px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: none;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.3s var(--ease-out);
+    }
+    .btn-primary:hover {
+      background: var(--gold-lt);
+      transform: translateY(-2px);
+      box-shadow: 0 16px 40px -8px rgba(200, 151, 58, 0.4);
+    }
+    .btn-primary svg { transition: transform 0.3s; }
+    .btn-primary:hover svg { transform: translateX(4px); }
+    .btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--cream-dk);
+      text-decoration: none;
+      transition: color 0.25s;
+      cursor: none;
+    }
+    .btn-ghost:hover { color: var(--cream); }
+    .btn-ghost-play {
+      width: 44px; height: 44px;
+      border: 1.5px solid rgba(240, 230, 208, 0.3);
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      transition: border-color 0.25s;
+    }
+    .btn-ghost:hover .btn-ghost-play { border-color: var(--cream); }
+    .hero-stats {
+      display: flex;
+      gap: 40px;
+      margin-top: 64px;
+      padding-top: 40px;
+      border-top: 1px solid rgba(240, 230, 208, 0.1);
+      animation: fade-up 0.9s var(--ease-out) 0.5s both;
+    }
+    .hero-stat-num {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 36px;
+      font-weight: 500;
+      color: var(--gold-lt);
+      line-height: 1;
+    }
+    .hero-stat-label {
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--cream-dk);
+      opacity: 0.7;
+      margin-top: 6px;
+    }
+
+    /* Hero Right */
+    .hero-right {
+      position: relative;
+      overflow: hidden;
+      animation: fade-in-right 1s var(--ease-out) 0.2s both;
+    }
+    .hero-right::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        105deg,
+        var(--forest) 0%,
+        transparent 30%
+      );
+      z-index: 1;
+    }
+    .hero-bg-img {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 70% at 60% 40%, rgba(200, 151, 58, 0.08) 0%, transparent 70%),
+        linear-gradient(180deg, var(--forest-lt) 0%, var(--forest) 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    /* Decorative product mockup rings */
+    .hero-product-wrap {
+      position: absolute;
+      right: 48px; top: 50%;
+      transform: translateY(-50%);
+      z-index: 2;
+      animation: float 7s ease-in-out infinite;
+    }
+    .hero-product-ring {
+      width: 420px; height: 420px;
+      border-radius: 50%;
+      border: 1px solid rgba(200, 151, 58, 0.15);
+      display: grid;
+      place-items: center;
+      position: relative;
+    }
+    .hero-product-ring::before {
+      content: '';
+      position: absolute; inset: 24px;
+      border-radius: 50%;
+      border: 1px solid rgba(200, 151, 58, 0.08);
+    }
+    .hero-product-inner {
+      width: 300px; height: 300px;
+      background: linear-gradient(145deg, var(--forest-lt), var(--forest));
+      border-radius: 50%;
+      border: 1px solid rgba(200, 151, 58, 0.2);
+      display: grid;
+      place-items: center;
+      box-shadow:
+        0 0 80px -20px rgba(200, 151, 58, 0.2),
+        inset 0 0 40px -10px rgba(200, 151, 58, 0.05);
+      overflow: hidden;
+    }
+    .hero-product-emoji {
+      font-size: 100px;
+      filter: drop-shadow(0 0 30px rgba(200,151,58,0.3));
+    }
+    /* Floating badges around the circle */
+    .hero-badge {
+      position: absolute;
+      background: rgba(26, 48, 32, 0.9);
+      border: 1px solid rgba(200, 151, 58, 0.25);
+      border-radius: 16px;
+      padding: 10px 16px;
+      backdrop-filter: blur(12px);
+      white-space: nowrap;
+    }
+    .hero-badge-1 { top: 20px; right: 30px; animation: float 5s ease-in-out 0.5s infinite; }
+    .hero-badge-2 { bottom: 40px; left: -20px; animation: float 6s ease-in-out 1s infinite; }
+    .hero-badge-3 { top: 50%; right: -30px; transform: translateY(-50%); animation: float 7s ease-in-out 0.2s infinite; }
+    .hero-badge-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      color: var(--gold);
+    }
+    .hero-badge-value {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--cream);
+      line-height: 1;
+      margin-top: 2px;
+    }
+
+    /* Gold orbiting dot */
+    .orbit {
+      position: absolute; inset: 0;
+      animation: spin-orbit 12s linear infinite;
+    }
+    .orbit::after {
+      content: '';
+      position: absolute;
+      top: 10px; left: 50%;
+      transform: translateX(-50%);
+      width: 8px; height: 8px;
+      background: var(--gold);
+      border-radius: 50%;
+      box-shadow: 0 0 16px 4px rgba(200, 151, 58, 0.6);
+    }
+    @keyframes spin-orbit { to { transform: rotate(360deg); } }
+
+    /* ─── VALUE MARQUEE ─── */
+    .marquee-section {
+      padding: 20px 0;
+      border-top: 1px solid rgba(200, 151, 58, 0.12);
+      border-bottom: 1px solid rgba(200, 151, 58, 0.12);
+      overflow: hidden;
+      background: var(--forest-mid);
+    }
+    .marquee-track-slow {
+      display: flex;
+      gap: 0;
+      white-space: nowrap;
+      animation: marquee-track 35s linear infinite;
+    }
+    .marquee-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      padding: 0 40px;
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--cream-dk);
+      opacity: 0.75;
+      flex-shrink: 0;
+    }
+    .marquee-item svg { color: var(--gold); opacity: 0.8; }
+
+    /* ─── SECTION SHARED ─── */
+    .section { padding: 100px 80px; }
+    .section-label {
+      display: inline-flex; align-items: center; gap: 12px;
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 0.2em; text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 20px;
+    }
+    .section-label-line { width: 32px; height: 1px; background: var(--gold); }
+    .section-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: clamp(36px, 4vw, 56px);
+      font-weight: 400;
+      line-height: 1.1;
+      color: var(--cream);
+      letter-spacing: -0.01em;
+    }
+    .section-title em {
+      font-style: italic;
+      color: var(--gold-lt);
+    }
+    .section-sub {
+      font-size: 15px;
+      font-weight: 300;
+      line-height: 1.7;
+      color: var(--cream-dk);
+      opacity: 0.75;
+      max-width: 480px;
+      margin-top: 16px;
+    }
+
+    /* ─── CATEGORIES ─── */
+    .categories { background: var(--forest); }
+    .categories-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 56px;
+    }
+    .categories-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+    }
+    .category-card {
+      position: relative;
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      aspect-ratio: 3/4;
+      cursor: none;
+      transition: transform 0.4s var(--ease-out);
+    }
+    .category-card:hover { transform: translateY(-8px); }
+    .category-card:hover .category-img-wrap { transform: scale(1.06); }
+    .category-card:hover .category-hover-line { transform: scaleX(1); }
+    .category-img-wrap {
+      position: absolute; inset: 0;
+      transition: transform 0.6s var(--ease-out);
+    }
+    .category-bg {
+      width: 100%; height: 100%;
+      display: grid; place-items: center;
+    }
+    .cat-bg-1 { background: linear-gradient(160deg, #1f3a28 0%, #0d2015 100%); }
+    .cat-bg-2 { background: linear-gradient(160deg, #2d1f0a 0%, #1a0f00 100%); }
+    .cat-bg-3 { background: linear-gradient(160deg, #1a2a1f 0%, #0a1a0f 100%); }
+    .cat-bg-4 { background: linear-gradient(160deg, #3a1a10 0%, #1f0a05 100%); }
+    .cat-emoji { font-size: 80px; filter: drop-shadow(0 4px 20px rgba(0,0,0,0.4)); }
+    .category-overlay {
+      position: absolute; inset: 0;
+      background: linear-gradient(0deg, rgba(10,24,13,0.95) 0%, rgba(10,24,13,0.3) 50%, transparent 100%);
+    }
+    .category-info {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 28px 24px;
+    }
+    .category-name {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 22px;
+      font-weight: 500;
+      color: var(--cream);
+    }
+    .category-count {
+      font-size: 12px;
+      color: var(--cream-dk);
+      opacity: 0.6;
+      margin-top: 4px;
+    }
+    .category-hover-line {
+      height: 2px;
+      background: var(--gold);
+      margin-top: 12px;
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform 0.4s var(--ease-out);
+    }
+
+    /* Large featured category card */
+    .category-card--large {
+      grid-row: span 2;
+      aspect-ratio: unset;
+    }
+
+    /* ─── PILLS / FILTER ─── */
+    .filter-pills {
+      display: flex; gap: 10px; flex-wrap: wrap;
+      margin-bottom: 48px;
+    }
+    .pill {
+      padding: 10px 22px;
+      border-radius: 60px;
+      border: 1px solid rgba(240, 230, 208, 0.15);
+      background: transparent;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--cream-dk);
+      cursor: none;
+      transition: all 0.25s;
+    }
+    .pill:hover { border-color: rgba(200, 151, 58, 0.4); color: var(--cream); }
+    .pill.active {
+      background: var(--gold);
+      border-color: var(--gold);
+      color: var(--forest);
+      font-weight: 600;
+    }
+
+    /* ─── PRODUCTS ─── */
+    .products { background: var(--forest-mid); }
+    .products-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .products-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+    }
+    .product-card {
+      background: var(--forest-lt);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      cursor: none;
+      transition: transform 0.4s var(--ease-out), box-shadow 0.4s;
+      border: 1px solid rgba(200, 151, 58, 0.08);
+      position: relative;
+    }
+    .product-card:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 32px 64px -16px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(200, 151, 58, 0.2);
+    }
+    .product-card:hover .product-img-inner { transform: scale(1.06); }
+    .product-card:hover .product-add-btn { opacity: 1; transform: translateY(0); }
+    .product-img {
+      position: relative;
+      aspect-ratio: 1;
+      overflow: hidden;
+      background: var(--forest);
+    }
+    .product-img-inner {
+      width: 100%; height: 100%;
+      display: grid; place-items: center;
+      transition: transform 0.6s var(--ease-out);
+    }
+    .product-emoji { font-size: 72px; }
+    .product-badge {
+      position: absolute;
+      top: 12px; left: 12px;
+      padding: 5px 12px;
+      border-radius: 60px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .badge-bestseller { background: var(--gold); color: var(--forest); }
+    .badge-new { background: rgba(26, 48, 32, 0.9); color: var(--gold); border: 1px solid rgba(200,151,58,0.4); }
+    .badge-deal { background: var(--rust); color: var(--cream); }
+    .product-wish {
+      position: absolute;
+      top: 12px; right: 12px;
+      width: 36px; height: 36px;
+      background: rgba(10, 24, 13, 0.7);
+      backdrop-filter: blur(8px);
+      border-radius: 50%;
+      border: none;
+      color: var(--cream-dk);
+      cursor: none;
+      display: grid; place-items: center;
+      transition: all 0.2s;
+      font-size: 16px;
+    }
+    .product-wish:hover { background: var(--rust); color: var(--cream); }
+    .product-add-btn {
+      position: absolute;
+      bottom: 12px; left: 12px; right: 12px;
+      padding: 12px;
+      background: var(--gold);
+      color: var(--forest);
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: none;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: all 0.3s var(--ease-out);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .product-add-btn:hover { background: var(--gold-lt); }
+    .product-info { padding: 16px 20px 20px; }
+    .product-category {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--gold);
+      opacity: 0.8;
+    }
+    .product-name {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 18px;
+      font-weight: 500;
+      color: var(--cream);
+      line-height: 1.3;
+      margin-top: 4px;
+    }
+    .product-rating {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .stars { color: var(--gold); font-size: 12px; letter-spacing: -1px; }
+    .rating-count { font-size: 11px; color: var(--cream-dk); opacity: 0.5; }
+    .product-price {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .price-now {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--cream);
+    }
+    .price-was {
+      font-size: 13px;
+      color: var(--cream-dk);
+      opacity: 0.45;
+      text-decoration: line-through;
+    }
+    .price-save {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--gold);
+      background: rgba(200, 151, 58, 0.12);
+      padding: 2px 8px;
+      border-radius: 60px;
+    }
+
+    /* View all link */
+    .view-all {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      color: var(--gold);
+      text-decoration: none;
+      cursor: none;
+      transition: gap 0.25s;
+    }
+    .view-all:hover { gap: 14px; }
+
+    /* ─── BRAND STORY / EDITORIAL ─── */
+    .story {
+      background: var(--forest);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      min-height: 640px;
+    }
+    .story-visual {
+      position: relative;
+      overflow: hidden;
+      background: var(--forest-lt);
+    }
+    .story-visual-content {
+      position: absolute; inset: 0;
+      display: grid; place-items: center;
+      background: radial-gradient(ellipse 70% 70% at 50% 50%, rgba(200, 151, 58, 0.08) 0%, transparent 70%);
+    }
+    .story-visual-emoji { font-size: 180px; filter: drop-shadow(0 0 60px rgba(200,151,58,0.2)); }
+    .story-gold-line {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--gold) 0%, var(--gold-lt) 50%, transparent 100%);
+    }
+    .story-text {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 80px 80px 80px 64px;
+    }
+    .story-blockquote {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 28px;
+      font-weight: 300;
+      font-style: italic;
+      line-height: 1.55;
+      color: var(--gold-pale);
+      border-left: 2px solid var(--gold);
+      padding-left: 28px;
+      margin: 32px 0 40px;
+    }
+    .story-body {
+      font-size: 15px;
+      font-weight: 300;
+      line-height: 1.8;
+      color: var(--cream-dk);
+      opacity: 0.75;
+      margin-bottom: 48px;
+    }
+    .story-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 28px;
+      padding-top: 40px;
+      border-top: 1px solid rgba(240, 230, 208, 0.1);
+    }
+    .story-metric-num {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 40px;
+      font-weight: 400;
+      color: var(--gold-lt);
+    }
+    .story-metric-label {
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--cream-dk);
+      opacity: 0.55;
+      margin-top: 4px;
+    }
+
+    /* ─── TRUST / FEATURES ─── */
+    .trust { background: var(--forest-mid); padding: 72px 80px; }
+    .trust-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      background: rgba(200, 151, 58, 0.1);
+      border: 1px solid rgba(200, 151, 58, 0.1);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+    .trust-item {
+      background: var(--forest-mid);
+      padding: 40px 32px;
+      text-align: center;
+      transition: background 0.3s;
+    }
+    .trust-item:hover { background: var(--forest-lt); }
+    .trust-icon {
+      font-size: 36px;
+      margin-bottom: 16px;
+    }
+    .trust-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 18px;
+      font-weight: 500;
+      color: var(--cream);
+      margin-bottom: 8px;
+    }
+    .trust-desc {
+      font-size: 13px;
+      font-weight: 300;
+      line-height: 1.6;
+      color: var(--cream-dk);
+      opacity: 0.55;
+    }
+
+    /* ─── TESTIMONIALS ─── */
+    .testimonials { background: var(--forest); padding: 100px 80px; }
+    .testimonials-header {
+      text-align: center;
+      margin-bottom: 64px;
+    }
+    .testimonials-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+    .testimonial-card {
+      background: var(--forest-lt);
+      border: 1px solid rgba(200, 151, 58, 0.1);
+      border-radius: var(--radius-lg);
+      padding: 36px;
+      transition: transform 0.3s, border-color 0.3s;
+    }
+    .testimonial-card:hover { transform: translateY(-4px); border-color: rgba(200, 151, 58, 0.3); }
+    .testimonial-stars { color: var(--gold); font-size: 16px; margin-bottom: 20px; }
+    .testimonial-text {
+      font-family: 'Instrument Serif', serif;
+      font-size: 17px;
+      font-weight: 400;
+      line-height: 1.65;
+      color: var(--cream);
+      margin-bottom: 28px;
+    }
+    .testimonial-author {
+      display: flex; align-items: center; gap: 14px;
+    }
+    .testimonial-avatar {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: var(--forest);
+      border: 1px solid rgba(200, 151, 58, 0.2);
+      display: grid;
+      place-items: center;
+      font-size: 18px;
+    }
+    .testimonial-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--cream);
+    }
+    .testimonial-meta {
+      font-size: 12px;
+      color: var(--cream-dk);
+      opacity: 0.5;
+      margin-top: 2px;
+    }
+
+    /* ─── NEWSLETTER ─── */
+    .newsletter {
+      background: var(--gold);
+      padding: 100px 80px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .newsletter::before {
+      content: '';
+      position: absolute; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.07'/%3E%3C/svg%3E");
+      pointer-events: none;
+    }
+    .newsletter-eyebrow {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: rgba(10, 24, 13, 0.6);
+      margin-bottom: 16px;
+    }
+    .newsletter-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: clamp(36px, 4vw, 56px);
+      font-weight: 400;
+      line-height: 1.1;
+      color: var(--forest);
+      margin-bottom: 16px;
+    }
+    .newsletter-sub {
+      font-size: 16px;
+      font-weight: 300;
+      color: rgba(10, 24, 13, 0.65);
+      margin-bottom: 48px;
+    }
+    .newsletter-form {
+      display: flex;
+      max-width: 500px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 60px;
+      overflow: hidden;
+      box-shadow: 0 8px 40px -8px rgba(10, 24, 13, 0.2);
+    }
+    .newsletter-input {
+      flex: 1;
+      padding: 18px 24px;
+      border: none;
+      outline: none;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      color: var(--forest);
+      background: transparent;
+    }
+    .newsletter-input::placeholder { color: rgba(10, 24, 13, 0.35); }
+    .newsletter-submit {
+      padding: 14px 28px;
+      margin: 5px;
+      background: var(--forest);
+      color: var(--cream);
+      border: none;
+      border-radius: 60px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: none;
+      transition: background 0.25s;
+    }
+    .newsletter-submit:hover { background: var(--forest-lt); }
+    .newsletter-note {
+      font-size: 12px;
+      color: rgba(10, 24, 13, 0.45);
+      margin-top: 16px;
+    }
+
+    /* ─── FOOTER ─── */
+    footer {
+      background: #060e08;
+      padding: 80px 80px 40px;
+      border-top: 1px solid rgba(200, 151, 58, 0.1);
+    }
+    .footer-top {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1fr;
+      gap: 60px;
+      margin-bottom: 60px;
+    }
+    .footer-brand p {
+      font-size: 14px;
+      font-weight: 300;
+      line-height: 1.7;
+      color: var(--cream-dk);
+      opacity: 0.5;
+      margin-top: 16px;
+      max-width: 280px;
+    }
+    .footer-social {
+      display: flex; gap: 12px; margin-top: 28px;
+    }
+    .social-btn {
+      width: 40px; height: 40px;
+      border: 1px solid rgba(200, 151, 58, 0.2);
+      border-radius: 50%;
+      display: grid; place-items: center;
+      color: var(--cream-dk);
+      opacity: 0.6;
+      font-size: 16px;
+      text-decoration: none;
+      transition: all 0.25s;
+      cursor: none;
+    }
+    .social-btn:hover { border-color: var(--gold); opacity: 1; color: var(--gold); }
+    .footer-col-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 20px;
+    }
+    .footer-links {
+      list-style: none;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .footer-links a {
+      font-size: 14px;
+      font-weight: 300;
+      color: var(--cream-dk);
+      opacity: 0.55;
+      text-decoration: none;
+      transition: opacity 0.25s, color 0.25s;
+      cursor: none;
+    }
+    .footer-links a:hover { opacity: 1; color: var(--cream); }
+    .footer-bottom {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 32px;
+      border-top: 1px solid rgba(200, 151, 58, 0.08);
+    }
+    .footer-copy {
+      font-size: 13px;
+      color: var(--cream-dk);
+      opacity: 0.35;
+    }
+    .footer-payments {
+      display: flex; gap: 8px;
+    }
+    .payment-chip {
+      padding: 5px 12px;
+      background: rgba(240, 230, 208, 0.06);
+      border: 1px solid rgba(240, 230, 208, 0.1);
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--cream-dk);
+      opacity: 0.5;
+      letter-spacing: 0.04em;
+    }
+
+    /* ─── ANIMATIONS ─── */
+    @keyframes fade-up {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fade-in-right {
+      from { opacity: 0; transform: translateX(40px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-14px); }
+    }
+
+    /* Scroll reveal */
+    .reveal {
+      opacity: 0;
+      transform: translateY(32px);
+      transition: opacity 0.8s var(--ease-out), transform 0.8s var(--ease-out);
+    }
+    .reveal.visible {
+      opacity: 1;
+      transform: none;
+    }
+    .reveal-delay-1 { transition-delay: 0.1s; }
+    .reveal-delay-2 { transition-delay: 0.2s; }
+    .reveal-delay-3 { transition-delay: 0.3s; }
+    .reveal-delay-4 { transition-delay: 0.4s; }
+
+    /* ─── STICKY CART BAR ─── */
+    .sticky-cart {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--forest-lt);
+      border: 1px solid rgba(200, 151, 58, 0.2);
+      border-radius: 60px;
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(20px);
+      z-index: 500;
+    }
+    .sticky-cart-info {
+      font-size: 14px;
+      color: var(--cream-dk);
+    }
+    .sticky-cart-info strong {
+      color: var(--cream);
+      font-weight: 600;
+    }
+    .sticky-cart-btn {
+      padding: 10px 24px;
+      background: var(--gold);
+      color: var(--forest);
+      border: none;
+      border-radius: 60px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      cursor: none;
+    }
+
+    /* ─── DESIGN NOTES (watermark for mockup) ─── */
+    .mockup-label {
+      position: fixed;
+      top: 50%;
+      right: -60px;
+      transform: translateY(-50%) rotate(90deg);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: rgba(200, 151, 58, 0.25);
+      z-index: 999;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Custom Cursor -->
+  <div class="cursor-dot" id="cursorDot"></div>
+  <div class="cursor-ring" id="cursorRing"></div>
+  <div class="mockup-label">Design Mockup v1</div>
+
+  <!-- ─── ANNOUNCEMENT BAR ─── -->
+  <div class="announcement">
+    <div class="announcement-track">
+      <span>🌿 Free shipping on orders above ₹499</span>
+      <span class="sep">✦</span>
+      <span>100% natural & cold-pressed</span>
+      <span class="sep">✦</span>
+      <span>Easy 7-day returns</span>
+      <span class="sep">✦</span>
+      <span>Trusted by 50,000+ customers</span>
+      <span class="sep">✦</span>
+      <span>🌿 Free shipping on orders above ₹499</span>
+      <span class="sep">✦</span>
+      <span>100% natural & cold-pressed</span>
+      <span class="sep">✦</span>
+      <span>Easy 7-day returns</span>
+      <span class="sep">✦</span>
+      <span>Trusted by 50,000+ customers</span>
+      <span class="sep">✦</span>
+    </div>
+  </div>
+
+  <!-- ─── NAVIGATION ─── -->
+  <nav>
+    <a href="#" class="nav-logo">
+      <div class="nav-logo-icon">🌿</div>
+      <span class="nav-logo-text">Naturelite</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="#">Home</a></li>
+      <li><a href="#">Products</a></li>
+      <li><a href="#">About</a></li>
+      <li><a href="#">Contact</a></li>
+    </ul>
+    <div class="nav-actions">
+      <button class="nav-btn" title="Search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      </button>
+      <button class="nav-btn" title="Wishlist">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        <span class="nav-btn-badge">3</span>
+      </button>
+      <button class="nav-btn" title="Cart" style="position:relative">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        <span class="nav-btn-badge">2</span>
+      </button>
+      <a href="#" class="nav-cta">Sign In</a>
+    </div>
+  </nav>
+
+  <!-- ─── HERO ─── -->
+  <section class="hero">
+    <div class="hero-left">
+      <div class="hero-eyebrow">
+        <span class="hero-eyebrow-line"></span>
+        Cold-pressed · Natural · Pure
+      </div>
+      <h1 class="hero-headline">
+        Nature's<br/>
+        finest <em>oils</em><br/>
+        delivered.
+      </h1>
+      <p class="hero-sub">
+        Traditionally crafted, cold-pressed oils from the finest Indian farms. No chemicals, no shortcuts — just pure, honest goodness for your kitchen.
+      </p>
+      <div class="hero-actions">
+        <a href="#" class="btn-primary">
+          Shop Now
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+        <a href="#" class="btn-ghost">
+          <span class="btn-ghost-play">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 9-14 9V3z"/></svg>
+          </span>
+          Our Story
+        </a>
+      </div>
+      <div class="hero-stats">
+        <div>
+          <div class="hero-stat-num">50k+</div>
+          <div class="hero-stat-label">Happy Customers</div>
+        </div>
+        <div>
+          <div class="hero-stat-num">100%</div>
+          <div class="hero-stat-label">Cold-Pressed</div>
+        </div>
+        <div>
+          <div class="hero-stat-num">4.9★</div>
+          <div class="hero-stat-label">Avg Rating</div>
+        </div>
+      </div>
+    </div>
+    <div class="hero-right">
+      <div class="hero-bg-img"></div>
+      <div class="hero-product-wrap">
+        <div class="hero-product-ring">
+          <div class="orbit"></div>
+          <div class="hero-product-inner">
+            <div class="hero-product-emoji">🫙</div>
+          </div>
+          <!-- Floating Badges -->
+          <div class="hero-badge hero-badge-1">
+            <div class="hero-badge-title">Best Seller</div>
+            <div class="hero-badge-value">Groundnut Oil</div>
+          </div>
+          <div class="hero-badge hero-badge-2">
+            <div class="hero-badge-title">Rating</div>
+            <div class="hero-badge-value">4.9 / 5 ★</div>
+          </div>
+          <div class="hero-badge hero-badge-3">
+            <div class="hero-badge-title">Pure &amp; Natural</div>
+            <div class="hero-badge-value">No Additives</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── VALUE MARQUEE ─── -->
+  <div class="marquee-section">
+    <div class="marquee-track-slow">
+      <span class="marquee-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        100% Cold-Pressed
+      </span>
+      <span class="marquee-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        No Preservatives
+      </span>
+      <span class="marquee-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/></svg>
+        Farm to Bottle
+      </span>
+      <span class="marquee-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Same-Day Dispatch
+      </span>
+      <span class="marquee-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Lab Tested
+      </span>
+      <span class="marquee-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        100% Cold-Pressed
+      </span>
+      <span class="marquee-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        No Preservatives
+      </span>
+      <span class="marquee-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/></svg>
+        Farm to Bottle
+      </span>
+      <span class="marquee-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Same-Day Dispatch
+      </span>
+      <span class="marquee-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Lab Tested
+      </span>
+    </div>
+  </div>
+
+  <!-- ─── CATEGORIES ─── -->
+  <section class="section categories reveal">
+    <div class="categories-header">
+      <div>
+        <div class="section-label"><span class="section-label-line"></span>Collections</div>
+        <h2 class="section-title">Shop by <em>Category</em></h2>
+      </div>
+      <a href="#" class="view-all">
+        All Collections
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </a>
+    </div>
+    <div class="categories-grid">
+      <!-- Large card -->
+      <div class="category-card category-card--large reveal">
+        <div class="category-img-wrap">
+          <div class="category-bg cat-bg-1">
+            <div class="cat-emoji">🫒</div>
+          </div>
+        </div>
+        <div class="category-overlay"></div>
+        <div class="category-info">
+          <div class="category-name">Cooking Oils</div>
+          <div class="category-count">24 products</div>
+          <div class="category-hover-line"></div>
+        </div>
+      </div>
+      <!-- Small cards -->
+      <div class="category-card reveal reveal-delay-1">
+        <div class="category-img-wrap">
+          <div class="category-bg cat-bg-2">
+            <div class="cat-emoji">🍯</div>
+          </div>
+        </div>
+        <div class="category-overlay"></div>
+        <div class="category-info">
+          <div class="category-name">Natural Honey</div>
+          <div class="category-count">12 products</div>
+          <div class="category-hover-line"></div>
+        </div>
+      </div>
+      <div class="category-card reveal reveal-delay-2">
+        <div class="category-img-wrap">
+          <div class="category-bg cat-bg-3">
+            <div class="cat-emoji">🌾</div>
+          </div>
+        </div>
+        <div class="category-overlay"></div>
+        <div class="category-info">
+          <div class="category-name">Grains & Flours</div>
+          <div class="category-count">18 products</div>
+          <div class="category-hover-line"></div>
+        </div>
+      </div>
+      <div class="category-card reveal reveal-delay-3">
+        <div class="category-img-wrap">
+          <div class="category-bg cat-bg-4">
+            <div class="cat-emoji">🌶️</div>
+          </div>
+        </div>
+        <div class="category-overlay"></div>
+        <div class="category-info">
+          <div class="category-name">Spices & Masalas</div>
+          <div class="category-count">31 products</div>
+          <div class="category-hover-line"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── PRODUCTS ─── -->
+  <section class="section products">
+    <div class="products-header reveal">
+      <div>
+        <div class="section-label"><span class="section-label-line"></span>Our Products</div>
+        <h2 class="section-title">Bestselling <em>Picks</em></h2>
+      </div>
+      <a href="#" class="view-all">
+        View All Products
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </a>
+    </div>
+    <div class="filter-pills reveal">
+      <button class="pill active">Best Sellers</button>
+      <button class="pill">New Arrivals</button>
+      <button class="pill">Under ₹499</button>
+      <button class="pill">Deals</button>
+    </div>
+    <div class="products-grid">
+      <!-- Card 1 -->
+      <div class="product-card reveal">
+        <div class="product-img">
+          <div class="product-img-inner">
+            <div class="product-emoji">🥜</div>
+          </div>
+          <span class="product-badge badge-bestseller">🔥 Best Seller</span>
+          <button class="product-wish">♡</button>
+          <button class="product-add-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            Add to Cart
+          </button>
+        </div>
+        <div class="product-info">
+          <div class="product-category">Cooking Oils</div>
+          <div class="product-name">Cold-Pressed Groundnut Oil</div>
+          <div class="product-rating">
+            <span class="stars">★★★★★</span>
+            <span class="rating-count">(234)</span>
+          </div>
+          <div class="product-price">
+            <span class="price-now">₹349</span>
+            <span class="price-was">₹450</span>
+            <span class="price-save">Save 22%</span>
+          </div>
+        </div>
+      </div>
+      <!-- Card 2 -->
+      <div class="product-card reveal reveal-delay-1">
+        <div class="product-img">
+          <div class="product-img-inner">
+            <div class="product-emoji">🫙</div>
+          </div>
+          <span class="product-badge badge-new">✦ New</span>
+          <button class="product-wish">♡</button>
+          <button class="product-add-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            Add to Cart
+          </button>
+        </div>
+        <div class="product-info">
+          <div class="product-category">Cooking Oils</div>
+          <div class="product-name">Virgin Coconut Oil — 500ml</div>
+          <div class="product-rating">
+            <span class="stars">★★★★★</span>
+            <span class="rating-count">(189)</span>
+          </div>
+          <div class="product-price">
+            <span class="price-now">₹299</span>
+          </div>
+        </div>
+      </div>
+      <!-- Card 3 -->
+      <div class="product-card reveal reveal-delay-2">
+        <div class="product-img">
+          <div class="product-img-inner">
+            <div class="product-emoji">🌻</div>
+          </div>
+          <span class="product-badge badge-deal">−30%</span>
+          <button class="product-wish">♡</button>
+          <button class="product-add-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            Add to Cart
+          </button>
+        </div>
+        <div class="product-info">
+          <div class="product-category">Cooking Oils</div>
+          <div class="product-name">Sunflower Seed Oil — 1L</div>
+          <div class="product-rating">
+            <span class="stars">★★★★☆</span>
+            <span class="rating-count">(97)</span>
+          </div>
+          <div class="product-price">
+            <span class="price-now">₹279</span>
+            <span class="price-was">₹399</span>
+            <span class="price-save">Save 30%</span>
+          </div>
+        </div>
+      </div>
+      <!-- Card 4 -->
+      <div class="product-card reveal reveal-delay-3">
+        <div class="product-img">
+          <div class="product-img-inner">
+            <div class="product-emoji">🍯</div>
+          </div>
+          <button class="product-wish">♡</button>
+          <button class="product-add-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            Add to Cart
+          </button>
+        </div>
+        <div class="product-info">
+          <div class="product-category">Natural Honey</div>
+          <div class="product-name">Pure Wild Forest Honey — 500g</div>
+          <div class="product-rating">
+            <span class="stars">★★★★★</span>
+            <span class="rating-count">(312)</span>
+          </div>
+          <div class="product-price">
+            <span class="price-now">₹499</span>
+            <span class="price-was">₹650</span>
+            <span class="price-save">Save 23%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── BRAND STORY ─── -->
+  <section class="story reveal">
+    <div class="story-visual">
+      <div class="story-visual-content">
+        <div class="story-visual-emoji">🌾</div>
+      </div>
+      <div class="story-gold-line"></div>
+    </div>
+    <div class="story-text">
+      <div class="section-label"><span class="section-label-line"></span>Our Story</div>
+      <h2 class="section-title" style="margin-top:12px">Rooted in <em>tradition</em>,<br/>crafted for today.</h2>
+      <blockquote class="story-blockquote">
+        "Every drop of our oil carries the legacy of ancient Indian wisdom — slow extraction, zero heat, maximum nutrition."
+      </blockquote>
+      <p class="story-body">
+        We partner directly with family-owned farms across Gujarat, Karnataka, and Rajasthan. Our wooden ghani presses have been used for centuries, preserving the natural aroma, colour, and nutrients of every seed.
+      </p>
+      <a href="#" class="btn-primary" style="align-self: flex-start;">
+        Read Our Story
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </a>
+      <div class="story-metrics">
+        <div>
+          <div class="story-metric-num">15+</div>
+          <div class="story-metric-label">Farm Partners</div>
+        </div>
+        <div>
+          <div class="story-metric-num">7yrs</div>
+          <div class="story-metric-label">Experience</div>
+        </div>
+        <div>
+          <div class="story-metric-num">50k+</div>
+          <div class="story-metric-label">Families Served</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── TRUST FEATURES ─── -->
+  <div class="trust reveal">
+    <div class="trust-grid">
+      <div class="trust-item">
+        <div class="trust-icon">🚚</div>
+        <div class="trust-title">Free Shipping</div>
+        <div class="trust-desc">On all orders above ₹499. Same-day dispatch guaranteed.</div>
+      </div>
+      <div class="trust-item">
+        <div class="trust-icon">🔬</div>
+        <div class="trust-title">Lab Certified</div>
+        <div class="trust-desc">Every batch tested for purity, authenticity and freshness.</div>
+      </div>
+      <div class="trust-item">
+        <div class="trust-icon">🌿</div>
+        <div class="trust-title">100% Natural</div>
+        <div class="trust-desc">No additives, no preservatives, no chemicals. Ever.</div>
+      </div>
+      <div class="trust-item">
+        <div class="trust-icon">↩️</div>
+        <div class="trust-title">Easy Returns</div>
+        <div class="trust-desc">Not happy? Return within 7 days, no questions asked.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── TESTIMONIALS ─── -->
+  <section class="testimonials">
+    <div class="testimonials-header reveal">
+      <div class="section-label" style="justify-content:center"><span class="section-label-line"></span>Reviews<span class="section-label-line"></span></div>
+      <h2 class="section-title" style="margin-top:12px">What our <em>customers</em> say</h2>
+      <p class="section-sub" style="margin:16px auto 0; text-align:center">
+        Thousands of families have made Naturelite part of their daily kitchen ritual.
+      </p>
+    </div>
+    <div class="testimonials-grid">
+      <div class="testimonial-card reveal">
+        <div class="testimonial-stars">★★★★★</div>
+        <p class="testimonial-text">"The groundnut oil has completely changed how my food tastes. You can actually smell the difference — rich, nutty, completely natural. My family won't eat anything else now."</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">👩</div>
+          <div>
+            <div class="testimonial-name">Priya Sharma</div>
+            <div class="testimonial-meta">Bangalore · Verified Buyer</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial-card reveal reveal-delay-1">
+        <div class="testimonial-stars">★★★★★</div>
+        <p class="testimonial-text">"I was sceptical at first, but after trying the coconut oil, I'm a convert. The packaging is beautiful, delivery was super fast, and the quality is unmatched at this price."</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">👨</div>
+          <div>
+            <div class="testimonial-name">Rohit Mehta</div>
+            <div class="testimonial-meta">Mumbai · Verified Buyer</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial-card reveal reveal-delay-2">
+        <div class="testimonial-stars">★★★★★</div>
+        <p class="testimonial-text">"The wild honey is absolutely divine. I use it every morning and the flavour profile is complex and incredible. Supporting local farms while eating healthy — what more could you want?"</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">👩</div>
+          <div>
+            <div class="testimonial-name">Ananya Krishnan</div>
+            <div class="testimonial-meta">Chennai · Verified Buyer</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── NEWSLETTER ─── -->
+  <section class="newsletter reveal">
+    <div class="newsletter-eyebrow">Stay in the loop</div>
+    <h2 class="newsletter-title">Get 10% off your<br/>first order.</h2>
+    <p class="newsletter-sub">Subscribe for recipes, health tips, and exclusive early access to new products.</p>
+    <div class="newsletter-form">
+      <input class="newsletter-input" type="email" placeholder="Enter your email address…" />
+      <button class="newsletter-submit">Subscribe</button>
+    </div>
+    <p class="newsletter-note">No spam, ever. Unsubscribe in one click.</p>
+  </section>
+
+  <!-- ─── FOOTER ─── -->
+  <footer>
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a href="#" class="nav-logo" style="text-decoration:none">
+          <div class="nav-logo-icon">🌿</div>
+          <span class="nav-logo-text">Naturelite</span>
+        </a>
+        <p>Bringing the finest cold-pressed oils and natural pantry staples from Indian farms straight to your kitchen. No shortcuts, no compromises.</p>
+        <div class="footer-social">
+          <a href="#" class="social-btn">📸</a>
+          <a href="#" class="social-btn">🐦</a>
+          <a href="#" class="social-btn">📘</a>
+          <a href="#" class="social-btn">▶️</a>
+        </div>
+      </div>
+      <div>
+        <div class="footer-col-title">Shop</div>
+        <ul class="footer-links">
+          <li><a href="#">Cooking Oils</a></li>
+          <li><a href="#">Natural Honey</a></li>
+          <li><a href="#">Grains & Flours</a></li>
+          <li><a href="#">Spices & Masalas</a></li>
+          <li><a href="#">Gift Sets</a></li>
+          <li><a href="#">Best Sellers</a></li>
+        </ul>
+      </div>
+      <div>
+        <div class="footer-col-title">Company</div>
+        <ul class="footer-links">
+          <li><a href="#">Our Story</a></li>
+          <li><a href="#">Farm Partners</a></li>
+          <li><a href="#">Lab Reports</a></li>
+          <li><a href="#">Sustainability</a></li>
+          <li><a href="#">Careers</a></li>
+          <li><a href="#">Press</a></li>
+        </ul>
+      </div>
+      <div>
+        <div class="footer-col-title">Support</div>
+        <ul class="footer-links">
+          <li><a href="#">Track Order</a></li>
+          <li><a href="#">Returns & Refunds</a></li>
+          <li><a href="#">FAQs</a></li>
+          <li><a href="#">Contact Us</a></li>
+          <li><a href="#">Privacy Policy</a></li>
+          <li><a href="#">Terms of Service</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div class="footer-copy">© 2025 Naturelite. All rights reserved.</div>
+      <div class="footer-payments">
+        <span class="payment-chip">UPI</span>
+        <span class="payment-chip">Razorpay</span>
+        <span class="payment-chip">Visa</span>
+        <span class="payment-chip">Mastercard</span>
+        <span class="payment-chip">NetBanking</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ─── STICKY CART BAR ─── -->
+  <div class="sticky-cart">
+    <span class="sticky-cart-info">🛒 <strong>2 items</strong> · ₹648</span>
+    <button class="sticky-cart-btn">View Cart →</button>
+  </div>
+
+  <!-- ─── JS ─── -->
+  <script>
+    // Custom cursor
+    const dot = document.getElementById('cursorDot');
+    const ring = document.getElementById('cursorRing');
+    let mouseX = 0, mouseY = 0, ringX = 0, ringY = 0;
+
+    document.addEventListener('mousemove', e => {
+      mouseX = e.clientX; mouseY = e.clientY;
+      dot.style.left = mouseX + 'px';
+      dot.style.top = mouseY + 'px';
+    });
+
+    function animateCursor() {
+      ringX += (mouseX - ringX) * 0.12;
+      ringY += (mouseY - ringY) * 0.12;
+      ring.style.left = ringX + 'px';
+      ring.style.top = ringY + 'px';
+      requestAnimationFrame(animateCursor);
+    }
+    animateCursor();
+
+    // Scroll reveal
+    const reveals = document.querySelectorAll('.reveal');
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('visible');
+          observer.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.08 });
+    reveals.forEach(el => observer.observe(el));
+
+    // Filter pills
+    document.querySelectorAll('.pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+      });
+    });
+
+    // Nav scroll shadow
+    const navEl = document.querySelector('nav');
+    window.addEventListener('scroll', () => {
+      navEl.style.background = window.scrollY > 10
+        ? 'rgba(10,24,13,0.95)'
+        : 'rgba(10,24,13,0.85)';
+    }, { passive: true });
+  </script>
+</body>
+</html>

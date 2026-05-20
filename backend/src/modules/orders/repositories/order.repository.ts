@@ -195,10 +195,13 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
     };
   }
 
-  async getOrdersByStatus(): Promise<Record<OrderStatus, number>> {
-    const result = await this.aggregate<{ _id: OrderStatus; count: number }>([
-      { $group: { _id: '$status', count: { $sum: 1 } } },
-    ]);
+  async getOrdersByStatus(since?: Date | null): Promise<Record<OrderStatus, number>> {
+    const pipeline: object[] = [];
+    if (since) {
+      pipeline.push({ $match: { createdAt: { $gte: since } } });
+    }
+    pipeline.push({ $group: { _id: '$status', count: { $sum: 1 } } });
+    const result = await this.aggregate<{ _id: OrderStatus; count: number }>(pipeline as any);
     const statusCounts: Partial<Record<OrderStatus, number>> = {};
     result.forEach((item) => {
       statusCounts[item._id] = item.count;

@@ -1,5 +1,6 @@
 import {
   Controller,
+  Delete,
   Get,
   Param,
   Query,
@@ -144,5 +145,15 @@ export class AnalyticsController {
   @Get('stores/top-customers')
   async getTopCustomersOverall() {
     return this.analyticsService.getTopCustomersOverall();
+  }
+
+  @Delete('reset/dashboard')
+  async resetDashboardMetrics(): Promise<{ deletedSnapshots: number }> {
+    return this.analyticsService.resetDashboardMetrics();
+  }
+
+  @Delete('reset/customers')
+  async resetCustomerMetrics(): Promise<{ usersReset: number; productsReset: number }> {
+    return this.analyticsService.resetCustomerMetrics();
   }
 }

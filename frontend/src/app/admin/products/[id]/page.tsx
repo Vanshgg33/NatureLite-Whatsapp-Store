@@ -54,6 +54,13 @@ export default function EditProductPage() {
     gstPercentage: '18',
     hsnCode: '',
     tags: '',
+    batchNumber: '',
+    batchDate: '',
+    batchYieldKg: '',
+    batchMilkLitres: '',
+    batchOrigin: '',
+    nextBatchDays: '',
+    purityClaims: '',
   });
   const [images, setImages] = useState<string[]>([]);
   const [variants, setVariants] = useState<{ name: string; sku: string; price: string; compareAtPrice: string; stock: string }[]>([]);
@@ -99,6 +106,13 @@ export default function EditProductPage() {
         gstPercentage: product.gstPercentage.toString(),
         hsnCode: product.hsnCode || '',
         tags: product.tags.join(', '),
+        batchNumber: product.batchInfo?.batchNumber || '',
+        batchDate: product.batchInfo?.batchDate ? product.batchInfo.batchDate.slice(0, 10) : '',
+        batchYieldKg: product.batchInfo?.yieldKg?.toString() || '',
+        batchMilkLitres: product.batchInfo?.milkLitres?.toString() || '',
+        batchOrigin: product.batchInfo?.origin || '',
+        nextBatchDays: product.batchInfo?.nextBatchDays?.toString() || '',
+        purityClaims: (product.batchInfo?.purityClaims || []).join(', '),
       });
       setImages(product.images);
       setVariants(
@@ -221,6 +235,15 @@ export default function EditProductPage() {
           stock: parseInt(v.stock) || 0,
           attributes: {},
         })),
+      batchInfo: (formData.batchNumber || formData.batchDate || formData.batchOrigin) ? {
+        batchNumber: formData.batchNumber || undefined,
+        batchDate: formData.batchDate || undefined,
+        yieldKg: formData.batchYieldKg ? parseFloat(formData.batchYieldKg) : undefined,
+        milkLitres: formData.batchMilkLitres ? parseFloat(formData.batchMilkLitres) : undefined,
+        origin: formData.batchOrigin || undefined,
+        nextBatchDays: formData.nextBatchDays ? parseInt(formData.nextBatchDays) : undefined,
+        purityClaims: formData.purityClaims ? formData.purityClaims.split(',').map(s => s.trim()).filter(Boolean) : [],
+      } : undefined,
     });
   };
 
@@ -558,6 +581,48 @@ export default function EditProductPage() {
                     className="rounded"
                   />
                   <Label htmlFor="isFeatured">Featured</Label>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Batch &amp; Purity</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="batchNumber">Batch No.</Label>
+                    <Input id="batchNumber" placeholder="e.g. A2-47" value={formData.batchNumber} onChange={(e) => setFormData({ ...formData, batchNumber: e.target.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="batchDate">Batch Date</Label>
+                    <Input id="batchDate" type="date" value={formData.batchDate} onChange={(e) => setFormData({ ...formData, batchDate: e.target.value })} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="batchYieldKg">Yield (kg)</Label>
+                    <Input id="batchYieldKg" type="number" step="0.1" placeholder="6.2" value={formData.batchYieldKg} onChange={(e) => setFormData({ ...formData, batchYieldKg: e.target.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="batchMilkLitres">Milk (L)</Label>
+                    <Input id="batchMilkLitres" type="number" step="0.1" placeholder="82" value={formData.batchMilkLitres} onChange={(e) => setFormData({ ...formData, batchMilkLitres: e.target.value })} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="batchOrigin">Origin</Label>
+                    <Input id="batchOrigin" placeholder="e.g. Rajasthan" value={formData.batchOrigin} onChange={(e) => setFormData({ ...formData, batchOrigin: e.target.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="nextBatchDays">Next batch in (days)</Label>
+                    <Input id="nextBatchDays" type="number" placeholder="18" value={formData.nextBatchDays} onChange={(e) => setFormData({ ...formData, nextBatchDays: e.target.value })} />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="purityClaims">Purity claims (comma-separated)</Label>
+                  <Input id="purityClaims" placeholder="0% additives, 0% heat, 0% preservatives" value={formData.purityClaims} onChange={(e) => setFormData({ ...formData, purityClaims: e.target.value })} />
                 </div>
               </CardContent>
             </Card>

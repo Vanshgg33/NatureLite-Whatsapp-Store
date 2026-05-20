@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
 import { Package, MapPin, Heart, ArrowRight, User, Edit2, Loader2, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,7 +12,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { api } from '@/lib/api';
 
 export default function AccountDashboardPage() {
-  const { customer, updateCustomer } = useCustomerStore();
+  const { customer, isAuthenticated, updateCustomer } = useCustomerStore();
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -19,6 +20,58 @@ export default function AccountDashboardPage() {
     name: customer?.name || '',
     email: customer?.email || '',
   });
+
+  const { data: profile, isLoading: isProfileLoading } = useQuery({
+    queryKey: ['customer-profile'],
+    queryFn: () => api.getMyProfile(),
+    enabled: isAuthenticated,
+    staleTime: 30 * 1000,
+  });
+
+  const { data: recentOrders = [], isLoading: isOrdersLoading } = useQuery({
+    queryKey: ['my-orders', 'dashboard'],
+    queryFn: () => api.getMyOrders(100),
+    enabled: isAuthenticated,
+    staleTime: 30 * 1000,
+  });
+
+  useEffect(() => {
+    if (!profile) return;
+
+    updateCustomer({
+      name: profile.name,
+      email: profile.email,
+      phone: profile.phone || '',
+      addresses: profile.addresses || [],
+      totalOrders: profile.totalOrders || 0,
+      totalSpent: profile.totalSpent || 0,
+    });
+
+    if (!isEditing) {
+      setEditForm({
+        name: profile.name || '',
+        email: profile.email || '',
+      });
+    }
+  }, [isEditing, profile, updateCustomer]);
+
+  const dashboardCustomer = profile
+    ? {
+        ...customer,
+        ...profile,
+      }
+    : customer;
+
+  const orderStats = useMemo(() => {
+    const fetchedOrderCount = recentOrders.length;
+    const fetchedTotalSpent = recentOrders.reduce((sum, order) => sum + (order.total || 0), 0);
+
+    return {
+      totalOrders: Math.max(dashboardCustomer?.totalOrders || 0, fetchedOrderCount),
+      totalSpent: Math.max(dashboardCustomer?.totalSpent || 0, fetchedTotalSpent),
+      savedAddresses: dashboardCustomer?.addresses?.length || 0,
+    };
+  }, [dashboardCustomer?.addresses?.length, dashboardCustomer?.totalOrders, dashboardCustomer?.totalSpent, recentOrders]);
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -91,7 +144,7 @@ export default function AccountDashboardPage() {
         animate={{ opacity: 1, y: 0 }}
       >
         <h1 className="font-display text-2xl font-bold text-brand-charcoal mb-2">
-          Welcome back, {customer?.name?.split(' ')[0] || 'there'}!
+          Welcome back, {dashboardCustomer?.name?.split(' ')[0] || 'there'}!
         </h1>
         <p className="font-body text-brand-muted">
           Manage your orders, addresses, and account settings.
@@ -149,18 +202,18 @@ export default function AccountDashboardPage() {
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 rounded-full bg-brand-mustard/10 flex items-center justify-center">
                 <span className="font-display text-2xl font-bold text-brand-mustard">
-                  {customer?.name?.[0]?.toUpperCase() || customer?.email?.[0]?.toUpperCase() || 'U'}
+                  {dashboardCustomer?.name?.[0]?.toUpperCase() || dashboardCustomer?.email?.[0]?.toUpperCase() || 'U'}
                 </span>
               </div>
               <div>
                 <p className="font-display font-semibold text-brand-charcoal text-lg">
-                  {customer?.name || 'No name set'}
+                  {dashboardCustomer?.name || 'No name set'}
                 </p>
                 <p className="font-body text-sm text-brand-muted">
-                  {customer?.email || 'No email set'}
+                  {dashboardCustomer?.email || 'No email set'}
                 </p>
                 <p className="font-body text-sm text-brand-muted">
-                  {customer?.phone}
+                  {dashboardCustomer?.phone}
                 </p>
               </div>
             </div>
@@ -195,7 +248,7 @@ export default function AccountDashboardPage() {
                 Phone
               </label>
               <Input
-                value={customer?.phone || ''}
+                value={dashboardCustomer?.phone || ''}
                 disabled
                 className="bg-brand-sand cursor-not-allowed"
               />
@@ -212,19 +265,19 @@ export default function AccountDashboardPage() {
         {[
           {
             label: 'Total Orders',
-            value: customer?.totalOrders || 0,
+            value: isProfileLoading || isOrdersLoading ? '...' : orderStats.totalOrders,
             icon: Package,
             href: '/account/orders',
           },
           {
             label: 'Total Spent',
-            value: formatPrice(customer?.totalSpent || 0),
+            value: isProfileLoading || isOrdersLoading ? '...' : formatPrice(orderStats.totalSpent),
             icon: Heart,
             href: '/account/orders',
           },
           {
             label: 'Saved Addresses',
-            value: customer?.addresses?.length || 0,
+            value: isProfileLoading ? '...' : orderStats.savedAddresses,
             icon: MapPin,
             href: '/account/addresses',
           },

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 import { Types } from 'mongoose';
 import { SettingsService } from '../settings/settings.service';
+import { MediaService } from '../media/media.service';
 import { ProductRepository } from '../products/repositories/product.repository';
 import { ProductDocument } from '../products/schemas/product.schema';
 import { CategoryRepository } from '../categories/repositories/category.repository';
@@ -92,6 +93,7 @@ export class UcmService {
   constructor(
     private readonly configService: ConfigService,
     private readonly settingsService: SettingsService,
+    private readonly mediaService: MediaService,
     private readonly productRepository: ProductRepository,
     private readonly categoryRepository: CategoryRepository,
     private readonly storesService: StoresService,
@@ -279,6 +281,11 @@ export class UcmService {
   }
 
   async syncProductById(productId: string, reason = 'product_update'): Promise<void> {
+    const catalogConfig = this.configService.get<CatalogConfig>('catalog')!;
+    if (!catalogConfig.accessToken) {
+      return;
+    }
+
     const product = await this.productRepository.findByIdString(productId);
     if (!product) {
       this.logger.warn(`syncProductById skipped: product ${productId} was not found`);
@@ -295,6 +302,11 @@ export class UcmService {
   }
 
   async archiveDeletedProduct(product: ProductDocument, reason = 'product_deleted'): Promise<void> {
+    const catalogConfig = this.configService.get<CatalogConfig>('catalog')!;
+    if (!catalogConfig.accessToken) {
+      return;
+    }
+
     const state = await this.getCatalogState();
     if (state.syncMode === 'dry_run') {
       await this.writeSyncState('dry_run', `Dry run archive recorded for ${product._id.toString()} (${reason}).`);
@@ -515,13 +527,18 @@ export class UcmService {
       remoteCatalogPayload: remoteProduct,
     };
 
+    const resolvedImages = await this.resolveProductImages(
+      remoteProduct.image_url,
+      existing?.images ?? [],
+    );
+
     const payload: Record<string, unknown> = {
       name: remoteProduct.name || retailerId,
       slug,
       description: (remoteProduct.description || remoteProduct.short_description || '').toString().slice(0, 5000),
       shortDescription: (remoteProduct.short_description || remoteProduct.description || '').toString().slice(0, 5000),
       category: category._id,
-      images: remoteProduct.image_url ? [remoteProduct.image_url] : [],
+      images: resolvedImages,
       price: currentPrice,
       compareAtPrice: originalPrice > currentPrice ? originalPrice : undefined,
       sku: retailerId,
@@ -542,6 +559,31 @@ export class UcmService {
 
     const created = await this.productRepository.create(payload);
     return created as ProductDocument;
+  }
+
+  private async resolveProductImages(remoteImageUrl: string | undefined, existingImages: string[]): Promise<string[]> {
+    if (!remoteImageUrl) {
+      return existingImages;
+    }
+
+    // If the product already has a Cloudinary-hosted image, keep it — don't
+    // replace it with the (potentially expired) Facebook CDN URL on every sync.
+    const cloudinaryHost = `res.cloudinary.com/${this.configService.get('cloudinary.cloudName')}`;
+    const alreadyOnCloudinary = existingImages.some((u) => u.includes(cloudinaryHost));
+    if (alreadyOnCloudinary) {
+      return existingImages;
+    }
+
+    try {
+      // Fetch the image as a buffer from our server, then push to Cloudinary.
+      // This bypasses Facebook CDN restrictions that block Cloudinary's remote-fetch.
+      const result = await this.mediaService.uploadFromUrlViaBuffer(remoteImageUrl, 'products');
+      return [result.secureUrl];
+    } catch (err) {
+      this.logger.warn(`UCM pull: failed to re-upload image to Cloudinary. error=${err instanceof Error ? err.message : String(err)}`);
+      // Keep whatever images existed rather than storing an expired/broken URL.
+      return existingImages.length > 0 ? existingImages : [];
+    }
   }
 
   private async resolveCategoryForRemoteItem(label: string): Promise<{ _id: Types.ObjectId }> {

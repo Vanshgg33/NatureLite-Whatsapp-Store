@@ -1,0 +1,6 @@
+<svg width="400" height="500" viewBox="0 0 400 500" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="500" fill="#f0e8d8"/>
+  <path d="M200 160C200 160,240 210,240 238C240 258,222 272,200 272C178 272,160 258,160 238C160 210,200 160,200 160Z" fill="#c8a060" opacity="0.35"/>
+  <path d="M200 195C200 195,218 218,218 232C218 241,210 248,200 248C190 248,182 241,182 232C182 218,200 195,200 195Z" fill="#c8a060" opacity="0.18"/>
+  <text x="200" y="320" text-anchor="middle" font-family="Georgia,serif" font-size="13" fill="#a07840" opacity="0.55">Nature Lite Foods</text>
+</svg>

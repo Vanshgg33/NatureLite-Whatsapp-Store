@@ -455,8 +455,12 @@ export class ChatbotService {
           session.supportHandoffExpiresAt = undefined;
           await session.save();
         }
-        await this.transitionToState(session, 'main_menu');
-        await this.sendFlowResponse(message.phone, 'main_menu', session);
+        // First contact (new session or revived after expiry): skip the menu
+        // tap and open browsing directly. Returning customers typing "hi" or
+        // "menu" mid-session still land on the main menu as usual.
+        const targetState = !session.previousState ? 'browsing' : 'main_menu';
+        await this.transitionToState(session, targetState);
+        await this.sendFlowResponse(message.phone, targetState, session);
         return;
       }
 
