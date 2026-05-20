@@ -26,13 +26,16 @@ const addressSchema = z.object({
 });
 
 export default function AddressesPage() {
-  const { customer, addAddress, updateAddress, removeAddress, setDefaultAddress, setCustomer } = useCustomerStore();
+  const { customer, addAddress, updateAddress, removeAddress, setDefaultAddress, setCustomer } =
+    useCustomerStore();
   const defaultAddress = useDefaultAddress();
   const { toast } = useToast();
   const [isAdding, setIsAdding] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errors, setErrors] = useState<Partial<Record<keyof z.infer<typeof addressSchema>, string>>>({});
+  const [errors, setErrors] = useState<
+    Partial<Record<keyof z.infer<typeof addressSchema>, string>>
+  >({});
   const [formData, setFormData] = useState<Partial<Address>>({
     label: '',
     street: '',
@@ -52,20 +55,14 @@ export default function AddressesPage() {
       const fieldErrors: Partial<Record<keyof z.infer<typeof addressSchema>, string>> = {};
       for (const issue of parsed.error.issues) {
         const path = issue.path[0] as keyof z.infer<typeof addressSchema>;
-        if (!fieldErrors[path]) {
-          fieldErrors[path] = issue.message;
-        }
+        if (!fieldErrors[path]) fieldErrors[path] = issue.message;
       }
       setErrors(fieldErrors);
-      toast({
-        title: 'Please fix the highlighted fields',
-        variant: 'destructive',
-      });
+      toast({ title: 'Please fix the highlighted fields', variant: 'destructive' });
       return;
     }
 
     setIsSubmitting(true);
-
     const safe = parsed.data;
     const address: Address = {
       label: safe.label || 'Home',
@@ -79,26 +76,20 @@ export default function AddressesPage() {
 
     try {
       if (editingIndex !== null) {
-        // Update address via API
         const updatedUser = await api.updateAddress(editingIndex, address);
-        // Update local store
         updateAddress(editingIndex, address);
-        if (updatedUser.addresses && customer) {
+        if (updatedUser.addresses && customer)
           setCustomer({ ...customer, addresses: updatedUser.addresses });
-        }
         toast({ title: 'Address updated' });
       } else {
-        // Add address via API
         const updatedUser = await api.addAddress(address);
-        // Update local store
         addAddress(address);
-        if (updatedUser.addresses && customer) {
+        if (updatedUser.addresses && customer)
           setCustomer({ ...customer, addresses: updatedUser.addresses });
-        }
         toast({ title: 'Address added' });
       }
       resetForm();
-    } catch (error) {
+    } catch {
       toast({
         title: 'Error',
         description: 'Failed to save address. Please try again.',
@@ -110,15 +101,7 @@ export default function AddressesPage() {
   };
 
   const resetForm = () => {
-    setFormData({
-      label: '',
-      street: '',
-      city: '',
-      state: '',
-      pincode: '',
-      landmark: '',
-      isDefault: false,
-    });
+    setFormData({ label: '', street: '', city: '', state: '', pincode: '', landmark: '', isDefault: false });
     setIsAdding(false);
     setEditingIndex(null);
   };
@@ -136,11 +119,10 @@ export default function AddressesPage() {
     try {
       const updatedUser = await api.deleteAddress(index);
       removeAddress(index);
-      if (updatedUser.addresses && customer) {
+      if (updatedUser.addresses && customer)
         setCustomer({ ...customer, addresses: updatedUser.addresses });
-      }
       toast({ title: 'Address removed' });
-    } catch (error) {
+    } catch {
       toast({
         title: 'Error',
         description: 'Failed to remove address. Please try again.',
@@ -152,47 +134,67 @@ export default function AddressesPage() {
   const addresses = customer?.addresses || [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      {/* Header */}
       <motion.div
-        className="bg-white rounded-2xl p-6 shadow-brand-sm"
-        initial={{ opacity: 0, y: 20 }}
+        className="relative overflow-hidden rounded-2xl"
+        initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <div className="flex items-center justify-between mb-2">
-          <h1 className="font-display text-2xl font-bold text-brand-charcoal">
-            My Addresses
-          </h1>
+        <div
+          className="absolute inset-0"
+          style={{ background: 'linear-gradient(125deg,#5a2f08 0%,#7a4010 30%,#3d1f04 70%,#1e0e02 100%)' }}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute rounded-full"
+          style={{
+            top: '-60%', right: '-5%', width: 240, height: 240,
+            background: 'radial-gradient(circle,rgba(212,152,64,0.22) 0%,transparent 65%)',
+            filter: 'blur(28px)',
+          }}
+        />
+        <div className="relative px-5 py-5 flex items-center justify-between">
+          <div>
+            <p
+              style={{ fontSize: 10, letterSpacing: '0.30em', textTransform: 'uppercase', color: 'rgba(212,152,64,0.55)', fontFamily: 'monospace', marginBottom: 4 }}
+            >
+              Account
+            </p>
+            <h1 className="font-display text-xl font-bold" style={{ color: '#f5e8cc' }}>My Addresses</h1>
+            <p className="font-body text-sm mt-0.5" style={{ color: 'rgba(245,232,204,0.45)' }}>
+              Manage your saved delivery addresses
+            </p>
+          </div>
           {!isAdding && (
             <Button
               onClick={() => setIsAdding(true)}
-              className="bg-brand-mustard hover:bg-brand-mustard-dark text-white"
+              className="shrink-0"
+              style={{ background: 'rgba(212,152,64,0.20)', color: '#d49840', border: '1px solid rgba(212,152,64,0.30)' }}
             >
-              <Plus className="w-4 h-4 mr-2" />
+              <Plus className="w-4 h-4 mr-1.5" />
               Add Address
             </Button>
           )}
         </div>
-        <p className="font-body text-brand-muted">
-          Manage your saved delivery addresses
-        </p>
       </motion.div>
 
       {/* Add/Edit Form */}
       {isAdding && (
         <motion.div
-          className="bg-white rounded-2xl p-6 shadow-brand-sm"
-          initial={{ opacity: 0, y: 20 }}
+          className="bg-white rounded-2xl shadow-brand-sm overflow-hidden"
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <h2 className="font-display text-lg font-semibold text-brand-charcoal mb-4">
-            {editingIndex !== null ? 'Edit Address' : 'Add New Address'}
-          </h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="px-6 py-4 border-b border-brand-border">
+            <h2 className="font-display text-base font-semibold text-brand-charcoal">
+              {editingIndex !== null ? 'Edit Address' : 'Add New Address'}
+            </h2>
+          </div>
+          <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                <label className="font-body text-sm text-brand-text mb-1.5 block">
-                  Label
-                </label>
+                <label className="font-body text-sm text-brand-text mb-1.5 block">Label</label>
                 <Input
                   value={formData.label}
                   onChange={(e) => setFormData({ ...formData, label: e.target.value })}
@@ -230,32 +232,24 @@ export default function AddressesPage() {
             </div>
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                <label className="font-body text-sm text-brand-text mb-1.5 block">
-                  City *
-                </label>
+                <label className="font-body text-sm text-brand-text mb-1.5 block">City *</label>
                 <Input
                   value={formData.city}
                   onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                   placeholder="City"
                   className={cn(errors.city && 'border-brand-error')}
                 />
-                {errors.city && (
-                  <p className="text-xs text-brand-error mt-1">{errors.city}</p>
-                )}
+                {errors.city && <p className="text-xs text-brand-error mt-1">{errors.city}</p>}
               </div>
               <div>
-                <label className="font-body text-sm text-brand-text mb-1.5 block">
-                  State *
-                </label>
+                <label className="font-body text-sm text-brand-text mb-1.5 block">State *</label>
                 <Input
                   value={formData.state}
                   onChange={(e) => setFormData({ ...formData, state: e.target.value })}
                   placeholder="State"
                   className={cn(errors.state && 'border-brand-error')}
                 />
-                {errors.state && (
-                  <p className="text-xs text-brand-error mt-1">{errors.state}</p>
-                )}
+                {errors.state && <p className="text-xs text-brand-error mt-1">{errors.state}</p>}
               </div>
             </div>
             <div>
@@ -268,18 +262,16 @@ export default function AddressesPage() {
                 placeholder="Near..."
               />
             </div>
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex items-center gap-2.5 cursor-pointer">
               <input
                 type="checkbox"
                 checked={formData.isDefault}
                 onChange={(e) => setFormData({ ...formData, isDefault: e.target.checked })}
                 className="w-4 h-4 rounded border-brand-border text-brand-mustard focus:ring-brand-mustard"
               />
-              <span className="font-body text-sm text-brand-text">
-                Set as default address
-              </span>
+              <span className="font-body text-sm text-brand-text">Set as default address</span>
             </label>
-            <div className="flex gap-3">
+            <div className="flex gap-3 pt-1">
               <Button
                 type="submit"
                 className="bg-brand-mustard hover:bg-brand-mustard-dark text-white"
@@ -288,10 +280,12 @@ export default function AddressesPage() {
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Saving...
+                    Saving…
                   </>
+                ) : editingIndex !== null ? (
+                  'Save Changes'
                 ) : (
-                  editingIndex !== null ? 'Save Changes' : 'Add Address'
+                  'Add Address'
                 )}
               </Button>
               <Button type="button" variant="outline" onClick={resetForm} disabled={isSubmitting}>
@@ -302,11 +296,11 @@ export default function AddressesPage() {
         </motion.div>
       )}
 
-      {/* Address List */}
+      {/* Empty state */}
       {addresses.length === 0 && !isAdding ? (
         <motion.div
           className="bg-white rounded-2xl p-12 shadow-brand-sm text-center"
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
         >
           <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-brand-sand flex items-center justify-center">
@@ -315,9 +309,7 @@ export default function AddressesPage() {
           <h2 className="font-display text-xl font-semibold text-brand-charcoal mb-2">
             No addresses saved
           </h2>
-          <p className="font-body text-brand-muted mb-6">
-            Add an address for faster checkout.
-          </p>
+          <p className="font-body text-brand-muted mb-6">Add an address for faster checkout.</p>
           <Button
             onClick={() => setIsAdding(true)}
             className="bg-brand-mustard hover:bg-brand-mustard-dark text-white"
@@ -332,55 +324,72 @@ export default function AddressesPage() {
             <motion.div
               key={index}
               className={cn(
-                'bg-white rounded-2xl p-6 shadow-brand-sm border-2',
-                address.isDefault ? 'border-brand-mustard' : 'border-transparent'
+                'bg-white rounded-2xl shadow-brand-sm overflow-hidden transition-all duration-200',
+                address.isDefault
+                  ? 'ring-2 ring-brand-mustard/40'
+                  : 'border border-brand-border hover:border-brand-mustard/30'
               )}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 * index }}
             >
-              <div className="flex items-start justify-between mb-3">
+              {/* Card header */}
+              <div
+                className="px-4 py-3 flex items-center justify-between border-b border-brand-border/60"
+                style={
+                  address.isDefault
+                    ? { background: 'linear-gradient(90deg,rgba(160,112,16,0.06) 0%,transparent 100%)' }
+                    : {}
+                }
+              >
                 <div className="flex items-center gap-2">
-                  <span className="font-display font-semibold text-brand-charcoal">
+                  <MapPin className="w-3.5 h-3.5 text-brand-mustard shrink-0" />
+                  <span className="font-display font-semibold text-brand-charcoal text-sm">
                     {address.label}
                   </span>
                   {address.isDefault && (
-                    <span className="px-2 py-0.5 bg-brand-mustard/10 text-brand-mustard text-xs font-body rounded-full">
+                    <span className="px-1.5 py-0.5 bg-brand-mustard/10 text-brand-mustard text-[10px] font-body font-medium rounded-full leading-none">
                       Default
                     </span>
                   )}
                 </div>
-                <div className="flex gap-1">
+                <div className="flex gap-0.5">
                   <button
                     onClick={() => handleEdit(index)}
-                    className="p-2 text-brand-muted hover:text-brand-charcoal transition-colors"
+                    className="p-1.5 text-brand-muted hover:text-brand-charcoal hover:bg-brand-sand rounded-lg transition-colors"
                   >
-                    <Edit2 className="w-4 h-4" />
+                    <Edit2 className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={() => handleDelete(index)}
-                    className="p-2 text-brand-muted hover:text-brand-error transition-colors"
+                    className="p-1.5 text-brand-muted hover:text-brand-error hover:bg-red-50 rounded-lg transition-colors"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
-              <div className="font-body text-sm text-brand-text space-y-1">
-                <p>{address.street}</p>
-                {address.landmark && <p className="text-brand-muted">{address.landmark}</p>}
-                <p>
-                  {address.city}, {address.state} - {address.pincode}
-                </p>
+
+              {/* Card body */}
+              <div className="px-4 py-3.5">
+                <div className="font-body text-sm text-brand-text space-y-0.5">
+                  <p>{address.street}</p>
+                  {address.landmark && (
+                    <p className="text-brand-muted text-xs">{address.landmark}</p>
+                  )}
+                  <p>
+                    {address.city}, {address.state} — {address.pincode}
+                  </p>
+                </div>
+                {!address.isDefault && (
+                  <button
+                    onClick={() => setDefaultAddress(index)}
+                    className="mt-3 font-body text-xs text-brand-mustard hover:text-brand-mustard-dark flex items-center gap-1.5 transition-colors"
+                  >
+                    <Check className="w-3 h-3" />
+                    Set as default
+                  </button>
+                )}
               </div>
-              {!address.isDefault && (
-                <button
-                  onClick={() => setDefaultAddress(index)}
-                  className="mt-4 font-body text-sm text-brand-mustard hover:underline flex items-center gap-1"
-                >
-                  <Check className="w-4 h-4" />
-                  Set as default
-                </button>
-              )}
             </motion.div>
           ))}
         </div>

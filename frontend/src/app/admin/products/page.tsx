@@ -62,10 +62,15 @@ export default function ProductsPage() {
   const bulkCategoryMutation = useMutation({
     mutationFn: ({ productIds, categoryId }: { productIds: string[]; categoryId: string }) =>
       api.bulkUpdateProductCategory(productIds, categoryId),
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       setSelected(new Set());
       setBulkCategoryId('');
+      alert(`Category updated for ${data.modifiedCount} product(s).`);
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      alert(`Failed to update category: ${msg}`);
     },
   });
 

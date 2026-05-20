@@ -152,6 +152,11 @@ export class SettingsService implements OnModuleInit {
     return (await this.get('support')) || DEFAULT_SETTINGS.support;
   }
 
+  async getMockDataEnabled(): Promise<boolean> {
+    const raw = await this.get('mockData');
+    return raw?.enabled === true;
+  }
+
   async getMetricsResetAt(): Promise<Date | null> {
     const raw = await this.get('metrics');
     const ts = raw?.resetAt;

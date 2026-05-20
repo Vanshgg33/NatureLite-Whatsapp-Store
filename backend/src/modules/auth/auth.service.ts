@@ -181,13 +181,14 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-    // Public registration never allows superadmin; only existing superadmins can create superadmins via admin panel
+    // First admin to register becomes superadmin (store owner); subsequent public registrations get admin role
+    const adminCount = await this.adminUserRepository.countDocuments({});
     const adminData: any = {
       name: dto.name,
       email: dto.email.toLowerCase(),
       password: hashedPassword,
       phone: dto.phone,
-      role: 'admin',
+      role: adminCount === 0 ? 'superadmin' : 'admin',
     };
     if ((dto as any).storeId) {
       adminData.store = parseObjectId((dto as any).storeId, 'storeId');
@@ -224,6 +225,16 @@ export class AuthService {
         storeName,
       },
     };
+  }
+
+  async claimSuperadmin(userId: string): Promise<{ message: string }> {
+    const superadminCount = await this.adminUserRepository.countDocuments({ role: 'superadmin' });
+    if (superadminCount > 0) {
+      throw new BadRequestException('A superadmin already exists. This endpoint is only available during initial setup.');
+    }
+    const idObj = parseObjectId(userId, 'userId');
+    await this.adminUserRepository.updateOne({ _id: idObj }, { $set: { role: 'superadmin' } });
+    return { message: 'Your account has been promoted to superadmin. Please log out and log back in.' };
   }
 
   /** In-memory OTP store: phone -> { otp, expiresAt }. Rate limit: lastSentAt per phone. */

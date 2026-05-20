@@ -80,9 +80,9 @@ function LoadingScreen({ onDone, dataReady }: { onDone: () => void; dataReady: b
     const start = performance.now();
     let raf = 0;
     const tick = (now: number) => {
-      const p = Math.min(1, (now - start) / LOADER_DURATION);
+      const p = Math.min(0.9, (now - start) / LOADER_DURATION);
       setPercent(Math.round(p * 100));
-      if (p < 1) raf = requestAnimationFrame(tick);
+      if (p < 0.9) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     const t = setTimeout(() => setMinTimerDone(true), LOADER_DURATION);
@@ -91,9 +91,10 @@ function LoadingScreen({ onDone, dataReady }: { onDone: () => void; dataReady: b
 
   useEffect(() => {
     if (!minTimerDone || !dataReady) return;
-    setExiting(true);
-    const t = setTimeout(onDone, 700);
-    return () => clearTimeout(t);
+    setPercent(100);
+    const t1 = setTimeout(() => setExiting(true), 300);
+    const t2 = setTimeout(onDone, 1000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [minTimerDone, dataReady, onDone]);
 
   useEffect(() => {
@@ -216,6 +217,18 @@ function LoadingScreen({ onDone, dataReady }: { onDone: () => void; dataReady: b
             {/* Body back/shadow layer */}
             <rect x="22" y="64" width="152" height="116" rx="16" fill="#140802"/>
 
+            {/* ── Push arm — behind machine body so drum face masks it naturally ── */}
+            <g style={{ transformOrigin: '168px 95px', animation: 'nl-press-rotate 3.3s linear infinite' }}>
+              <rect x="158" y="89" width="118" height="13" rx="6.5" fill="#140800"/>
+              <rect x="160" y="90" width="114" height="10" rx="5"   fill="#3A1C0A"/>
+              <rect x="163" y="91" width="108" height="3"  rx="1.5" fill="rgba(138,78,20,0.28)"/>
+              <circle cx="272" cy="95" r="17" fill="#140800"/>
+              <circle cx="272" cy="95" r="14" fill="#2C1208"/>
+              <circle cx="269" cy="92" r="6"  fill="rgba(75,38,10,0.38)"/>
+              <circle cx="272" cy="95" r="14" fill="none" stroke="rgba(98,52,14,0.24)" strokeWidth="1.5"/>
+              <circle cx="272" cy="95" r="8"  fill="none" stroke="rgba(118,65,18,0.14)" strokeWidth="1"/>
+            </g>
+
             {/* Main body */}
             <rect x="18" y="60" width="150" height="118" rx="16" fill="url(#nlWoodBody)"/>
 
@@ -259,19 +272,7 @@ function LoadingScreen({ onDone, dataReady }: { onDone: () => void; dataReady: b
             <circle cx="93" cy="70" r="4.5" fill="rgba(228,155,20,0.28)"
               style={{ animation: 'nl2-grind-glow 1.6s ease-in-out infinite 0.2s' }}/>
 
-            {/* ── Push arm — pivots from RIGHT WALL of machine at (168, 95) ── */}
-            <g style={{ transformOrigin: '168px 95px', animation: 'nl-press-rotate 4.8s linear infinite' }}>
-              <rect x="158" y="89" width="118" height="13" rx="6.5" fill="#140800"/>
-              <rect x="160" y="90" width="114" height="10" rx="5"   fill="#3A1C0A"/>
-              <rect x="163" y="91" width="108" height="3"  rx="1.5" fill="rgba(138,78,20,0.28)"/>
-              <circle cx="272" cy="95" r="17" fill="#140800"/>
-              <circle cx="272" cy="95" r="14" fill="#2C1208"/>
-              <circle cx="269" cy="92" r="6"  fill="rgba(75,38,10,0.38)"/>
-              <circle cx="272" cy="95" r="14" fill="none" stroke="rgba(98,52,14,0.24)" strokeWidth="1.5"/>
-              <circle cx="272" cy="95" r="8"  fill="none" stroke="rgba(118,65,18,0.14)" strokeWidth="1"/>
-            </g>
-
-            {/* Arm pivot socket — static, draws on top of arm base */}
+            {/* Arm pivot socket — static, always on top */}
             <circle cx="168" cy="95" r="8"   fill="#0e0400" stroke="rgba(138,78,20,0.42)" strokeWidth="1.5"/>
             <circle cx="168" cy="95" r="4"   fill="#060100"/>
 

@@ -1219,6 +1219,18 @@ export class OrdersService implements OnModuleInit {
   }
 
   async getOrdersByStatus(): Promise<Record<OrderStatus, number>> {
+    if (await this.settingsService.getMockDataEnabled()) {
+      return {
+        placed: 14,
+        confirmed: 9,
+        preparing: 6,
+        out_for_delivery: 5,
+        delivered: 87,
+        cancelled: 4,
+        returned: 2,
+        refunded: 1,
+      };
+    }
     const resetAt = await this.settingsService.getMetricsResetAt();
     return this.orderRepository.getOrdersByStatus(resetAt);
   }

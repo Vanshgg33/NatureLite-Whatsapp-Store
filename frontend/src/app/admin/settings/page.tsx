@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, Lock, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Save, Lock, RotateCcw, AlertTriangle, FlaskConical } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,8 @@ export default function SettingsPage() {
     abandonedCartReminderDelayMinutes: 60,
   });
 
+  const [mockDataEnabled, setMockDataEnabled] = useState(false);
+
   const { data: settings, isLoading } = useQuery({
     queryKey: ['settings'],
     queryFn: () => api.getSettings(),
@@ -39,6 +41,9 @@ export default function SettingsPage() {
       }
       if (settings.whatsapp) {
         setWhatsappSettings(settings.whatsapp as typeof whatsappSettings);
+      }
+      if (settings.mockData) {
+        setMockDataEnabled(!!(settings.mockData as { enabled?: boolean }).enabled);
       }
     }
   }, [settings]);
@@ -54,6 +59,17 @@ export default function SettingsPage() {
     mutationFn: (data: typeof whatsappSettings) => api.updateSettings('whatsapp', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
+    },
+  });
+
+  const mockDataMutation = useMutation({
+    mutationFn: (enabled: boolean) => api.updateSettings('mockData', { enabled }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['revenue-chart'] });
+      queryClient.invalidateQueries({ queryKey: ['orders-by-status'] });
+      queryClient.invalidateQueries({ queryKey: ['low-stock'] });
     },
   });
 
@@ -217,6 +233,52 @@ export default function SettingsPage() {
             </Button>
           </CardContent>
         </Card>
+        {/* ── Mock Data ─────────────────────────────────────────────── */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FlaskConical className="h-5 w-5 text-violet-500" />
+              Mock Data
+            </CardTitle>
+            <CardDescription>
+              Show demo analytics data on the dashboard. Useful while setting up the store before real orders come in.
+              Orders, products, and customers are never affected.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between rounded-xl border px-5 py-4">
+              <div>
+                <p className="text-sm font-semibold">Enable mock analytics</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Dashboard stats and revenue chart will show sample data
+                </p>
+              </div>
+              <button
+                role="switch"
+                aria-checked={mockDataEnabled}
+                disabled={mockDataMutation.isPending}
+                onClick={() => {
+                  const next = !mockDataEnabled;
+                  setMockDataEnabled(next);
+                  mockDataMutation.mutate(next);
+                }}
+                className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ background: mockDataEnabled ? '#7c3aed' : '#e2e8f0' }}
+              >
+                <span
+                  className="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform duration-200"
+                  style={{ transform: mockDataEnabled ? 'translateX(20px)' : 'translateX(0px)' }}
+                />
+              </button>
+            </div>
+            {mockDataEnabled && (
+              <p className="mt-3 text-xs text-violet-600 bg-violet-50 border border-violet-200 rounded-lg px-4 py-2.5">
+                Mock mode is <strong>ON</strong> — dashboard shows sample data. Turn this off when your store goes live.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
         <ChangePasswordCard />
         <ResetMetricsCard />
       </div>

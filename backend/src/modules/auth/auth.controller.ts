@@ -182,6 +182,15 @@ export class AuthController {
     return { message: 'Logged out successfully' };
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Post('admin/claim-superadmin')
+  @HttpCode(HttpStatus.OK)
+  async claimSuperadmin(
+    @CurrentUser('sub') userId: string,
+  ): Promise<{ message: string }> {
+    return this.authService.claimSuperadmin(userId);
+  }
+
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   @Post('change-password')

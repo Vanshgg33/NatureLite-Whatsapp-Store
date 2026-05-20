@@ -20,6 +20,7 @@ import {
   MapPin,
   Bell,
   X,
+  FlaskConical,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -137,6 +138,13 @@ export default function DashboardPage() {
     queryFn: () => api.getDueReminders(),
     refetchInterval: 60000,
   });
+
+  const { data: settingsData } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api.getSettings(),
+    enabled: isSuperAdmin,
+  });
+  const isMockMode = !!settingsData?.mockData?.enabled;
 
   const dismissReminderMutation = useMutation({
     mutationFn: (id: string) => api.dismissReminder(id),
@@ -290,6 +298,14 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {isMockMode && (
+              <Link href="/admin/settings">
+                <Badge className="rounded-full gap-1.5 bg-violet-100 text-violet-700 border border-violet-300 hover:bg-violet-200 cursor-pointer px-3 py-1 text-xs font-medium">
+                  <FlaskConical className="h-3 w-3" />
+                  Mock Mode ON
+                </Badge>
+              </Link>
+            )}
             {isStoreAdmin && (
               <Link href="/admin/sales">
                 <Button size="sm" className="rounded-full gap-1.5 bg-brand-green hover:bg-brand-green/90">

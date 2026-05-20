@@ -99,4 +99,7 @@ export const DEFAULT_SETTINGS = {
       textColor: 'white',
     },
   },
+  mockData: {
+    enabled: false,
+  },
 };

@@ -84,7 +84,9 @@ export class ProductRepository extends BaseRepository<ProductDocument> {
       filter.category = { $type: 'objectId' };
     }
 
-    if (isActive !== undefined) filter.isActive = isActive;
+    if (isActive !== undefined) {
+      filter.isActive = isActive === true ? { $ne: false } : false;
+    }
     if (isFeatured !== undefined) filter.isFeatured = isFeatured;
 
     if (inStock !== undefined) {

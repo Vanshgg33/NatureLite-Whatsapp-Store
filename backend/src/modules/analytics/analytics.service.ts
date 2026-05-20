@@ -106,7 +106,43 @@ export class AnalyticsService {
     }
   }
 
+  private buildMockDashboardStats(): Record<string, unknown> {
+    const now = new Date();
+    return {
+      todayOrders: 12,
+      todayRevenue: 8450,
+      monthOrders: 284,
+      monthRevenue: 198600,
+      totalCustomers: 1247,
+      pendingOrders: 23,
+      recentOrders: [
+        { _id: 'mock1', orderNumber: 'ORD-1001', total: 1250, status: 'confirmed', createdAt: new Date(now.getTime() - 900000), user: { name: 'Priya Sharma', phone: '+919876543210' } },
+        { _id: 'mock2', orderNumber: 'ORD-1000', total: 750,  status: 'shipped',   createdAt: new Date(now.getTime() - 3600000), user: { name: 'Rahul Gupta',  phone: '+919871234567' } },
+        { _id: 'mock3', orderNumber: 'ORD-999',  total: 2100, status: 'delivered', createdAt: new Date(now.getTime() - 7200000), user: { name: 'Anita Patel',  phone: '+919856789012' } },
+        { _id: 'mock4', orderNumber: 'ORD-998',  total: 550,  status: 'confirmed', createdAt: new Date(now.getTime() - 10800000), user: { name: 'Vijay Kumar',  phone: '+919845678901' } },
+        { _id: 'mock5', orderNumber: 'ORD-997',  total: 1800, status: 'shipped',   createdAt: new Date(now.getTime() - 14400000), user: { name: 'Sunita Reddy', phone: '+919834567890' } },
+      ],
+    };
+  }
+
+  private buildMockRevenueByDay(days: number): Array<{ date: string; revenue: number; orders: number }> {
+    const BASE = [5200,7800,6400,8900,7200,9100,11200,6800,7400,8200,6100,9500,8300,7600,10200,5900,8700,7100,9800,6500,8100,7300,10500,6700,9200,8800,7500,11000,6300,9600];
+    const result: Array<{ date: string; revenue: number; orders: number }> = [];
+    const now = new Date();
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const revenue = BASE[i % BASE.length];
+      result.push({ date: d.toISOString().split('T')[0], revenue, orders: Math.round(revenue / 650) });
+    }
+    return result;
+  }
+
   async getDashboardStats(): Promise<Record<string, unknown>> {
+    if (await this.settingsService.getMockDataEnabled()) {
+      return this.buildMockDashboardStats();
+    }
+
     const resetAt = await this.settingsService.getMetricsResetAt();
 
     const todayNominal = new Date();
@@ -357,6 +393,10 @@ export class AnalyticsService {
   }
 
   async getRevenueByDay(days: number = 30): Promise<Array<{ date: string; revenue: number; orders: number }>> {
+    if (await this.settingsService.getMockDataEnabled()) {
+      return this.buildMockRevenueByDay(days);
+    }
+
     const resetAt = await this.settingsService.getMetricsResetAt();
     const nominal = new Date();
     nominal.setDate(nominal.getDate() - days);

@@ -5,8 +5,10 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { PremiumProductCard } from '@/components/ecommerce/premium-product-card';
 import { Product, Category } from '@/types';
+import { api } from '@/lib/api';
 
 const WOOD_PRESSED_SLUGS = new Set(['wood-pressed-oils', 'wood-pressed-oil', 'cold-pressed-oils', 'cold-pressed-oil']);
 const BILONA_GHEE_SLUGS  = new Set(['bilona-ghee', 'bilona-cow-ghee', 'a2-bilona-ghee', 'ghee']);
@@ -103,13 +105,19 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
   const [selectedPill,  setSelectedPill]  = useState<PillKey>('best');
   const [visibleCount,  setVisibleCount]  = useState(INITIAL);
 
+  const { data: categoryData, isLoading: catLoading } = useQuery({
+    queryKey: ['home-category-products', selectedCatId],
+    queryFn: () => api.getProducts({ category: selectedCatId!, limit: 100, sortBy: 'totalSold', sortOrder: 'desc' }),
+    enabled: !!selectedCatId,
+    staleTime: 60_000,
+  });
+
   const allFiltered = useMemo(() => {
-    let base = safeProducts;
-    if (selectedCatId) {
-      base = base.filter((p) => getCategoryId(p.category as Category | string) === selectedCatId);
-    }
+    const base = selectedCatId
+      ? (categoryData?.items ?? [])
+      : safeProducts;
     return sortByPill(base, selectedPill);
-  }, [safeProducts, selectedCatId, selectedPill]);
+  }, [safeProducts, selectedCatId, categoryData, selectedPill]);
 
   const filtered = useMemo(() => allFiltered.slice(0, visibleCount), [allFiltered, visibleCount]);
 
@@ -121,8 +129,9 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
 
   if (safeProducts.length === 0) return null;
 
-  const under499Count = safeProducts.filter((p) => p.price <= 499).length;
-  const dealsCount    = safeProducts.filter((p) => p.compareAtPrice != null && p.compareAtPrice > p.price).length;
+  const activePool    = selectedCatId ? (categoryData?.items ?? []) : safeProducts;
+  const under499Count = activePool.filter((p) => p.price <= 499).length;
+  const dealsCount    = activePool.filter((p) => p.compareAtPrice != null && p.compareAtPrice > p.price).length;
 
   return (
     <section className="relative py-6 sm:py-10" style={{ background: '#f2ece0' }}>
@@ -277,31 +286,50 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
 
         {/* ── Product grid ─────────────────────────────────────── */}
         <AnimatePresence mode="wait">
-          <motion.div
-            key={`${selectedCatId ?? 'all'}-${selectedPill}`}
-            className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.28 }}
-          >
-            {filtered.length > 0 ? (
-              filtered.map((product, index) => (
-                <TiltCard key={product._id}>
-                  <PremiumProductCard
-                    product={product}
-                    index={index}
-                    showMostPopular={index === 0 && selectedPill === 'best' && !selectedCatId}
-                    compact
-                  />
-                </TiltCard>
-              ))
-            ) : (
-              <div className="col-span-full text-center py-12 text-sm" style={{ color: 'rgba(46,66,37,0.50)' }}>
-                No products found in this category.
-              </div>
-            )}
-          </motion.div>
+          {catLoading ? (
+            <motion.div
+              key="skeleton"
+              className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            >
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="rounded-2xl overflow-hidden bg-white animate-pulse">
+                  <div className="aspect-[4/3] bg-gradient-to-br from-amber-50 to-amber-100/60" />
+                  <div className="p-3 space-y-2">
+                    <div className="h-2.5 bg-amber-100 rounded w-16" />
+                    <div className="h-4 bg-amber-100 rounded w-3/4" />
+                    <div className="h-5 bg-amber-100 rounded w-1/3 mt-2" />
+                  </div>
+                </div>
+              ))}
+            </motion.div>
+          ) : (
+            <motion.div
+              key={`${selectedCatId ?? 'all'}-${selectedPill}`}
+              className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.28 }}
+            >
+              {filtered.length > 0 ? (
+                filtered.map((product, index) => (
+                  <TiltCard key={product._id}>
+                    <PremiumProductCard
+                      product={product}
+                      index={index}
+                      showMostPopular={index === 0 && selectedPill === 'best' && !selectedCatId}
+                      compact
+                    />
+                  </TiltCard>
+                ))
+              ) : (
+                <div className="col-span-full text-center py-12 text-sm" style={{ color: 'rgba(46,66,37,0.50)' }}>
+                  No products found in this category.
+                </div>
+              )}
+            </motion.div>
+          )}
         </AnimatePresence>
 
         {/* ── Show more + View all ──────────────────────────────── */}
