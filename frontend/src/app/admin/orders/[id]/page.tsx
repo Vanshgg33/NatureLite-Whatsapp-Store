@@ -3,7 +3,7 @@
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, FileText } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -49,11 +49,19 @@ export default function AdminOrderDetailPage() {
         title={`Order ${order.orderNumber}`}
         description={formatDate(order.createdAt)}
         action={
-          <Link href="/admin/orders">
-            <Button variant="outline">
-              <ArrowLeft className="mr-2 h-4 w-4" /> Back
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => window.open(`/invoice/${orderId}`, '_blank')}
+            >
+              <FileText className="mr-2 h-4 w-4" /> Generate GST Invoice
             </Button>
-          </Link>
+            <Link href="/admin/orders">
+              <Button variant="outline">
+                <ArrowLeft className="mr-2 h-4 w-4" /> Back
+              </Button>
+            </Link>
+          </div>
         }
       />
 

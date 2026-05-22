@@ -4,8 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { isAxiosError } from 'axios';
 import { api } from '@/lib/api';
+import { getApiError } from '@/lib/api-error';
 import type { RazorpayCheckoutResponse } from '@/types';
 
 export default function WhatsAppPayPage() {
@@ -103,10 +103,7 @@ export default function WhatsAppPayPage() {
       rzp.open();
       setLoading(false);
     } catch (e) {
-      const msg = isAxiosError(e)
-        ? String(e.response?.data?.message ?? '')
-        : '';
-      setError(msg || 'Could not start payment. The link may have expired.');
+      setError(getApiError(e, 'Could not start payment. The link may have expired.'));
       setLoading(false);
     }
   }, [orderId, token]);

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Leaf, Eye, EyeOff, Phone, Mail, ArrowRight } from 'lucide-react';
@@ -16,9 +16,21 @@ type LoginMethod = 'email' | 'phone';
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { setCustomer, updateCustomer, setTokens, lastVisitedPage } = useCustomerStore();
   const { syncWithServer: syncCart } = useCartStore();
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (searchParams.get('session') === 'expired') {
+      toast({
+        title: 'Session expired',
+        description: 'Please log in again to continue.',
+        variant: 'destructive',
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Login method toggle
   const [loginMethod, setLoginMethod] = useState<LoginMethod>('email');

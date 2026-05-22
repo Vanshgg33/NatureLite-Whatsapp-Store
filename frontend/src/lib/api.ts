@@ -63,6 +63,8 @@ import {
   RemoteCatalog,
   UcmDashboardSnapshot,
   UcmSyncSummary,
+  RawMaterial,
+  RawMaterialPrefill,
 } from '@/types';
 
 // Backend API base URL. Set via NEXT_PUBLIC_API_URL in environment.
@@ -208,10 +210,22 @@ class ApiClient {
             }
             const onAdminLogin = path === '/admin-login' || path.startsWith('/admin-login');
             const onDeptLogin = path === '/department-login' || path.startsWith('/department-login');
+            const onCustomerLogin = path === '/login' || path.startsWith('/login');
             if (path.startsWith('/admin') && !onAdminLogin) {
               window.location.assign('/admin-login');
             } else if (path.startsWith('/department') && !onDeptLogin) {
               window.location.assign('/department-login');
+            } else if (
+              !onCustomerLogin &&
+              (path.startsWith('/account') || path.startsWith('/checkout') || path.startsWith('/pay'))
+            ) {
+              try {
+                const { useCustomerStore } = await import('./customer-store');
+                useCustomerStore.getState().logout();
+              } catch {
+                // ignore
+              }
+              window.location.assign('/login?session=expired');
             }
           }
         }
@@ -1184,6 +1198,41 @@ class ApiClient {
 
   async getLowStockByStore(storeId: string): Promise<StoreStockItem[]> {
     const response = await this.client.get<ApiResponse<StoreStockItem[]>>(`/store-stock/store/${storeId}/low-stock`);
+    return response.data.data;
+  }
+
+  async getStockAnalytics(storeId: string, params?: { date?: string }): Promise<{ date?: string; items?: unknown[]; dates?: string[] }> {
+    const response = await this.client.get<ApiResponse<{ date?: string; items?: unknown[]; dates?: string[] }>>(`/store-stock/store/${storeId}/analytics`, { params });
+    return response.data.data;
+  }
+
+  // ==================== RAW MATERIALS ====================
+  async getRawMaterials(storeId: string, params?: { search?: string }): Promise<RawMaterial[]> {
+    const response = await this.client.get<ApiResponse<RawMaterial[]>>(`/raw-materials/store/${storeId}`, { params });
+    return response.data.data;
+  }
+
+  async createRawMaterial(data: { storeId: string; name: string; unit?: string; noOfPackets?: number; maxLevel?: number }): Promise<RawMaterial> {
+    const response = await this.client.post<ApiResponse<RawMaterial>>('/raw-materials', data);
+    return response.data.data;
+  }
+
+  async getRawMaterialPrefill(id: string): Promise<RawMaterialPrefill> {
+    const response = await this.client.get<ApiResponse<RawMaterialPrefill>>(`/raw-materials/${id}/prefill`);
+    return response.data.data;
+  }
+
+  async upsertRawMaterialEntry(id: string, data: { openingStock: number; stockIn: number; processed: number }): Promise<RawMaterial> {
+    const response = await this.client.put<ApiResponse<RawMaterial>>(`/raw-materials/${id}/entry`, data);
+    return response.data.data;
+  }
+
+  async deleteRawMaterial(id: string): Promise<void> {
+    await this.client.delete(`/raw-materials/${id}`);
+  }
+
+  async getRawMaterialAnalytics(storeId: string, params?: { date?: string }): Promise<{ date?: string; items?: unknown[]; dates?: string[] }> {
+    const response = await this.client.get<ApiResponse<{ date?: string; items?: unknown[]; dates?: string[] }>>(`/raw-materials/store/${storeId}/analytics`, { params });
     return response.data.data;
   }
 

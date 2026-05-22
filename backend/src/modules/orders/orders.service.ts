@@ -394,7 +394,7 @@ export class OrdersService implements OnModuleInit {
         paymentGatewayAmount: paymentGatewayAmountPaise,
         total,
         notes: dto.notes,
-        metadata: idem ? { idempotencyKey: idem, requestHash } : {},
+        metadata: idem ? { idempotencyKey: idem, requestHash } : undefined,
         timeline: [
           {
             status: 'placed',

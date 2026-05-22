@@ -2060,15 +2060,20 @@ export class ChatbotService {
     }
     const { name, street, city, state, pincode, landmark } = parsed;
 
-    // Coverage check — empty allowlist means "deliver anywhere" so this is
-    // a no-op until the merchant actually populates SERVICEABLE_PINCODES.
+    // Coverage check — fall back to prefix list when env var is unpopulated.
     const serviceable = this.configService.get<string[]>('delivery.serviceablePincodes') ?? [];
-    if (serviceable.length > 0 && !serviceable.includes(pincode)) {
+    const SERVICEABLE_PREFIXES = ['492', '490', '491', '495'];
+    const isServiceable =
+      serviceable.length > 0
+        ? serviceable.includes(pincode)
+        : SERVICEABLE_PREFIXES.some((prefix) => pincode.startsWith(prefix));
+    if (!isServiceable) {
       await this.whatsappService.sendTextMessage({
         phone,
         message:
-          `${bold('We don’t deliver to ' + pincode + ' yet.')}\n\n` +
-          'Send a different address, or reach out to support if you’d like us to add your area.',
+          `${bold('We don\u2019t deliver to ' + pincode + ' yet.')}\n\n` +
+          'We currently deliver to *Raipur, Bhilai, Durg & Bilaspur* (Chhattisgarh).\n' +
+          'Send a different address, or reply *support* to reach our team.',
       });
       return;
     }

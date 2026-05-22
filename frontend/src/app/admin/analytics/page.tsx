@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
@@ -15,6 +15,10 @@ import {
   TrendingDown,
   Package,
   CreditCard,
+  Warehouse,
+  ChevronDown,
+  Loader2,
+  FlaskConical,
 } from 'lucide-react';
 import {
   ComposedChart,
@@ -35,9 +39,18 @@ import {
 import { Header } from '@/components/layout/header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { formatCurrency, getProductTotalStock } from '@/lib/utils';
-import type { RevenueDataPoint, ProductAnalytics, OrderAnalytics, Product, CustomerAnalytics } from '@/types';
+import { useAdminAuthStore } from '@/lib/admin-store';
+import type { RevenueDataPoint, ProductAnalytics, OrderAnalytics, Product, CustomerAnalytics, StockSnapshotItem, RawMaterialDailyItem, Store } from '@/types';
 
 const TOOLTIP_STYLE = {
   backgroundColor: '#fff',
@@ -50,8 +63,33 @@ const TOOLTIP_STYLE = {
 
 const PAYMENT_COLORS = ['#2F6B47', '#E8A838', '#3B82F6', '#8B5CF6', '#06B6D4', '#6B7280'];
 
+function formatDateLocal(dateStr: string) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-IN', {
+    day: 'numeric', month: 'short', year: 'numeric',
+  });
+}
+
+function formatDateLocalLong(dateStr: string) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-IN', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
+}
+
 export default function AnalyticsPage() {
   const [days, setDays] = useState(30);
+  const [stockTab, setStockTab] = useState(false);
+  const [selectedStockDate, setSelectedStockDate] = useState<string>('');
+  const [stockStoreId, setStockStoreId] = useState<string>('');
+  const [rawTab, setRawTab] = useState(false);
+  const [selectedRawDate, setSelectedRawDate] = useState<string>('');
+  const [rawStoreId, setRawStoreId] = useState<string>('');
+  const { user } = useAdminAuthStore();
+
+  const isSuperadmin = user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
+  const defaultStoreId = user?.storeId || '';
+
   const today = new Date().toISOString().split('T')[0];
   const startDate = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
 
@@ -83,6 +121,81 @@ export default function AnalyticsPage() {
   const { data: lowStockProducts } = useQuery({
     queryKey: ['low-stock'],
     queryFn: () => api.getLowStockProducts(),
+  });
+
+  const { data: stores = [] } = useQuery<Store[]>({
+    queryKey: ['stores'],
+    queryFn: () => api.getStores(),
+    enabled: isSuperadmin && stockTab,
+  });
+
+  const activeStockStoreId = isSuperadmin ? stockStoreId : defaultStoreId;
+
+  useEffect(() => {
+    if (isSuperadmin && stores.length > 0 && !stockStoreId) {
+      setStockStoreId(stores[0]._id);
+    }
+  }, [stores, isSuperadmin, stockStoreId]);
+
+  const { data: stockAnalyticsDates, isLoading: datesLoading } = useQuery({
+    queryKey: ['stock-analytics-dates', activeStockStoreId],
+    queryFn: () => api.getStockAnalytics(activeStockStoreId),
+    enabled: !!activeStockStoreId && stockTab,
+  });
+
+  useEffect(() => {
+    if (stockAnalyticsDates?.dates && stockAnalyticsDates.dates.length > 0 && !selectedStockDate) {
+      setSelectedStockDate(stockAnalyticsDates.dates[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stockAnalyticsDates?.dates?.length]);
+
+  useEffect(() => {
+    setSelectedStockDate('');
+  }, [activeStockStoreId]);
+
+  const { data: stockAnalyticsDay, isLoading: dayLoading } = useQuery({
+    queryKey: ['stock-analytics-day', activeStockStoreId, selectedStockDate],
+    queryFn: () => api.getStockAnalytics(activeStockStoreId, { date: selectedStockDate }),
+    enabled: !!activeStockStoreId && !!selectedStockDate,
+  });
+
+  // Raw Materials analytics
+  const activeRawStoreId = isSuperadmin ? rawStoreId : defaultStoreId;
+
+  const { data: rawStores = [] } = useQuery<Store[]>({
+    queryKey: ['stores-for-analytics'],
+    queryFn: () => api.getStores(),
+    enabled: isSuperadmin && rawTab,
+  });
+
+  useEffect(() => {
+    if (isSuperadmin && rawStores.length > 0 && !rawStoreId) {
+      setRawStoreId(rawStores[0]._id);
+    }
+  }, [rawStores, isSuperadmin, rawStoreId]);
+
+  const { data: rawAnalyticsDates, isLoading: rawDatesLoading } = useQuery({
+    queryKey: ['raw-analytics-dates', activeRawStoreId],
+    queryFn: () => api.getRawMaterialAnalytics(activeRawStoreId),
+    enabled: !!activeRawStoreId && rawTab,
+  });
+
+  useEffect(() => {
+    if (rawAnalyticsDates?.dates && rawAnalyticsDates.dates.length > 0 && !selectedRawDate) {
+      setSelectedRawDate(rawAnalyticsDates.dates[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawAnalyticsDates?.dates?.length]);
+
+  useEffect(() => {
+    setSelectedRawDate('');
+  }, [activeRawStoreId]);
+
+  const { data: rawAnalyticsDay, isLoading: rawDayLoading } = useQuery({
+    queryKey: ['raw-analytics-day', activeRawStoreId, selectedRawDate],
+    queryFn: () => api.getRawMaterialAnalytics(activeRawStoreId, { date: selectedRawDate }),
+    enabled: !!activeRawStoreId && !!selectedRawDate,
   });
 
   // Compute period-over-period comparison
@@ -779,6 +892,330 @@ export default function AnalyticsPage() {
             </Card>
           </motion.div>
         </div>
+        {/* Stock Analytics */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+        >
+          <Card className="rounded-2xl shadow-sm overflow-hidden">
+            <CardHeader
+              className="flex flex-row items-center justify-between cursor-pointer select-none hover:bg-gray-50/60 transition-colors"
+              onClick={() => setStockTab(!stockTab)}
+            >
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-xl bg-blue-50 flex items-center justify-center">
+                  <Warehouse className="h-4.5 w-4.5 text-blue-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-base font-semibold">Product Stock History</CardTitle>
+                  <p className="text-xs text-muted-foreground font-normal mt-0.5">Day-wise snapshot</p>
+                </div>
+              </div>
+              <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform duration-200 ${stockTab ? 'rotate-180' : ''}`} />
+            </CardHeader>
+
+            {stockTab && (
+              <CardContent className="space-y-5 pt-2">
+                {/* Store + Date selectors */}
+                <div className="flex flex-wrap items-end gap-3">
+                  {isSuperadmin && stores.length > 0 && (
+                    <div className="w-52">
+                      <label className="text-xs font-medium text-gray-500 mb-1.5 block uppercase tracking-wide">Store</label>
+                      <Select value={stockStoreId} onValueChange={(v) => setStockStoreId(v)}>
+                        <SelectTrigger className="h-9 bg-white">
+                          <SelectValue placeholder="Select store" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {stores.filter((s) => s._id).map((store) => (
+                            <SelectItem key={store._id} value={store._id}>
+                              {store.name} {store.isMainStore ? '(Main)' : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  {stockAnalyticsDates?.dates && stockAnalyticsDates.dates.length > 0 && (
+                    <div className="w-52">
+                      <label className="text-xs font-medium text-gray-500 mb-1.5 block uppercase tracking-wide">Date</label>
+                      <Select value={selectedStockDate} onValueChange={setSelectedStockDate}>
+                        <SelectTrigger className="h-9 bg-white">
+                          <SelectValue placeholder="Select date" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {stockAnalyticsDates.dates.map((date) => (
+                            <SelectItem key={date} value={date}>{formatDateLocal(date)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+
+                {datesLoading ? (
+                  <div className="space-y-2 py-2">
+                    {[1, 2, 3].map((i) => <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" />)}
+                  </div>
+                ) : !activeStockStoreId ? (
+                  <div className="flex flex-col items-center justify-center py-10 text-center">
+                    <Warehouse className="h-10 w-10 text-gray-200 mb-3" />
+                    <p className="text-sm text-gray-400">Select a store to view stock history</p>
+                  </div>
+                ) : !stockAnalyticsDates?.dates || stockAnalyticsDates.dates.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-10 text-center">
+                    <Warehouse className="h-10 w-10 text-gray-200 mb-3" />
+                    <p className="text-sm font-medium text-gray-500">No stock history yet</p>
+                    <p className="text-xs text-gray-400 mt-1">Stock updates will appear here day-wise.</p>
+                  </div>
+                ) : selectedStockDate ? (
+                  <>
+                    <div className="flex items-center justify-between py-2 border-t">
+                      <p className="text-sm font-semibold text-gray-800">{formatDateLocalLong(selectedStockDate)}</p>
+                      <Badge variant="secondary" className="rounded-full text-xs">
+                        {(stockAnalyticsDay?.items as StockSnapshotItem[])?.length ?? 0} products
+                      </Badge>
+                    </div>
+
+                    {dayLoading ? (
+                      <div className="space-y-2">
+                        {[1, 2, 3].map((i) => <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" />)}
+                      </div>
+                    ) : !stockAnalyticsDay?.items || (stockAnalyticsDay.items as StockSnapshotItem[]).length === 0 ? (
+                      <p className="text-sm text-gray-400 py-4 text-center">No data for this date.</p>
+                    ) : (
+                      <div className="overflow-x-auto rounded-xl border">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-gray-50 border-b">
+                              <th className="text-left px-4 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">Product</th>
+                              <th className="text-left px-3 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">SKU</th>
+                              <th className="text-right px-3 py-3 font-semibold text-emerald-600 text-xs uppercase tracking-wide">Stock In</th>
+                              <th className="text-right px-3 py-3 font-semibold text-blue-500 text-xs uppercase tracking-wide">Returned</th>
+                              <th className="text-right px-3 py-3 font-semibold text-amber-500 text-xs uppercase tracking-wide">Damaged</th>
+                              <th className="text-right px-3 py-3 font-semibold text-red-500 text-xs uppercase tracking-wide">Sale Log</th>
+                              <th className="text-right px-4 py-3 font-semibold text-gray-700 text-xs uppercase tracking-wide">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {(stockAnalyticsDay.items as StockSnapshotItem[]).map((item) => (
+                              <tr key={item._id} className="hover:bg-gray-50/60 transition-colors">
+                                <td className="px-4 py-3.5 font-semibold text-gray-900">{item.productName || '—'}</td>
+                                <td className="px-3 py-3.5 font-mono text-gray-400 text-xs">{item.productSku || '—'}</td>
+                                <td className="px-3 py-3.5 text-right">
+                                  {item.stockInDelta > 0
+                                    ? <span className="text-emerald-600 font-semibold">+{item.stockInDelta}</span>
+                                    : <span className="text-gray-300">—</span>}
+                                </td>
+                                <td className="px-3 py-3.5 text-right">
+                                  {item.returnedDelta > 0
+                                    ? <span className="text-blue-500 font-semibold">+{item.returnedDelta}</span>
+                                    : <span className="text-gray-300">—</span>}
+                                </td>
+                                <td className="px-3 py-3.5 text-right">
+                                  {item.damagedDelta > 0
+                                    ? <span className="text-amber-500 font-semibold">+{item.damagedDelta}</span>
+                                    : <span className="text-gray-300">—</span>}
+                                </td>
+                                <td className="px-3 py-3.5 text-right">
+                                  {item.saleLogDelta > 0
+                                    ? <span className="text-red-500 font-semibold">−{item.saleLogDelta}</span>
+                                    : <span className="text-gray-300">—</span>}
+                                </td>
+                                <td className="px-4 py-3.5 text-right">
+                                  <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-xs font-bold min-w-[40px] ${
+                                    item.totalStock <= 0
+                                      ? 'bg-red-100 text-red-700 ring-1 ring-red-200'
+                                      : item.totalStock < 10
+                                      ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-200'
+                                      : 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200'
+                                  }`}>{item.totalStock}</span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </>
+                ) : null}
+              </CardContent>
+            )}
+          </Card>
+        </motion.div>
+
+        {/* Raw Materials Analytics */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.65 }}
+        >
+          <Card className="rounded-2xl shadow-sm overflow-hidden">
+            <CardHeader
+              className="flex flex-row items-center justify-between cursor-pointer select-none hover:bg-gray-50/60 transition-colors"
+              onClick={() => setRawTab(!rawTab)}
+            >
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-xl bg-amber-50 flex items-center justify-center">
+                  <FlaskConical className="h-4.5 w-4.5 text-amber-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-base font-semibold">Raw Materials History</CardTitle>
+                  <p className="text-xs text-muted-foreground font-normal mt-0.5">Day-wise entries</p>
+                </div>
+              </div>
+              <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform duration-200 ${rawTab ? 'rotate-180' : ''}`} />
+            </CardHeader>
+
+            {rawTab && (
+              <CardContent className="space-y-5 pt-2">
+                {/* Store + Date selectors */}
+                <div className="flex flex-wrap items-end gap-3">
+                  {isSuperadmin && rawStores.length > 0 && (
+                    <div className="w-52">
+                      <label className="text-xs font-medium text-gray-500 mb-1.5 block uppercase tracking-wide">Store</label>
+                      <Select value={rawStoreId} onValueChange={(v) => setRawStoreId(v)}>
+                        <SelectTrigger className="h-9 bg-white">
+                          <SelectValue placeholder="Select store" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {rawStores.filter((s) => s._id).map((store) => (
+                            <SelectItem key={store._id} value={store._id}>
+                              {store.name} {store.isMainStore ? '(Main)' : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  {rawAnalyticsDates?.dates && rawAnalyticsDates.dates.length > 0 && (
+                    <div className="w-52">
+                      <label className="text-xs font-medium text-gray-500 mb-1.5 block uppercase tracking-wide">Date</label>
+                      <Select value={selectedRawDate} onValueChange={setSelectedRawDate}>
+                        <SelectTrigger className="h-9 bg-white">
+                          <SelectValue placeholder="Select date" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {rawAnalyticsDates.dates.map((date) => (
+                            <SelectItem key={date} value={date}>{formatDateLocal(date)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+
+                {rawDatesLoading ? (
+                  <div className="space-y-2 py-2">
+                    {[1, 2, 3].map((i) => <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" />)}
+                  </div>
+                ) : !activeRawStoreId ? (
+                  <div className="flex flex-col items-center justify-center py-10 text-center">
+                    <FlaskConical className="h-10 w-10 text-gray-200 mb-3" />
+                    <p className="text-sm text-gray-400">Select a store to view raw material history</p>
+                  </div>
+                ) : !rawAnalyticsDates?.dates || rawAnalyticsDates.dates.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-10 text-center">
+                    <FlaskConical className="h-10 w-10 text-gray-200 mb-3" />
+                    <p className="text-sm font-medium text-gray-500">No raw material history yet</p>
+                    <p className="text-xs text-gray-400 mt-1">Daily entries will appear here once logged.</p>
+                  </div>
+                ) : selectedRawDate ? (
+                  <>
+                    <div className="flex items-center justify-between py-2 border-t">
+                      <p className="text-sm font-semibold text-gray-800">{formatDateLocalLong(selectedRawDate)}</p>
+                      <Badge variant="secondary" className="rounded-full text-xs">
+                        {(rawAnalyticsDay?.items as RawMaterialDailyItem[])?.length ?? 0} materials
+                      </Badge>
+                    </div>
+
+                    {rawDayLoading ? (
+                      <div className="space-y-2">
+                        {[1, 2, 3].map((i) => <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" />)}
+                      </div>
+                    ) : !rawAnalyticsDay?.items || (rawAnalyticsDay.items as RawMaterialDailyItem[]).length === 0 ? (
+                      <p className="text-sm text-gray-400 py-4 text-center">No entries for this date.</p>
+                    ) : (() => {
+                      const items = rawAnalyticsDay.items as RawMaterialDailyItem[];
+                      const totalStockIn = items.reduce((s, i) => s + i.stockIn, 0);
+                      const totalProcessed = items.reduce((s, i) => s + i.processed, 0);
+                      const totalClosing = items.reduce((s, i) => s + i.closing, 0);
+                      return (
+                        <div className="space-y-4">
+                          {/* Summary stats */}
+                          <div className="grid grid-cols-3 gap-3">
+                            <div className="bg-emerald-50 rounded-xl border border-emerald-100 px-4 py-3">
+                              <p className="text-xs text-emerald-600 font-medium mb-1">Total Stock In</p>
+                              <p className="text-xl font-bold text-emerald-700">+{totalStockIn}</p>
+                            </div>
+                            <div className="bg-orange-50 rounded-xl border border-orange-100 px-4 py-3">
+                              <p className="text-xs text-orange-600 font-medium mb-1">Total Processed</p>
+                              <p className="text-xl font-bold text-orange-600">−{totalProcessed}</p>
+                            </div>
+                            <div className={`rounded-xl border px-4 py-3 ${totalClosing <= 0 ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-100'}`}>
+                              <p className={`text-xs font-medium mb-1 ${totalClosing <= 0 ? 'text-red-500' : 'text-gray-500'}`}>Total Closing</p>
+                              <p className={`text-xl font-bold ${totalClosing <= 0 ? 'text-red-600' : 'text-gray-800'}`}>{totalClosing}</p>
+                            </div>
+                          </div>
+
+                          {/* Table */}
+                          <div className="overflow-x-auto rounded-xl border">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="bg-gray-50 border-b">
+                                  <th className="text-left px-4 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">Material</th>
+                                  <th className="text-center px-3 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">Unit</th>
+                                  <th className="text-center px-3 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">Opening</th>
+                                  <th className="text-center px-3 py-3 font-semibold text-emerald-600 text-xs uppercase tracking-wide">Stock In</th>
+                                  <th className="text-center px-3 py-3 font-semibold text-orange-500 text-xs uppercase tracking-wide">Processed</th>
+                                  <th className="text-center px-4 py-3 font-semibold text-gray-700 text-xs uppercase tracking-wide">Closing</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {items.map((item) => {
+                                  const closing = item.closing;
+                                  const badge = closing <= 0
+                                    ? 'bg-red-100 text-red-700 ring-1 ring-red-200'
+                                    : closing < 10
+                                    ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-200'
+                                    : 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200';
+                                  return (
+                                    <tr key={item._id} className="hover:bg-gray-50/60 transition-colors">
+                                      <td className="px-4 py-3.5">
+                                        <p className="font-semibold text-gray-900">{item.materialName || '—'}</p>
+                                      </td>
+                                      <td className="px-3 py-3.5 text-center text-gray-400 text-xs">{item.materialUnit || '—'}</td>
+                                      <td className="px-3 py-3.5 text-center font-medium text-gray-600">{item.openingStock}</td>
+                                      <td className="px-3 py-3.5 text-center">
+                                        {item.stockIn > 0
+                                          ? <span className="font-semibold text-emerald-600">+{item.stockIn}</span>
+                                          : <span className="text-gray-300">—</span>}
+                                      </td>
+                                      <td className="px-3 py-3.5 text-center">
+                                        {item.processed > 0
+                                          ? <span className="font-semibold text-orange-500">−{item.processed}</span>
+                                          : <span className="text-gray-300">—</span>}
+                                      </td>
+                                      <td className="px-4 py-3.5 text-center">
+                                        <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-xs font-bold min-w-[44px] ${badge}`}>
+                                          {closing}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </>
+                ) : null}
+              </CardContent>
+            )}
+          </Card>
+        </motion.div>
       </div>
     </div>
   );

@@ -27,6 +27,18 @@ export class StoreStock {
   @Prop({ default: 0 })
   stock: number;
 
+  @Prop({ default: 0 })
+  stockIn: number;
+
+  @Prop({ default: 0 })
+  returned: number;
+
+  @Prop({ default: 0 })
+  damaged: number;
+
+  @Prop({ default: 0 })
+  saleLog: number;
+
   @Prop({ type: [VariantStockSchema], default: [] })
   variantStocks: VariantStock[];
 

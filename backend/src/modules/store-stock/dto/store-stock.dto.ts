@@ -12,7 +12,28 @@ export class SetStoreStockDto {
 
   @IsNumber()
   @Min(0)
-  stock: number;
+  @IsOptional()
+  stock?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  stockInDelta?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  returnedDelta?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  damagedDelta?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  saleLogDelta?: number;
 
   @IsString()
   @IsOptional()
@@ -47,6 +68,20 @@ export class BulkSetStockDto {
   @ValidateNested({ each: true })
   @Type(() => BulkStockItemDto)
   items: BulkStockItemDto[];
+}
+
+export class StockAnalyticsQueryDto {
+  @IsString()
+  @IsOptional()
+  date?: string;
+
+  @IsString()
+  @IsOptional()
+  startDate?: string;
+
+  @IsString()
+  @IsOptional()
+  endDate?: string;
 }
 
 export class StockQueryDto {

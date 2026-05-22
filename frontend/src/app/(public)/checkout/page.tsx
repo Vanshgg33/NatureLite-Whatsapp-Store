@@ -17,9 +17,13 @@ import { useCustomerStore } from '@/lib/customer-store';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
+import { getApiError } from '@/lib/api-error';
 import type { PaymentMethod, CreateOrderDto, GuestCreateOrderDto, WalletBalance } from '@/types';
 
 import type { RazorpayCheckoutResponse } from '@/types';
+
+// Serviceable pincode prefixes — must match backend SERVICEABLE_PINCODE_PREFIXES in orders.service.ts
+const SERVICEABLE_PREFIXES = ['492', '490', '491', '495'];
 
 const checkoutSchema = z.object({
   name: z.string().min(2, 'Name is required'),
@@ -28,7 +32,14 @@ const checkoutSchema = z.object({
   street: z.string().min(5, 'Street address is required'),
   city: z.string().min(2, 'City is required'),
   state: z.string().min(2, 'State is required'),
-  pincode: z.string().min(6, 'Valid pincode is required'),
+  pincode: z
+    .string()
+    .min(6, 'Valid pincode is required')
+    .regex(/^\d{6}$/, 'Pincode must be exactly 6 digits')
+    .refine(
+      (val) => SERVICEABLE_PREFIXES.some((p) => val.startsWith(p)),
+      'Sorry, we currently deliver only to Raipur, Bhilai, Durg & Bilaspur (Chhattisgarh).',
+    ),
   landmark: z.string().optional(),
   saveAddress: z.boolean().optional(),
 });
@@ -95,6 +106,7 @@ export default function CheckoutPage() {
     formState: { errors },
     setValue,
     getValues,
+    trigger,
   } = useForm<CheckoutFormData>({
     resolver: zodResolver(checkoutSchema),
     defaultValues: {
@@ -121,21 +133,21 @@ export default function CheckoutPage() {
 
   const handlePincodeBlur = (value: string) => {
     const trimmed = value.trim();
-    if (trimmed.length < 3) return;
+    // Trigger Zod validation immediately so serviceability error shows on blur,
+    // not only on form submit.
+    if (trimmed.length === 6) {
+      void trigger('pincode');
+    }
 
+    if (trimmed.length < 3) return;
     const match = PINCODE_CITY_STATE.find((entry) => trimmed.startsWith(entry.prefix));
     if (!match) return;
 
     // Only auto-fill if fields are empty to avoid overwriting user edits
     const currentCity = (getValues('city') || '').trim();
     const currentState = (getValues('state') || '').trim();
-
-    if (!currentCity) {
-      setValue('city', match.city);
-    }
-    if (!currentState) {
-      setValue('state', match.state);
-    }
+    if (!currentCity) setValue('city', match.city);
+    if (!currentState) setValue('state', match.state);
   };
 
   const formatPrice = (price: number) => {
@@ -312,20 +324,13 @@ export default function CheckoutPage() {
         router.push('/');
       }
     } catch (error: unknown) {
-      let errorMessage = 'Failed to place order. Please try again.';
-      if (error && typeof error === 'object' && 'response' in error) {
-        const ax = error as { response?: { data?: { message?: string } } };
-        const msg = ax.response?.data?.message ?? '';
-        if (typeof msg === 'string' && /insufficient wallet balance/i.test(msg)) {
-          errorMessage = 'Wallet balance may have changed. Please review the amount and try again.';
-        } else if (msg) {
-          errorMessage = msg;
-        }
-      } else if (error instanceof Error) {
-        errorMessage = error.message;
-      }
+      const raw = error as { response?: { data?: { message?: string } } };
+      const backendMsg = raw?.response?.data?.message ?? '';
+      const errorMessage = /insufficient wallet balance/i.test(backendMsg)
+        ? 'Wallet balance may have changed. Please review the amount and try again.'
+        : getApiError(error, 'Failed to place order. Please try again.');
       toast({
-        title: 'Error',
+        title: 'Order failed',
         description: errorMessage,
         variant: 'destructive',
       });
@@ -496,9 +501,15 @@ export default function CheckoutPage() {
                         onBlur: (e) => handlePincodeBlur(e.target.value),
                       })}
                       className={cn(errors.pincode && 'border-brand-error')}
+                      maxLength={6}
+                      placeholder="6-digit pincode"
                     />
-                    {errors.pincode && (
+                    {errors.pincode ? (
                       <p className="text-xs text-brand-error mt-1">{errors.pincode.message}</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        We deliver to Raipur, Bhilai, Durg &amp; Bilaspur (Chhattisgarh)
+                      </p>
                     )}
                   </div>
                   <div className="sm:col-span-2">

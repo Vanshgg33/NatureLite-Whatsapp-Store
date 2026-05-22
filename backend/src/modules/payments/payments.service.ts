@@ -190,6 +190,26 @@ export class PaymentsService {
       throw new BadRequestException('Invalid payment signature');
     }
 
+    // Fetch the payment from Razorpay to confirm it is actually captured and
+    // that the order_id on the Razorpay side matches what the client sent.
+    // Signature alone only proves the two IDs belong together; it does not
+    // confirm the payment was captured (vs. just authorized) or that the
+    // amount matches the order amount stored in our DB.
+    const razorpay = this.getRazorpayOrThrow();
+    let rzpPayment: RazorpayFetchedPayment;
+    try {
+      rzpPayment = await razorpay.payments.fetch(data.razorpay_payment_id);
+    } catch (err) {
+      throw new BadRequestException('Could not verify payment with gateway');
+    }
+
+    if (rzpPayment.order_id !== data.razorpay_order_id) {
+      throw new BadRequestException('Payment does not belong to this order');
+    }
+    if (rzpPayment.status !== 'captured' && rzpPayment.status !== 'authorized') {
+      throw new BadRequestException(`Payment not captured (status: ${rzpPayment.status})`);
+    }
+
     const existingPayment = await this.paymentRepository.findOneByGatewayOrderId(data.razorpay_order_id);
     if (existingPayment) {
       // Bind verification to the authenticated user.
@@ -201,6 +221,18 @@ export class PaymentsService {
       const order = await this.orderRepository.findById(existingPayment.order);
       if (order?.status === 'cancelled') {
         throw new BadRequestException('Order is cancelled; payment cannot be applied');
+      }
+
+      // Verify that the captured amount matches what we expect for this order.
+      const expectedPaise =
+        typeof order?.paymentGatewayAmount === 'number' && order.paymentGatewayAmount > 0
+          ? order.paymentGatewayAmount
+          : Math.round((order?.total ?? 0) * 100);
+      if (expectedPaise > 0 && rzpPayment.amount !== expectedPaise) {
+        this.logger.error(
+          `Amount mismatch on verifyPayment: expected=${expectedPaise} captured=${rzpPayment.amount} order=${order?._id?.toString()}`,
+        );
+        throw new BadRequestException('Payment amount does not match order amount');
       }
     }
 
@@ -766,6 +798,14 @@ export class PaymentsService {
 
 type RazorpayOrderCreateResult = { id: string; amount: number; currency: string };
 
+type RazorpayFetchedPayment = {
+  id: string;
+  order_id: string;
+  amount: number;
+  currency: string;
+  status: 'created' | 'authorized' | 'captured' | 'refunded' | 'failed';
+};
+
 type RazorpayClient = {
   orders: {
     create(input: {
@@ -776,6 +816,7 @@ type RazorpayClient = {
     }): Promise<RazorpayOrderCreateResult>;
   };
   payments: {
+    fetch(paymentId: string): Promise<RazorpayFetchedPayment>;
     refund(
       paymentId: string,
       input: { amount: number; notes: { reason: string } },

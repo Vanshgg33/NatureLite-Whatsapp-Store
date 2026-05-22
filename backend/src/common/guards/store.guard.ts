@@ -21,11 +21,9 @@ export class StoreGuard implements CanActivate {
       throw new ForbiddenException('You can only access your own store');
     }
 
-    // If the endpoint has no storeId param, block store-scoped admins
-    // (they should only access store-scoped endpoints)
-    if (!storeIdParam) {
-      throw new ForbiddenException('You can only access your own store resources');
-    }
+    // No storeId param — this is an ID-only route (e.g. /:id/entry).
+    // Store ownership is verified inside the service after the record is fetched.
+    if (!storeIdParam) return true;
 
     return true;
   }

@@ -21,6 +21,9 @@ export class CartItem {
   name: string;
 
   @Prop()
+  slug?: string;
+
+  @Prop()
   image?: string;
 
   @Prop()

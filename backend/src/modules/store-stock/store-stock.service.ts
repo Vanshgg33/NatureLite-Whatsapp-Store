@@ -2,13 +2,17 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { Types, ClientSession } from 'mongoose';
 import { StoreStock } from './schemas/store-stock.schema';
 import { StoreStockRepository } from './repositories/store-stock.repository';
-import { SetStoreStockDto, BulkSetStockDto, StockQueryDto } from './dto/store-stock.dto';
+import { StockSnapshotRepository } from './repositories/stock-snapshot.repository';
+import { SetStoreStockDto, BulkSetStockDto, StockQueryDto, StockAnalyticsQueryDto } from './dto/store-stock.dto';
 import { PaginatedResult } from '../../common/types/pagination.types';
 import { parseObjectId } from '../../common/utils/objectid.util';
 
 @Injectable()
 export class StoreStockService {
-  constructor(private readonly storeStockRepository: StoreStockRepository) {}
+  constructor(
+    private readonly storeStockRepository: StoreStockRepository,
+    private readonly stockSnapshotRepository: StockSnapshotRepository,
+  ) {}
 
   async getStockByStore(
     storeId: string,
@@ -48,17 +52,24 @@ export class StoreStockService {
     const storeObjId = parseObjectId(dto.storeId, 'storeId');
     const productObjId = parseObjectId(dto.productId, 'productId');
 
+    const stockInDelta = dto.stockInDelta ?? 0;
+    const returnedDelta = dto.returnedDelta ?? 0;
+    const damagedDelta = dto.damagedDelta ?? 0;
+    const saleLogDelta = dto.saleLogDelta ?? 0;
+    const hasDeltaUpdate = stockInDelta > 0 || returnedDelta > 0 || damagedDelta > 0 || saleLogDelta > 0;
+
     if (dto.variantSku) {
       let storeStock = await this.storeStockRepository.findOneByStoreAndProduct(
         storeObjId,
         productObjId,
       );
+      const variantStock = dto.stock ?? 0;
       if (!storeStock) {
         storeStock = await this.storeStockRepository.create({
           store: storeObjId,
           product: productObjId,
           stock: 0,
-          variantStocks: [{ variantSku: dto.variantSku, stock: dto.stock }],
+          variantStocks: [{ variantSku: dto.variantSku, stock: variantStock }],
           lowStockThreshold: dto.lowStockThreshold ?? 5,
         } as Partial<StoreStock>);
       } else {
@@ -66,9 +77,9 @@ export class StoreStockService {
           (v) => v.variantSku === dto.variantSku,
         );
         if (variantIdx >= 0) {
-          storeStock.variantStocks[variantIdx].stock = dto.stock;
+          storeStock.variantStocks[variantIdx].stock = variantStock;
         } else {
-          storeStock.variantStocks.push({ variantSku: dto.variantSku, stock: dto.stock });
+          storeStock.variantStocks.push({ variantSku: dto.variantSku, stock: variantStock });
         }
         if (dto.lowStockThreshold !== undefined) {
           storeStock.lowStockThreshold = dto.lowStockThreshold;
@@ -78,11 +89,47 @@ export class StoreStockService {
       return storeStock;
     }
 
-    const update: Record<string, unknown> = { stock: dto.stock };
-    if (dto.lowStockThreshold !== undefined) {
-      update.lowStockThreshold = dto.lowStockThreshold;
+    let result: StoreStock;
+
+    if (hasDeltaUpdate) {
+      const netDelta = stockInDelta + returnedDelta + damagedDelta - saleLogDelta;
+      result = await this.storeStockRepository.applyStockDeltas(storeObjId, productObjId, {
+        stockInDelta,
+        returnedDelta,
+        damagedDelta,
+        saleLogDelta,
+        netDelta,
+        lowStockThreshold: dto.lowStockThreshold,
+      });
+
+      const todayIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
+      await this.stockSnapshotRepository.upsertSnapshot(
+        storeObjId,
+        productObjId,
+        todayIST,
+        { stockInDelta, returnedDelta, damagedDelta, saleLogDelta },
+        result.stock,
+      );
+    } else {
+      const update: Record<string, unknown> = {};
+      if (dto.stock !== undefined) update.stock = dto.stock;
+      if (dto.lowStockThreshold !== undefined) update.lowStockThreshold = dto.lowStockThreshold;
+      result = await this.storeStockRepository.setStockMain(storeObjId, productObjId, update);
     }
-    return this.storeStockRepository.setStockMain(storeObjId, productObjId, update);
+
+    return result;
+  }
+
+  async getStockAnalytics(storeId: string, query: StockAnalyticsQueryDto): Promise<unknown> {
+    const storeObjId = parseObjectId(storeId, 'storeId');
+
+    if (query.date) {
+      const items = await this.stockSnapshotRepository.getSnapshotsByStoreAndDate(storeObjId, query.date);
+      return { date: query.date, items };
+    }
+
+    const dates = await this.stockSnapshotRepository.getAvailableDates(storeObjId);
+    return { dates };
   }
 
   async decrementStock(

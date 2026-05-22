@@ -1,6 +1,6 @@
 import { Controller, Get, Put, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { StoreStockService } from './store-stock.service';
-import { SetStoreStockDto, BulkSetStockDto, StockQueryDto } from './dto/store-stock.dto';
+import { SetStoreStockDto, BulkSetStockDto, StockQueryDto, StockAnalyticsQueryDto } from './dto/store-stock.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { StoreGuard } from '../../common/guards/store.guard';
@@ -45,5 +45,13 @@ export class StoreStockController {
   @Get('store/:storeId/low-stock')
   async getLowStockByStore(@Param('storeId') storeId: string) {
     return this.storeStockService.getLowStockByStore(storeId);
+  }
+
+  @Get('store/:storeId/analytics')
+  async getStockAnalytics(
+    @Param('storeId') storeId: string,
+    @Query() query: StockAnalyticsQueryDto,
+  ) {
+    return this.storeStockService.getStockAnalytics(storeId, query);
   }
 }

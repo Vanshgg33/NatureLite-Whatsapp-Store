@@ -222,22 +222,24 @@ export const useCartStore = create<CartState>()(
             // Server has items, use server state
             // Convert server cart items to local format
             const items: CartItem[] = serverCart.items.map((item) => {
+              // The backend's formatCartResponse nests name/slug/image inside the product object.
               type ProductRef = string | { id?: string; _id?: string; name?: string; slug?: string; image?: string };
               const productObj = item.product as ProductRef;
-              const productId =
-                typeof productObj === 'string'
-                  ? productObj
-                  : productObj.id || productObj._id || '';
+              const isObj = typeof productObj === 'object' && productObj !== null;
+              const productId = isObj ? (productObj.id || productObj._id || '') : (productObj as string);
+              const name = isObj ? (productObj.name ?? '') : '';
+              const slug = isObj ? (productObj.slug ?? '') : '';
+              const image = isObj ? (productObj.image ?? '') : '';
 
               return {
                 productId,
-                name: (typeof productObj === 'object' ? productObj.name : undefined) || '',
-                slug: (typeof productObj === 'object' ? productObj.slug : undefined) || '',
-                image: (typeof productObj === 'object' ? productObj.image : undefined) || '',
+                name,
+                slug,
+                image,
                 price: item.price,
                 quantity: item.quantity,
                 variantSku: item.variantSku,
-                gstPercentage: 5, // Default GST
+                gstPercentage: 5,
               };
             });
 

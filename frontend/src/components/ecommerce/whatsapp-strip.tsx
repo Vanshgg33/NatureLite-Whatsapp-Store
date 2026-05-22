@@ -2,11 +2,11 @@
 
 const ITEMS = [
   { icon: true,  text: 'Order on WhatsApp — fast, personal & delivered fresh' },
-  { icon: false, text: 'Cold-pressed · Bilona-churned · Ship anywhere in India' },
+  { icon: false, text: 'Cold-pressed · Bilona-churned · Delivering in Chhattisgarh' },
   { icon: true,  text: 'Chat to order: +91 88172 00740 · Same-day dispatch' },
-  { icon: false, text: 'Zero preservatives · 100% natural · Straight from the farm' },
+  { icon: false, text: 'Serving Raipur · Bhilai · Durg · Bilaspur' },
   { icon: true,  text: 'Bulk orders welcome · WhatsApp us for best price' },
-  { icon: false, text: 'A2 Bilona Ghee & Wood-Pressed Oils — just a message away' },
+  { icon: false, text: 'Zero preservatives · 100% natural · Straight from the farm' },
 ];
 
 function WaIcon() {

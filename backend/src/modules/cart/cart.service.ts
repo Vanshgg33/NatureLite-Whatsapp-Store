@@ -189,6 +189,7 @@ export class CartService {
         quantity: dto.quantity,
         price,
         name: product.name,
+        slug: product.slug,
         image: product.images[0],
         addedAt: now,
         priceCapturedAt: now,
@@ -424,7 +425,7 @@ export class CartService {
         product: {
           id: item.product.toString(),
           name: item.name,
-          slug: '',
+          slug: item.slug ?? '',
           image: item.image,
         },
         variantSku: item.variantSku,

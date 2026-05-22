@@ -120,7 +120,7 @@ export interface Product {
 
 // ==================== ORDER TYPES ====================
 export interface OrderItem {
-  product: Product | string;
+  product: (Product & { hsnCode?: string; gstPercentage?: number }) | string;
   name: string;
   variantSku?: string;
   variantName?: string;
@@ -825,6 +825,10 @@ export interface StoreStockItem {
   store: Store | string;
   product: Product | string;
   stock: number;
+  stockIn: number;
+  returned: number;
+  damaged: number;
+  saleLog: number;
   variantStocks: VariantStockEntry[];
   lowStockThreshold: number;
   productName?: string;
@@ -835,6 +839,18 @@ export interface StoreStockItem {
   categoryName?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface StockSnapshotItem {
+  _id: string;
+  date: string;
+  stockInDelta: number;
+  returnedDelta: number;
+  damagedDelta: number;
+  saleLogDelta: number;
+  totalStock: number;
+  productName?: string;
+  productSku?: string;
 }
 
 export type SaleType = 'walk_in' | 'delivery' | 'website';
@@ -954,10 +970,54 @@ export interface Reminder {
   createdAt: string;
 }
 
+export interface RawMaterialTodayEntry {
+  _id: string;
+  date: string;
+  openingStock: number;
+  stockIn: number;
+  processed: number;
+  closing: number;
+}
+
+export interface RawMaterial {
+  _id: string;
+  store: string;
+  name: string;
+  unit: string;
+  totalStock: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  todayEntry: RawMaterialTodayEntry | null;
+}
+
+export interface RawMaterialDailyItem {
+  _id: string;
+  date: string;
+  openingStock: number;
+  stockIn: number;
+  processed: number;
+  closing: number;
+  materialName?: string;
+  materialUnit?: string;
+}
+
+export interface RawMaterialPrefill {
+  openingStock: number;
+  stockIn: number;
+  processed: number;
+  closing: number;
+  isExisting: boolean;
+}
+
 export interface SetStoreStockDto {
   storeId: string;
   productId: string;
-  stock: number;
+  stock?: number;
+  stockInDelta?: number;
+  returnedDelta?: number;
+  damagedDelta?: number;
+  saleLogDelta?: number;
   variantSku?: string;
   lowStockThreshold?: number;
 }

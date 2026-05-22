@@ -174,6 +174,50 @@ export class StoreStockRepository extends BaseRepository<StoreStockDocument> {
       .exec();
   }
 
+  async applyStockDeltas(
+    storeId: Types.ObjectId,
+    productId: Types.ObjectId,
+    deltas: {
+      stockInDelta: number;
+      returnedDelta: number;
+      damagedDelta: number;
+      saleLogDelta: number;
+      netDelta: number;
+      lowStockThreshold?: number;
+    },
+  ): Promise<StoreStockDocument> {
+    const inc: Record<string, number> = {
+      stock: deltas.netDelta,
+      stockIn: deltas.stockInDelta,
+      returned: deltas.returnedDelta,
+      damaged: deltas.damagedDelta,
+      saleLog: deltas.saleLogDelta,
+    };
+    const set: Record<string, unknown> = {};
+    if (deltas.lowStockThreshold !== undefined) {
+      set.lowStockThreshold = deltas.lowStockThreshold;
+    }
+    const update: Record<string, unknown> = { $inc: inc };
+    if (Object.keys(set).length > 0) update.$set = set;
+
+    const doc = await this.model.findOneAndUpdate(
+      { store: storeId, product: productId },
+      { ...update, $setOnInsert: { store: storeId, product: productId } },
+      { new: true, upsert: true },
+    ).exec();
+
+    // Clamp stock to 0 if it went negative (e.g. saleLogDelta exceeded available stock)
+    if (doc!.stock < 0) {
+      return (await this.model.findOneAndUpdate(
+        { store: storeId, product: productId, stock: { $lt: 0 } },
+        { $set: { stock: 0 } },
+        { new: true },
+      ).exec())!;
+    }
+
+    return doc!;
+  }
+
   async setStockMain(
     storeId: Types.ObjectId,
     productId: Types.ObjectId,

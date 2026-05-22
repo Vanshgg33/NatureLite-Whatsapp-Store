@@ -13,6 +13,7 @@ import SocialProofSection from '@/components/sections/SocialProofSection';
 import RecencyBlock from '@/components/sections/RecencyBlock';
 import { NewsletterSection } from '@/components/ecommerce/newsletter-section';
 import WhatsAppStrip from '@/components/ecommerce/whatsapp-strip';
+import { MapPin } from 'lucide-react';
 
 const LOADER_DURATION = 2000;
 
@@ -489,6 +490,31 @@ export default function HomePage() {
 
       {/* 1b. WhatsApp ordering strip */}
       <WhatsAppStrip />
+
+      {/* 1c. Delivery area notice */}
+      <div style={{
+        background: 'linear-gradient(90deg, #0d1a05 0%, #111f06 50%, #0d1a05 100%)',
+        borderBottom: '1px solid rgba(120,170,20,0.15)',
+        padding: '7px 16px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+      }}>
+        <MapPin size={12} style={{ color: 'rgba(140,200,40,0.70)', flexShrink: 0 }} />
+        <span style={{
+          fontFamily: 'monospace',
+          fontSize: 10.5,
+          letterSpacing: '0.10em',
+          color: 'rgba(160,220,60,0.65)',
+        }}>
+          Currently delivering to{' '}
+          <strong style={{ color: 'rgba(190,240,80,0.85)', fontWeight: 600 }}>
+            Raipur · Bhilai · Durg · Bilaspur
+          </strong>
+          {' '}(Chhattisgarh)
+        </span>
+      </div>
 
       {/* 2. Product collection with category filter */}
       {products.length > 0 && (

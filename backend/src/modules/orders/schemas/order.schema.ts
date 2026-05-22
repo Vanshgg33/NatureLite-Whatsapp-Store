@@ -219,7 +219,16 @@ export class Order {
 export const OrderSchema = SchemaFactory.createForClass(Order);
 
 OrderSchema.index({ user: 1, createdAt: -1 });
-OrderSchema.index({ user: 1, 'metadata.idempotencyKey': 1 }, { unique: true, sparse: true });
+// partialFilterExpression is used instead of sparse:true because in a compound index
+// MongoDB's sparse only excludes docs where ALL fields are missing — since 'user' always
+// exists every document would be indexed, making null/missing idempotencyKey collide.
+OrderSchema.index(
+  { user: 1, 'metadata.idempotencyKey': 1 },
+  {
+    unique: true,
+    partialFilterExpression: { 'metadata.idempotencyKey': { $exists: true, $type: 'string' } },
+  },
+);
 OrderSchema.index({ status: 1, createdAt: -1 });
 OrderSchema.index({ paymentStatus: 1 });
 OrderSchema.index({ createdAt: -1 });

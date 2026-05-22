@@ -11,6 +11,7 @@ import { useCustomerStore } from '@/lib/customer-store';
 import { useCartStore } from '@/lib/cart-store';
 import { useToast } from '@/components/ui/use-toast';
 import { api } from '@/lib/api';
+import { getApiError } from '@/lib/api-error';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -80,8 +81,7 @@ export default function RegisterPage() {
 
       router.push('/account');
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { message?: string } } };
-      setError(error.response?.data?.message || 'Registration failed. Please try again.');
+      setError(getApiError(err, 'Registration failed. Please try again.'));
     } finally {
       setLoading(false);
     }

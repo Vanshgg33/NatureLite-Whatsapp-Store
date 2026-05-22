@@ -12,6 +12,8 @@ import { Address } from '@/types';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 
+const SERVICEABLE_PREFIXES = ['492', '490', '491', '495'];
+
 const addressSchema = z.object({
   label: z.string().optional(),
   street: z.string().min(5, 'Street address is required'),
@@ -20,7 +22,11 @@ const addressSchema = z.object({
   pincode: z
     .string()
     .min(6, 'Valid pincode is required')
-    .regex(/^[0-9]+$/, 'Pincode must be numeric'),
+    .regex(/^\d{6}$/, 'Pincode must be exactly 6 digits')
+    .refine(
+      (val) => SERVICEABLE_PREFIXES.some((p) => val.startsWith(p)),
+      'Sorry, we currently deliver only to Raipur, Bhilai, Durg & Bilaspur (Chhattisgarh).',
+    ),
   landmark: z.string().optional(),
   isDefault: z.boolean().optional(),
 });
@@ -208,11 +214,16 @@ export default function AddressesPage() {
                 <Input
                   value={formData.pincode}
                   onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
-                  placeholder="302001"
+                  placeholder="6-digit pincode"
+                  maxLength={6}
                   className={cn(errors.pincode && 'border-brand-error')}
                 />
-                {errors.pincode && (
+                {errors.pincode ? (
                   <p className="text-xs text-brand-error mt-1">{errors.pincode}</p>
+                ) : (
+                  <p className="text-xs text-brand-muted mt-1">
+                    Raipur, Bhilai, Durg &amp; Bilaspur (Chhattisgarh) only
+                  </p>
                 )}
               </div>
             </div>

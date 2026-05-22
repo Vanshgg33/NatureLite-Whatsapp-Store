@@ -36,6 +36,7 @@ import { StoreSalesModule } from './modules/store-sales/store-sales.module';
 import { RemindersModule } from './modules/reminders/reminders.module';
 import { WishlistModule } from './modules/wishlist/wishlist.module';
 import { WalletModule } from './modules/wallet/wallet.module';
+import { RawMaterialModule } from './modules/raw-materials/raw-material.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -90,6 +91,7 @@ import { HealthController } from './health.controller';
     RemindersModule,
     WishlistModule,
     WalletModule,
+    RawMaterialModule,
   ],
   providers: [
     {
