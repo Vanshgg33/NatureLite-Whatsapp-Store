@@ -17,7 +17,6 @@ import {
   CreditCard,
   Warehouse,
   ChevronDown,
-  Loader2,
   FlaskConical,
 } from 'lucide-react';
 import {
@@ -50,7 +49,7 @@ import {
 import { api } from '@/lib/api';
 import { formatCurrency, getProductTotalStock } from '@/lib/utils';
 import { useAdminAuthStore } from '@/lib/admin-store';
-import type { RevenueDataPoint, ProductAnalytics, OrderAnalytics, Product, CustomerAnalytics, StockSnapshotItem, RawMaterialDailyItem, Store } from '@/types';
+import type { RevenueDataPoint, ProductAnalytics, OrderAnalytics, Product, CustomerAnalytics, StockSnapshotItem, RawMaterialDailyItem, Store, MonthOverMonthData, TopCustomer } from '@/types';
 
 const TOOLTIP_STYLE = {
   backgroundColor: '#fff',
@@ -198,6 +197,16 @@ export default function AnalyticsPage() {
     enabled: !!activeRawStoreId && !!selectedRawDate,
   });
 
+  const { data: topCustomersOverall } = useQuery({
+    queryKey: ['top-customers-overall'],
+    queryFn: () => api.getTopCustomersOverall(),
+  });
+
+  const { data: monthOverMonthData } = useQuery({
+    queryKey: ['month-over-month'],
+    queryFn: () => api.getMonthOverMonthByStore(),
+  });
+
   // Compute period-over-period comparison
   const periodComparison = useMemo(() => {
     if (!revenueData || revenueData.length < 2) return null;
@@ -223,6 +232,34 @@ export default function AnalyticsPage() {
         date: d.date,
         aov: Math.round(d.revenue / d.orders),
       }));
+  }, [revenueData]);
+
+  // Compute day-of-week average revenue pattern
+  const dayOfWeekData = useMemo(() => {
+    if (!revenueData) return [];
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const buckets = days.map((day) => ({ day, revenue: 0, orders: 0, count: 0 }));
+    revenueData.forEach((d: RevenueDataPoint) => {
+      const dow = new Date(d.date + 'T00:00:00').getDay();
+      buckets[dow].revenue += d.revenue;
+      buckets[dow].orders += d.orders;
+      buckets[dow].count++;
+    });
+    return buckets.map((b) => ({
+      day: b.day,
+      avgRevenue: b.count > 0 ? Math.round(b.revenue / b.count) : 0,
+      avgOrders: b.count > 0 ? Math.round(b.orders / b.count) : 0,
+    }));
+  }, [revenueData]);
+
+  // Cumulative revenue over period
+  const cumulativeRevenueData = useMemo(() => {
+    if (!revenueData) return [];
+    let running = 0;
+    return revenueData.map((d: RevenueDataPoint) => {
+      running += d.revenue;
+      return { date: d.date, cumulative: running };
+    });
   }, [revenueData]);
 
   if (isLoading) {
@@ -671,6 +708,117 @@ export default function AnalyticsPage() {
           </motion.div>
         </div>
 
+        {/* Day of Week Pattern + Cumulative Revenue */}
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Day of Week Revenue Pattern */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.46 }}
+          >
+            <Card className="rounded-2xl shadow-sm h-full">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg font-semibold">Revenue by Day of Week</CardTitle>
+                  <p className="text-sm text-muted-foreground">Avg per weekday over {days}-day period</p>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="h-56">
+                  {dayOfWeekData.some((d) => d.avgRevenue > 0) ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={dayOfWeekData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                        <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#888' }} />
+                        <YAxis
+                          axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#888' }}
+                          tickFormatter={(v) => `₹${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+                        />
+                        <Tooltip
+                          contentStyle={TOOLTIP_STYLE}
+                          formatter={(value: number, name: string) =>
+                            name === 'avgRevenue'
+                              ? [formatCurrency(value), 'Avg Revenue']
+                              : [value, 'Avg Orders']}
+                        />
+                        <Bar dataKey="avgRevenue" fill="#2F6B47" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                      Not enough data for pattern
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Cumulative Revenue Growth */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.48 }}
+          >
+            <Card className="rounded-2xl shadow-sm h-full">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg font-semibold">Cumulative Revenue</CardTitle>
+                  <p className="text-sm text-muted-foreground">Running total over period</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Period Total</p>
+                  <p className="text-base font-bold text-brand-green">{formatCurrency(totalRevenue)}</p>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="h-56">
+                  {cumulativeRevenueData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={cumulativeRevenueData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="cumulGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#2F6B47" stopOpacity={0.22} />
+                            <stop offset="100%" stopColor="#2F6B47" stopOpacity={0.02} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                        <XAxis
+                          dataKey="date"
+                          tickFormatter={(val) => { const d = new Date(val); return `${d.getDate()}/${d.getMonth() + 1}`; }}
+                          axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#888' }}
+                        />
+                        <YAxis
+                          axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#888' }}
+                          tickFormatter={(v) => `₹${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+                        />
+                        <Tooltip
+                          contentStyle={TOOLTIP_STYLE}
+                          formatter={(value: number) => [formatCurrency(value), 'Cumulative Revenue']}
+                          labelFormatter={(label) => new Date(label).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="cumulative"
+                          stroke="#2F6B47"
+                          strokeWidth={2.5}
+                          fill="url(#cumulGrad)"
+                          dot={false}
+                          activeDot={{ r: 4, fill: '#2F6B47', stroke: '#fff', strokeWidth: 2 }}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                      Not enough data
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
+
         {/* Product Performance + Customer Insights */}
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Top Selling Products */}
@@ -892,6 +1040,129 @@ export default function AnalyticsPage() {
             </Card>
           </motion.div>
         </div>
+        {/* Top Customers + Month-over-Month */}
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Top Customers Spending */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.57 }}
+          >
+            <Card className="rounded-2xl shadow-sm h-full">
+              <CardHeader className="flex flex-row items-center gap-2">
+                <div className="h-8 w-8 rounded-lg bg-orange-50 flex items-center justify-center">
+                  <Users className="h-4 w-4 text-orange-500" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg font-semibold">Top Customers</CardTitle>
+                  <p className="text-sm text-muted-foreground">By total spend</p>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {topCustomersOverall && topCustomersOverall.length > 0 ? (
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={topCustomersOverall.slice(0, 7).map((c: TopCustomer) => ({
+                          name: (c.customerName || c._id || '?').slice(0, 16),
+                          spent: c.totalSpent,
+                          orders: c.totalOrders,
+                        }))}
+                        layout="vertical"
+                        margin={{ top: 0, right: 20, left: 0, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                        <XAxis
+                          type="number"
+                          axisLine={false} tickLine={false}
+                          tick={{ fontSize: 11, fill: '#888' }}
+                          tickFormatter={(v) => `₹${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+                        />
+                        <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#555' }} width={100} />
+                        <Tooltip
+                          contentStyle={TOOLTIP_STYLE}
+                          formatter={(value: number, name: string) =>
+                            name === 'spent' ? [formatCurrency(value), 'Total Spent'] : [value, 'Orders']}
+                        />
+                        <Bar dataKey="spent" fill="#F97316" radius={[0, 6, 6, 0]} maxBarSize={22} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="h-64 flex flex-col items-center justify-center text-muted-foreground text-sm">
+                    <Users className="h-8 w-8 mb-2 opacity-30" />
+                    No customer data available
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Month-over-Month Store Comparison */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.59 }}
+          >
+            <Card className="rounded-2xl shadow-sm h-full">
+              <CardHeader className="flex flex-row items-center gap-2">
+                <div className="h-8 w-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                  <TrendingUp className="h-4 w-4 text-blue-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg font-semibold">Month vs Last Month</CardTitle>
+                  <p className="text-sm text-muted-foreground">Revenue comparison by store</p>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {monthOverMonthData && monthOverMonthData.length > 0 ? (
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={monthOverMonthData.map((d: MonthOverMonthData) => ({
+                          store: d.storeName.length > 12 ? d.storeName.slice(0, 12) + '…' : d.storeName,
+                          thisMonth: d.thisMonth,
+                          lastMonth: d.lastMonth,
+                          change: d.changePercent,
+                        }))}
+                        margin={{ top: 5, right: 10, left: 0, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                        <XAxis dataKey="store" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#888' }} />
+                        <YAxis
+                          axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#888' }}
+                          tickFormatter={(v) => `₹${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+                        />
+                        <Tooltip
+                          contentStyle={TOOLTIP_STYLE}
+                          formatter={(value: number, name: string) => [
+                            formatCurrency(value),
+                            name === 'thisMonth' ? 'This Month' : 'Last Month',
+                          ]}
+                        />
+                        <Legend
+                          formatter={(v) => (
+                            <span style={{ fontSize: '12px', color: '#666' }}>
+                              {v === 'thisMonth' ? 'This Month' : 'Last Month'}
+                            </span>
+                          )}
+                        />
+                        <Bar dataKey="thisMonth" fill="#2F6B47" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                        <Bar dataKey="lastMonth" fill="#E8A838" radius={[4, 4, 0, 0]} maxBarSize={30} opacity={0.75} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="h-64 flex flex-col items-center justify-center text-muted-foreground text-sm">
+                    <TrendingUp className="h-8 w-8 mb-2 opacity-30" />
+                    No comparison data available
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
+
         {/* Stock Analytics */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}

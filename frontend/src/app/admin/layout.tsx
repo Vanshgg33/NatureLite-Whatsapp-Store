@@ -50,14 +50,14 @@ export default function AdminLayout({
   }
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-background">
+    <div className="flex h-screen bg-[#F7F5F0] dark:bg-background">
       <Sidebar
         mobileOpen={sidebarOpen}
         onMobileClose={() => setSidebarOpen(false)}
       />
       <div className="flex flex-1 flex-col min-w-0">
         {/* Mobile top bar with hamburger */}
-        <div className="flex md:hidden h-14 items-center gap-3 border-b bg-white px-4 shrink-0">
+        <div className="flex md:hidden h-14 items-center gap-3 border-b bg-[#F7F5F0] px-4 shrink-0">
           <Button
             variant="ghost"
             size="icon"
