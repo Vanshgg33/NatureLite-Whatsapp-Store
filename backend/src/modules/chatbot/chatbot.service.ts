@@ -455,12 +455,8 @@ export class ChatbotService {
           session.supportHandoffExpiresAt = undefined;
           await session.save();
         }
-        // First contact (new session or revived after expiry): skip the menu
-        // tap and open browsing directly. Returning customers typing "hi" or
-        // "menu" mid-session still land on the main menu as usual.
-        const targetState = !session.previousState ? 'browsing' : 'main_menu';
-        await this.transitionToState(session, targetState);
-        await this.sendFlowResponse(message.phone, targetState, session);
+        await this.transitionToState(session, 'main_menu');
+        await this.sendFlowResponse(message.phone, 'main_menu', session);
         return;
       }
 
@@ -3522,8 +3518,9 @@ export class ChatbotService {
       return;
     }
 
+    let catalogSent: string | null = null;
     try {
-      await this.whatsappService.sendCatalogMessage({
+      catalogSent = await this.whatsappService.sendCatalogMessage({
         phone,
         bodyText: 'Browse our store and add items from the full catalogue.',
         footerText: 'Tap View items to continue.',
@@ -3531,8 +3528,12 @@ export class ChatbotService {
       });
     } catch (error) {
       this.logger.warn(
-        `sendCatalogMessage failed (${error instanceof Error ? error.message : 'unknown'}); falling back to product list`,
+        `sendCatalogMessage threw (${error instanceof Error ? error.message : 'unknown'}); falling back to product list`,
       );
+    }
+
+    if (!catalogSent) {
+      this.logger.warn('sendCatalogMessage returned null; falling back to product list');
       try {
         await this.sendCatalogProductList(phone, session, catalogId);
       } catch (fallbackError) {
@@ -3667,13 +3668,16 @@ export class ChatbotService {
       return;
     }
 
-    await this.whatsappService.sendProductListMessage({
+    const sent = await this.whatsappService.sendProductListMessage({
       phone,
       catalogId,
       headerText: 'Browse our store',
       bodyText: 'Tap any item to add it to your cart, then send the cart to place your order.',
       sections,
     });
+    if (!sent) {
+      throw new Error('sendProductListMessage returned null');
+    }
 
     // WhatsApp's product_list message caps at 30 items / 10 sections. When
     // we hit that ceiling, point the customer at typed search so they can
