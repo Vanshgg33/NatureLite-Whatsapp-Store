@@ -16,7 +16,7 @@ import { useCustomerStore } from '@/lib/customer-store';
 import { useToast } from '@/components/ui/use-toast';
 import { api } from '@/lib/api';
 import { cn, getProductTotalStock } from '@/lib/utils';
-import type { ProductReview } from '@/types';
+import type { Product, ProductReview } from '@/types';
 import { useWishlistStore } from '@/lib/wishlist-store';
 import { PremiumProductCard } from '@/components/ecommerce/premium-product-card';
 import BilonaProcessSection, { isBilonaGheeProduct } from '@/components/ecommerce/BilonaProcessSection';
@@ -103,21 +103,18 @@ export default function ProductDetailPage() {
       ? product.category
       : undefined;
 
-  const { data: relatedProductsData } = useQuery({
+  const { data: relatedProducts } = useQuery<Product[]>({
     queryKey: ['products', 'related', categoryId ?? 'featured'],
-    queryFn: () =>
-      categoryId
-        ? api.getProducts({ category: categoryId, limit: 5, isActive: true })
-        : api.getFeaturedProducts(5),
+    queryFn: async () => {
+      if (categoryId) {
+        const res = await api.getProducts({ category: categoryId, limit: 5, isActive: true });
+        return res.items;
+      }
+      return api.getFeaturedProducts(5);
+    },
     staleTime: 5 * 60 * 1000,
     enabled: !!product,
   });
-
-  const relatedProducts = relatedProductsData
-    ? 'items' in relatedProductsData
-      ? (relatedProductsData as { items: Product[] }).items
-      : (relatedProductsData as Product[])
-    : undefined;
 
   const { data: reviews, refetch: refetchReviews } = useQuery({
     queryKey: ['product-reviews', product?._id],

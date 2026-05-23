@@ -535,6 +535,15 @@ export interface CreateProductDto {
   dimensions?: ProductDimensions;
   gstPercentage?: number;
   hsnCode?: string;
+  batchInfo?: {
+    batchNumber?: string;
+    batchDate?: string;
+    yieldKg?: number;
+    milkLitres?: number;
+    origin?: string;
+    nextBatchDays?: number;
+    purityClaims?: string[];
+  };
 }
 
 export interface CreateCategoryDto {

@@ -116,7 +116,7 @@ export default function CampaignsPage() {
       .filter((u: User) => selectedUserIds.size === 0 || selectedUserIds.has(u._id))
       .map((u: User) => u.phone.replace(/[^\d]/g, ''))
       .filter((p) => p.length >= 10);
-    return [...new Set(fromDb)];
+    return Array.from(new Set(fromDb));
   }, [recipientFilter, manualPhones, customersWithPhone, selectedUserIds]);
 
   const manualParsed = useMemo(

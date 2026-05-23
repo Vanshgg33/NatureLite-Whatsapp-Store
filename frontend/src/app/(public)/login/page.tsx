@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -14,13 +14,9 @@ import { api } from '@/lib/api';
 
 type LoginMethod = 'email' | 'phone';
 
-export default function LoginPage() {
-  const router = useRouter();
+function SessionExpiredToast() {
   const searchParams = useSearchParams();
-  const { setCustomer, updateCustomer, setTokens, lastVisitedPage } = useCustomerStore();
-  const { syncWithServer: syncCart } = useCartStore();
   const { toast } = useToast();
-
   useEffect(() => {
     if (searchParams.get('session') === 'expired') {
       toast({
@@ -31,6 +27,14 @@ export default function LoginPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  return null;
+}
+
+function LoginPageInner() {
+  const router = useRouter();
+  const { setCustomer, updateCustomer, setTokens, lastVisitedPage } = useCustomerStore();
+  const { syncWithServer: syncCart } = useCartStore();
+  const { toast } = useToast();
 
   // Login method toggle
   const [loginMethod, setLoginMethod] = useState<LoginMethod>('email');
@@ -208,7 +212,11 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen pt-20 bg-brand-cream flex items-center justify-center py-12 px-4">
+    <>
+      <Suspense fallback={null}>
+        <SessionExpiredToast />
+      </Suspense>
+      <div className="min-h-screen pt-20 bg-brand-cream flex items-center justify-center py-12 px-4">
       <motion.div
         className="w-full max-w-md"
         initial={{ opacity: 0, y: 20 }}
@@ -483,6 +491,11 @@ export default function LoginPage() {
           </div>
         </div>
       </motion.div>
-    </div>
+      </div>
+    </>
   );
+}
+
+export default function LoginPage() {
+  return <LoginPageInner />;
 }
