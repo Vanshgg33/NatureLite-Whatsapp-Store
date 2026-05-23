@@ -4906,8 +4906,9 @@ export class ChatbotService {
       },
       browsing: { back: 'back', more: 'more_products', next: 'more_products' },
       product_detail: {
-        '1': 'add_cart', 'add': 'add_cart', 'add to cart': 'add_cart',
-        back: 'back',
+        '1': 'add_cart', 'add': 'add_cart', 'add to cart': 'add_cart', '+': 'add_cart', 'buy': 'add_cart',
+        '2': 'pick_qty', 'qty': 'pick_qty', 'pick qty': 'pick_qty', 'quantity': 'pick_qty',
+        '3': 'back', 'back': 'back',
       },
       cart: {
         '1': 'checkout', 'checkout': 'checkout', 'pay': 'checkout', 'order': 'checkout',
