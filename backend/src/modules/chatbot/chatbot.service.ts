@@ -2400,21 +2400,28 @@ export class ChatbotService {
 
     const placedWhen = this.formatStepTimestamp(order.createdAt);
     const itemsPreview = this.formatOrderItemsPreview(order.items as any[]);
+    const billingLines: string[] = [];
+    if ((order as any).subtotal && (order as any).subtotal !== order.total) {
+      billingLines.push(`Subtotal:  ${this.formatCurrency((order as any).subtotal)}`);
+    }
+    if ((order as any).discount > 0) {
+      billingLines.push(`\uD83C\uDFF7 ${(order as any).couponCode || 'Discount'}:  \u2212${this.formatCurrency((order as any).discount)}`);
+    }
+    billingLines.push(bold(`Total:  ${this.formatCurrency(order.total)}`));
+
     const summary =
-      `${bold(`#${order.orderNumber}`)}\n` +
-      (placedWhen ? `Placed \u00B7 _${placedWhen}_\n` : '') +
-      `Status \u00B7 ${bold(this.formatOrderStatusForCustomer(order))}\n\n` +
-      `*Items (${order.items.length})*\n${itemsPreview}\n\n` +
-      `Total ${bold(this.formatCurrency(order.total))}`;
+      `*#${order.orderNumber}*  \u00B7  _${placedWhen || 'Just now'}_\n\n` +
+      `\uD83D\uDCE6 *Items (${order.items.length})*\n${itemsPreview}\n\n` +
+      billingLines.join('\n');
 
     if (paymentMethod === 'cod') {
       await this.whatsappService.sendInteractiveButtons({
         phone,
-        headerText: '\u2705 Order confirmed',
-        bodyText: `${summary}\n\nWe'll ping you when it ships.`,
+        headerText: '\u2705 Order Confirmed',
+        bodyText: `${summary}\n\nWe'll notify you when it ships. \uD83D\uDE9A`,
         footerText: 'Cash on delivery',
         buttons: [
-          { id: Btn.order(order._id.toString()), title: '\uD83D\uDCE6 Apka last order' },
+          { id: Btn.order(order._id.toString()), title: '\uD83D\uDCE6 Track order' },
           { id: BTN.BROWSE, title: '\uD83D\uDECD Keep shopping' },
         ],
       });
@@ -2446,8 +2453,8 @@ export class ChatbotService {
       const body =
         `${summary}\n\n` +
         (payUrl
-          ? `Complete your payment:\n${payUrl}`
-          : `Reply *pay* to retry generating your payment link, or contact support with order ${bold(order.orderNumber)}.`);
+          ? `\uD83D\uDCB3 Complete your payment:\n${payUrl}`
+          : `Reply *pay* to get your payment link, or contact support with order *${order.orderNumber}*.`);
 
       try {
         await this.whatsappService.sendInteractiveButtons({
@@ -2456,7 +2463,7 @@ export class ChatbotService {
           bodyText: body,
           footerText: payUrl ? 'Link expires in 48 hours' : undefined,
           buttons: [
-            { id: Btn.order(order._id.toString()), title: '\uD83D\uDCE6 Apka last order' },
+            { id: Btn.order(order._id.toString()), title: '\uD83D\uDCE6 Track order' },
             { id: BTN.BROWSE, title: '\uD83D\uDECD Keep shopping' },
           ],
         });
@@ -4198,23 +4205,23 @@ export class ChatbotService {
 
     const itemList = cart.items
       .map((item, idx) =>
-        `${idx + 1}. ${item.product.name}  \u00D7${item.quantity}  \u2014  ${this.formatCurrency(item.total)}`,
+        `${idx + 1}. *${item.product.name}*  ×${item.quantity}  —  ${this.formatCurrency(item.total)}`,
       )
       .join('\n');
 
-    const breakdown: string[] = [`Subtotal\u2003${this.formatCurrency(cart.subtotal)}`];
+    const breakdown: string[] = [`Subtotal:  ${this.formatCurrency(cart.subtotal)}`];
     if (cart.discount > 0) {
       breakdown.push(
-        `\uD83C\uDFF7 ${cart.couponCode || 'Discount'}\u2003\u2212${this.formatCurrency(cart.discount)}`,
+        `🏷 ${cart.couponCode || 'Discount'}:  −${this.formatCurrency(cart.discount)}`,
       );
     }
-    breakdown.push(bold(`You pay\u2003${this.formatCurrency(cart.total)}`));
+    breakdown.push(bold(`You pay:  ${this.formatCurrency(cart.total)}`));
 
     const FREE_SHIP_THRESHOLD = 500;
     const shippingLine =
       cart.subtotal >= FREE_SHIP_THRESHOLD
-        ? '\n\n\uD83C\uDF89 Free delivery unlocked'
-        : `\n\n${italic(`Add ${this.formatCurrency(FREE_SHIP_THRESHOLD - cart.subtotal)} more for free delivery`)}`;
+        ? '\n🎉 Free delivery included'
+        : `\n${italic(`Add ${this.formatCurrency(FREE_SHIP_THRESHOLD - cart.subtotal)} more to unlock free delivery`)}`;
 
     // Coupon nudge on the cart screen so customers can discover savings
     // before committing to checkout. Only shown when no coupon is yet
@@ -4529,24 +4536,22 @@ export class ChatbotService {
         .map((item) => `• ${item.product.name}  ×${item.quantity}  —  ${this.formatCurrency(item.total)}`)
         .join('\n');
 
-      const lines: string[] = [`Subtotal\u2003${this.formatCurrency(cart.subtotal)}`];
+      const lines: string[] = [`Subtotal:  ${this.formatCurrency(cart.subtotal)}`];
       if (cart.discount > 0) {
-        lines.push(`🏷 ${cart.couponCode || 'Discount'}\u2003−${this.formatCurrency(cart.discount)}`);
+        lines.push(`🏷 ${cart.couponCode || 'Discount'}:  −${this.formatCurrency(cart.discount)}`);
       }
-      lines.push(bold(`Total\u2003${this.formatCurrency(cart.total)}`));
+      lines.push(bold(`You pay:  ${this.formatCurrency(cart.total)}`));
 
       const FREE_SHIP_THRESHOLD = 500;
       const shippingLine = cart.subtotal >= FREE_SHIP_THRESHOLD
-        ? '\n🎉 Free delivery'
-        : `\n${italic(`Add ${this.formatCurrency(FREE_SHIP_THRESHOLD - cart.subtotal)} more for free delivery`)}`;
+        ? '\n🎉 Free delivery included'
+        : `\n${italic(`Add ${this.formatCurrency(FREE_SHIP_THRESHOLD - cart.subtotal)} more to unlock free delivery`)}`;
 
       await this.whatsappService.sendTextMessage({
         phone,
         message:
-          `🧾 *Order Summary*\n` +
-          `${'─'.repeat(27)}\n\n` +
+          `🧾 *Order Summary*\n\n` +
           `${itemLines}\n\n` +
-          `${'─'.repeat(27)}\n` +
           `${lines.join('\n')}` +
           shippingLine,
       });
