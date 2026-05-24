@@ -824,7 +824,16 @@ export class OrdersService implements OnModuleInit {
 
     // WhatsApp status update notification (non-blocking)
     try {
-      await this.notificationsService.notifyOrderStatusChanged(savedOrder, previousStatus);
+      const phone = savedOrder.shippingAddress?.phone?.trim();
+      if (phone) {
+        if (dto.status === 'confirmed') {
+          await this.notificationsService.sendOrderConfirmed(savedOrder.toObject() as Order, phone);
+        } else if (dto.status === 'out_for_delivery') {
+          await this.notificationsService.sendOutForDeliveryNotification(savedOrder.toObject() as Order, phone);
+        } else {
+          await this.notificationsService.notifyOrderStatusChanged(savedOrder, previousStatus);
+        }
+      }
     } catch (waErr) {
       this.logger.warn(
         `Failed to send WhatsApp status notification for ${savedOrder.orderNumber}`,
@@ -874,7 +883,19 @@ export class OrdersService implements OnModuleInit {
       message: 'Packed — ready for billing / dispatch',
       updatedBy,
     });
-    return order.save();
+    const saved = await order.save();
+
+    // Notify customer that their order is packed and will ship soon (non-blocking).
+    try {
+      const phone = saved.shippingAddress?.phone?.trim();
+      if (phone) {
+        await this.notificationsService.sendOrderPacked(saved.toObject() as Order, phone);
+      }
+    } catch (waErr) {
+      this.logger.warn(`Failed to send packed notification for ${saved.orderNumber}`, waErr);
+    }
+
+    return saved;
   }
 
   async updatePaymentStatus(id: string, dto: UpdatePaymentStatusDto): Promise<Order> {
@@ -956,24 +977,31 @@ export class OrdersService implements OnModuleInit {
 
     const saved = await order.save();
 
-    if (saved.status !== previousStatus) {
-      try {
-        await this.notificationsService.notifyOrderStatusChanged(saved, previousStatus);
-      } catch (waErr) {
-        this.logger.warn(
-          `Failed to send WhatsApp status notification for ${saved.orderNumber}`,
-          waErr,
-        );
-      }
-    } else if (saved.status === 'delivered') {
-      // Defensive: delivery workflow sets delivered without changing status in some paths.
-      try {
-        await this.notificationsService.notifyOrderDelivered(saved);
-      } catch (waErr) {
-        this.logger.warn(
-          `Failed to send WhatsApp delivered notification for ${saved.orderNumber}`,
-          waErr,
-        );
+    // WhatsApp notifications — non-blocking, each wrapped individually.
+    const phone = saved.shippingAddress?.phone?.trim();
+    if (phone) {
+      if (dto.status === 'delivery_done') {
+        // delivery_done → status changed to 'delivered'; notifyOrderStatusChanged handles it.
+        try {
+          await this.notificationsService.notifyOrderStatusChanged(saved, previousStatus);
+        } catch (waErr) {
+          this.logger.warn(`Failed to send delivered notification for ${saved.orderNumber}`, waErr);
+        }
+      } else if (
+        dto.status === 'customer_ringing' ||
+        dto.status === 'customer_tomorrow' ||
+        dto.status === 'customer_cancelled'
+      ) {
+        try {
+          await this.notificationsService.sendDeliveryAttemptNotification(
+            saved.toObject() as Order,
+            phone,
+            dto.status,
+            dto.note,
+          );
+        } catch (waErr) {
+          this.logger.warn(`Failed to send delivery attempt notification for ${saved.orderNumber}`, waErr);
+        }
       }
     }
 

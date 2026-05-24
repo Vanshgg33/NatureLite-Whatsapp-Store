@@ -216,13 +216,17 @@ export class ChatbotService {
     if (order.paymentMethod === 'prepaid' && order.paymentStatus === 'pending') {
       return 'Payment Pending';
     }
-    if (order.status === 'preparing' && order.packedAt) {
-      return 'Ready for delivery';
+    switch (order.status) {
+      case 'placed':     return 'Order Received';
+      case 'confirmed':  return 'Confirmed';
+      case 'preparing':  return order.packedAt ? 'Ready to Ship' : 'Preparing';
+      case 'out_for_delivery': return 'Out for Delivery';
+      case 'delivered':  return 'Delivered';
+      case 'cancelled':  return 'Cancelled';
+      case 'returned':   return 'Returned';
+      case 'refunded':   return 'Refunded';
+      default:           return order.status.replace(/_/g, ' ');
     }
-    if (order.status === 'placed' || order.status === 'confirmed' || order.status === 'preparing') {
-      return 'Preparing';
-    }
-    return order.status.replace(/_/g, ' ');
   }
 
   private formatOrderListDate(dateValue?: Date | string | null): string {
@@ -302,28 +306,21 @@ export class ChatbotService {
       );
     }
 
-    // Four customer-visible stages. "Confirmed" + "Preparing" + "Packed" all
-    // read as "Preparing" to customers; admin-facing states are collapsed.
+    // Four customer-visible stages. Admin states (placed/confirmed/preparing/packed)
+    // are collapsed into stage 1-2 but with distinct labels and timestamps.
     type Stage = { label: string; at?: Date | null };
     const current = (() => {
       if (order.status === 'delivered') return 4;
       if (order.status === 'out_for_delivery') return 3;
-      if (
-        order.status === 'placed' ||
-        order.status === 'confirmed' ||
-        order.status === 'preparing'
-      ) {
-        return 2;
-      }
-      return 1;
+      if (order.status === 'confirmed' || order.status === 'preparing') return 2;
+      return 1; // placed
     })();
 
+    const stage2Label = order.packedAt ? 'Packed · ready to ship' : 'Preparing';
+
     const stages: Stage[] = [
-      { label: 'Order placed', at: order.createdAt },
-      {
-        label: 'Preparing',
-        at: order.packedAt || null,
-      },
+      { label: 'Order received', at: order.createdAt },
+      { label: stage2Label, at: order.packedAt || null },
       { label: 'Out for delivery', at: order.outForDeliveryAt },
       { label: 'Delivered', at: order.deliveredAt },
     ];
@@ -358,11 +355,11 @@ export class ChatbotService {
     const itemsPreview = this.formatOrderItemsPreview(order.items as any[]);
 
     const headerIcon =
-      order.status === 'delivered'
-        ? '\u2705'
-        : order.status === 'out_for_delivery'
-          ? '\uD83D\uDEF5'
-          : '\uD83D\uDED2';
+      order.status === 'delivered'        ? '\u2705'
+      : order.status === 'out_for_delivery' ? '\uD83D\uDE9A'
+      : order.status === 'cancelled'        ? '\u274C'
+      : order.status === 'returned' || order.status === 'refunded' ? '\u21A9\uFE0F'
+      : '\uD83D\uDCE6';
 
     return (
       `${headerIcon}  *Order #${order.orderNumber}*\n` +
@@ -4689,11 +4686,15 @@ export class ChatbotService {
     const slice = allOrders.slice(start, start + pageSize);
     const hasMore = start + pageSize < allOrders.length;
 
-    const rows = slice.map((order) => ({
-      id: Btn.order(order._id.toString()),
-      title: clip(this.formatOrderListDate(order.createdAt), WA.LIST_ROW_TITLE),
-      description: clip(this.formatOrderItemsForList(order.items), WA.LIST_ROW_DESC),
-    }));
+    const rows = slice.map((order) => {
+      const statusLabel = this.formatOrderStatusForCustomer(order);
+      const itemsPreview = this.formatOrderItemsForList(order.items);
+      return {
+        id: Btn.order(order._id.toString()),
+        title: clip(`#${order.orderNumber}  ·  ${this.formatOrderListDate(order.createdAt)}`, WA.LIST_ROW_TITLE),
+        description: clip(`${statusLabel}  ·  ${itemsPreview}`, WA.LIST_ROW_DESC),
+      };
+    });
 
     if (hasMore) {
       rows.push({

@@ -101,6 +101,118 @@ export class NotificationsService {
     });
   }
 
+  /** Notify customer when admin confirms the order. */
+  async sendOrderConfirmed(order: Order, phone: string): Promise<void> {
+    const idempotencyKey = `order_confirmed_${order._id.toString()}`;
+    if (await this.isDuplicate(idempotencyKey)) return;
+    this.markAsSent(idempotencyKey);
+
+    const itemLines = order.items
+      .slice(0, 4)
+      .map((item) => `• ${item.name}  ×${item.quantity}`)
+      .join('\n');
+    const moreItems = order.items.length > 4 ? `\n_… and ${order.items.length - 4} more_` : '';
+
+    await this.whatsappService.sendInteractiveButtons({
+      phone,
+      headerText: '✅ Order Confirmed',
+      bodyText:
+        `*#${order.orderNumber}*\n\n` +
+        `📦 *Items (${order.items.length})*\n${itemLines}${moreItems}\n\n` +
+        `*Total:  ${this.formatMoneyInr(order.total)}*\n\n` +
+        `We've confirmed your order and are preparing it now.`,
+      footerText: order.paymentMethod === 'cod' ? 'Cash on delivery' : 'Prepaid',
+      buttons: [
+        { id: `order_${order._id.toString()}`, title: '📦 Track order' },
+        { id: 'browse', title: '🛍 Shop more' },
+      ],
+      meta: { idempotencyKey },
+    });
+  }
+
+  /** Notify customer when packing marks the order packed and ready for dispatch. */
+  async sendOrderPacked(order: Order, phone: string): Promise<void> {
+    const idempotencyKey = `order_packed_${order._id.toString()}`;
+    if (await this.isDuplicate(idempotencyKey)) return;
+    this.markAsSent(idempotencyKey);
+
+    await this.whatsappService.sendInteractiveButtons({
+      phone,
+      headerText: '📦 Order Packed',
+      bodyText:
+        `*#${order.orderNumber}*\n\n` +
+        `Your order has been packed and is ready for dispatch. ` +
+        `We'll notify you as soon as it's on its way!`,
+      buttons: [
+        { id: `order_${order._id.toString()}`, title: '📦 Track order' },
+      ],
+      meta: { idempotencyKey },
+    });
+  }
+
+  /** Notify customer when their order goes out for delivery, with courier details if available. */
+  async sendOutForDeliveryNotification(order: Order, phone: string): Promise<void> {
+    const idempotencyKey = `out_for_delivery_${order._id.toString()}`;
+    if (await this.isDuplicate(idempotencyKey)) return;
+    this.markAsSent(idempotencyKey);
+
+    const courierLines: string[] = [];
+    if (order.courierName) courierLines.push(`🚚 Courier:  *${order.courierName}*`);
+    if (order.awbNumber) courierLines.push(`📋 AWB:  *${order.awbNumber}*`);
+    if (order.trackingUrl) courierLines.push(`🔗 Track:  ${order.trackingUrl}`);
+    const courierBlock = courierLines.length > 0 ? `\n\n${courierLines.join('\n')}` : '';
+
+    await this.whatsappService.sendInteractiveButtons({
+      phone,
+      headerText: '🚚 Out for Delivery',
+      bodyText:
+        `*#${order.orderNumber}* is on its way! 🎉\n\n` +
+        `Your order will be delivered today or tomorrow.` +
+        courierBlock,
+      buttons: [
+        { id: `order_${order._id.toString()}`, title: '📦 Track order' },
+      ],
+      meta: { idempotencyKey },
+    });
+  }
+
+  /** Notify customer about a failed delivery attempt (retry tomorrow, customer unreachable, etc.). */
+  async sendDeliveryAttemptNotification(
+    order: Order,
+    phone: string,
+    deliveryStatus: 'customer_ringing' | 'customer_tomorrow' | 'customer_cancelled',
+    note?: string,
+  ): Promise<void> {
+    const idempotencyKey = `delivery_attempt_${order._id.toString()}_${deliveryStatus}`;
+    if (await this.isDuplicate(idempotencyKey)) return;
+    this.markAsSent(idempotencyKey);
+
+    const messageMap: Record<typeof deliveryStatus, string> = {
+      customer_ringing:
+        `We tried to reach you for delivery of *#${order.orderNumber}* but couldn't get through. ` +
+        `Our delivery partner will try again shortly.`,
+      customer_tomorrow:
+        `We attempted delivery of *#${order.orderNumber}* today but couldn't complete it. ` +
+        `We'll try again tomorrow — please keep your phone reachable.`,
+      customer_cancelled:
+        `Your delivery for *#${order.orderNumber}* was not completed as requested. ` +
+        `Please contact support if you'd like to reschedule.`,
+    };
+
+    const bodyText = (note ? `${messageMap[deliveryStatus]}\n\n_Note: ${note}_` : messageMap[deliveryStatus]);
+
+    await this.whatsappService.sendInteractiveButtons({
+      phone,
+      headerText: '🚚 Delivery Update',
+      bodyText,
+      buttons: [
+        { id: `order_${order._id.toString()}`, title: '📦 Track order' },
+        { id: 'support', title: '💬 Contact support' },
+      ],
+      meta: { idempotencyKey },
+    });
+  }
+
   /**
    * Sends a "Payment received" interactive confirmation when a Razorpay payment
    * is captured. Uses interactive buttons (not a template) so it lands in the
