@@ -102,28 +102,49 @@ export class NotificationsService {
   }
 
   /**
-   * Sends a "Payment received" message back to the WhatsApp customer when a
-   * Razorpay payment is captured. Plain-text (not template) so it works in
-   * the open 24h customer-service window without needing a Meta-approved
-   * template — payment capture happens minutes after the customer sent the
-   * pay link request, so the window is always open. Idempotent on order id.
+   * Sends a "Payment received" interactive confirmation when a Razorpay payment
+   * is captured. Uses interactive buttons (not a template) so it lands in the
+   * open 24h window — payment capture always happens shortly after the customer
+   * tapped the pay link. Idempotent on order id.
    */
   async sendPaymentReceived(order: Order, phone: string): Promise<void> {
     const idempotencyKey = `payment_received_${order._id.toString()}`;
     if (await this.isDuplicate(idempotencyKey)) {
       return;
     }
-    const total = this.formatMoneyInr(order.total);
-    const text =
-      `*Payment received* ✅\n` +
-      `Order #${order.orderNumber}\n` +
-      `Amount: ${total}\n\n` +
-      `We're preparing your order — you'll get an update when it ships.`;
-    await this.sendNotification({
+    this.markAsSent(idempotencyKey);
+
+    const itemLines = order.items
+      .slice(0, 4)
+      .map((item) => `• ${item.name}  ×${item.quantity}`)
+      .join('\n');
+    const moreItems = order.items.length > 4 ? `\n_… and ${order.items.length - 4} more_` : '';
+
+    const billingLines: string[] = [];
+    if (order.subtotal && order.subtotal !== order.total) {
+      billingLines.push(`Subtotal:  ${this.formatMoneyInr(order.subtotal)}`);
+    }
+    if (order.discount > 0) {
+      billingLines.push(`🏷 ${order.couponCode || 'Discount'}:  −${this.formatMoneyInr(order.discount)}`);
+    }
+    billingLines.push(`*Paid:  ${this.formatMoneyInr(order.total)}*`);
+
+    const body =
+      `*#${order.orderNumber}*  ·  _payment confirmed_\n\n` +
+      `📦 *Items (${order.items.length})*\n${itemLines}${moreItems}\n\n` +
+      billingLines.join('\n') +
+      `\n\nWe're now preparing your order. 🚀`;
+
+    await this.whatsappService.sendInteractiveButtons({
       phone,
-      text,
-      orderId: order._id.toString(),
-      idempotencyKey,
+      headerText: '✅ Payment Received',
+      bodyText: body,
+      footerText: 'Paid via Razorpay',
+      buttons: [
+        { id: `order_${order._id.toString()}`, title: '📦 Track order' },
+        { id: 'browse', title: '🛍 Shop more' },
+      ],
+      meta: { idempotencyKey },
     });
   }
 

@@ -106,7 +106,7 @@ export default function PackingDashboardPage() {
                   <Button
                     size="sm"
                     className="flex-1 flex items-center justify-center gap-2"
-                    disabled={markPacked.isPending || order.status !== 'preparing'}
+                    disabled={markPacked.isPending || !!order.packedAt || !['placed', 'confirmed', 'preparing'].includes(order.status)}
                     onClick={() => markPacked.mutate(order._id)}
                   >
                     <CheckCircle2 className="h-4 w-4" />

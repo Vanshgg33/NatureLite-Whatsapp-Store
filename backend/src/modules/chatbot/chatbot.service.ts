@@ -5148,7 +5148,13 @@ export class ChatbotService {
 
   /** States from which free-text is safe to interpret as a product search. */
   private isSearchCapableState(state: SessionState): boolean {
-    return state === 'main_menu' || state === 'browsing' || state === 'product_detail';
+    return (
+      state === 'main_menu' ||
+      state === 'browsing' ||
+      state === 'product_detail' ||
+      state === 'cart' ||
+      state === 'order_tracking'
+    );
   }
 
   /**
@@ -5232,17 +5238,26 @@ export class ChatbotService {
     return true;
   }
 
+  /** Strip common conversational prefixes so "I want ghee" searches "ghee". */
+  private stripSearchIntentPrefix(text: string): string {
+    const stripped = text.replace(
+      /^(?:i want|i need|want to order|get me|send me|give me|looking for|do you have|do you sell|can i get|can i order|order|add|buy|get)\s+/i,
+      '',
+    ).trim();
+    return stripped.length >= 3 ? stripped : text;
+  }
+
   /**
    * Search products by free text and render the results as an interactive list.
    * Returns true if a response was sent (search ran), false if the query was
-   * skipped (e.g. too few letters, no matches and we chose not to spam).
+   * skipped (e.g. too few letters).
    */
   private async tryProductSearch(
     phone: string,
     session: ChatSessionDocument,
     query: string,
   ): Promise<boolean> {
-    const trimmed = query.trim();
+    const trimmed = this.stripSearchIntentPrefix(query.trim());
     if (trimmed.length < 3) return false;
 
     let products: Product[] = [];
@@ -5273,8 +5288,16 @@ export class ChatbotService {
     }
 
     if (products.length === 0) {
-      await this.transitionToState(session, 'main_menu');
-      await this.sendFlowResponse(phone, 'main_menu', session);
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        bodyText:
+          `_No products found for "${trimmed.slice(0, 30)}"._\n\n` +
+          `Browse our full range to find what you're looking for 👇`,
+        buttons: [
+          { id: BTN.BROWSE, title: '🛍 Browse products' },
+          { id: BTN.MENU, title: '🏠 Menu' },
+        ],
+      });
       return true;
     }
 

@@ -851,11 +851,19 @@ export class OrdersService implements OnModuleInit {
     if (!order) {
       throw new NotFoundException('Order not found');
     }
-    if (order.status !== 'preparing') {
-      throw new BadRequestException('Only orders in preparing can be marked packed.');
+    if (!['placed', 'confirmed', 'preparing'].includes(order.status)) {
+      throw new BadRequestException('Order cannot be marked packed at this stage.');
     }
     if (order.packedAt) {
       return order;
+    }
+    if (order.status !== 'preparing') {
+      order.status = 'preparing';
+      this.pushTimelineEntry(order, {
+        status: 'preparing',
+        message: 'Moved to preparing by packing staff',
+        updatedBy,
+      });
     }
     order.packedAt = new Date();
     if (updatedBy) {

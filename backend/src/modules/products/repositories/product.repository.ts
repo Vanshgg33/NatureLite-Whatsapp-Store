@@ -233,8 +233,17 @@ export class ProductRepository extends BaseRepository<ProductDocument> {
   }
 
   async searchByText(searchTerm: string, limit: number = 20): Promise<ProductDocument[]> {
-    return this.model
+    const textResults = await this.model
       .find({ isActive: true, $text: { $search: searchTerm } })
+      .limit(limit)
+      .exec();
+
+    if (textResults.length > 0) return textResults;
+
+    // Fallback: regex on name handles partial words (e.g. "bilon" → "Bilona Ghee A2")
+    const escaped = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return this.model
+      .find({ isActive: true, name: { $regex: escaped, $options: 'i' } })
       .limit(limit)
       .exec();
   }
