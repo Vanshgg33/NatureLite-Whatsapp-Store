@@ -483,15 +483,10 @@ export default function HomePage() {
 
   return (
     <motion.main variants={pageVariants} initial="hidden" animate="visible">
-      {/* 1. Immersive hero with 3D oil bottle */}
-      <motion.div variants={sectionVariants}>
-        <ImmersiveHeroSection />
-      </motion.div>
-
-      {/* 1b. WhatsApp ordering strip */}
+      {/* 1a. WhatsApp ordering strip — above the fold */}
       <WhatsAppStrip />
 
-      {/* 1c. Delivery area notice */}
+      {/* 1b. Delivery area notice — above the fold */}
       <div style={{
         background: 'linear-gradient(90deg, #0d1a05 0%, #111f06 50%, #0d1a05 100%)',
         borderBottom: '1px solid rgba(120,170,20,0.15)',
@@ -515,6 +510,11 @@ export default function HomePage() {
           {' '}(Chhattisgarh)
         </span>
       </div>
+
+      {/* 1. Immersive hero with 3D oil bottle */}
+      <motion.div variants={sectionVariants}>
+        <ImmersiveHeroSection />
+      </motion.div>
 
       {/* 2. Product collection with category filter */}
       {products.length > 0 && (

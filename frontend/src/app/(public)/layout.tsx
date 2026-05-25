@@ -11,6 +11,8 @@ import { AnnouncementBar } from '@/components/layout/announcement-bar';
 import { PromoBar } from '@/components/layout/promo-bar';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { StickyCartBar } from '@/components/ecommerce/sticky-cart-bar';
+import { PincodeChecker } from '@/components/ecommerce/pincode-checker';
+import { WhatsAppFab } from '@/components/ecommerce/whatsapp-fab';
 
 export default function PublicLayout({
   children,
@@ -38,6 +40,8 @@ export default function PublicLayout({
             <PublicFooter />
           <StickyCartBar />
           </div>
+          <PincodeChecker />
+          <WhatsAppFab />
           <SocialProofPopup />
         </AddToCartAnimationProvider>
       </LoadingProvider>

@@ -3,7 +3,7 @@
 import { motion, useMotionValue, useSpring, useTransform, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowRight, ShieldCheck } from 'lucide-react';
+import { ArrowRight, ShieldCheck, MessageCircle } from 'lucide-react';
 import { useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useSiteSettings } from '@/lib/site-settings-context';
@@ -216,8 +216,18 @@ export default function ImmersiveHeroSection() {
                 >
                   {ctaText} <ArrowRight className="w-4 h-4" />
                 </Link>
+                <a
+                  href="https://wa.me/918817200740?text=Hi%2C%20I%27d%20like%20to%20place%20an%20order"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl font-bold text-sm transition-all duration-220 hover:-translate-y-0.5 active:scale-[0.98]"
+                  style={{ padding: '13px 28px', background: 'linear-gradient(135deg,#1a7a44 0%,#128c7e 100%)', color: '#fff', boxShadow: '0 4px 22px -4px rgba(37,211,102,0.42)', fontSize: 14, letterSpacing: '0.01em' }}
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  Order on WhatsApp
+                </a>
                 <Link href="/about"
-                  className="inline-flex items-center justify-center gap-2 rounded-xl font-semibold text-sm transition-all duration-220 hover:bg-white/[0.14] active:scale-[0.98]"
+                  className="hidden sm:inline-flex items-center justify-center gap-2 rounded-xl font-semibold text-sm transition-all duration-220 hover:bg-white/[0.14] active:scale-[0.98]"
                   style={{ padding: '13px 28px', background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.78)', border: '1.5px solid rgba(255,255,255,0.16)', backdropFilter: 'blur(4px)', fontSize: 14 }}
                 >
                   Our Story <ShieldCheck className="w-4 h-4" />

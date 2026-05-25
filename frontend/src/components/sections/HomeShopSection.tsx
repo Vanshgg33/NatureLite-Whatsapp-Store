@@ -10,8 +10,11 @@ import { PremiumProductCard } from '@/components/ecommerce/premium-product-card'
 import { Product, Category } from '@/types';
 import { api } from '@/lib/api';
 
-const WOOD_PRESSED_SLUGS = new Set(['wood-pressed-oils', 'wood-pressed-oil', 'cold-pressed-oils', 'cold-pressed-oil']);
-const BILONA_GHEE_SLUGS  = new Set(['bilona-ghee', 'bilona-cow-ghee', 'a2-bilona-ghee', 'ghee']);
+const WOOD_PRESSED_SLUGS  = new Set(['wood-pressed-oils', 'wood-pressed-oil', 'cold-pressed-oils', 'cold-pressed-oil']);
+const BILONA_GHEE_SLUGS   = new Set(['bilona-ghee', 'bilona-cow-ghee', 'a2-bilona-ghee', 'ghee']);
+const FLOURS_PULSES_SLUGS = new Set(['flours-and-pulses', 'flours-pulses', 'flour-and-pulses', 'flour-pulses', 'flours', 'pulses', 'atta', 'dal']);
+const SPICES_SLUGS        = new Set(['spices', 'spice', 'masale', 'indian-spices', 'masala']);
+const SWEETENER_SLUGS     = new Set(['natural-sweetener', 'natural-sweeteners', 'sweeteners', 'sweetener', 'jaggery', 'honey', 'mishri']);
 
 // ─── 3D Tilt Card ─────────────────────────────────────────────────────────────
 
@@ -239,6 +242,78 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
                     <span className="flex flex-col items-start leading-tight">
                       <span className="text-sm font-bold">{cat.name.trim()}</span>
                       <span className="text-[10px] font-medium opacity-60 tracking-wide">Hand-Churned · A2</span>
+                    </span>
+                  </button>
+                );
+              }
+              if (FLOURS_PULSES_SLUGS.has(cat.slug)) {
+                return (
+                  <button
+                    key={cat._id}
+                    onClick={() => handleCatChange(active ? null : cat._id)}
+                    className="flex-shrink-0 flex items-center gap-2.5 pr-5 pl-2 py-2 rounded-2xl text-sm font-semibold transition-all duration-200"
+                    style={active
+                      ? { background: '#78400a', color: '#fef3c7', boxShadow: '0 4px 18px -3px rgba(120,64,10,0.55)', border: '1.5px solid rgba(251,191,36,0.45)' }
+                      : { background: '#fffbf0', color: '#78400a', border: '1.5px solid rgba(120,64,10,0.20)', boxShadow: '0 2px 8px -2px rgba(120,64,10,0.10)' }
+                    }
+                  >
+                    <span
+                      className="flex items-center justify-center w-9 h-9 rounded-xl flex-shrink-0 ring-2 ring-white"
+                      style={{ background: active ? 'rgba(255,255,255,0.15)' : '#fef3c7', fontSize: 20 }}
+                    >
+                      🌾
+                    </span>
+                    <span className="flex flex-col items-start leading-tight">
+                      <span className="text-sm font-bold">{cat.name.trim()}</span>
+                      <span className="text-[10px] font-medium opacity-60 tracking-wide">Stone-ground · Pure</span>
+                    </span>
+                  </button>
+                );
+              }
+              if (SPICES_SLUGS.has(cat.slug)) {
+                return (
+                  <button
+                    key={cat._id}
+                    onClick={() => handleCatChange(active ? null : cat._id)}
+                    className="flex-shrink-0 flex items-center gap-2.5 pr-5 pl-2 py-2 rounded-2xl text-sm font-semibold transition-all duration-200"
+                    style={active
+                      ? { background: '#7f1d1d', color: '#fef2f2', boxShadow: '0 4px 18px -3px rgba(127,29,29,0.55)', border: '1.5px solid rgba(254,202,202,0.45)' }
+                      : { background: '#fff5f5', color: '#7f1d1d', border: '1.5px solid rgba(127,29,29,0.18)', boxShadow: '0 2px 8px -2px rgba(127,29,29,0.10)' }
+                    }
+                  >
+                    <span
+                      className="flex items-center justify-center w-9 h-9 rounded-xl flex-shrink-0 ring-2 ring-white"
+                      style={{ background: active ? 'rgba(255,255,255,0.15)' : '#fee2e2', fontSize: 20 }}
+                    >
+                      🌶️
+                    </span>
+                    <span className="flex flex-col items-start leading-tight">
+                      <span className="text-sm font-bold">{cat.name.trim()}</span>
+                      <span className="text-[10px] font-medium opacity-60 tracking-wide">Farm Fresh · Aromatic</span>
+                    </span>
+                  </button>
+                );
+              }
+              if (SWEETENER_SLUGS.has(cat.slug)) {
+                return (
+                  <button
+                    key={cat._id}
+                    onClick={() => handleCatChange(active ? null : cat._id)}
+                    className="flex-shrink-0 flex items-center gap-2.5 pr-5 pl-2 py-2 rounded-2xl text-sm font-semibold transition-all duration-200"
+                    style={active
+                      ? { background: '#92400e', color: '#fffbeb', boxShadow: '0 4px 18px -3px rgba(146,64,14,0.55)', border: '1.5px solid rgba(253,230,138,0.45)' }
+                      : { background: '#fffbeb', color: '#92400e', border: '1.5px solid rgba(146,64,14,0.18)', boxShadow: '0 2px 8px -2px rgba(146,64,14,0.10)' }
+                    }
+                  >
+                    <span
+                      className="flex items-center justify-center w-9 h-9 rounded-xl flex-shrink-0 ring-2 ring-white"
+                      style={{ background: active ? 'rgba(255,255,255,0.15)' : '#fef3c7', fontSize: 20 }}
+                    >
+                      🍯
+                    </span>
+                    <span className="flex flex-col items-start leading-tight">
+                      <span className="text-sm font-bold">{cat.name.trim()}</span>
+                      <span className="text-[10px] font-medium opacity-60 tracking-wide">Raw · Unrefined</span>
                     </span>
                   </button>
                 );
