@@ -14,6 +14,9 @@ export type WhatsAppSettings = {
 
 @Injectable()
 export class SettingsService implements OnModuleInit {
+  private readonly cache = new Map<string, { value: Record<string, unknown> | null; expiresAt: number }>();
+  private static readonly TTL_MS = 30_000;
+
   constructor(private readonly settingsRepository: SettingsRepository) {}
 
   async onModuleInit(): Promise<void> {
@@ -38,8 +41,16 @@ export class SettingsService implements OnModuleInit {
   }
 
   async get(key: string): Promise<Record<string, unknown> | null> {
+    const cached = this.cache.get(key);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
     const settings = await this.settingsRepository.findOneByKey(key);
-    return settings?.value || null;
+    const value = settings?.value || null;
+    this.cache.set(key, { value, expiresAt: Date.now() + SettingsService.TTL_MS });
+    return value;
+  }
+
+  private invalidateCache(key: string): void {
+    this.cache.delete(key);
   }
 
   async getByCategory(category: string): Promise<Settings[]> {
@@ -78,6 +89,7 @@ export class SettingsService implements OnModuleInit {
       throw new NotFoundException(`Setting "${key}" not found`);
     }
 
+    this.invalidateCache(key);
     return settings;
   }
 

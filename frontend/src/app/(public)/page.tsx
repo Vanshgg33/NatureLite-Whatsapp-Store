@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 
 import { api } from '@/lib/api';
-import { Product, Category } from '@/types';
+import { Product } from '@/types';
 
 import ImmersiveHeroSection from '@/components/sections/ImmersiveHeroSection';
 import HomeShopSection from '@/components/sections/HomeShopSection';
@@ -454,28 +455,22 @@ const sectionVariants = {
 // ─── Home Page ────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
-  const [products,    setProducts]    = useState<Product[]>([]);
-  const [categories,  setCategories]  = useState<Category[]>([]);
-  const [dataReady,   setDataReady]   = useState(false);
   const [loaderExited, setLoaderExited] = useState(false);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const [productsRes, categoriesRes] = await Promise.all([
-          api.getProducts({ limit: 60, sortBy: 'totalSold', sortOrder: 'desc' }),
-          api.getActiveCategories(),
-        ]);
-        setProducts(productsRes.items || []);
-        setCategories(categoriesRes || []);
-      } catch (error) {
-        console.error('Failed to fetch homepage data:', error);
-      } finally {
-        setDataReady(true);
-      }
-    }
-    fetchData();
-  }, []);
+  const { data: productsData } = useQuery({
+    queryKey: ['homepage-products'],
+    queryFn: () => api.getProducts({ limit: 60, sortBy: 'totalSold', sortOrder: 'desc' }),
+    staleTime: 5 * 60 * 1000,
+  });
+  const { data: categoriesData } = useQuery({
+    queryKey: ['homepage-categories'],
+    queryFn: () => api.getActiveCategories(),
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const products = productsData?.items ?? [];
+  const categories = categoriesData ?? [];
+  const dataReady = productsData !== undefined && categoriesData !== undefined;
 
   if (!loaderExited) {
     return <LoadingScreen onDone={() => setLoaderExited(true)} dataReady={dataReady} />;

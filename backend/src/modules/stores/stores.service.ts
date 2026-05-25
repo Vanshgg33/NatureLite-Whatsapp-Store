@@ -13,6 +13,9 @@ import { parseObjectId } from '../../common/utils/objectid.util';
 @Injectable()
 export class StoresService implements OnModuleInit {
   private readonly logger = new Logger(StoresService.name);
+  private storesCache: Store[] | null = null;
+  private storesCacheExpiresAt = 0;
+  private static readonly STORES_TTL_MS = 60_000;
 
   constructor(
     private readonly storeRepository: StoreRepository,
@@ -86,6 +89,7 @@ export class StoresService implements OnModuleInit {
   }
 
   async create(dto: CreateStoreDto): Promise<Store> {
+    this.invalidateStoresCache();
     const saved = await this.storeRepository.create(dto as Partial<Store>);
 
     try {
@@ -105,7 +109,18 @@ export class StoresService implements OnModuleInit {
   }
 
   async findAll(): Promise<Store[]> {
-    return this.storeRepository.findAllSorted();
+    if (this.storesCache && this.storesCacheExpiresAt > Date.now()) {
+      return this.storesCache;
+    }
+    const stores = await this.storeRepository.findAllSorted();
+    this.storesCache = stores;
+    this.storesCacheExpiresAt = Date.now() + StoresService.STORES_TTL_MS;
+    return stores;
+  }
+
+  invalidateStoresCache(): void {
+    this.storesCache = null;
+    this.storesCacheExpiresAt = 0;
   }
 
   async findById(id: string): Promise<Store> {
@@ -131,6 +146,7 @@ export class StoresService implements OnModuleInit {
     const idObj = parseObjectId(id, 'id');
     const store = await this.storeRepository.findByIdAndUpdate(idObj, { $set: dto });
     if (!store) throw new NotFoundException('Store not found');
+    this.invalidateStoresCache();
     return store;
   }
 

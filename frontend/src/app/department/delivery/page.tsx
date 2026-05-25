@@ -36,7 +36,7 @@ export default function DeliveryDashboardPage() {
         page: 1,
         limit: 50,
       }),
-    refetchInterval: 5000,
+    refetchInterval: 15_000,
   });
 
   const billedOrders = useMemo(() => (billedData?.items ?? []) as Order[], [billedData]);

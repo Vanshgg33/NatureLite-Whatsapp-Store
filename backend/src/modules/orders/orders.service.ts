@@ -174,9 +174,13 @@ export class OrdersService implements OnModuleInit {
           throw new BadRequestException('Cart is empty');
         }
 
+        const productIds = cart.items.map((item) => item.product.toString());
+        const products = await Promise.all(productIds.map((id) => this.productsService.findById(id)));
+        const productMap = new Map(products.map((p) => [p._id.toString(), p]));
+
         for (const item of cart.items) {
           const productId = item.product.toString();
-          const product = await this.productsService.findById(productId);
+          const product = productMap.get(productId)!;
           tracksStockByProductId.set(productId, product.trackStock !== false);
           orderProductIds.push(productId);
           collectCategoryId(product.category);
@@ -217,9 +221,14 @@ export class OrdersService implements OnModuleInit {
           subtotal += orderItem.total;
         }
       } else if (dto.items && dto.items.length > 0) {
+        const products = await Promise.all(
+          dto.items.map((item) => this.productsService.findById(item.productId)),
+        );
+        const productMap = new Map(products.map((p) => [p._id.toString(), p]));
+
         for (const item of dto.items) {
           const productIdObj = parseObjectId(item.productId, 'items[].productId');
-          const product = await this.productsService.findById(item.productId);
+          const product = productMap.get(item.productId)!;
           tracksStockByProductId.set(item.productId, product.trackStock !== false);
           orderProductIds.push(item.productId);
           collectCategoryId(product.category);
@@ -439,29 +448,29 @@ export class OrdersService implements OnModuleInit {
       const mainStore = await this.storesService.findMainStore();
       const mainStoreId = mainStore._id.toString();
 
-      for (const item of orderItems) {
-        const productId = item.product.toString();
-        if (tracksStockByProductId.get(productId) === false) {
-          continue;
-        }
-        const existingStoreStock = await this.storeStockService.getStockForStoreProduct(
-          mainStoreId,
-          productId,
-        );
-        if (!existingStoreStock) {
-          this.logger.warn(
-            `No StoreStock row for product ${productId} in store ${mainStoreId} — skipping decrement`,
+      await Promise.all(
+        orderItems.map(async (item) => {
+          const productId = item.product.toString();
+          if (tracksStockByProductId.get(productId) === false) return;
+          const existingStoreStock = await this.storeStockService.getStockForStoreProduct(
+            mainStoreId,
+            productId,
           );
-          continue;
-        }
-        await this.storeStockService.decrementStock(
-          mainStoreId,
-          productId,
-          item.quantity,
-          item.variantSku,
-          session,
-        );
-      }
+          if (!existingStoreStock) {
+            this.logger.warn(
+              `No StoreStock row for product ${productId} in store ${mainStoreId} — skipping decrement`,
+            );
+            return;
+          }
+          await this.storeStockService.decrementStock(
+            mainStoreId,
+            productId,
+            item.quantity,
+            item.variantSku,
+            session,
+          );
+        }),
+      );
 
       // Atomically reserve the coupon usage slot inside the transaction so
       // concurrent orders cannot both pass the `maxUsageCount` check, both
@@ -474,9 +483,11 @@ export class OrdersService implements OnModuleInit {
 
       await session.commitTransaction();
       try {
-        for (const item of orderItems) {
-          await this.productsService.incrementTotalSold(item.product.toString(), item.quantity);
-        }
+        await Promise.all(
+          orderItems.map((item) =>
+            this.productsService.incrementTotalSold(item.product.toString(), item.quantity),
+          ),
+        );
       } catch (soldErr) {
         this.logger.warn(
           `Post-commit totalSold update failed for order ${savedOrder.orderNumber}`,

@@ -38,20 +38,22 @@ export class ProductsService implements OnModuleInit {
     const mainStore = stores.find((s) => s.isMainStore) ?? stores[0];
     const products = await this.productRepository.findIdsAndStock();
 
-    for (const product of products) {
-      const variantStocks = (product.variants ?? [])
-        .filter((v) => !!v?.sku)
-        .map((v) => ({ variantSku: v.sku, stock: v.stock ?? 0 }));
-      await this.storeStockService.initializeStockForProduct(
-        product._id.toString(),
-        storeIds,
-        {
-          storeId: mainStore._id.toString(),
-          stock: product.stock ?? 0,
-          variantStocks,
-        },
-      );
-    }
+    await Promise.all(
+      products.map((product) => {
+        const variantStocks = (product.variants ?? [])
+          .filter((v) => !!v?.sku)
+          .map((v) => ({ variantSku: v.sku, stock: v.stock ?? 0 }));
+        return this.storeStockService.initializeStockForProduct(
+          product._id.toString(),
+          storeIds,
+          {
+            storeId: mainStore._id.toString(),
+            stock: product.stock ?? 0,
+            variantStocks,
+          },
+        );
+      }),
+    );
 
     if (products.length > 0) {
       this.logger.log(`Backfilled StoreStock for ${products.length} product(s) across ${stores.length} store(s)`);
@@ -101,7 +103,7 @@ export class ProductsService implements OnModuleInit {
       this.logger.error(`Failed to initialize StoreStock for product ${saved.name}: ${(error as Error).message}`);
     }
 
-    await this.ucmService.syncProductById(saved._id.toString(), 'product_created');
+    void this.ucmService.syncProductById(saved._id.toString(), 'product_created');
 
     return saved as Product;
   }
@@ -305,7 +307,7 @@ export class ProductsService implements OnModuleInit {
       variantStocks,
     });
 
-    await this.ucmService.syncProductById(product._id.toString(), 'product_updated');
+    void this.ucmService.syncProductById(product._id.toString(), 'product_updated');
     await this.overlayStoreStock([product as unknown as { _id: Types.ObjectId; stock?: number; variants?: Array<{ sku: string; stock?: number }> }]);
     return product as Product;
   }
@@ -333,7 +335,7 @@ export class ProductsService implements OnModuleInit {
       stock: dto.variantSku ? undefined : dto.stock,
       variantStocks: dto.variantSku ? [{ variantSku: dto.variantSku, stock: dto.stock }] : [],
     });
-    await this.ucmService.syncProductById(saved._id.toString(), 'stock_updated');
+    void this.ucmService.syncProductById(saved._id.toString(), 'stock_updated');
     await this.overlayStoreStock([saved as unknown as { _id: Types.ObjectId; stock?: number; variants?: Array<{ sku: string; stock?: number }> }]);
     return saved as Product;
   }
@@ -360,7 +362,7 @@ export class ProductsService implements OnModuleInit {
       }
     }
 
-    await this.ucmService.syncProductById(productId, 'stock_decremented');
+    void this.ucmService.syncProductById(productId, 'stock_decremented');
   }
 
   async incrementTotalSold(productId: string, quantity: number): Promise<void> {

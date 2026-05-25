@@ -7,6 +7,7 @@ import { WhatsAppConfig } from './config/configuration';
 
 const cookieParser = require('cookie-parser');
 const mongoSanitize = require('express-mongo-sanitize');
+const compression = require('compression');
 
 const logger = new Logger('Bootstrap');
 
@@ -73,6 +74,7 @@ async function createApp() {
   const configService = app.get(ConfigService);
   validateProductionConfig(configService);
 
+  app.use(compression());
   app.use(helmet());
   app.use(cookieParser());
   app.use(mongoSanitize());

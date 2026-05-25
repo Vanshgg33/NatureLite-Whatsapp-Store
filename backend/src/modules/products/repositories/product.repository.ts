@@ -200,7 +200,7 @@ export class ProductRepository extends BaseRepository<ProductDocument> {
   }
 
   async findLowStock(): Promise<ProductDocument[]> {
-    const docs = await this.model
+    return this.model
       .aggregate([
         { $addFields: { totalStock: { $add: ['$stock', { $ifNull: [{ $sum: '$variants.stock' }, 0] }] } } },
         {
@@ -211,8 +211,7 @@ export class ProductRepository extends BaseRepository<ProductDocument> {
           },
         },
       ])
-      .exec();
-    return this.model.find({ _id: { $in: docs.map((d) => d._id) } }).exec() as Promise<ProductDocument[]>;
+      .exec() as unknown as Promise<ProductDocument[]>;
   }
 
   async countLowStock(): Promise<number> {
