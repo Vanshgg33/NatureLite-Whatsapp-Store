@@ -27,6 +27,11 @@ export class UpsertDailyEntryDto {
   @IsNumber()
   @Min(0)
   processed: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  outputLitres?: number;
 }
 
 export class RawMaterialQueryDto {

@@ -78,6 +78,7 @@ export class RawMaterialService {
       stockIn: dto.stockIn,
       processed: dto.processed,
       closing,
+      outputLitres: dto.outputLitres ?? 0,
     });
 
     await this.rawMaterialRepository.setTotalStock(objId, closing);
@@ -88,7 +89,7 @@ export class RawMaterialService {
   }
 
   /** Return today's entry for pre-fill (opening = yesterday's closing if no today entry). */
-  async getTodayPrefill(id: string, callerStoreId?: string): Promise<{ openingStock: number; stockIn: number; processed: number; closing: number; isExisting: boolean }> {
+  async getTodayPrefill(id: string, callerStoreId?: string): Promise<{ openingStock: number; stockIn: number; processed: number; outputLitres: number; closing: number; isExisting: boolean }> {
     const objId = parseObjectId(id, 'id');
     const material = await this.rawMaterialRepository.findById(objId);
     if (!material) throw new NotFoundException('Raw material not found');
@@ -102,6 +103,7 @@ export class RawMaterialService {
         openingStock: todayEntry.openingStock,
         stockIn: todayEntry.stockIn,
         processed: todayEntry.processed,
+        outputLitres: todayEntry.outputLitres ?? 0,
         closing: todayEntry.closing,
         isExisting: true,
       };
@@ -111,7 +113,7 @@ export class RawMaterialService {
     const prev = await this.dailyEntryRepository.getLatestEntryBefore(objId, today);
     const opening = prev ? prev.closing : (material.totalStock ?? 0);
 
-    return { openingStock: opening, stockIn: 0, processed: 0, closing: opening, isExisting: false };
+    return { openingStock: opening, stockIn: 0, processed: 0, outputLitres: 0, closing: opening, isExisting: false };
   }
 
   async softDelete(id: string, callerStoreId?: string): Promise<void> {

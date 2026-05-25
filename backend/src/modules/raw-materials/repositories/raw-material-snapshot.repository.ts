@@ -14,7 +14,7 @@ export class RawMaterialDailyEntryRepository {
     storeId: Types.ObjectId,
     rawMaterialId: Types.ObjectId,
     date: string,
-    data: { openingStock: number; stockIn: number; processed: number; closing: number },
+    data: { openingStock: number; stockIn: number; processed: number; closing: number; outputLitres?: number },
   ): Promise<void> {
     await this.model.findOneAndUpdate(
       { store: storeId, rawMaterial: rawMaterialId, date },
@@ -72,6 +72,7 @@ export class RawMaterialDailyEntryRepository {
           openingStock: 1,
           stockIn: 1,
           processed: 1,
+          outputLitres: 1,
           closing: 1,
           materialName: '$materialInfo.name',
           materialUnit: '$materialInfo.unit',

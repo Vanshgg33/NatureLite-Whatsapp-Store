@@ -23,6 +23,8 @@ import {
   MapPin,
   KeyRound,
   Boxes,
+  FlaskConical,
+  Cog,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -51,9 +53,16 @@ const BASE_NAV_GROUPS: NavGroup[] = [
   {
     label: 'Operations',
     items: [
-      { name: 'Stock Management', href: '/admin/store-stock', icon: Warehouse },
       { name: 'Sales Log', href: '/admin/sales', icon: Receipt },
       { name: 'Orders', href: '/admin/orders', icon: ShoppingCart },
+    ],
+  },
+  {
+    label: 'Factory',
+    items: [
+      { name: 'IMS', href: '/admin/ims', icon: Boxes },
+      { name: 'PMS', href: '/admin/pms', icon: Cog },
+      { name: 'RMS', href: '/admin/rms', icon: FlaskConical },
     ],
   },
   {

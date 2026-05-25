@@ -25,6 +25,9 @@ export class RawMaterialDailyEntry {
   @Prop({ default: 0 })
   processed: number;
 
+  @Prop({ default: 0 })
+  outputLitres: number;
+
   // closing = openingStock + stockIn - processed (clamped to 0)
   @Prop({ default: 0 })
   closing: number;

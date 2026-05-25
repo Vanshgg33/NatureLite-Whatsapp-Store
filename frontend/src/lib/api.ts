@@ -1223,7 +1223,7 @@ class ApiClient {
     return response.data.data;
   }
 
-  async upsertRawMaterialEntry(id: string, data: { openingStock: number; stockIn: number; processed: number }): Promise<RawMaterial> {
+  async upsertRawMaterialEntry(id: string, data: { openingStock: number; stockIn: number; processed: number; outputLitres?: number }): Promise<RawMaterial> {
     const response = await this.client.put<ApiResponse<RawMaterial>>(`/raw-materials/${id}/entry`, data);
     return response.data.data;
   }

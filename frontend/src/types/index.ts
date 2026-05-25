@@ -985,6 +985,7 @@ export interface RawMaterialTodayEntry {
   openingStock: number;
   stockIn: number;
   processed: number;
+  outputLitres: number;
   closing: number;
 }
 
@@ -1006,6 +1007,7 @@ export interface RawMaterialDailyItem {
   openingStock: number;
   stockIn: number;
   processed: number;
+  outputLitres: number;
   closing: number;
   materialName?: string;
   materialUnit?: string;
@@ -1015,6 +1017,7 @@ export interface RawMaterialPrefill {
   openingStock: number;
   stockIn: number;
   processed: number;
+  outputLitres: number;
   closing: number;
   isExisting: boolean;
 }
