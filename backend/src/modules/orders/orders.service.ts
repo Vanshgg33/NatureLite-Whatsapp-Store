@@ -933,6 +933,12 @@ export class OrdersService implements OnModuleInit {
       throw new NotFoundException('Order not found');
     }
 
+    if (order.status !== 'out_for_delivery') {
+      throw new BadRequestException(
+        `Cannot update delivery workflow: order is "${order.status}", not "out_for_delivery".`,
+      );
+    }
+
     const previousStatus = order.status;
     const metadata: OrderMetadata = order.metadata || {};
     const workflow: DeliveryWorkflowMetadata = {

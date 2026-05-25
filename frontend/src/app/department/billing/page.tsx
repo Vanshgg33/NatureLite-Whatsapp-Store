@@ -99,11 +99,11 @@ export default function BillingDashboardPage() {
                   <Button
                     size="sm"
                     className="flex-1 flex items-center justify-center gap-2"
-                    disabled={markBilled.isPending}
+                    disabled={markBilled.isPending || order.status !== 'preparing' || !order.packedAt}
                     onClick={() => markBilled.mutate(order._id)}
                   >
                     <CheckCircle2 className="h-4 w-4" />
-                    Mark as billed
+                    Send out for delivery
                   </Button>
                   <Link href={`/department/order/${order._id}`}>
                     <Button size="sm" variant="outline" className="flex items-center justify-center gap-1">

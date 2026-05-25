@@ -531,11 +531,15 @@ export class ChatbotService {
         this.logger.warn(
           `catalog_product_lookup_failed for ${message.content.productRetailerId}: ${error instanceof Error ? error.message : 'unknown'}`,
         );
-        await this.whatsappService.sendTextMessage({
+        await this.whatsappService.sendInteractiveButtons({
           phone: message.phone,
-          message: 'That catalog item is no longer available. Please browse the latest catalog in chat.',
+          headerText: 'Item unavailable',
+          bodyText: 'That catalog item is no longer available. Browse our latest products below.',
+          buttons: [
+            { id: BTN.BROWSE, title: '🛍 Browse' },
+            { id: BTN.MENU, title: '🏠 Menu' },
+          ],
         });
-        await this.sendBrowseSurface(message.phone, session);
         return;
       }
     }
@@ -1041,12 +1045,8 @@ export class ChatbotService {
 
     if (input === 'clear_confirm') {
       await this.cartService.clearCart(session.user.toString());
-      await this.whatsappService.sendTextMessage({
-        phone,
-        message: 'Cart cleared.',
-      });
-      await this.transitionToState(session, 'browsing');
-      await this.sendBrowseSurface(phone, session);
+      await this.transitionToState(session, 'cart');
+      await this.sendEmptyCart(phone);
       return;
     }
 
@@ -1079,11 +1079,7 @@ export class ChatbotService {
         (it) => it.product.id === target.productId && it.variantSku === target.variantSku,
       ) ?? -1;
       if (idx < 0) {
-        await this.whatsappService.sendTextMessage({
-          phone,
-          message: italic('That item is no longer in your cart.'),
-        });
-        await this.sendCartSummary(phone, session);
+        await this.sendCartSummary(phone, session, italic('That item is no longer in your cart.'));
         return;
       }
       if (input === BTN.CART_RM) {
@@ -1167,31 +1163,20 @@ export class ChatbotService {
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : '';
-      if (/stock/i.test(msg)) {
-        await this.whatsappService.sendTextMessage({
-          phone,
-          message: `_Only ${item.quantity} in stock — cannot increase further._`,
-        });
-      } else {
-        this.logger.warn(
-          `Cart quantity update failed for ${session.user.toString()}: ${msg || 'unknown'}`,
-        );
-        await this.whatsappService.sendTextMessage({
-          phone,
-          message: italic('Couldn\u2019t update the quantity. Please try again.'),
-        });
+      const notice = /stock/i.test(msg)
+        ? `_Only ${item.quantity} in stock — cannot increase further._`
+        : italic('Couldn\u2019t update the quantity. Please try again.');
+      if (!/stock/i.test(msg)) {
+        this.logger.warn(`Cart quantity update failed for ${session.user.toString()}: ${msg || 'unknown'}`);
       }
-      await this.sendCartSummary(phone, session);
+      await this.sendCartSummary(phone, session, notice);
       return;
     }
     const updated = await this.cartService.getCart(session.user.toString());
-    if (previousCoupon && !updated.couponCode) {
-      await this.whatsappService.sendTextMessage({
-        phone,
-        message: `_Coupon ${previousCoupon} removed \u2014 cart no longer qualifies._`,
-      });
-    }
-    await this.sendCartSummary(phone, session);
+    const couponNotice = previousCoupon && !updated.couponCode
+      ? `_Coupon ${previousCoupon} removed \u2014 cart no longer qualifies._`
+      : undefined;
+    await this.sendCartSummary(phone, session, couponNotice);
   }
 
   /** Remove item at idx; notifies if a coupon got invalidated; returns to cart summary. */
@@ -1221,25 +1206,16 @@ export class ChatbotService {
       this.logger.warn(
         `Cart item removal failed for ${session.user.toString()}: ${e instanceof Error ? e.message : 'unknown'}`,
       );
-      await this.whatsappService.sendTextMessage({
-        phone,
-        message: italic('Couldn\u2019t remove that item. Please try again.'),
-      });
-      await this.sendCartSummary(phone, session);
+      await this.sendCartSummary(phone, session, italic('Couldn\u2019t remove that item. Please try again.'));
       return;
     }
     const updated = await this.cartService.getCart(session.user.toString());
+    const notices: string[] = [];
     if (previousCoupon && !updated.couponCode) {
-      await this.whatsappService.sendTextMessage({
-        phone,
-        message: `_Coupon ${previousCoupon} removed \u2014 cart no longer qualifies._`,
-      });
+      notices.push(`_Coupon ${previousCoupon} removed \u2014 cart no longer qualifies._`);
     }
-    await this.whatsappService.sendTextMessage({
-      phone,
-      message: `\uD83D\uDDD1\uFE0F  *Removed* ${item.product.name}`,
-    });
-    await this.sendCartSummary(phone, session);
+    notices.push(`\uD83D\uDDD1\uFE0F  *Removed* ${item.product.name}`);
+    await this.sendCartSummary(phone, session, notices.join('\n'));
   }
 
   /** Parse free-text cart commands: set/+/-/remove/delete. Returns true if handled. */
@@ -1289,11 +1265,7 @@ export class ChatbotService {
       it.product.name.toLowerCase().includes(name.trim()),
     );
     if (idx < 0) {
-      await this.whatsappService.sendTextMessage({
-        phone,
-        message: `_No cart item matches "${name.trim()}"._`,
-      });
-      await this.sendCartSummary(phone, session);
+      await this.sendCartSummary(phone, session, `_No cart item matches "${name.trim()}"._`);
       return true;
     }
 
@@ -1323,12 +1295,16 @@ export class ChatbotService {
     input: string,
   ): Promise<void> {
     if (!session.user) {
-      await this.whatsappService.sendTextMessage({
+      await this.whatsappService.sendInteractiveButtons({
         phone,
-        message: 'Please register first to checkout.',
+        headerText: 'Registration needed',
+        bodyText: 'Please share your name to create an account before checking out.',
+        buttons: [
+          { id: BTN.MENU, title: '🏠 Menu' },
+          { id: BTN.BROWSE, title: '🛍 Browse' },
+        ],
       });
       await this.transitionToState(session, 'main_menu');
-      await this.sendFlowResponse(phone, 'main_menu', session);
       return;
     }
 
@@ -1393,6 +1369,7 @@ export class ChatbotService {
   private async sendCouponPromptScreen(
     phone: string,
     session: ChatSessionDocument,
+    notice?: string,
   ): Promise<void> {
     const applicable = await this.findApplicableCoupons(session);
     const suggestion = applicable[0] ?? null;
@@ -1413,7 +1390,7 @@ export class ChatbotService {
         phone,
         headerText: 'Save on this order',
         bodyText:
-          `\uD83C\uDF81 ${bold(`${this.formatCurrency(suggestion.discount)} off`)} with ${bold(suggestion.code)} \u2014 we've lined it up for you.\n` +
+          `${notice ? `${notice}\n\n` : ''}\uD83C\uDF81 ${bold(`${this.formatCurrency(suggestion.discount)} off`)} with ${bold(suggestion.code)} \u2014 we've lined it up for you.\n` +
           italic(suggestion.description || 'Applied to your cart total.'),
         buttons: [
           { id: BTN.COUPON_APPLY_SUGGESTED, title: applyTitle },
@@ -1443,7 +1420,7 @@ export class ChatbotService {
 
     await this.whatsappService.sendInteractiveButtons({
       phone,
-      bodyText: 'Got a promo code, or want to see what\u2019s available right now?',
+      bodyText: `${notice ? `${notice}\n\n` : ''}Got a promo code, or want to see what\u2019s available right now?`,
       buttons: [
         { id: BTN.COUPON_LIST, title: '\uD83C\uDFF7 See codes' },
         { id: BTN.COUPON_CUSTOM, title: '\uD83C\uDFF7 Enter code' },
@@ -1724,12 +1701,8 @@ export class ChatbotService {
 
     if (transitionKey === 'remove_coupon') {
       await this.cartService.removeCoupon(session.user.toString());
-      await this.whatsappService.sendTextMessage({
-        phone,
-        message: 'Coupon removed from your cart.',
-      });
       await this.transitionToState(session, 'coupon_prompt');
-      await this.sendFlowResponse(phone, 'coupon_prompt', session);
+      await this.sendCouponPromptScreen(phone, session, italic('Coupon removed from your cart.'));
       return;
     }
 
@@ -1810,15 +1783,13 @@ export class ChatbotService {
         discount: updated.discount,
         source: 'manual',
       });
-      await this.whatsappService.sendTextMessage({
-        phone,
-        message:
+      await this.transitionToState(session, 'checkout');
+      await this.sendCheckoutOptions(phone, session, {
+        notice:
           `\u2705 ${bold('Coupon applied')}\n` +
           `Code ${bold(code)} \u2014 saved ${bold(this.formatCurrency(updated.discount))}\n` +
           `New total ${bold(this.formatCurrency(updated.total))}`,
       });
-      await this.transitionToState(session, 'checkout');
-      await this.sendCheckoutOptions(phone, session);
     } catch (e) {
       const msg = e instanceof Error ? e.message : '';
       this.analytics.track('chatbot.coupon_failed', {
@@ -2151,12 +2122,8 @@ export class ChatbotService {
     let cart = await this.cartService.getCart(session.user.toString());
 
     if (cart.items.length === 0) {
-      await this.whatsappService.sendTextMessage({
-        phone,
-        message: 'Your cart is empty. Browse products to get started.',
-      });
       await this.transitionToState(session, 'main_menu');
-      await this.sendFlowResponse(phone, 'main_menu', session);
+      await this.sendFlowResponse(phone, 'main_menu', session, 'Your cart is empty. Browse products to get started.');
       return;
     }
 
@@ -2187,7 +2154,7 @@ export class ChatbotService {
     if ((cart.total ?? 0) <= 0 && !cart.couponCode) {
       await this.whatsappService.sendInteractiveButtons({
         phone,
-        headerText: 'Cart can’t be priced',
+        headerText: "Cart can't be priced",
         bodyText:
           'Your cart total is ₹0. Some items may be unavailable — review your cart or reach out to support.',
         buttons: [
@@ -2222,23 +2189,15 @@ export class ChatbotService {
         : user.addresses.find((a) => a.isDefault) || user.addresses[0];
 
     if (!address) {
-      await this.whatsappService.sendTextMessage({
-        phone,
-        message: 'Please add a delivery address first.',
-      });
       await this.transitionToState(session, 'address_input');
-      await this.sendFlowResponse(phone, 'address_input', session);
+      await this.sendFlowResponse(phone, 'address_input', session, 'Please add a delivery address first.');
       return;
     }
 
     if (input === 'another_yes') {
       session.context = mergeChatContext(session.context, { allowAnotherOrderOnce: true });
       await session.save();
-      await this.whatsappService.sendTextMessage({
-        phone,
-        message: 'Got it. Please select a payment method to place another order.',
-      });
-      await this.sendFlowResponse(phone, 'payment_selection', session);
+      await this.sendFlowResponse(phone, 'payment_selection', session, 'Got it. Please select a payment method to place another order.');
       return;
     }
 
@@ -2309,7 +2268,7 @@ export class ChatbotService {
     if (!checkoutLockAcquired) {
       await this.whatsappService.sendTextMessage({
         phone,
-        message: '_We’re already placing your order — please wait a moment..._',
+        message: "_We’re already placing your order — please wait a moment..._",
       });
       return;
     }
@@ -2504,23 +2463,15 @@ export class ChatbotService {
     }
 
     if (!session.user) {
-      await this.whatsappService.sendTextMessage({
-        phone,
-        message: 'Please register to choose a delivery address.',
-      });
       await this.transitionToState(session, 'main_menu');
-      await this.sendFlowResponse(phone, 'main_menu', session);
+      await this.sendFlowResponse(phone, 'main_menu', session, 'Please register to choose a delivery address.');
       return;
     }
 
     const cart = await this.cartService.getCart(session.user.toString());
     if (cart.items.length === 0) {
-      await this.whatsappService.sendTextMessage({
-        phone,
-        message: 'Your cart is empty. Browse products to get started.',
-      });
       await this.transitionToState(session, 'main_menu');
-      await this.sendFlowResponse(phone, 'main_menu', session);
+      await this.sendFlowResponse(phone, 'main_menu', session, 'Your cart is empty. Browse products to get started.');
       return;
     }
 
@@ -2831,13 +2782,9 @@ export class ChatbotService {
       // Guard against cross-user replay — only the owner can reorder.
       const orderUserId = this.getOrderUserId(originalOrder);
       if (!orderUserId || orderUserId !== userId) {
-        await this.whatsappService.sendTextMessage({
-          phone,
-          message: 'You don\u2019t have access to that order.',
-        });
         session.pendingOrderId = undefined;
         await this.transitionToState(session, 'main_menu');
-        await this.sendFlowResponse(phone, 'main_menu', session);
+        await this.sendFlowResponse(phone, 'main_menu', session, 'You don\u2019t have access to that order.');
         return;
       }
 
@@ -2948,11 +2895,7 @@ export class ChatbotService {
     session: ChatSessionDocument,
   ): Promise<void> {
     if (!session.user) {
-      await this.whatsappService.sendTextMessage({
-        phone,
-        message: 'Please register first, then you can reorder from your recent orders.',
-      });
-      await this.sendFlowResponse(phone, 'main_menu', session);
+      await this.sendFlowResponse(phone, 'main_menu', session, 'Please register first, then you can reorder from your recent orders.');
       return;
     }
 
@@ -3748,7 +3691,7 @@ export class ChatbotService {
       await this.whatsappService.sendInteractiveButtons({
         phone,
         headerText: 'Cart unavailable',
-        bodyText: 'Couldn’t prepare your cart just now. Send it again in a moment.',
+        bodyText: "Couldn't prepare your cart just now. Send it again in a moment.",
         buttons: [{ id: BTN.MENU, title: '🏠 Menu' }],
       });
       return;
@@ -3859,7 +3802,7 @@ export class ChatbotService {
       await this.whatsappService.sendInteractiveButtons({
         phone,
         headerText: 'Cart unavailable',
-        bodyText: `Couldn’t add any of those items right now.${detail ? `\n\n${detail}` : ''}`,
+        bodyText: `Couldn't add any of those items right now.${detail ? `\n\n${detail}` : ''}`,
         buttons: [{ id: BTN.BROWSE, title: '🛍 Browse again' }],
       });
       await this.transitionToState(session, 'main_menu');
@@ -3868,12 +3811,8 @@ export class ChatbotService {
 
     if (failures.length > 0) {
       const detail = failures.slice(0, 5).map((f) => `• ${f.retailerId}: ${f.reason}`).join('\n');
-      await this.whatsappService.sendTextMessage({
-        phone,
-        message: `Some items couldn’t be added:\n${detail}\n\nReview your cart below before checking out.`,
-      });
       await this.transitionToState(session, 'cart');
-      await this.sendCartSummary(phone, session);
+      await this.sendCartSummary(phone, session, `Some items couldn't be added:\n${detail}\n\nReview your cart below before checking out.`);
       return;
     }
 
@@ -4187,7 +4126,7 @@ export class ChatbotService {
     });
   }
 
-  private async sendCartSummary(phone: string, session: ChatSessionDocument): Promise<void> {
+  private async sendCartSummary(phone: string, session: ChatSessionDocument, notice?: string): Promise<void> {
     if (!session.user) {
       await this.sendEmptyCart(phone);
       return;
@@ -4280,7 +4219,7 @@ export class ChatbotService {
     }
 
     const header = `\uD83D\uDED2 Your cart \u00B7 ${cart.itemCount} item${cart.itemCount === 1 ? '' : 's'}`;
-    const body = `${itemList}\n\n${breakdown.join('\n')}${shippingLine}${couponHint}`;
+    const body = `${notice ? `${notice}\n\n` : ''}${itemList}\n\n${breakdown.join('\n')}${shippingLine}${couponHint}`;
 
     // 3-button budget on WhatsApp interactive messages: Checkout + Add more are
     // always present; the third slot is the highest-value contextual action
@@ -4574,8 +4513,10 @@ export class ChatbotService {
   private async sendCheckoutOptions(
     phone: string,
     session: ChatSessionDocument,
-    options: { forceShowList?: boolean } = {},
+    options: { forceShowList?: boolean; notice?: string } = {},
   ): Promise<void> {
+    const { notice } = options;
+
     if (!session.user) {
       await this.whatsappService.sendTextMessage({
         phone,
@@ -4592,7 +4533,7 @@ export class ChatbotService {
       await this.whatsappService.sendInteractiveButtons({
         phone,
         headerText: 'Deliver to',
-        bodyText: 'Add a delivery address to continue.',
+        bodyText: `${notice ? `${notice}\n\n` : ''}Add a delivery address to continue.`,
         buttons: [
           { id: BTN.ADD_NEW_ADDRESS, title: '\u2795 Add address' },
           { id: BTN.BACK, title: '\u21A9 Back' },
@@ -4613,7 +4554,7 @@ export class ChatbotService {
         session.context = mergeChatContext(session.context, { selectedAddressIndex: autoIdx });
         await session.save();
         await this.transitionToState(session, 'payment_selection');
-        await this.sendFlowResponse(phone, 'payment_selection', session);
+        await this.sendFlowResponse(phone, 'payment_selection', session, notice);
         return;
       }
     }
@@ -4640,7 +4581,7 @@ export class ChatbotService {
     await this.whatsappService.sendInteractiveList({
       phone,
       headerText: 'Deliver to',
-      bodyText: 'Pick an address or add a new one.',
+      bodyText: `${notice ? `${notice}\n\n` : ''}Pick an address or add a new one.`,
       buttonText: 'Choose address',
       sections,
     });
@@ -4718,16 +4659,17 @@ export class ChatbotService {
     phone: string,
     state: SessionState,
     session: ChatSessionDocument,
+    notice?: string,
   ): Promise<void> {
     // Main menu renders dynamically (personalized greeting + live cart count).
     if (state === 'main_menu') {
-      await this.sendMainMenu(phone, session);
+      await this.sendMainMenu(phone, session, notice);
       return;
     }
 
     // Coupon prompt renders dynamically to support auto-suggestion.
     if (state === 'coupon_prompt') {
-      await this.sendCouponPromptScreen(phone, session);
+      await this.sendCouponPromptScreen(phone, session, notice);
       return;
     }
 
@@ -4739,7 +4681,7 @@ export class ChatbotService {
         if (action.content) {
           await this.whatsappService.sendTextMessage({
             phone,
-            message: action.content,
+            message: `${notice ? `${notice}\n\n` : ''}${action.content}`,
           });
         }
         break;
@@ -4749,7 +4691,7 @@ export class ChatbotService {
           await this.whatsappService.sendInteractiveButtons({
             phone,
             headerText: clip(action.header, WA.HEADER) || undefined,
-            bodyText: action.content,
+            bodyText: `${notice ? `${notice}\n\n` : ''}${action.content}`,
             footerText: clip(action.footer, WA.FOOTER) || undefined,
             buttons: action.buttons.slice(0, WA.MAX_BUTTONS),
           });
@@ -4761,7 +4703,7 @@ export class ChatbotService {
           await this.whatsappService.sendInteractiveList({
             phone,
             headerText: clip(action.header, WA.HEADER) || undefined,
-            bodyText: action.content,
+            bodyText: `${notice ? `${notice}\n\n` : ''}${action.content}`,
             footerText: clip(action.footer, WA.FOOTER) || undefined,
             buttonText: clip(action.buttonText || 'Select', WA.LIST_BUTTON),
             sections: action.sections,
@@ -4788,6 +4730,7 @@ export class ChatbotService {
   private async sendMainMenu(
     phone: string,
     session: ChatSessionDocument,
+    notice?: string,
   ): Promise<void> {
     const flow = CHATBOT_FLOWS.main_menu;
     const action = flow.action;
@@ -4806,7 +4749,7 @@ export class ChatbotService {
     const cartLabel = cartCount > 0 ? `\uD83D\uDED2 Cart \u00B7 ${cartCount}` : '\uD83D\uDED2 My Cart';
 
     const body =
-      `Hey ${name} \uD83D\uDC4B\n` +
+      `${notice ? `${notice}\n\n` : ''}Hey ${name} \uD83D\uDC4B\n` +
       `What are you in the mood for today?\n\n` +
       `Quick access: ${bold('orders')} \u00B7 ${bold('account')} \u00B7 ${bold('help')}`;
 
