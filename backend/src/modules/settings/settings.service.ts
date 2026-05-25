@@ -157,6 +157,16 @@ export class SettingsService implements OnModuleInit {
     return raw?.enabled === true;
   }
 
+  async getChatbotEnabled(): Promise<boolean> {
+    try {
+      const raw = await this.get('chatbot');
+      return raw === null ? false : raw.enabled === true;
+    } catch {
+      // Fail open: if we can't read settings, assume chatbot is enabled.
+      return true;
+    }
+  }
+
   async getMetricsResetAt(): Promise<Date | null> {
     const raw = await this.get('metrics');
     const ts = raw?.resetAt;

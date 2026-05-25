@@ -102,4 +102,7 @@ export const DEFAULT_SETTINGS = {
   mockData: {
     enabled: false,
   },
+  chatbot: {
+    enabled: false,
+  },
 };

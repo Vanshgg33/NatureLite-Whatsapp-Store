@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, Lock, RotateCcw, AlertTriangle, FlaskConical } from 'lucide-react';
+import { Save, Lock, RotateCcw, AlertTriangle, FlaskConical, Bot } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -28,6 +28,7 @@ export default function SettingsPage() {
   });
 
   const [mockDataEnabled, setMockDataEnabled] = useState(false);
+  const [chatbotEnabled, setChatbotEnabled] = useState(false);
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['settings'],
@@ -44,6 +45,9 @@ export default function SettingsPage() {
       }
       if (settings.mockData) {
         setMockDataEnabled(!!(settings.mockData as { enabled?: boolean }).enabled);
+      }
+      if (settings.chatbot) {
+        setChatbotEnabled((settings.chatbot as { enabled?: boolean }).enabled !== false);
       }
     }
   }, [settings]);
@@ -70,6 +74,13 @@ export default function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ['revenue-chart'] });
       queryClient.invalidateQueries({ queryKey: ['orders-by-status'] });
       queryClient.invalidateQueries({ queryKey: ['low-stock'] });
+    },
+  });
+
+  const chatbotMutation = useMutation({
+    mutationFn: (enabled: boolean) => api.updateSettings('chatbot', { enabled }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
     },
   });
 
@@ -233,6 +244,51 @@ export default function SettingsPage() {
             </Button>
           </CardContent>
         </Card>
+        {/* ── Chatbot ───────────────────────────────────────────────── */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Bot className="h-5 w-5 text-emerald-500" />
+              WhatsApp Chatbot
+            </CardTitle>
+            <CardDescription>
+              Enable or disable the chatbot. When off, incoming WhatsApp messages are silently ignored — the website and admin panel continue working normally.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between rounded-xl border px-5 py-4">
+              <div>
+                <p className="text-sm font-semibold">Chatbot active</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Turn this off to pause all automated WhatsApp replies
+                </p>
+              </div>
+              <button
+                role="switch"
+                aria-checked={chatbotEnabled}
+                disabled={chatbotMutation.isPending}
+                onClick={() => {
+                  const next = !chatbotEnabled;
+                  setChatbotEnabled(next);
+                  chatbotMutation.mutate(next);
+                }}
+                className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ background: chatbotEnabled ? '#10b981' : '#e2e8f0' }}
+              >
+                <span
+                  className="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform duration-200"
+                  style={{ transform: chatbotEnabled ? 'translateX(20px)' : 'translateX(0px)' }}
+                />
+              </button>
+            </div>
+            {!chatbotEnabled && (
+              <p className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5">
+                Chatbot is <strong>OFF</strong> — all incoming WhatsApp messages are being dropped. Turn this back on when you are ready to serve customers again.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
         {/* ── Mock Data ─────────────────────────────────────────────── */}
         <Card>
           <CardHeader>

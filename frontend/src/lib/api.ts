@@ -765,8 +765,8 @@ class ApiClient {
   }
 
   // ==================== SETTINGS ====================
-  async getSettings(): Promise<{ store?: StoreSettings; whatsapp?: WhatsAppSettings; catalog?: CatalogSettings; appearance?: AppearanceSettings; banners?: BannerSettings; mockData?: { enabled: boolean } }> {
-    const response = await this.client.get<ApiResponse<{ store?: StoreSettings; whatsapp?: WhatsAppSettings; catalog?: CatalogSettings; appearance?: AppearanceSettings; banners?: BannerSettings; mockData?: { enabled: boolean } }>>('/settings');
+  async getSettings(): Promise<{ store?: StoreSettings; whatsapp?: WhatsAppSettings; catalog?: CatalogSettings; appearance?: AppearanceSettings; banners?: BannerSettings; mockData?: { enabled: boolean }; chatbot?: { enabled: boolean } }> {
+    const response = await this.client.get<ApiResponse<{ store?: StoreSettings; whatsapp?: WhatsAppSettings; catalog?: CatalogSettings; appearance?: AppearanceSettings; banners?: BannerSettings; mockData?: { enabled: boolean }; chatbot?: { enabled: boolean } }>>('/settings');
     return response.data.data;
   }
 
@@ -791,6 +791,7 @@ class ApiClient {
   async updateSettings(key: 'appearance', updates: Partial<AppearanceSettings>): Promise<AppearanceSettings>;
   async updateSettings(key: 'banners', updates: Partial<BannerSettings>): Promise<BannerSettings>;
   async updateSettings(key: 'mockData', updates: { enabled: boolean }): Promise<{ enabled: boolean }>;
+  async updateSettings(key: 'chatbot', updates: { enabled: boolean }): Promise<{ enabled: boolean }>;
   async updateSettings(key: string, updates: Partial<StoreSettings | WhatsAppSettings | CatalogSettings | AppearanceSettings | BannerSettings> | Record<string, unknown>): Promise<StoreSettings | WhatsAppSettings | CatalogSettings | AppearanceSettings | BannerSettings | Record<string, unknown>> {
     const response = await this.client.put<ApiResponse<StoreSettings | WhatsAppSettings | CatalogSettings | AppearanceSettings | BannerSettings>>(`/settings/${key}/update`, updates);
     return response.data.data;

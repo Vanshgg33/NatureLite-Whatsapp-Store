@@ -16,6 +16,7 @@ import {
 import { Request, Response } from 'express';
 import { WhatsAppService } from './whatsapp.service';
 import { ChatbotService } from '../chatbot/chatbot.service';
+import { SettingsService } from '../settings/settings.service';
 import {
   SendTextMessageDto,
   SendTemplateMessageDto,
@@ -81,6 +82,7 @@ export class WhatsAppController implements OnModuleDestroy {
   constructor(
     private readonly whatsappService: WhatsAppService,
     private readonly chatbotService: ChatbotService,
+    private readonly settingsService: SettingsService,
   ) {
     // Clean up stale rate-limit buckets every 5 minutes.
     this.cleanupInterval = setInterval(() => this.rateLimiter.cleanup(), 5 * 60_000);
@@ -167,6 +169,12 @@ export class WhatsAppController implements OnModuleDestroy {
     res.status(200).send('OK');
 
     try {
+      const chatbotEnabled = await this.settingsService.getChatbotEnabled();
+      if (!chatbotEnabled) {
+        this.logger.log('Chatbot is disabled — incoming messages will be ignored');
+        return;
+      }
+
       const messages = await this.whatsappService.processWebhook(body);
 
       for (const message of messages) {

@@ -6,12 +6,14 @@ import { MessageLog, MessageLogSchema } from './schemas/message-log.schema';
 import { MessageLogRepository } from './repositories/message-log.repository';
 import { ChatbotModule } from '../chatbot/chatbot.module';
 import { UsersModule } from '../users/users.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: MessageLog.name, schema: MessageLogSchema }]),
     forwardRef(() => ChatbotModule),
     UsersModule,
+    SettingsModule,
   ],
   controllers: [WhatsAppController],
   providers: [MessageLogRepository, WhatsAppService],
