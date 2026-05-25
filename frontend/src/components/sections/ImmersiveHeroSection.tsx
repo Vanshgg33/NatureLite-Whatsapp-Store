@@ -5,26 +5,18 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowRight, ShieldCheck, MessageCircle } from 'lucide-react';
 import { useEffect } from 'react';
-import dynamic from 'next/dynamic';
 import { useSiteSettings } from '@/lib/site-settings-context';
-
-const ImmersiveHeroScene = dynamic(
-  () => import('@/components/three/scenes/ImmersiveHeroScene').then(mod => mod.ImmersiveHeroScene),
-  { ssr: false, loading: () => <div className="w-full h-full" /> },
-);
 
 const TRUST_STRIP = [
   { icon: '🌾', label: 'Native Sourcing' },
   { icon: '⚙️', label: 'Traditional Processing' },
   { icon: '🔬', label: '40+ Quality Checks' },
   { icon: '🚚', label: 'Free Shipping ₹499+' },
-  { icon: '↩', label: 'Easy Returns' },
 ];
 
 const STATS = [
   { num: '50k+', label: 'Happy Families' },
   { num: '100%', label: 'Natural · No Additives' },
-  { num: '40+',  label: 'Lab Tests · Each Batch' },
 ];
 
 export default function ImmersiveHeroSection() {
@@ -106,17 +98,6 @@ export default function ImmersiveHeroSection() {
         )}
       </AnimatePresence>
 
-      {/* ── 3D canvas — full right half, truly full-height ── */}
-      <motion.div
-        className="absolute top-0 right-0 h-full hidden lg:block"
-        style={{ width: '52%' }}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 1.2, delay: 0.2 }}
-      >
-        <ImmersiveHeroScene />
-      </motion.div>
-
       {/* ── Left content ── */}
       <div className="relative z-10 h-full flex flex-col justify-between">
         <div className="flex-1 flex items-center">
@@ -136,7 +117,7 @@ export default function ImmersiveHeroSection() {
               >
                 <span className="nl-pulse-dot w-1.5 h-1.5 rounded-full" style={{ background: '#b88a14', flexShrink: 0 }} />
                 <span style={{ fontSize: 11, fontWeight: 600, color: '#b88a14', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
-                  New Launch — Cold Pressed Collection
+                  New Launch — Wood Pressed Collection
                 </span>
               </motion.div>
 
@@ -189,7 +170,7 @@ export default function ImmersiveHeroSection() {
                     transition={tp(0.52)}
                   >
                     Wood-Ghani pressed. Zero heat. Zero chemicals.
-                    Preserving every drop of nutrition — from farm to your kitchen.
+                    Preserving every drop of nutrition.
                   </motion.p>
                 )}
               </AnimatePresence>

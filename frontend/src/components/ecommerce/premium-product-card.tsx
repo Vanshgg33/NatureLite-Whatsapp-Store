@@ -35,7 +35,16 @@ export function PremiumProductCard({
   const [isAddingToCart,setIsAddingToCart]= useState(false);
   const [showSuccess,   setShowSuccess]   = useState(false);
   const [heartBurst,    setHeartBurst]    = useState(false);
+  const [tilt,          setTilt]          = useState({ x: 0, y: 0, shineX: 50, shineY: 50 });
   const addToCartBtnRef = useRef<HTMLButtonElement>(null);
+
+  const handleCardMouseMove = (e: React.MouseEvent<HTMLElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const relX = (e.clientX - rect.left) / rect.width;
+    const relY = (e.clientY - rect.top) / rect.height;
+    setTilt({ x: (relY - 0.5) * 9, y: (relX - 0.5) * -9, shineX: relX * 100, shineY: relY * 100 });
+  };
+  const handleCardMouseLeave = () => setTilt({ x: 0, y: 0, shineX: 50, shineY: 50 });
 
   const addItem    = useCartStore((s) => s.addItem);
   const { toast }  = useToast();
@@ -107,13 +116,21 @@ export function PremiumProductCard({
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ duration: 0.35, delay: Math.min(index * 0.04, 0.18) }}
+        onMouseMove={handleCardMouseMove}
+        onMouseLeave={handleCardMouseLeave}
+        style={{ perspective: 700 }}
       >
         <Link href={`/products/${product.slug}`} className="block">
           <div
             className="bg-white rounded-xl overflow-hidden"
-            style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)', transition: 'box-shadow 0.25s ease' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 16px rgba(0,0,0,0.10)'; setIsHovered(true); }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)'; setIsHovered(false); }}
+            style={{
+              boxShadow: isHovered ? '0 12px 32px rgba(0,0,0,0.13)' : '0 1px 3px rgba(0,0,0,0.06)',
+              transform: `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
+              transition: isHovered ? 'transform 0.10s ease, box-shadow 0.25s ease' : 'transform 0.45s ease, box-shadow 0.25s ease',
+              transformStyle: 'preserve-3d',
+            }}
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
           >
             {/* Image */}
             <div className="relative overflow-hidden" style={{ aspectRatio: '4/5', background: imageBg }}>
@@ -129,6 +146,15 @@ export function PremiumProductCard({
                 onError={() => { setImageError(true); setImageLoaded(true); }}
                 sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
                 unoptimized={imageError}
+              />
+
+              {/* Shine overlay */}
+              <div
+                className="absolute inset-0 pointer-events-none z-[5] rounded-t-xl transition-opacity duration-300"
+                style={{
+                  background: `radial-gradient(circle at ${tilt.shineX}% ${tilt.shineY}%, rgba(255,255,255,0.22) 0%, transparent 65%)`,
+                  opacity: isHovered ? 1 : 0,
+                }}
               />
 
               {/* Badges — top left, max 1 */}

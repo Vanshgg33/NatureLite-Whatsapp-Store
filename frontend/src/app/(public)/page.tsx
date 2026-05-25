@@ -21,10 +21,9 @@ const LOADER_DURATION = 2000;
 // ─── Loading Screen ───────────────────────────────────────────────────────────
 
 const PHRASES = [
-  'Cold-pressed. Zero heat.',
   'Ancient stones, still turning.',
   'Every drop uncompromised.',
-  'From farm to your kitchen.',
+  'Wood-pressed. Zero chemicals.',
   'The old way is the right way.',
 ];
 

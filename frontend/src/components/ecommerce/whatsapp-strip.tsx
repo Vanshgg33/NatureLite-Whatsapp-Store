@@ -2,7 +2,7 @@
 
 const ITEMS = [
   { icon: true,  text: 'Order on WhatsApp — fast, personal & delivered fresh' },
-  { icon: false, text: 'Cold-pressed · Bilona-churned · Delivering in Chhattisgarh' },
+  { icon: false, text: 'Wood-pressed · Bilona-churned · Delivering in Chhattisgarh' },
   { icon: true,  text: 'Chat to order: +91 88172 00740 · Same-day dispatch' },
   { icon: false, text: 'Serving Raipur · Bhilai · Durg · Bilaspur' },
   { icon: true,  text: 'Bulk orders welcome · WhatsApp us for best price' },

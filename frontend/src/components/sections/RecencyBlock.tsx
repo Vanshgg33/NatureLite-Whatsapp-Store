@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ShieldCheck, RefreshCw, MessageCircle, ArrowRight } from 'lucide-react';
+import { ShieldCheck, MessageCircle, ArrowRight } from 'lucide-react';
 
 const WHATSAPP_QUICK_ORDER_URL =
   `https://wa.me/918817200740?text=${encodeURIComponent('Hi! I\'d like to place an order from Nature Lite Foods. Can you help me?')}`;
@@ -63,7 +63,7 @@ export default function RecencyBlock() {
           viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.1 }}
         >
-          Free returns · Secure payment · WhatsApp support
+          Secure payment · WhatsApp support
         </motion.p>
 
         {/* Trust pills */}
@@ -76,7 +76,6 @@ export default function RecencyBlock() {
         >
           {[
             { Icon: ShieldCheck, label: 'FSSAI Certified' },
-            { Icon: RefreshCw,   label: 'Free Returns'    },
             { Icon: MessageCircle, label: 'WhatsApp Support' },
           ].map(({ Icon, label }) => (
             <div

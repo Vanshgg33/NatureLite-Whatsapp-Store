@@ -1016,3 +1016,26 @@ html {
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--brand-muted));
 }
+
+/* ================================================
+   PRODUCT DESCRIPTION PROSE
+   ================================================ */
+
+.product-description p,
+.product-description div {
+  margin-bottom: 0.5rem;
+  line-height: 1.7;
+}
+
+.product-description br {
+  display: block;
+  content: '';
+  margin-top: 0.35rem;
+}
+
+/* Treat emoji-bulleted lines as list items */
+.product-description {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}

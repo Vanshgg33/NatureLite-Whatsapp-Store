@@ -16,10 +16,10 @@ interface NewsletterSectionProps {
 }
 
 export function NewsletterSection({
-  title = "Get 10% Off Your First Order",
+  title = "Join the Nature Lite Family",
   subtitle = "Plus exclusive organic recipes & wellness tips delivered weekly. No spam, ever.",
   placeholder = "Enter your email",
-  buttonText = "Claim My 10% Off",
+  buttonText = "Subscribe Now",
   variant = 'default',
   onSubmit,
 }: NewsletterSectionProps) {
@@ -259,7 +259,7 @@ export function NewsletterSection({
             {/* Benefits */}
             <div className="space-y-4">
               {[
-                'Instant 10% discount code on sign-up',
+                'Early access to new launches & batches',
                 'Early access to new products',
                 'Seasonal organic recipes',
                 'Health & wellness tips from experts',
@@ -292,7 +292,7 @@ export function NewsletterSection({
                 <Gift className="w-7 h-7 text-brand-mustard" />
               </div>
               <h3 className="font-display text-xl font-semibold text-brand-charcoal">
-                Your 10% Welcome Gift Awaits
+                Stay in the Loop
               </h3>
             </div>
 

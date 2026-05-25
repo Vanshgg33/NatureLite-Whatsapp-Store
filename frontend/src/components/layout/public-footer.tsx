@@ -85,7 +85,7 @@ function NewsletterStrip() {
             Newsletter
           </p>
           <h3 className="font-display font-bold text-xl sm:text-2xl" style={{ color: '#fff8f0', letterSpacing: '-0.01em' }}>
-            10% off your first order
+            Stay updated with new launches
           </h3>
           <p className="text-sm mt-1" style={{ color: 'rgba(255,245,225,0.45)' }}>
             Plus organic recipes & wellness tips, weekly.
