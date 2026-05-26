@@ -48,12 +48,20 @@ export function PremiumProductCard({
   const handleCardMouseLeave = () => setTilt({ x: 0, y: 0, shineX: 50, shineY: 50 });
 
   const addItem    = useCartStore((s) => s.addItem);
+  const cartItems  = useCartStore((s) => s.items);
+  const updateQuantity = useCartStore((s) => s.updateQuantity);
   const { toast }  = useToast();
   const flyAnimation = useAddToCartAnimation();
 
   const activeVariants = product.variants?.filter((v) => v.isActive && v.stock > 0) ?? [];
   const displayVariants = product.variants?.filter((v) => v.isActive) ?? [];
   const selectedVar  = displayVariants[selectedVarIdx] ?? null;
+
+  const cartItemForSelectedVar = cartItems.find(
+    (item) => item.productId === product._id && (!selectedVar ? !item.variantSku : item.variantSku === selectedVar.sku)
+  );
+  const quantityInCart = cartItemForSelectedVar?.quantity ?? 0;
+
   const displayPrice = selectedVar?.price ?? product.price;
   const displayCompare = selectedVar?.compareAtPrice ?? product.compareAtPrice;
   const discount   = displayCompare
@@ -220,44 +228,16 @@ export function PremiumProductCard({
                 </AnimatePresence>
               </div>
 
-              {/* Add to cart — slide up on hover */}
-              {totalStock > 0 ? (
-                <div
-                  className="absolute bottom-0 inset-x-0 z-10 transition-transform duration-300 ease-out"
-                  style={{ transform: isHovered ? 'translateY(0)' : 'translateY(100%)' }}
-                >
-                  <button
-                    ref={addToCartBtnRef}
-                    onClick={handleAddToCart}
-                    disabled={isAddingToCart || showSuccess}
-                    className="w-full flex items-center justify-center gap-1.5 font-semibold transition-colors"
-                    style={{
-                      padding: '10px 0',
-                      fontSize: 12,
-                      background: showSuccess ? '#1a5210' : '#0b1c08',
-                      color: '#fff',
-                    }}
-                    onMouseEnter={(e) => { if (!showSuccess) (e.currentTarget as HTMLElement).style.background = '#1a5210'; }}
-                    onMouseLeave={(e) => { if (!showSuccess) (e.currentTarget as HTMLElement).style.background = '#0b1c08'; }}
-                  >
-                    {isAddingToCart ? (
-                      <div className="w-3.5 h-3.5 rounded-full border border-white/30 border-t-white animate-spin" />
-                    ) : showSuccess ? (
-                      <><Check className="w-3.5 h-3.5" /> Added!</>
-                    ) : (
-                      <><ShoppingBag className="w-3.5 h-3.5" /> Add to Cart</>
-                    )}
-                  </button>
-                </div>
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.55)' }}>
+              {/* Out of Stock overlay on image if overall product out of stock */}
+              {totalStock <= 0 && (
+                <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.55)', zIndex: 10 }}>
                   <span style={{ fontSize: 11, fontWeight: 600, background: 'rgba(11,28,8,0.75)', color: '#fff', padding: '4px 10px', borderRadius: 99 }}>Out of Stock</span>
                 </div>
               )}
             </div>
 
             {/* Info */}
-            <div style={{ padding: '10px 10px 12px' }}>
+            <div style={{ padding: '12px 12px 14px' }}>
               {typeof product.category === 'object' && product.category?.name && (
                 <span style={{
                   display: 'inline-block',
@@ -277,7 +257,7 @@ export function PremiumProductCard({
                 {product.name}
               </h3>
 
-              {/* Stars */}
+              {/* Stars - styled subtly */}
               <div className="flex items-center gap-1" style={{ marginBottom: 7 }}>
                 {[...Array(5)].map((_, i) => (
                   <Star key={i} className="w-2.5 h-2.5"
@@ -287,9 +267,26 @@ export function PremiumProductCard({
                 <span style={{ fontSize: 10, color: 'rgba(46,66,37,0.42)' }}>({reviewCount})</span>
               </div>
 
-              {/* Variant pills */}
+              {/* Price block - displayed ABOVE variants */}
+              <div className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 mb-3">
+                <span style={{ fontSize: 16, fontWeight: 700, color: '#0b1c08', letterSpacing: '-0.02em' }}>
+                  ₹{displayPrice.toLocaleString()}
+                </span>
+                {displayCompare && displayCompare > displayPrice && (
+                  <span style={{ fontSize: 11, color: 'rgba(46,66,37,0.35)', textDecoration: 'line-through' }}>
+                    ₹{displayCompare.toLocaleString()}
+                  </span>
+                )}
+                {discount > 0 && (
+                  <span style={{ fontSize: 10, fontWeight: 700, color: '#c0392b', background: '#fee2e2', padding: '1px 5px', borderRadius: 4 }}>
+                    {discount}% off
+                  </span>
+                )}
+              </div>
+
+              {/* Variant pills - displayed BELOW price */}
               {displayVariants.length > 1 && (
-                <div className="flex flex-wrap gap-1 mb-2">
+                <div className="flex flex-wrap gap-1 mb-3">
                   {displayVariants.slice(0, 5).map((v, i) => {
                     const label = v.attributes?.volume ?? v.attributes?.size ?? v.attributes?.weight ?? v.name;
                     const isSelected = i === selectedVarIdx;
@@ -314,20 +311,53 @@ export function PremiumProductCard({
                 </div>
               )}
 
-              {/* Price */}
-              <div className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5">
-                <span style={{ fontSize: 15, fontWeight: 700, color: '#0b1c08', letterSpacing: '-0.02em' }}>
-                  ₹{displayPrice.toLocaleString()}
-                </span>
-                {displayCompare && displayCompare > displayPrice && (
-                  <span style={{ fontSize: 11, color: 'rgba(46,66,37,0.35)', textDecoration: 'line-through' }}>
-                    ₹{displayCompare.toLocaleString()}
-                  </span>
-                )}
-                {discount > 0 && (
-                  <span style={{ fontSize: 10, fontWeight: 700, color: '#fff', background: '#c0392b', padding: '1px 5px', borderRadius: 4 }}>
-                    {discount}% off
-                  </span>
+              {/* Add to Cart / Quantity Modifier - ALWAYS visible at the bottom */}
+              <div className="mt-3 w-full">
+                {totalStock <= 0 || (selectedVar && selectedVar.stock <= 0) ? (
+                  <div className="w-full h-10 flex items-center justify-center bg-gray-50 text-gray-400 rounded-xl font-semibold text-xs border border-gray-200 select-none">
+                    Out of Stock
+                  </div>
+                ) : quantityInCart > 0 ? (
+                  <div className="flex items-center h-10 w-full rounded-xl border border-[#0b1c08] overflow-hidden bg-white shadow-sm">
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault(); e.stopPropagation();
+                        updateQuantity(product._id, quantityInCart - 1, selectedVar?.sku);
+                      }}
+                      className="w-1/3 h-full flex items-center justify-center hover:bg-gray-50 text-[#0b1c08] font-bold text-lg transition-colors"
+                      title="Decrease quantity"
+                    >
+                      −
+                    </button>
+                    <div className="w-1/3 h-full flex items-center justify-center bg-[#0b1c08] text-white font-bold text-sm">
+                      {quantityInCart}
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault(); e.stopPropagation();
+                        updateQuantity(product._id, quantityInCart + 1, selectedVar?.sku);
+                      }}
+                      className="w-1/3 h-full flex items-center justify-center hover:bg-gray-50 text-[#0b1c08] font-bold text-lg transition-colors"
+                      title="Increase quantity"
+                    >
+                      +
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    ref={addToCartBtnRef}
+                    onClick={handleAddToCart}
+                    disabled={isAddingToCart}
+                    className="w-full h-10 flex items-center justify-center gap-1.5 font-bold text-xs text-[#0b1c08] border border-[#0b1c08] rounded-xl bg-white hover:bg-gray-50 transition-colors"
+                  >
+                    {isAddingToCart ? (
+                      <div className="w-3.5 h-3.5 rounded-full border-2 border-[#0b1c08] border-t-transparent animate-spin" />
+                    ) : showSuccess ? (
+                      <>✔ Added!</>
+                    ) : (
+                      <>+ Add to Cart</>
+                    )}
+                  </button>
                 )}
               </div>
             </div>

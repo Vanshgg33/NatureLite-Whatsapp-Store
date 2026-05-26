@@ -483,6 +483,12 @@ class ApiClient {
     return response.data.data;
   }
 
+  // ==================== ADMIN CHATBOT ====================
+  async askAdminChatbot(message: string): Promise<{ reply: string }> {
+    const response = await this.client.post<ApiResponse<{ reply: string }>>('/admin/chatbot/chat', { message });
+    return response.data.data;
+  }
+
   // ==================== PRODUCTS ====================
   async getProducts(params: {
     page?: number;
@@ -556,6 +562,11 @@ class ApiClient {
 
   async bulkUpdateProductCategory(productIds: string[], categoryId: string): Promise<{ modifiedCount: number }> {
     const res = await this.client.patch<ApiResponse<{ modifiedCount: number }>>('/products/bulk-category', { productIds, categoryId });
+    return res.data.data;
+  }
+
+  async bulkDeleteProducts(productIds: string[]): Promise<{ deletedCount: number }> {
+    const res = await this.client.post<ApiResponse<{ deletedCount: number }>>('/products/bulk-delete', { productIds });
     return res.data.data;
   }
 

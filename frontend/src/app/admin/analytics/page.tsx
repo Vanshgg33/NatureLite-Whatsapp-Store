@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, Fragment } from 'react';
 import { flushSync } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -18,6 +18,7 @@ import {
   CreditCard,
   Warehouse,
   ChevronDown,
+  ChevronRight,
   FlaskConical,
   FileText,
   Download,
@@ -26,6 +27,8 @@ import {
   FileSpreadsheet,
   Copy,
   Check,
+  Clock,
+  History,
 } from 'lucide-react';
 import {
   ComposedChart,
@@ -123,6 +126,17 @@ export default function AnalyticsPage() {
     adminPassword: string;
   } | null>(null);
   const { user } = useAdminAuthStore();
+
+  const [expandedImsRows, setExpandedImsRows] = useState<Record<string, boolean>>({});
+  const [expandedPmsRows, setExpandedPmsRows] = useState<Record<string, boolean>>({});
+
+  const toggleImsRow = (id: string) => {
+    setExpandedImsRows((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const togglePmsRow = (id: string) => {
+    setExpandedPmsRows((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const [sheetsModal, setSheetsModal] = useState<{ type: 'ims' | 'pms' | 'rms'; storeId: string; date?: string } | null>(null);
   const [sheetsLinks, setSheetsLinks] = useState<{ imsLink: string; pmsLink: string; rmsLink: string } | null>(null);
@@ -1746,48 +1760,159 @@ export default function AnalyticsPage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
-                            {(stockAnalyticsDay.items as StockSnapshotItem[]).map((item) => (
-                              <tr key={item._id} className="hover:bg-gray-50/60 transition-colors">
-                                <td className="px-4 py-3.5 font-semibold text-gray-900">{item.productName || '—'}</td>
-                                <td className="px-3 py-3.5 font-mono text-gray-400 text-xs">{item.productSku || '—'}</td>
-                                <td className="px-3 py-3.5 text-right">
-                                  {item.stockInDelta > 0
-                                    ? <span className="text-emerald-600 font-semibold">+{item.stockInDelta}</span>
-                                    : <span className="text-gray-300">—</span>}
-                                </td>
-                                <td className="px-3 py-3.5 text-right">
-                                  {item.returnedDelta > 0
-                                    ? <span className="text-blue-500 font-semibold">+{item.returnedDelta}</span>
-                                    : <span className="text-gray-300">—</span>}
-                                </td>
-                                <td className="px-3 py-3.5 text-right">
-                                  {item.damagedDelta > 0
-                                    ? <span className="text-amber-500 font-semibold">+{item.damagedDelta}</span>
-                                    : <span className="text-gray-300">—</span>}
-                                </td>
-                                <td className="px-3 py-3.5 text-right">
-                                  {item.saleLogDelta > 0
-                                    ? <span className="text-red-500 font-semibold">−{item.saleLogDelta}</span>
-                                    : <span className="text-gray-300">—</span>}
-                                </td>
-                                <td className="px-4 py-3.5 text-right">
-                                  <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-xs font-bold min-w-[40px] ${
-                                    item.totalStock <= 0
-                                      ? 'bg-red-100 text-red-700 ring-1 ring-red-200'
-                                      : item.totalStock < 10
-                                      ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-200'
-                                      : 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200'
-                                  }`}>{item.totalStock}</span>
-                                </td>
-                                {canEditAnalytics && (
-                                  <td className="px-4 py-3.5 text-right">
-                                    <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={() => openStockEdit(item)}>
-                                      <Pencil className="h-3.5 w-3.5" /> Edit
-                                    </Button>
-                                  </td>
-                                )}
-                              </tr>
-                            ))}
+                            {(stockAnalyticsDay.items as StockSnapshotItem[]).map((item) => {
+                              const isExpanded = !!expandedImsRows[item._id];
+                              return (
+                                <Fragment key={item._id}>
+                                  <tr className="hover:bg-gray-50/60 transition-colors border-b">
+                                    <td className="px-4 py-3.5">
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          onClick={() => toggleImsRow(item._id)}
+                                          className="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-blue-600 transition-colors flex items-center gap-1.5 text-left font-semibold text-gray-900"
+                                          title="View detailed change logs"
+                                        >
+                                          {isExpanded ? (
+                                            <ChevronDown className="h-4 w-4 text-blue-500 shrink-0" />
+                                          ) : (
+                                            <ChevronRight className="h-4 w-4 shrink-0" />
+                                          )}
+                                          <span className="hover:underline">{item.productName || '—'}</span>
+                                        </button>
+                                        {item.entries && item.entries.length > 0 && (
+                                          <Badge variant="secondary" className="bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100/50 text-[10px] px-1.5 py-0 rounded-full font-bold">
+                                            {item.entries.length} {item.entries.length === 1 ? 'change' : 'changes'}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="px-3 py-3.5 font-mono text-gray-400 text-xs">{item.productSku || '—'}</td>
+                                    <td className="px-3 py-3.5 text-right">
+                                      {item.stockInDelta > 0
+                                        ? <span className="text-emerald-600 font-semibold">+{item.stockInDelta}</span>
+                                        : <span className="text-gray-300">—</span>}
+                                    </td>
+                                    <td className="px-3 py-3.5 text-right">
+                                      {item.returnedDelta > 0
+                                        ? <span className="text-blue-500 font-semibold">+{item.returnedDelta}</span>
+                                        : <span className="text-gray-300">—</span>}
+                                    </td>
+                                    <td className="px-3 py-3.5 text-right">
+                                      {item.damagedDelta > 0
+                                        ? <span className="text-amber-500 font-semibold">+{item.damagedDelta}</span>
+                                        : <span className="text-gray-300">—</span>}
+                                    </td>
+                                    <td className="px-3 py-3.5 text-right">
+                                      {item.saleLogDelta > 0
+                                        ? <span className="text-red-500 font-semibold">−{item.saleLogDelta}</span>
+                                        : <span className="text-gray-300">—</span>}
+                                    </td>
+                                    <td className="px-4 py-3.5 text-right">
+                                      <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-xs font-bold min-w-[40px] ${
+                                        item.totalStock <= 0
+                                          ? 'bg-red-100 text-red-700 ring-1 ring-red-200'
+                                          : item.totalStock < 10
+                                          ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-200'
+                                          : 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200'
+                                      }`}>{item.totalStock}</span>
+                                    </td>
+                                    {canEditAnalytics && (
+                                      <td className="px-4 py-3.5 text-right">
+                                        <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={() => openStockEdit(item)}>
+                                          <Pencil className="h-3.5 w-3.5" /> Edit
+                                        </Button>
+                                      </td>
+                                    )}
+                                  </tr>
+
+                                  {isExpanded && (
+                                    <tr className="bg-gray-50/40">
+                                      <td colSpan={canEditAnalytics ? 8 : 7} className="px-6 py-4 border-b">
+                                        <div className="bg-white rounded-xl border border-gray-150 p-4 shadow-sm space-y-3">
+                                          <div className="flex items-center justify-between border-b pb-2">
+                                            <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+                                              <Clock className="h-3.5 w-3.5 text-blue-500" /> Audit Log (Changes Today)
+                                            </h4>
+                                            <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                                              {item.entries?.length || 0} updates
+                                            </span>
+                                          </div>
+                                          
+                                          {!item.entries || item.entries.length === 0 ? (
+                                            <p className="text-xs text-gray-400 text-center py-2">No modification history for this day.</p>
+                                          ) : (
+                                            <div className="overflow-x-auto">
+                                              <table className="w-full text-xs text-left">
+                                                <thead>
+                                                  <tr className="text-gray-450 border-b">
+                                                    <th className="py-2 font-semibold">Time (IST)</th>
+                                                    <th className="py-2 font-semibold">Logged By</th>
+                                                    {item.entries?.some(e => e.variantSku) && <th className="py-2 font-semibold">SKU / Variant</th>}
+                                                    <th className="py-2 font-semibold text-right text-emerald-600">Stock In</th>
+                                                    <th className="py-2 font-semibold text-right text-blue-500">Returned</th>
+                                                    <th className="py-2 font-semibold text-right text-amber-500">Damaged</th>
+                                                    <th className="py-2 font-semibold text-right text-red-500">Sales Log</th>
+                                                    <th className="py-2 font-semibold text-right text-gray-700">Resulting Stock</th>
+                                                  </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-50">
+                                                  {item.entries.map((entry, idx) => (
+                                                    <tr key={entry._id || idx} className="hover:bg-gray-50/50">
+                                                      <td className="py-2 text-gray-500">
+                                                        {new Date(entry.loggedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                                      </td>
+                                                      <td className="py-2 font-medium text-gray-700">
+                                                        {entry.loggedByName || 'System'}
+                                                      </td>
+                                                      {item.entries?.some(e => e.variantSku) && (
+                                                        <td className="py-2 text-gray-500 font-mono text-[10px]">
+                                                          {entry.variantSku || '—'}
+                                                        </td>
+                                                      )}
+                                                      <td className="py-2 text-right">
+                                                        {entry.stockInDelta > 0 ? (
+                                                          <span className="text-emerald-600 font-semibold">+{entry.stockInDelta}</span>
+                                                        ) : (
+                                                          <span className="text-gray-300">—</span>
+                                                        )}
+                                                      </td>
+                                                      <td className="py-2 text-right">
+                                                        {entry.returnedDelta > 0 ? (
+                                                          <span className="text-blue-500 font-semibold">+{entry.returnedDelta}</span>
+                                                        ) : (
+                                                          <span className="text-gray-300">—</span>
+                                                        )}
+                                                      </td>
+                                                      <td className="py-2 text-right">
+                                                        {entry.damagedDelta > 0 ? (
+                                                          <span className="text-amber-500 font-semibold">+{entry.damagedDelta}</span>
+                                                        ) : (
+                                                          <span className="text-gray-300">—</span>
+                                                        )}
+                                                      </td>
+                                                      <td className="py-2 text-right">
+                                                        {entry.saleLogDelta > 0 ? (
+                                                          <span className="text-red-500 font-semibold">−{entry.saleLogDelta}</span>
+                                                        ) : (
+                                                          <span className="text-gray-300">—</span>
+                                                        )}
+                                                      </td>
+                                                      <td className="py-2 text-right font-bold text-gray-800">
+                                                        {entry.resultingStock}
+                                                      </td>
+                                                    </tr>
+                                                  ))}
+                                                </tbody>
+                                              </table>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </Fragment>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -1943,41 +2068,138 @@ export default function AnalyticsPage() {
                               <tbody className="divide-y divide-gray-100">
                                 {items.map((item) => {
                                   const closing = item.closing;
+                                  const isExpanded = !!expandedPmsRows[item._id];
                                   const badge = closing <= 0
                                     ? 'bg-red-100 text-red-700 ring-1 ring-red-200'
                                     : closing < 10
                                     ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-200'
                                     : 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200';
                                   return (
-                                    <tr key={item._id} className="hover:bg-gray-50/60 transition-colors">
-                                      <td className="px-4 py-3.5">
-                                        <p className="font-semibold text-gray-900">{item.materialName || '—'}</p>
-                                      </td>
-                                      <td className="px-3 py-3.5 text-center text-gray-400 text-xs">{item.materialUnit || '—'}</td>
-                                      <td className="px-3 py-3.5 text-center font-medium text-gray-600">{item.openingStock}</td>
-                                      <td className="px-3 py-3.5 text-center">
-                                        {item.stockIn > 0
-                                          ? <span className="font-semibold text-emerald-600">+{item.stockIn}</span>
-                                          : <span className="text-gray-300">—</span>}
-                                      </td>
-                                      <td className="px-3 py-3.5 text-center">
-                                        {item.processed > 0
-                                          ? <span className="font-semibold text-orange-500">−{item.processed}</span>
-                                          : <span className="text-gray-300">—</span>}
-                                      </td>
-                                      <td className="px-4 py-3.5 text-center">
-                                        <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-xs font-bold min-w-[44px] ${badge}`}>
-                                          {closing}
-                                        </span>
-                                      </td>
-                                      {canEditAnalytics && (
-                                        <td className="px-4 py-3.5 text-right">
-                                          <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={() => openRawEdit(item)}>
-                                            <Pencil className="h-3.5 w-3.5" /> Edit
-                                          </Button>
+                                    <Fragment key={item._id}>
+                                      <tr className="hover:bg-gray-50/60 transition-colors border-b">
+                                        <td className="px-4 py-3.5">
+                                          <div className="flex items-center gap-2">
+                                            <button
+                                              onClick={() => togglePmsRow(item._id)}
+                                              className="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-amber-600 transition-colors flex items-center gap-1.5 text-left font-semibold text-gray-900"
+                                              title="View detailed change logs"
+                                            >
+                                              {isExpanded ? (
+                                                <ChevronDown className="h-4 w-4 text-amber-500 shrink-0" />
+                                              ) : (
+                                                <ChevronRight className="h-4 w-4 shrink-0" />
+                                              )}
+                                              <span className="hover:underline">{item.materialName || '—'}</span>
+                                            </button>
+                                            {item.entries && item.entries.length > 0 && (
+                                              <Badge variant="secondary" className="bg-amber-50 text-amber-600 border-amber-100 hover:bg-amber-100/50 text-[10px] px-1.5 py-0 rounded-full font-bold">
+                                                {item.entries.length} {item.entries.length === 1 ? 'log' : 'logs'}
+                                              </Badge>
+                                            )}
+                                          </div>
                                         </td>
+                                        <td className="px-3 py-3.5 text-center text-gray-400 text-xs">{item.materialUnit || '—'}</td>
+                                        <td className="px-3 py-3.5 text-center font-medium text-gray-600">{item.openingStock}</td>
+                                        <td className="px-3 py-3.5 text-center">
+                                          {item.stockIn > 0
+                                            ? <span className="font-semibold text-emerald-600">+{item.stockIn}</span>
+                                            : <span className="text-gray-300">—</span>}
+                                        </td>
+                                        <td className="px-3 py-3.5 text-center">
+                                          {item.processed > 0
+                                            ? <span className="font-semibold text-orange-500">−{item.processed}</span>
+                                            : <span className="text-gray-300">—</span>}
+                                        </td>
+                                        <td className="px-4 py-3.5 text-center">
+                                          <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-xs font-bold min-w-[44px] ${badge}`}>
+                                            {closing}
+                                          </span>
+                                        </td>
+                                        {canEditAnalytics && (
+                                          <td className="px-4 py-3.5 text-right">
+                                            <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={() => openRawEdit(item)}>
+                                              <Pencil className="h-3.5 w-3.5" /> Edit
+                                            </Button>
+                                          </td>
+                                        )}
+                                      </tr>
+
+                                      {isExpanded && (
+                                        <tr className="bg-gray-50/40">
+                                          <td colSpan={canEditAnalytics ? 7 : 6} className="px-6 py-4 border-b">
+                                            <div className="bg-white rounded-xl border border-gray-150 p-4 shadow-sm space-y-3">
+                                              <div className="flex items-center justify-between border-b pb-2">
+                                                <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+                                                  <Clock className="h-3.5 w-3.5 text-amber-500" /> Audit Log (Production Entries)
+                                                </h4>
+                                                <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                                                  {item.entries?.length || 0} updates
+                                                </span>
+                                              </div>
+                                              
+                                              {!item.entries || item.entries.length === 0 ? (
+                                                <p className="text-xs text-gray-400 text-center py-2">No production entry history for this day.</p>
+                                              ) : (
+                                                <div className="overflow-x-auto">
+                                                  <table className="w-full text-xs text-left">
+                                                    <thead>
+                                                      <tr className="text-gray-450 border-b">
+                                                        <th className="py-2 font-semibold">Time (IST)</th>
+                                                        <th className="py-2 font-semibold">Logged By</th>
+                                                        <th className="py-2 font-semibold text-center">Opening</th>
+                                                        <th className="py-2 font-semibold text-center text-emerald-600">Stock In</th>
+                                                        <th className="py-2 font-semibold text-center text-orange-500">Processed</th>
+                                                        {item.entries?.some(e => e.outputLitres > 0) && (
+                                                          <th className="py-2 font-semibold text-center text-amber-600">Oil Output (L)</th>
+                                                        )}
+                                                        <th className="py-2 font-semibold text-center text-gray-700">Closing</th>
+                                                      </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-50">
+                                                      {item.entries.map((entry, idx) => (
+                                                        <tr key={entry._id || idx} className="hover:bg-gray-50/50">
+                                                          <td className="py-2 text-gray-500">
+                                                            {new Date(entry.loggedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                                          </td>
+                                                          <td className="py-2 font-medium text-gray-700">
+                                                            {entry.loggedByName || 'System'}
+                                                          </td>
+                                                          <td className="py-2 text-center text-gray-600">
+                                                            {entry.openingStock}
+                                                          </td>
+                                                          <td className="py-2 text-center">
+                                                            {entry.stockIn > 0 ? (
+                                                              <span className="text-emerald-600 font-semibold">+{entry.stockIn}</span>
+                                                            ) : (
+                                                              <span className="text-gray-300">—</span>
+                                                            )}
+                                                          </td>
+                                                          <td className="py-2 text-center">
+                                                            {entry.processed > 0 ? (
+                                                              <span className="text-orange-500 font-semibold">−{entry.processed}</span>
+                                                            ) : (
+                                                              <span className="text-gray-300">—</span>
+                                                            )}
+                                                          </td>
+                                                          {item.entries?.some(e => e.outputLitres > 0) && (
+                                                            <td className="py-2 text-center text-amber-600 font-medium">
+                                                              {entry.outputLitres > 0 ? `${entry.outputLitres} L` : '—'}
+                                                            </td>
+                                                          )}
+                                                          <td className="py-2 text-center font-bold text-gray-800">
+                                                            {entry.closing}
+                                                          </td>
+                                                        </tr>
+                                                      ))}
+                                                    </tbody>
+                                                  </table>
+                                                </div>
+                                              )}
+                                            </div>
+                                          </td>
+                                        </tr>
                                       )}
-                                    </tr>
+                                    </Fragment>
                                   );
                                 })}
                               </tbody>

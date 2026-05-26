@@ -520,3 +520,11 @@ export class BulkUpdateCategoryDto {
   @IsNotEmpty()
   categoryId: string;
 }
+
+export class BulkDeleteProductsDto {
+  @IsArray()
+  @IsString({ each: true })
+  @IsNotEmpty()
+  productIds: string[];
+}
+

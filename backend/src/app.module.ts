@@ -37,6 +37,7 @@ import { RemindersModule } from './modules/reminders/reminders.module';
 import { WishlistModule } from './modules/wishlist/wishlist.module';
 import { WalletModule } from './modules/wallet/wallet.module';
 import { RawMaterialModule } from './modules/raw-materials/raw-material.module';
+import { AdminChatbotModule } from './modules/admin-chatbot/admin-chatbot.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -92,6 +93,7 @@ import { HealthController } from './health.controller';
     WishlistModule,
     WalletModule,
     RawMaterialModule,
+    AdminChatbotModule,
   ],
   providers: [
     {

@@ -26,6 +26,7 @@ import {
   FlaskConical,
   Cog,
   X,
+  Sparkles,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -40,6 +41,7 @@ const BASE_NAV_GROUPS: NavGroup[] = [
     label: 'Overview',
     items: [
       { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
+      { name: 'AI Chatbot', href: '/admin/chatbot', icon: Sparkles },
     ],
   },
   {

@@ -398,6 +398,19 @@ export class ProductsService implements OnModuleInit {
     }
   }
 
+  async deleteMany(ids: string[]): Promise<{ deletedCount: number }> {
+    let deletedCount = 0;
+    for (const id of ids) {
+      try {
+        await this.delete(id);
+        deletedCount++;
+      } catch (err) {
+        this.logger.error(`Failed to delete product ${id}: ${(err as Error).message}`);
+      }
+    }
+    return { deletedCount };
+  }
+
   async bulkUpdateCategory(productIds: string[], categoryId: string): Promise<{ modifiedCount: number }> {
     const catId = parseObjectId(categoryId, 'categoryId');
     const ids = productIds.map((id) => parseObjectId(id, 'productId'));
@@ -462,10 +475,17 @@ export class ProductsService implements OnModuleInit {
         const price = parseFloat(row.price);
         if (isNaN(price)) { errors.push(`Invalid price for SKU ${sku}`); skipped++; continue; }
 
+        const baseSlug = this.generateSlug(name);
+        let slug = baseSlug;
+        const slugExists = await this.productRepository.findOneBySlug(slug);
+        if (slugExists) {
+          slug = `${baseSlug}-${this.generateSlug(sku)}`;
+        }
+
         await this.productRepository.create({
           name,
           sku,
-          slug: this.generateSlug(name),
+          slug,
           price,
           compareAtPrice: row.compareAtPrice ? parseFloat(row.compareAtPrice) : undefined,
           stock: row.stock ? parseInt(row.stock, 10) : 0,

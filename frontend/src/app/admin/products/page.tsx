@@ -88,6 +88,19 @@ export default function ProductsPage() {
     },
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) => api.bulkDeleteProducts(ids),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      setSelected(new Set());
+      alert(`Successfully deleted ${data.deletedCount} product(s).`);
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      alert(`Failed to delete products: ${msg}`);
+    },
+  });
+
   const handleDelete = (product: Product) => {
     if (confirm(`Delete "${product.name}"?`)) deleteMutation.mutate(product._id);
   };
@@ -95,6 +108,13 @@ export default function ProductsPage() {
   const handleBulkCategory = () => {
     if (!bulkCategoryId || selected.size === 0) return;
     bulkCategoryMutation.mutate({ productIds: Array.from(selected), categoryId: bulkCategoryId });
+  };
+
+  const handleBulkDelete = () => {
+    if (selected.size === 0) return;
+    if (confirm(`Are you sure you want to delete ${selected.size} product(s)? This action cannot be undone.`)) {
+      bulkDeleteMutation.mutate(Array.from(selected));
+    }
   };
 
   const handleExport = async () => {
@@ -189,6 +209,17 @@ export default function ProductsPage() {
               </select>
               <Button size="sm" disabled={!bulkCategoryId || bulkCategoryMutation.isPending} onClick={handleBulkCategory}>
                 {bulkCategoryMutation.isPending ? 'Updating…' : 'Apply'}
+              </Button>
+              <span className="w-px h-6 bg-border mx-1" />
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={bulkDeleteMutation.isPending}
+                onClick={handleBulkDelete}
+                className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white"
+              >
+                <Trash2 className="h-4 w-4" />
+                {bulkDeleteMutation.isPending ? 'Deleting…' : 'Delete'}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
                 <X className="h-4 w-4" />

@@ -19,6 +19,7 @@ import {
   ProductQueryDto,
   UpdateStockDto,
   BulkUpdateCategoryDto,
+  BulkDeleteProductsDto,
 } from './dto/product.dto';
 import { Product } from './schemas/product.schema';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -119,6 +120,13 @@ export class ProductsController {
   @Roles('admin', 'superadmin')
   async bulkUpdateCategory(@Body() dto: BulkUpdateCategoryDto): Promise<{ modifiedCount: number }> {
     return this.productsService.bulkUpdateCategory(dto.productIds, dto.categoryId);
+  }
+
+  @Post('bulk-delete')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  async bulkDelete(@Body() dto: BulkDeleteProductsDto): Promise<{ deletedCount: number }> {
+    return this.productsService.deleteMany(dto.productIds);
   }
 
   @Delete(':id')
