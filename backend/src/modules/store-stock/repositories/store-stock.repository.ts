@@ -218,6 +218,51 @@ export class StoreStockRepository extends BaseRepository<StoreStockDocument> {
     return doc!;
   }
 
+  async applyVariantStockDeltas(
+    storeId: Types.ObjectId,
+    productId: Types.ObjectId,
+    variantSku: string,
+    deltas: {
+      stockInDelta: number;
+      returnedDelta: number;
+      damagedDelta: number;
+      saleLogDelta: number;
+      netDelta: number;
+      lowStockThreshold?: number;
+    },
+  ): Promise<StoreStockDocument> {
+    let doc = await this.model.findOne({ store: storeId, product: productId }).exec();
+    if (!doc) {
+      doc = await this.model.create({
+        store: storeId,
+        product: productId,
+        stock: 0,
+        stockIn: 0,
+        returned: 0,
+        damaged: 0,
+        saleLog: 0,
+        variantStocks: [{ variantSku, stock: 0 }],
+        lowStockThreshold: deltas.lowStockThreshold ?? 5,
+      });
+    }
+
+    const variantIdx = doc.variantStocks.findIndex((v) => v.variantSku === variantSku);
+    if (variantIdx >= 0) {
+      doc.variantStocks[variantIdx].stock = Math.max(0, (doc.variantStocks[variantIdx].stock ?? 0) + deltas.netDelta);
+    } else {
+      doc.variantStocks.push({ variantSku, stock: Math.max(0, deltas.netDelta) });
+    }
+    doc.stockIn = (doc.stockIn ?? 0) + deltas.stockInDelta;
+    doc.returned = (doc.returned ?? 0) + deltas.returnedDelta;
+    doc.damaged = (doc.damaged ?? 0) + deltas.damagedDelta;
+    doc.saleLog = (doc.saleLog ?? 0) + deltas.saleLogDelta;
+    if (deltas.lowStockThreshold !== undefined) {
+      doc.lowStockThreshold = deltas.lowStockThreshold;
+    }
+    await doc.save();
+    return doc;
+  }
+
   async setStockMain(
     storeId: Types.ObjectId,
     productId: Types.ObjectId,

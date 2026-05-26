@@ -6,9 +6,11 @@ import { StoreStock, StoreStockSchema } from './schemas/store-stock.schema';
 import { StockSnapshot, StockSnapshotSchema } from './schemas/stock-snapshot.schema';
 import { StoreStockRepository } from './repositories/store-stock.repository';
 import { StockSnapshotRepository } from './repositories/stock-snapshot.repository';
+import { AdminModule } from '../admin/admin.module';
 
 @Module({
   imports: [
+    AdminModule,
     MongooseModule.forFeature([
       { name: StoreStock.name, schema: StoreStockSchema },
       { name: StockSnapshot.name, schema: StockSnapshotSchema },

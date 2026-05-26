@@ -13,6 +13,7 @@ import { useWishlistStore } from '@/lib/wishlist-store';
 const navigation = [
   { name: 'Home',         href: '/'                        },
   { name: 'Shop',         href: '/products'                },
+  { name: 'Quick Order',  href: '/quick-order'             },
   { name: 'Best Sellers', href: '/products?sort=bestseller' },
   { name: 'About',        href: '/about'                   },
   { name: 'Contact',      href: '/contact'                 },

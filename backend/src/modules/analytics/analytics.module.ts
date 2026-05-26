@@ -14,6 +14,8 @@ import { StoreSalesModule } from '../store-sales/store-sales.module';
 import { StoreStockModule } from '../store-stock/store-stock.module';
 import { StoresModule } from '../stores/stores.module';
 import { SettingsModule } from '../settings/settings.module';
+import { RawMaterialModule } from '../raw-materials/raw-material.module';
+import { PublicExportController } from './public-export.controller';
 
 @Module({
   imports: [
@@ -30,8 +32,9 @@ import { SettingsModule } from '../settings/settings.module';
     StoreStockModule,
     StoresModule,
     SettingsModule,
+    RawMaterialModule,
   ],
-  controllers: [AnalyticsController],
+  controllers: [AnalyticsController, PublicExportController],
   providers: [AnalyticsSnapshotRepository, AnalyticsService],
   exports: [AnalyticsSnapshotRepository, AnalyticsService],
 })

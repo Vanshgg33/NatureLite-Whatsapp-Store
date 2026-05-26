@@ -1,21 +1,26 @@
-import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { Types } from 'mongoose';
+import * as bcrypt from 'bcrypt';
 import { RawMaterial } from './schemas/raw-material.schema';
 import { RawMaterialRepository } from './repositories/raw-material.repository';
 import { RawMaterialDailyEntryRepository } from './repositories/raw-material-snapshot.repository';
+import { AdminUserRepository } from '../admin/repositories/admin-user.repository';
 import {
   CreateRawMaterialDto,
   UpsertDailyEntryDto,
   RawMaterialQueryDto,
   RawMaterialAnalyticsQueryDto,
+  UpdateRawMaterialAnalyticsDto,
 } from './dto/raw-material.dto';
 import { parseObjectId } from '../../common/utils/objectid.util';
+import { JwtPayload } from '../../common/decorators/current-user.decorator';
 
 @Injectable()
 export class RawMaterialService {
   constructor(
     private readonly rawMaterialRepository: RawMaterialRepository,
     private readonly dailyEntryRepository: RawMaterialDailyEntryRepository,
+    private readonly adminUserRepository: AdminUserRepository,
   ) {}
 
   private get todayIST(): string {
@@ -64,7 +69,17 @@ export class RawMaterialService {
     }
   }
 
-  async upsertTodayEntry(id: string, dto: UpsertDailyEntryDto, callerStoreId?: string): Promise<unknown> {
+  private async verifyAdminPassword(user: JwtPayload | undefined, password: string | undefined): Promise<void> {
+    if (!user?.sub || !password) {
+      throw new UnauthorizedException('Admin password is required to edit material entries');
+    }
+    const admin = await this.adminUserRepository.findById(parseObjectId(user.sub, 'userId'));
+    if (!admin?.password || !(await bcrypt.compare(password, admin.password))) {
+      throw new UnauthorizedException('Admin password is incorrect');
+    }
+  }
+
+  async upsertTodayEntry(id: string, dto: UpsertDailyEntryDto, callerStoreId?: string, user?: JwtPayload): Promise<unknown> {
     const objId = parseObjectId(id, 'id');
     const material = await this.rawMaterialRepository.findById(objId);
     if (!material) throw new NotFoundException('Raw material not found');
@@ -73,18 +88,20 @@ export class RawMaterialService {
     const closing = Math.max(0, dto.openingStock + dto.stockIn - dto.processed);
     const today = this.todayIST;
 
-    await this.dailyEntryRepository.upsertEntry(material.store, objId, today, {
+    const entry = await this.dailyEntryRepository.upsertEntry(material.store, objId, today, {
       openingStock: dto.openingStock,
       stockIn: dto.stockIn,
       processed: dto.processed,
       closing,
       outputLitres: dto.outputLitres ?? 0,
+    }, {
+      loggedBy: user?.sub ? parseObjectId(user.sub, 'userId') : undefined,
+      loggedByName: user?.phone ?? user?.role,
     });
 
-    await this.rawMaterialRepository.setTotalStock(objId, closing);
+    await this.rawMaterialRepository.setTotalStock(objId, entry.closing);
 
     const updated = await this.rawMaterialRepository.findById(objId);
-    const entry = await this.dailyEntryRepository.getEntry(objId, today);
     return { ...updated!.toObject(), todayEntry: entry?.toObject() ?? null };
   }
 
@@ -100,10 +117,10 @@ export class RawMaterialService {
     const todayEntry = await this.dailyEntryRepository.getEntry(objId, today);
     if (todayEntry) {
       return {
-        openingStock: todayEntry.openingStock,
-        stockIn: todayEntry.stockIn,
-        processed: todayEntry.processed,
-        outputLitres: todayEntry.outputLitres ?? 0,
+        openingStock: todayEntry.closing,
+        stockIn: 0,
+        processed: 0,
+        outputLitres: 0,
         closing: todayEntry.closing,
         isExisting: true,
       };
@@ -132,5 +149,20 @@ export class RawMaterialService {
     }
     const dates = await this.dailyEntryRepository.getAvailableDates(storeObjId);
     return { dates };
+  }
+
+  async updateAnalyticsEntry(entryId: string, dto: UpdateRawMaterialAnalyticsDto, user: JwtPayload): Promise<unknown> {
+    await this.verifyAdminPassword(user, dto.adminPassword);
+    const entryObjId = parseObjectId(entryId, 'entryId');
+    const update: Record<string, number> = {};
+    if (dto.openingStock !== undefined) update.openingStock = dto.openingStock;
+    if (dto.stockIn !== undefined) update.stockIn = dto.stockIn;
+    if (dto.processed !== undefined) update.processed = dto.processed;
+    if (dto.outputLitres !== undefined) update.outputLitres = dto.outputLitres;
+    if (dto.closing !== undefined) update.closing = dto.closing;
+
+    const updated = await this.dailyEntryRepository.updateDailyEntry(entryObjId, update);
+    if (!updated) throw new NotFoundException('Raw material analytics entry not found');
+    return updated;
   }
 }

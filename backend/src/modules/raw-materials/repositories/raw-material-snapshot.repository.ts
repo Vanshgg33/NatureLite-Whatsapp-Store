@@ -15,15 +15,35 @@ export class RawMaterialDailyEntryRepository {
     rawMaterialId: Types.ObjectId,
     date: string,
     data: { openingStock: number; stockIn: number; processed: number; closing: number; outputLitres?: number },
-  ): Promise<void> {
-    await this.model.findOneAndUpdate(
+    entryMeta?: { loggedBy?: Types.ObjectId; loggedByName?: string },
+  ): Promise<RawMaterialDailyEntryDocument> {
+    const existing = await this.model.findOne({ store: storeId, rawMaterial: rawMaterialId, date }).exec();
+    const openingStock = existing?.openingStock ?? data.openingStock;
+    const stockIn = (existing?.stockIn ?? 0) + data.stockIn;
+    const processed = (existing?.processed ?? 0) + data.processed;
+    const outputLitres = (existing?.outputLitres ?? 0) + (data.outputLitres ?? 0);
+    const closing = Math.max(0, openingStock + stockIn - processed);
+
+    return (await this.model.findOneAndUpdate(
       { store: storeId, rawMaterial: rawMaterialId, date },
       {
-        $set: data,
+        $set: { openingStock, stockIn, processed, outputLitres, closing },
+        $push: {
+          entries: {
+            loggedAt: new Date(),
+            loggedBy: entryMeta?.loggedBy,
+            loggedByName: entryMeta?.loggedByName,
+            openingStock: data.openingStock,
+            stockIn: data.stockIn,
+            processed: data.processed,
+            outputLitres: data.outputLitres ?? 0,
+            closing,
+          },
+        },
         $setOnInsert: { store: storeId, rawMaterial: rawMaterialId, date },
       },
-      { upsert: true },
-    ).exec();
+      { new: true, upsert: true },
+    ).exec())!;
   }
 
   async getEntry(
@@ -74,6 +94,8 @@ export class RawMaterialDailyEntryRepository {
           processed: 1,
           outputLitres: 1,
           closing: 1,
+          entries: 1,
+          entryCount: { $size: { $ifNull: ['$entries', []] } },
           materialName: '$materialInfo.name',
           materialUnit: '$materialInfo.unit',
         },
@@ -84,5 +106,12 @@ export class RawMaterialDailyEntryRepository {
   async getAvailableDates(storeId: Types.ObjectId): Promise<string[]> {
     const results = await this.model.distinct('date', { store: storeId }).exec();
     return (results as string[]).sort().reverse();
+  }
+
+  async updateDailyEntry(
+    entryId: Types.ObjectId,
+    data: Partial<Pick<RawMaterialDailyEntry, 'openingStock' | 'stockIn' | 'processed' | 'outputLitres' | 'closing'>>,
+  ): Promise<RawMaterialDailyEntryDocument | null> {
+    return this.model.findByIdAndUpdate(entryId, { $set: data }, { new: true }).exec();
   }
 }

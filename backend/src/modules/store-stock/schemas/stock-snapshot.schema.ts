@@ -3,6 +3,40 @@ import { Document, Types } from 'mongoose';
 
 export type StockSnapshotDocument = StockSnapshot & Document;
 
+@Schema({ _id: true, timestamps: false })
+export class StockSnapshotEntry {
+  _id: Types.ObjectId;
+
+  @Prop({ type: Date, default: Date.now })
+  loggedAt: Date;
+
+  @Prop({ type: Types.ObjectId, ref: 'AdminUser' })
+  loggedBy?: Types.ObjectId;
+
+  @Prop()
+  loggedByName?: string;
+
+  @Prop()
+  variantSku?: string;
+
+  @Prop({ default: 0 })
+  stockInDelta: number;
+
+  @Prop({ default: 0 })
+  returnedDelta: number;
+
+  @Prop({ default: 0 })
+  damagedDelta: number;
+
+  @Prop({ default: 0 })
+  saleLogDelta: number;
+
+  @Prop({ default: 0 })
+  resultingStock: number;
+}
+
+export const StockSnapshotEntrySchema = SchemaFactory.createForClass(StockSnapshotEntry);
+
 @Schema({ timestamps: true })
 export class StockSnapshot {
   _id: Types.ObjectId;
@@ -30,6 +64,9 @@ export class StockSnapshot {
 
   @Prop({ default: 0 })
   totalStock: number;
+
+  @Prop({ type: [StockSnapshotEntrySchema], default: [] })
+  entries: StockSnapshotEntry[];
 
   createdAt: Date;
   updatedAt: Date;

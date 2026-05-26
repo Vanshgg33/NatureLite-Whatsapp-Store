@@ -1,22 +1,13 @@
 import type { Metadata } from 'next';
-import { Inter, Playfair_Display, Source_Sans_3 } from 'next/font/google';
+import type { CSSProperties } from 'react';
 import './globals.css';
 import { Providers } from '@/components/providers';
 
-const inter = Inter({
-  subsets: ['latin'],
-  variable: '--font-inter',
-});
-
-const playfair = Playfair_Display({
-  subsets: ['latin'],
-  variable: '--font-playfair',
-});
-
-const sourceSans = Source_Sans_3({
-  subsets: ['latin'],
-  variable: '--font-source-sans',
-});
+const fontVariables = {
+  '--font-inter': 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  '--font-playfair': 'Georgia, "Times New Roman", serif',
+  '--font-source-sans': '"Source Sans 3", system-ui, sans-serif',
+} as CSSProperties & Record<string, string>;
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:8001';
 
@@ -53,10 +44,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${playfair.variable} ${sourceSans.variable}`}
+      style={fontVariables}
       suppressHydrationWarning
     >
-      <body className={inter.className}>
+      <body className="font-body">
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -5,6 +5,7 @@ import {
   UpsertDailyEntryDto,
   RawMaterialQueryDto,
   RawMaterialAnalyticsQueryDto,
+  UpdateRawMaterialAnalyticsDto,
 } from './dto/raw-material.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -33,6 +34,15 @@ export class RawMaterialController {
     return this.rawMaterialService.getAnalytics(storeId, query);
   }
 
+  @Put('analytics/:entryId')
+  async updateAnalyticsEntry(
+    @Param('entryId') entryId: string,
+    @Body() dto: UpdateRawMaterialAnalyticsDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.rawMaterialService.updateAnalyticsEntry(entryId, dto, user);
+  }
+
   @Get(':id/prefill')
   async getPrefill(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     return this.rawMaterialService.getTodayPrefill(id, user.storeId);
@@ -45,7 +55,7 @@ export class RawMaterialController {
 
   @Put(':id/entry')
   async upsertEntry(@Param('id') id: string, @Body() dto: UpsertDailyEntryDto, @CurrentUser() user: JwtPayload) {
-    return this.rawMaterialService.upsertTodayEntry(id, dto, user.storeId);
+    return this.rawMaterialService.upsertTodayEntry(id, dto, user.storeId, user);
   }
 
   @Delete(':id')

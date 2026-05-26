@@ -1,9 +1,10 @@
 import { Controller, Get, Put, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { StoreStockService } from './store-stock.service';
-import { SetStoreStockDto, BulkSetStockDto, StockQueryDto, StockAnalyticsQueryDto } from './dto/store-stock.dto';
+import { SetStoreStockDto, BulkSetStockDto, StockQueryDto, StockAnalyticsQueryDto, UpdateStockAnalyticsDto } from './dto/store-stock.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { StoreGuard } from '../../common/guards/store.guard';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 
 @Controller('store-stock')
 @UseGuards(RolesGuard, StoreGuard)
@@ -33,8 +34,8 @@ export class StoreStockController {
   }
 
   @Put()
-  async setStock(@Body() dto: SetStoreStockDto) {
-    return this.storeStockService.setStock(dto);
+  async setStock(@Body() dto: SetStoreStockDto, @CurrentUser() user: JwtPayload) {
+    return this.storeStockService.setStock(dto, user);
   }
 
   @Put('bulk')
@@ -53,5 +54,14 @@ export class StoreStockController {
     @Query() query: StockAnalyticsQueryDto,
   ) {
     return this.storeStockService.getStockAnalytics(storeId, query);
+  }
+
+  @Put('analytics/:snapshotId')
+  async updateStockAnalytics(
+    @Param('snapshotId') snapshotId: string,
+    @Body() dto: UpdateStockAnalyticsDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.storeStockService.updateStockAnalytics(snapshotId, dto, user);
   }
 }

@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  FlaskConical, Search, FileText, Mail, MessageSquare, TrendingDown, AlertTriangle, CheckCircle2,
+  FlaskConical, Search, FileText, TrendingDown, AlertTriangle, CheckCircle2,
+  Calendar,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
@@ -13,11 +14,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
-import type { Store, RawMaterial } from '@/types';
+import { downloadReportPdf } from '@/lib/report-pdf';
+import type { Store, RawMaterial, RawMaterialDailyItem } from '@/types';
 
 function stockStatus(stock: number): { label: string; color: string; bg: string } {
   if (stock <= 0) return { label: 'Critical', color: 'text-red-700', bg: 'bg-red-100' };
@@ -25,47 +24,12 @@ function stockStatus(stock: number): { label: string; color: string; bg: string 
   return { label: 'Good', color: 'text-emerald-700', bg: 'bg-emerald-100' };
 }
 
-function ReportModal({ open, onClose, reportText, reportTitle }: {
-  open: boolean; onClose: () => void; reportText: string; reportTitle: string;
-}) {
-  const handleEmail = () => {
-    const a = document.createElement('a');
-    a.href = `mailto:?subject=${encodeURIComponent(reportTitle)}&body=${encodeURIComponent(reportText)}`;
-    a.click();
-  };
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh]">
-        <DialogHeader><DialogTitle>{reportTitle}</DialogTitle></DialogHeader>
-        <div className="overflow-y-auto max-h-[55vh]">
-          <pre className="bg-gray-50 rounded-xl border p-4 text-sm font-mono whitespace-pre-wrap text-gray-700 leading-relaxed">
-            {reportText}
-          </pre>
-        </div>
-        <DialogFooter className="flex-col sm:flex-row gap-2">
-          <Button
-            onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(reportText)}`, '_blank')}
-            className="bg-[#25D366] hover:bg-[#1eb854] text-white gap-2"
-          >
-            <MessageSquare className="h-4 w-4" /> Share on WhatsApp
-          </Button>
-          <Button onClick={handleEmail} variant="outline" className="gap-2">
-            <Mail className="h-4 w-4" /> Share via Email
-          </Button>
-          <Button variant="ghost" onClick={onClose}>Close</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 export default function RMSPage() {
   const { user } = useAdminAuthStore();
   const { toast } = useToast();
   const [selectedStoreId, setSelectedStoreId] = useState<string>(user?.storeId || '');
   const [search, setSearch] = useState('');
-  const [showReport, setShowReport] = useState(false);
-  const [reportText, setReportText] = useState('');
+  const [reportDate, setReportDate] = useState('');
 
   const isSuperadmin = user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
 
@@ -89,43 +53,87 @@ export default function RMSPage() {
     enabled: !!selectedStoreId,
   });
 
+  const { data: datesData } = useQuery({
+    queryKey: ['raw-analytics-dates', selectedStoreId],
+    queryFn: () => api.getRawMaterialAnalytics(selectedStoreId),
+    enabled: !!selectedStoreId,
+  });
+
+  const availableDates = (datesData?.dates ?? []) as string[];
+
+  useEffect(() => {
+    if (!reportDate && availableDates.length > 0) setReportDate(availableDates[0]);
+  }, [availableDates, reportDate]);
+
   const criticalCount = materials.filter((m) => m.totalStock <= 0).length;
   const lowCount = materials.filter((m) => m.totalStock > 0 && m.totalStock < 20).length;
   const goodCount = materials.filter((m) => m.totalStock >= 20).length;
 
-  function generateReport() {
+  async function generateReport() {
+    if (reportDate) {
+      try {
+        const res = await api.getRawMaterialAnalytics(selectedStoreId, { date: reportDate });
+        const items = (res.items ?? []) as RawMaterialDailyItem[];
+        const formattedDate = new Date(reportDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+        await downloadReportPdf({
+          title: 'RMS - Raw Material Entry Report',
+          subtitle: 'Daily raw material stock movements',
+          meta: [
+            { label: 'Store', value: storeName },
+            { label: 'Date', value: formattedDate },
+            { label: 'Generated', value: 'Admin Panel' },
+          ],
+          summary: [
+            { label: 'Materials Logged', value: items.length },
+            { label: 'Total Entries', value: items.reduce((s, i) => s + (i.entryCount ?? i.entries?.length ?? 0), 0) },
+            { label: 'Stock In', value: items.reduce((s, i) => s + i.stockIn, 0) },
+            { label: 'Processed', value: items.reduce((s, i) => s + i.processed, 0) },
+          ],
+          table: {
+            columns: ['Material', 'Unit', 'Entries', 'Opening', 'Stock In', 'Processed', 'Closing'],
+            rows: items.map((i) => [
+              i.materialName ?? '-',
+              i.materialUnit ?? '-',
+              i.entryCount ?? i.entries?.length ?? 0,
+              i.openingStock,
+              i.stockIn,
+              i.processed,
+              i.closing,
+            ]),
+          },
+          filename: `RMS-Entry-Report-${storeName}-${reportDate}.pdf`,
+        });
+      } catch {
+        toast({ title: 'Failed to download raw material report', variant: 'destructive' });
+      }
+      return;
+    }
+
     const now = new Date();
     const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-    const sep = '─'.repeat(52);
-    const lines: string[] = [
-      '🌾 RAW MATERIAL STOCK REPORT',
-      sep,
-      `Store : ${storeName}`,
-      `Date  : ${dateStr}`,
-      '',
-      'CURRENT STOCK LEVELS',
-      sep,
-      `${'Material'.padEnd(22)} ${'Unit'.padEnd(8)} ${'Stock'.padStart(8)}  Status`,
-      sep,
-      ...materials.map((m) => {
+    await downloadReportPdf({
+      title: 'RMS - Raw Material Stock Report',
+      subtitle: 'Current raw material stock levels',
+      meta: [
+        { label: 'Store', value: storeName },
+        { label: 'Date', value: dateStr },
+        { label: 'Generated', value: 'Admin Panel' },
+      ],
+      summary: [
+        { label: 'Total Materials', value: materials.length },
+        { label: 'Good Stock', value: goodCount },
+        { label: 'Low Stock', value: lowCount },
+        { label: 'Critical', value: criticalCount },
+      ],
+      table: {
+        columns: ['Material', 'Unit', 'Stock', 'Status'],
+        rows: materials.map((m) => {
         const s = stockStatus(m.totalStock);
-        const icon = m.totalStock <= 0 ? '❌' : m.totalStock < 20 ? '⚠️' : '✅';
-        return `${m.name.substring(0, 21).padEnd(22)} ${m.unit.padEnd(8)} ${String(m.totalStock).padStart(8)}  ${icon} ${s.label}`;
+          return [m.name, m.unit, m.totalStock, s.label];
       }),
-      sep,
-      '',
-      'SUMMARY',
-      sep,
-      `Total Materials : ${materials.length}`,
-      `Good Stock      : ${goodCount}`,
-      `Low Stock       : ${lowCount}`,
-      `Critical (Zero) : ${criticalCount}`,
-      '',
-      sep,
-      'Generated by Nature Lite Admin Panel',
-    ];
-    setReportText(lines.join('\n'));
-    setShowReport(true);
+      },
+      filename: `RMS-Raw-Material-Report-${storeName}-${now.toISOString().split('T')[0]}.pdf`,
+    });
   }
 
   const statCards = [
@@ -157,6 +165,17 @@ export default function RMSPage() {
                 {stores.filter((s) => s._id).map((store) => (
                   <SelectItem key={store._id} value={store._id}>{store.name}</SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          )}
+          {availableDates.length > 0 && (
+            <Select value={reportDate} onValueChange={setReportDate}>
+              <SelectTrigger className="w-40 h-9">
+                <Calendar className="h-4 w-4 mr-2 text-gray-500" />
+                <SelectValue placeholder="Report date" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableDates.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
               </SelectContent>
             </Select>
           )}
@@ -252,8 +271,6 @@ export default function RMSPage() {
         </div>
       )}
 
-      {/* Report Modal */}
-      <ReportModal open={showReport} onClose={() => setShowReport(false)} reportText={reportText} reportTitle="RMS — Raw Material Stock Report" />
     </div>
   );
 }

@@ -324,6 +324,58 @@ export interface AnalyticsSnapshot {
   createdAt: string;
 }
 
+export interface DailyAnalyticsKpis {
+  totalRevenue: number;
+  totalOrders: number;
+  deliveredOrders: number;
+  pendingOrders: number;
+  cancelledOrders: number;
+  deliveredRate: number;
+  cancelRate: number;
+  averageOrderValue: number;
+  codOrders: number;
+  prepaidOrders: number;
+  prepaidShare: number;
+  totalCustomers: number;
+  newCustomers: number;
+  returningCustomers: number;
+  activeCustomers: number;
+  totalProducts: number;
+  activeProducts: number;
+  outOfStockProducts: number;
+  lowStockProducts: number;
+  chatSessions: number;
+  chatMessages: number;
+  supportHandoffs: number;
+}
+
+export interface DailyAnalyticsReportPayload {
+  date: string;
+  periodStart: string;
+  periodEnd: string;
+  kpis: DailyAnalyticsKpis;
+  topSellingProducts: Array<{ name: string; quantitySold: number; revenue: number }>;
+  topProductsOverall: Array<{ _id?: string; name?: string; quantitySold?: number; revenue?: number }>;
+  topCustomersOverall: Array<{ _id?: string; customerName?: string; totalSpent?: number; totalOrders?: number }>;
+  revenueTrendLast14Days: RevenueDataPoint[];
+}
+
+export interface DailyAnalyticsReportResponse {
+  snapshotDate: string;
+  generatedAt: string;
+  summary: string;
+  report: DailyAnalyticsReportPayload | null;
+}
+
+export interface AnalyticsNarrativeResponse {
+  headline: string;
+  summary: string;
+  highlights: string[];
+  watchouts: string[];
+  actions: string[];
+  generatedBy?: 'gemini' | 'fallback';
+}
+
 // ==================== CHAT/WHATSAPP TYPES ====================
 export interface ChatSessionContext {
   cartItems?: string[];
@@ -890,6 +942,19 @@ export interface StockSnapshotItem {
   damagedDelta: number;
   saleLogDelta: number;
   totalStock: number;
+  entryCount?: number;
+  entries?: Array<{
+    _id: string;
+    loggedAt: string;
+    loggedBy?: string;
+    loggedByName?: string;
+    variantSku?: string;
+    stockInDelta: number;
+    returnedDelta: number;
+    damagedDelta: number;
+    saleLogDelta: number;
+    resultingStock: number;
+  }>;
   productName?: string;
   productSku?: string;
 }
@@ -1019,6 +1084,20 @@ export interface RawMaterialTodayEntry {
   processed: number;
   outputLitres: number;
   closing: number;
+  entryCount?: number;
+  entries?: RawMaterialEntryLog[];
+}
+
+export interface RawMaterialEntryLog {
+  _id: string;
+  loggedAt: string;
+  loggedBy?: string;
+  loggedByName?: string;
+  openingStock: number;
+  stockIn: number;
+  processed: number;
+  outputLitres: number;
+  closing: number;
 }
 
 export interface RawMaterial {
@@ -1041,6 +1120,8 @@ export interface RawMaterialDailyItem {
   processed: number;
   outputLitres: number;
   closing: number;
+  entryCount?: number;
+  entries?: RawMaterialEntryLog[];
   materialName?: string;
   materialUnit?: string;
 }
@@ -1064,6 +1145,7 @@ export interface SetStoreStockDto {
   saleLogDelta?: number;
   variantSku?: string;
   lowStockThreshold?: number;
+  adminPassword?: string;
 }
 
 export interface SaleStats {

@@ -20,6 +20,11 @@ export class StockSnapshotRepository {
       saleLogDelta: number;
     },
     totalStock: number,
+    entryMeta?: {
+      loggedBy?: Types.ObjectId;
+      loggedByName?: string;
+      variantSku?: string;
+    },
   ): Promise<void> {
     await this.model.findOneAndUpdate(
       { store: storeId, product: productId, date },
@@ -31,6 +36,19 @@ export class StockSnapshotRepository {
           saleLogDelta: deltas.saleLogDelta,
         },
         $set: { totalStock },
+        $push: {
+          entries: {
+            loggedAt: new Date(),
+            loggedBy: entryMeta?.loggedBy,
+            loggedByName: entryMeta?.loggedByName,
+            variantSku: entryMeta?.variantSku,
+            stockInDelta: deltas.stockInDelta,
+            returnedDelta: deltas.returnedDelta,
+            damagedDelta: deltas.damagedDelta,
+            saleLogDelta: deltas.saleLogDelta,
+            resultingStock: totalStock,
+          },
+        },
         $setOnInsert: { store: storeId, product: productId, date },
       },
       { upsert: true },
@@ -62,6 +80,8 @@ export class StockSnapshotRepository {
           damagedDelta: 1,
           saleLogDelta: 1,
           totalStock: 1,
+          entries: 1,
+          entryCount: { $size: { $ifNull: ['$entries', []] } },
           productName: '$productInfo.name',
           productSku: '$productInfo.sku',
         },
@@ -74,5 +94,12 @@ export class StockSnapshotRepository {
       .distinct('date', { store: storeId })
       .exec();
     return (results as string[]).sort().reverse();
+  }
+
+  async updateSnapshot(
+    snapshotId: Types.ObjectId,
+    data: Partial<Pick<StockSnapshot, 'stockInDelta' | 'returnedDelta' | 'damagedDelta' | 'saleLogDelta' | 'totalStock'>>,
+  ): Promise<StockSnapshotDocument | null> {
+    return this.model.findByIdAndUpdate(snapshotId, { $set: data }, { new: true }).exec();
   }
 }

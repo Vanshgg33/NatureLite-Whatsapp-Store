@@ -36,7 +36,7 @@ export class AnalyticsService {
     return nominal;
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, { timeZone: 'Asia/Kolkata' })
   async generateDailySnapshot(): Promise<void> {
     this.logger.log('Generating daily analytics snapshot');
 
@@ -48,6 +48,7 @@ export class AnalyticsService {
     today.setHours(0, 0, 0, 0);
 
     await this.createSnapshot('daily', yesterday, today);
+    await this.generateFullDailyReport(yesterday, today);
   }
 
   @Cron(CronExpression.EVERY_WEEK)
@@ -103,6 +104,110 @@ export class AnalyticsService {
       } as any);
     } catch (error) {
       this.logger.error('Failed to create analytics snapshot', error);
+    }
+  }
+
+  private formatCurrency(amount: number): string {
+    return `Rs ${Math.round(amount).toLocaleString('en-IN')}`;
+  }
+
+  private formatPercent(value: number): string {
+    return `${Math.round(value * 10) / 10}%`;
+  }
+
+  private async generateFullDailyReport(startDate: Date, endDate: Date): Promise<void> {
+    try {
+      const [orders, customers, products, chat, revenueSeries, topOverallProducts, topCustomersOverall] = await Promise.all([
+        this.getOrderMetrics(startDate, endDate),
+        this.getCustomerMetrics(startDate, endDate),
+        this.getProductMetrics(startDate, endDate),
+        this.getChatMetrics(startDate, endDate),
+        this.getRevenueByDay(14),
+        this.getTopSellingOverall(startDate, endDate, 5),
+        this.getTopCustomersOverall(5),
+      ]);
+
+      const o = orders as Record<string, number>;
+      const c = customers as Record<string, number>;
+      const p = products as Record<string, unknown>;
+      const m = chat as Record<string, number>;
+
+      const totalOrders = Number(o.totalOrders || 0);
+      const deliveredOrders = Number(o.completedOrders || 0);
+      const cancelledOrders = Number(o.cancelledOrders || 0);
+      const pendingOrders = Number(o.pendingOrders || 0);
+      const totalRevenue = Number(o.totalRevenue || 0);
+      const aov = Number(o.avgOrderValue || 0);
+      const codOrders = Number(o.codOrders || 0);
+      const prepaidOrders = Number(o.prepaidOrders || 0);
+
+      const deliveredRate = totalOrders > 0 ? (deliveredOrders / totalOrders) * 100 : 0;
+      const cancelRate = totalOrders > 0 ? (cancelledOrders / totalOrders) * 100 : 0;
+      const prepaidShare = totalOrders > 0 ? (prepaidOrders / totalOrders) * 100 : 0;
+
+      const topSelling = (p.topSellingProducts as Array<{ name: string; quantitySold: number; revenue: number }> | undefined) ?? [];
+      const reportDate = startDate.toISOString().split('T')[0];
+
+      const summary = [
+        `Daily Analytics Report (${reportDate})`,
+        '',
+        `Revenue: ${this.formatCurrency(totalRevenue)}`,
+        `Orders: ${totalOrders} total | ${deliveredOrders} delivered | ${pendingOrders} pending | ${cancelledOrders} cancelled`,
+        `AOV: ${this.formatCurrency(aov)} | Prepaid mix: ${this.formatPercent(prepaidShare)} | COD: ${codOrders}`,
+        `Customer growth: +${Number(c.newCustomers || 0)} new | ${Number(c.returningCustomers || 0)} returning`,
+        `Inventory risk: ${Number(p.outOfStockProducts || 0)} out-of-stock | ${Number(p.lowStockProducts || 0)} low-stock`,
+      ].join('\n');
+
+      const detailed = {
+        date: reportDate,
+        periodStart: startDate.toISOString(),
+        periodEnd: endDate.toISOString(),
+        kpis: {
+          totalRevenue,
+          totalOrders,
+          deliveredOrders,
+          pendingOrders,
+          cancelledOrders,
+          deliveredRate,
+          cancelRate,
+          averageOrderValue: aov,
+          codOrders,
+          prepaidOrders,
+          prepaidShare,
+          totalCustomers: Number(c.totalCustomers || 0),
+          newCustomers: Number(c.newCustomers || 0),
+          returningCustomers: Number(c.returningCustomers || 0),
+          activeCustomers: Number(c.activeCustomers || 0),
+          totalProducts: Number(p.totalProducts || 0),
+          activeProducts: Number(p.activeProducts || 0),
+          outOfStockProducts: Number(p.outOfStockProducts || 0),
+          lowStockProducts: Number(p.lowStockProducts || 0),
+          chatSessions: Number(m.totalSessions || 0),
+          chatMessages: Number(m.totalMessages || 0),
+          supportHandoffs: Number(m.supportHandoffs || 0),
+        },
+        topSellingProducts: topSelling.slice(0, 5),
+        topProductsOverall: topOverallProducts,
+        topCustomersOverall,
+        revenueTrendLast14Days: revenueSeries,
+      };
+
+      await this.snapshotRepository.getModel().updateOne(
+        { period: 'daily', date: startDate },
+        {
+          $set: {
+            metadata: {
+              dailyReportGeneratedAt: new Date().toISOString(),
+              dailyReportSummary: summary,
+              dailyReport: detailed,
+            },
+          },
+        },
+      ).exec();
+
+      this.logger.log(`Generated full daily analytics report for ${reportDate}`);
+    } catch (error) {
+      this.logger.error('Failed to generate full daily analytics report', error);
     }
   }
 
@@ -465,6 +570,202 @@ export class AnalyticsService {
     limit: number = 30,
   ): Promise<AnalyticsSnapshot[]> {
     return this.snapshotRepository.findByPeriod(period, limit);
+  }
+
+  private buildFallbackNarrative(input: {
+    startDate: Date;
+    endDate: Date;
+    orders: Record<string, unknown>;
+    customers: Record<string, unknown>;
+    products: Record<string, unknown>;
+    chat: Record<string, unknown>;
+    revenue: Array<{ date: string; revenue: number; orders: number }>;
+    topProducts: Array<{ name: string; quantitySold: number; revenue: number }>;
+    topCustomers: Array<{ customerName?: string; totalSpent?: number; totalOrders?: number }>;
+  }): { headline: string; summary: string; highlights: string[]; watchouts: string[]; actions: string[]; generatedBy: string } {
+    const totalRevenue = Number(input.orders.totalRevenue || 0);
+    const totalOrders = Number(input.orders.totalOrders || 0);
+    const deliveredOrders = Number(input.orders.completedOrders || 0);
+    const cancelledOrders = Number(input.orders.cancelledOrders || 0);
+    const pendingOrders = Number(input.orders.pendingOrders || 0);
+    const aov = Number(input.orders.avgOrderValue || 0);
+    const totalCustomers = Number(input.customers.totalCustomers || 0);
+    const newCustomers = Number(input.customers.newCustomers || 0);
+    const activeCustomers = Number(input.customers.activeCustomers || 0);
+    const outOfStock = Number(input.products.outOfStockProducts || 0);
+    const lowStock = Number(input.products.lowStockProducts || 0);
+    const totalSessions = Number(input.chat.totalSessions || 0);
+    const supportHandoffs = Number(input.chat.supportHandoffs || 0);
+
+    const bestProduct = input.topProducts[0];
+    const bestCustomer = input.topCustomers[0];
+    const peakDay = [...input.revenue].sort((a, b) => b.revenue - a.revenue)[0];
+    const periodLabel = `${input.startDate.toLocaleDateString('en-IN')} to ${input.endDate.toLocaleDateString('en-IN')}`;
+
+    return {
+      headline: `Analytics report for ${periodLabel}`,
+      summary: `The business generated ${Math.round(totalRevenue).toLocaleString('en-IN')} in revenue from ${totalOrders} orders. ${
+        deliveredOrders > 0 ? `${deliveredOrders} orders were delivered` : 'Delivery activity was limited'
+      }, while ${cancelledOrders} were cancelled and ${pendingOrders} remain pending. Average order value stood at ${Math.round(aov).toLocaleString('en-IN')}. Customer activity included ${newCustomers} new customers out of ${totalCustomers} total, and operations showed ${outOfStock} out-of-stock products with ${lowStock} more running low. Chat activity reached ${totalSessions} sessions with ${supportHandoffs} support handoffs.`,
+      highlights: [
+        `Top revenue day: ${peakDay ? `${peakDay.date} (${Math.round(peakDay.revenue).toLocaleString('en-IN')})` : 'N/A'}`,
+        bestProduct ? `Best-selling product: ${bestProduct.name} (${bestProduct.quantitySold} units)` : 'No top product available',
+        bestCustomer ? `Top customer: ${bestCustomer.customerName || 'Customer'} (${Math.round(Number(bestCustomer.totalSpent || 0)).toLocaleString('en-IN')})` : 'No top customer available',
+        `Active customers tracked: ${activeCustomers}`,
+      ],
+      watchouts: [
+        `${outOfStock} products are fully out of stock`,
+        `${lowStock} products are in the low-stock bucket`,
+        `${supportHandoffs} support handoffs indicate service friction`,
+      ],
+      actions: [
+        'Prioritize replenishing out-of-stock and low-stock products.',
+        'Review the top selling SKUs and keep them featured in stock planning.',
+        'Reduce support handoffs by improving product info and checkout clarity.',
+      ],
+      generatedBy: 'fallback',
+    };
+  }
+
+  private async generateGeminiNarrative(prompt: string): Promise<string | null> {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return null;
+
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.5,
+              maxOutputTokens: 700,
+              responseMimeType: 'application/json',
+            },
+          }),
+        },
+      );
+
+      if (!response.ok) return null;
+
+      const data = await response.json() as {
+        candidates?: Array<{
+          content?: { parts?: Array<{ text?: string }> };
+        }>;
+      };
+
+      return data.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('').trim() || null;
+    } catch (error) {
+      this.logger.warn(`Gemini narrative generation failed: ${(error as Error).message}`);
+      return null;
+    }
+  }
+
+  async getLatestDailyReport(): Promise<Record<string, unknown> | null> {
+    const latest = await this.snapshotRepository.getModel()
+      .findOne({ period: 'daily' })
+      .sort({ date: -1 })
+      .lean()
+      .exec();
+
+    if (!latest) return null;
+
+    const metadata = (latest.metadata ?? {}) as Record<string, unknown>;
+    const report = metadata.dailyReport as Record<string, unknown> | undefined;
+
+    if (report) {
+      return {
+        snapshotDate: latest.date,
+        generatedAt: metadata.dailyReportGeneratedAt ?? latest.updatedAt,
+        summary: metadata.dailyReportSummary ?? '',
+        report,
+      };
+    }
+
+    const start = new Date(latest.date);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    await this.generateFullDailyReport(start, end);
+
+    const refreshed = await this.snapshotRepository.getModel()
+      .findById(latest._id)
+      .lean()
+      .exec();
+    if (!refreshed) return null;
+
+    const refreshedMetadata = (refreshed.metadata ?? {}) as Record<string, unknown>;
+    return {
+      snapshotDate: refreshed.date,
+      generatedAt: refreshedMetadata.dailyReportGeneratedAt ?? refreshed.updatedAt,
+      summary: refreshedMetadata.dailyReportSummary ?? '',
+      report: refreshedMetadata.dailyReport ?? null,
+    };
+  }
+
+  async getNarrativeReport(startDate: Date, endDate: Date): Promise<Record<string, unknown>> {
+    const [orders, customers, products, chat, revenue, topProducts, topCustomers] = await Promise.all([
+      this.getOrderMetrics(startDate, endDate),
+      this.getCustomerMetrics(startDate, endDate),
+      this.getProductMetrics(startDate, endDate),
+      this.getChatMetrics(startDate, endDate),
+      this.getRevenueByDay(Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / 86400000))),
+      this.getTopSellingOverall(startDate, endDate, 5),
+      this.getTopCustomersOverall(5),
+    ]);
+
+    const fallback = this.buildFallbackNarrative({
+      startDate,
+      endDate,
+      orders,
+      customers,
+      products,
+      chat,
+      revenue,
+      topProducts: topProducts as Array<{ name: string; quantitySold: number; revenue: number }>,
+      topCustomers: topCustomers as Array<{ customerName?: string; totalSpent?: number; totalOrders?: number }>,
+    });
+
+    const prompt = [
+      'You are writing an executive analytics summary for a modern retail admin dashboard.',
+      'Return STRICT JSON only with the keys: headline (string), summary (string), highlights (string[]), watchouts (string[]), actions (string[]).',
+      'Keep the tone polished, concise, and insightful. No markdown, no code fences.',
+      `Date range: ${startDate.toISOString()} to ${endDate.toISOString()}.`,
+      `Metrics: ${JSON.stringify({
+        orders,
+        customers,
+        products,
+        chat,
+        topProducts: topProducts.slice(0, 5),
+        topCustomers: topCustomers.slice(0, 5),
+        revenue: revenue.slice(-14),
+      })}`,
+    ].join('\n\n');
+
+    const aiText = await this.generateGeminiNarrative(prompt);
+    if (!aiText) return fallback;
+
+    try {
+      const parsed = JSON.parse(aiText) as {
+        headline?: string;
+        summary?: string;
+        highlights?: string[];
+        watchouts?: string[];
+        actions?: string[];
+      };
+
+      return {
+        headline: parsed.headline || fallback.headline,
+        summary: parsed.summary || fallback.summary,
+        highlights: Array.isArray(parsed.highlights) && parsed.highlights.length > 0 ? parsed.highlights.slice(0, 4) : fallback.highlights,
+        watchouts: Array.isArray(parsed.watchouts) && parsed.watchouts.length > 0 ? parsed.watchouts.slice(0, 3) : fallback.watchouts,
+        actions: Array.isArray(parsed.actions) && parsed.actions.length > 0 ? parsed.actions.slice(0, 3) : fallback.actions,
+        generatedBy: 'gemini',
+      };
+    } catch {
+      return fallback;
+    }
   }
 
   // ==================== MULTI-STORE ANALYTICS ====================

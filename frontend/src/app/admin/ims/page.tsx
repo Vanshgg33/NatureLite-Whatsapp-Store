@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Boxes, Search, AlertTriangle, Package, FileText, Mail, MessageSquare,
-  TrendingDown, TrendingUp, CheckCircle2,
+  Boxes, Search, AlertTriangle, Package, FileText,
+  TrendingDown, TrendingUp, CheckCircle2, Calendar,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
@@ -20,46 +20,8 @@ import {
 } from '@/components/ui/dialog';
 import { getStoreItemTotalStock } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
-import type { Store, StoreStockItem } from '@/types';
-
-function ReportModal({ open, onClose, reportText, reportTitle }: {
-  open: boolean;
-  onClose: () => void;
-  reportText: string;
-  reportTitle: string;
-}) {
-  const handleEmail = () => {
-    const link = document.createElement('a');
-    link.href = `mailto:?subject=${encodeURIComponent(reportTitle)}&body=${encodeURIComponent(reportText)}`;
-    link.click();
-  };
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh]">
-        <DialogHeader>
-          <DialogTitle>{reportTitle}</DialogTitle>
-        </DialogHeader>
-        <div className="overflow-y-auto max-h-[55vh]">
-          <pre className="bg-gray-50 rounded-xl border p-4 text-sm font-mono whitespace-pre-wrap text-gray-700 leading-relaxed">
-            {reportText}
-          </pre>
-        </div>
-        <DialogFooter className="flex-col sm:flex-row gap-2">
-          <Button
-            onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(reportText)}`, '_blank')}
-            className="bg-[#25D366] hover:bg-[#1eb854] text-white gap-2"
-          >
-            <MessageSquare className="h-4 w-4" /> Share on WhatsApp
-          </Button>
-          <Button onClick={handleEmail} variant="outline" className="gap-2">
-            <Mail className="h-4 w-4" /> Share via Email
-          </Button>
-          <Button variant="ghost" onClick={onClose}>Close</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
+import { downloadReportPdf } from '@/lib/report-pdf';
+import type { Store, StoreStockItem, StockSnapshotItem } from '@/types';
 
 export default function IMSPage() {
   const { user } = useAdminAuthStore();
@@ -75,10 +37,10 @@ export default function IMSPage() {
   const [editDamaged, setEditDamaged] = useState('');
   const [editSaleLog, setEditSaleLog] = useState('');
   const [editThreshold, setEditThreshold] = useState('');
-  const [showReport, setShowReport] = useState(false);
-  const [reportText, setReportText] = useState('');
+  const [reportDate, setReportDate] = useState('');
 
   const isSuperadmin = user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
+  const canEditAnalytics = user?.role === 'superadmin' || (user?.role === 'admin' && !user?.departmentType);
 
   const { data: stores = [] } = useQuery<Store[]>({
     queryKey: ['stores'],
@@ -107,55 +69,97 @@ export default function IMSPage() {
     enabled: !!selectedStoreId,
   });
 
+  const { data: stockDatesData } = useQuery({
+    queryKey: ['stock-analytics-dates', selectedStoreId],
+    queryFn: () => api.getStockAnalytics(selectedStoreId),
+    enabled: !!selectedStoreId,
+  });
+
+  const availableDates = (stockDatesData?.dates ?? []) as string[];
+
+  useEffect(() => {
+    if (!reportDate && availableDates.length > 0) setReportDate(availableDates[0]);
+  }, [availableDates, reportDate]);
+
   const updateStockMutation = useMutation({
-    mutationFn: (data: { storeId: string; productId: string; stockInDelta?: number; returnedDelta?: number; damagedDelta?: number; saleLogDelta?: number; lowStockThreshold?: number }) =>
+    mutationFn: (data: { storeId: string; productId: string; stockInDelta?: number; returnedDelta?: number; damagedDelta?: number; saleLogDelta?: number; lowStockThreshold?: number; adminPassword?: string }) =>
       api.setStoreStock(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['store-stock'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-analytics-dates'] });
       setEditItem(null);
       toast({ title: 'Stock updated' });
     },
   });
 
-  function generateReport() {
+  async function generateReport() {
+    if (reportDate) {
+      const res = await api.getStockAnalytics(selectedStoreId, { date: reportDate });
+      const items = (res.items ?? []) as StockSnapshotItem[];
+      const formattedDate = new Date(reportDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+      const totalEntries = items.reduce((sum, item) => sum + (item.entryCount ?? item.entries?.length ?? 0), 0);
+      await downloadReportPdf({
+        title: 'IMS - Inventory Entry Report',
+        subtitle: 'Daily product and variant entry activity',
+        meta: [
+          { label: 'Store', value: storeName },
+          { label: 'Date', value: formattedDate },
+          { label: 'Generated', value: 'Admin Panel' },
+        ],
+        summary: [
+          { label: 'Products Logged', value: items.length },
+          { label: 'Total Entries', value: totalEntries },
+          { label: 'Stock In', value: items.reduce((s, i) => s + i.stockInDelta, 0) },
+          { label: 'Sale Logs', value: items.reduce((s, i) => s + i.saleLogDelta, 0) },
+        ],
+        table: {
+          columns: ['Product', 'SKU', 'Entries', 'Stock In', 'Returned', 'Damaged', 'Sale Log', 'Closing'],
+          rows: items.map((i) => [
+            i.productName ?? '-',
+            i.productSku ?? '-',
+            i.entryCount ?? i.entries?.length ?? 0,
+            i.stockInDelta,
+            i.returnedDelta,
+            i.damagedDelta,
+            i.saleLogDelta,
+            i.totalStock,
+          ]),
+        },
+        filename: `IMS-Entry-Report-${storeName}-${reportDate}.pdf`,
+      });
+      return;
+    }
+
     const items = (allStockData?.items ?? stockData?.items ?? []) as StoreStockItem[];
     const now = new Date();
     const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
     const inStock = items.filter((i) => getStoreItemTotalStock(i) > i.lowStockThreshold);
     const low = items.filter((i) => { const s = getStoreItemTotalStock(i); return s > 0 && s <= i.lowStockThreshold; });
     const out = items.filter((i) => getStoreItemTotalStock(i) <= 0);
-
-    const lines: string[] = [
-      '📦 INVENTORY MANAGEMENT REPORT',
-      '─'.repeat(48),
-      `Store: ${storeName}`,
-      `Date: ${dateStr}`,
-      '',
-      'PRODUCT STOCK OVERVIEW',
-      '─'.repeat(48),
-      `${'Product'.padEnd(28)} ${'Stock'.padStart(6)}  Status`,
-      '─'.repeat(48),
-      ...items.map((i) => {
-        const stock = getStoreItemTotalStock(i);
-        const isOut = stock <= 0;
-        const isLow = stock > 0 && stock <= i.lowStockThreshold;
-        const status = isOut ? '❌ Out' : isLow ? '⚠️ Low' : '✅ OK';
-        return `${(i.productName ?? '—').substring(0, 27).padEnd(28)} ${String(stock).padStart(6)}  ${status}`;
-      }),
-      '',
-      'SUMMARY',
-      '─'.repeat(48),
-      `Total Products : ${items.length}`,
-      `In Stock       : ${inStock.length}`,
-      `Low Stock      : ${low.length}`,
-      `Out of Stock   : ${out.length}`,
-      '',
-      '─'.repeat(48),
-      'Generated by Nature Lite Admin Panel',
-    ];
-    const text = lines.join('\n');
-    setReportText(text);
-    setShowReport(true);
+    await downloadReportPdf({
+      title: 'IMS - Inventory Management Report',
+      subtitle: 'Packed goods stock available for sale',
+      meta: [
+        { label: 'Store', value: storeName },
+        { label: 'Date', value: dateStr },
+        { label: 'Generated', value: 'Admin Panel' },
+      ],
+      summary: [
+        { label: 'Total Products', value: items.length },
+        { label: 'In Stock', value: inStock.length },
+        { label: 'Low Stock', value: low.length },
+        { label: 'Out of Stock', value: out.length },
+      ],
+      table: {
+        columns: ['Product', 'SKU', 'Stock', 'Threshold', 'Status'],
+        rows: items.map((i) => {
+          const stock = getStoreItemTotalStock(i);
+          const status = stock <= 0 ? 'Out' : stock <= i.lowStockThreshold ? 'Low' : 'OK';
+          return [i.productName ?? '-', i.productSku ?? '-', stock, i.lowStockThreshold, status];
+        }),
+      },
+      filename: `IMS-Inventory-Report-${storeName}-${now.toISOString().split('T')[0]}.pdf`,
+    });
   }
 
   const statCards = [
@@ -220,6 +224,17 @@ export default function IMSPage() {
               </SelectContent>
             </Select>
           )}
+          {availableDates.length > 0 && (
+            <Select value={reportDate} onValueChange={setReportDate}>
+              <SelectTrigger className="w-40 h-9">
+                <Calendar className="h-4 w-4 mr-2 text-gray-500" />
+                <SelectValue placeholder="Report date" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableDates.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
           <Button
             onClick={generateReport}
             disabled={!selectedStoreId}
@@ -265,6 +280,11 @@ export default function IMSPage() {
           <AlertTriangle className="h-4 w-4" />
           Low Stock Only
         </Button>
+        {!canEditAnalytics && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            Read-only mode: only full admin can update IMS values.
+          </p>
+        )}
       </div>
 
       {/* Table */}
@@ -333,21 +353,25 @@ export default function IMSPage() {
                         )}
                       </td>
                       <td className="px-5 py-3.5 text-right">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 text-xs opacity-70 group-hover:opacity-100"
-                          onClick={() => {
-                            setEditItem(item);
-                            setEditStockIn('');
-                            setEditReturned('');
-                            setEditDamaged('');
-                            setEditSaleLog('');
-                            setEditThreshold(item.lowStockThreshold.toString());
-                          }}
-                        >
-                          Update
-                        </Button>
+                        {canEditAnalytics ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs opacity-70 group-hover:opacity-100"
+                            onClick={() => {
+                              setEditItem(item);
+                              setEditStockIn('');
+                              setEditReturned('');
+                              setEditDamaged('');
+                              setEditSaleLog('');
+                              setEditThreshold(item.lowStockThreshold.toString());
+                            }}
+                          >
+                            Update
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-gray-400">View only</span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -444,13 +468,6 @@ export default function IMSPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Report Modal */}
-      <ReportModal
-        open={showReport}
-        onClose={() => setShowReport(false)}
-        reportText={reportText}
-        reportTitle="IMS — Inventory Report"
-      />
     </div>
   );
 }

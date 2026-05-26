@@ -19,11 +19,11 @@ const links = {
     { name: 'Contact',      href: '/contact'        },
     { name: 'FAQs',         href: '/faqs'           },
   ],
-  support: [
-    { name: 'Track Order',  href: '/account/orders' },
-    { name: 'Shipping',     href: '/shipping'       },
-    { name: 'Returns',      href: '/returns'        },
-    { name: 'Privacy',      href: '/privacy'        },
+  quickLinks: [
+    { name: 'Special Offers', href: '/products?sort=discount' },
+    { name: 'About Us',       href: '/about'                  },
+    { name: 'FAQs',           href: '/faqs'                   },
+    { name: 'Track Order',    href: '/account/orders'         },
   ],
 };
 
@@ -246,9 +246,9 @@ export function PublicFooter() {
           </div>
 
           {/* Link columns */}
-          <FooterLinkGroup title="Shop"    items={links.shop}    />
-          <FooterLinkGroup title="Company" items={links.company} />
-          <FooterLinkGroup title="Support" items={links.support} />
+          <FooterLinkGroup title="Shop"        items={links.shop}    />
+          <FooterLinkGroup title="Company"     items={links.company} />
+          <FooterLinkGroup title="Quick Links" items={links.quickLinks} />
         </div>
 
         {/* Bottom bar */}

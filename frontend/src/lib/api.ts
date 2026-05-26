@@ -22,6 +22,8 @@ import {
   OrderAnalytics,
   CustomerAnalytics,
   ProductAnalytics,
+  DailyAnalyticsReportResponse,
+  AnalyticsNarrativeResponse,
   CouponValidationResult,
   StoreSettings,
   WhatsAppSettings,
@@ -65,6 +67,8 @@ import {
   UcmSyncSummary,
   RawMaterial,
   RawMaterialPrefill,
+  RawMaterialDailyItem,
+  StockSnapshotItem,
 } from '@/types';
 
 // Backend API base URL. Set via NEXT_PUBLIC_API_URL in environment.
@@ -456,6 +460,25 @@ class ApiClient {
   async getProductAnalytics(startDate: string, endDate: string): Promise<ProductAnalytics> {
     const response = await this.client.get<ApiResponse<ProductAnalytics>>(
       `/analytics/products?startDate=${startDate}&endDate=${endDate}`
+    );
+    return response.data.data;
+  }
+
+  async getAnalyticsNarrative(startDate: string, endDate: string): Promise<AnalyticsNarrativeResponse> {
+    const response = await this.client.get<ApiResponse<AnalyticsNarrativeResponse>>(
+      `/analytics/reports/narrative?startDate=${startDate}&endDate=${endDate}`
+    );
+    return response.data.data;
+  }
+
+  async getLatestDailyAnalyticsReport(): Promise<DailyAnalyticsReportResponse | null> {
+    const response = await this.client.get<ApiResponse<DailyAnalyticsReportResponse | null>>('/analytics/reports/daily/latest');
+    return response.data.data;
+  }
+
+  async getSheetsLinks(storeId: string): Promise<{ imsLink: string; pmsLink: string; rmsLink: string }> {
+    const response = await this.client.get<ApiResponse<{ imsLink: string; pmsLink: string; rmsLink: string }>>(
+      `/analytics/export/links?storeId=${storeId}`
     );
     return response.data.data;
   }
@@ -1227,6 +1250,11 @@ class ApiClient {
     return response.data.data;
   }
 
+  async updateStockAnalytics(snapshotId: string, data: { stockInDelta?: number; returnedDelta?: number; damagedDelta?: number; saleLogDelta?: number; totalStock?: number; adminPassword: string }): Promise<StockSnapshotItem> {
+    const response = await this.client.put<ApiResponse<StockSnapshotItem>>(`/store-stock/analytics/${snapshotId}`, data);
+    return response.data.data;
+  }
+
   // ==================== RAW MATERIALS ====================
   async getRawMaterials(storeId: string, params?: { search?: string }): Promise<RawMaterial[]> {
     const response = await this.client.get<ApiResponse<RawMaterial[]>>(`/raw-materials/store/${storeId}`, { params });
@@ -1243,7 +1271,7 @@ class ApiClient {
     return response.data.data;
   }
 
-  async upsertRawMaterialEntry(id: string, data: { openingStock: number; stockIn: number; processed: number; outputLitres?: number }): Promise<RawMaterial> {
+  async upsertRawMaterialEntry(id: string, data: { openingStock: number; stockIn: number; processed: number; outputLitres?: number; adminPassword?: string }): Promise<RawMaterial> {
     const response = await this.client.put<ApiResponse<RawMaterial>>(`/raw-materials/${id}/entry`, data);
     return response.data.data;
   }
@@ -1254,6 +1282,11 @@ class ApiClient {
 
   async getRawMaterialAnalytics(storeId: string, params?: { date?: string }): Promise<{ date?: string; items?: unknown[]; dates?: string[] }> {
     const response = await this.client.get<ApiResponse<{ date?: string; items?: unknown[]; dates?: string[] }>>(`/raw-materials/store/${storeId}/analytics`, { params });
+    return response.data.data;
+  }
+
+  async updateRawMaterialAnalytics(entryId: string, data: { openingStock?: number; stockIn?: number; processed?: number; outputLitres?: number; closing?: number; adminPassword: string }): Promise<RawMaterialDailyItem> {
+    const response = await this.client.put<ApiResponse<RawMaterialDailyItem>>(`/raw-materials/analytics/${entryId}`, data);
     return response.data.data;
   }
 

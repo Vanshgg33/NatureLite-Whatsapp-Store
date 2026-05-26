@@ -6,9 +6,11 @@ import { RawMaterial, RawMaterialSchema } from './schemas/raw-material.schema';
 import { RawMaterialDailyEntry, RawMaterialDailyEntrySchema } from './schemas/raw-material-snapshot.schema';
 import { RawMaterialRepository } from './repositories/raw-material.repository';
 import { RawMaterialDailyEntryRepository } from './repositories/raw-material-snapshot.repository';
+import { AdminModule } from '../admin/admin.module';
 
 @Module({
   imports: [
+    AdminModule,
     MongooseModule.forFeature([
       { name: RawMaterial.name, schema: RawMaterialSchema },
       { name: RawMaterialDailyEntry.name, schema: RawMaterialDailyEntrySchema },

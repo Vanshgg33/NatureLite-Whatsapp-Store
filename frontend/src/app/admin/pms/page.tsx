@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Cog, Search, Plus, Trash2, FlaskConical, BarChart2, ChevronDown, ChevronUp,
-  FileText, Mail, MessageSquare, Droplets,
+  FileText, Droplets, Calendar,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
@@ -18,46 +18,13 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
+import { downloadReportPdf } from '@/lib/report-pdf';
 import type { Store, RawMaterial, RawMaterialPrefill, RawMaterialDailyItem } from '@/types';
 
 function closingBadge(val: number) {
   if (val <= 0) return 'bg-red-100 text-red-700';
   if (val < 10) return 'bg-amber-100 text-amber-700';
   return 'bg-emerald-100 text-emerald-700';
-}
-
-function ReportModal({ open, onClose, reportText, reportTitle }: {
-  open: boolean; onClose: () => void; reportText: string; reportTitle: string;
-}) {
-  const handleEmail = () => {
-    const a = document.createElement('a');
-    a.href = `mailto:?subject=${encodeURIComponent(reportTitle)}&body=${encodeURIComponent(reportText)}`;
-    a.click();
-  };
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh]">
-        <DialogHeader><DialogTitle>{reportTitle}</DialogTitle></DialogHeader>
-        <div className="overflow-y-auto max-h-[55vh]">
-          <pre className="bg-gray-50 rounded-xl border p-4 text-sm font-mono whitespace-pre-wrap text-gray-700 leading-relaxed">
-            {reportText}
-          </pre>
-        </div>
-        <DialogFooter className="flex-col sm:flex-row gap-2">
-          <Button
-            onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(reportText)}`, '_blank')}
-            className="bg-[#25D366] hover:bg-[#1eb854] text-white gap-2"
-          >
-            <MessageSquare className="h-4 w-4" /> Share on WhatsApp
-          </Button>
-          <Button onClick={handleEmail} variant="outline" className="gap-2">
-            <Mail className="h-4 w-4" /> Share via Email
-          </Button>
-          <Button variant="ghost" onClick={onClose}>Close</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 export default function PMSPage() {
@@ -79,13 +46,10 @@ export default function PMSPage() {
   const [deleteTarget, setDeleteTarget] = useState<RawMaterial | null>(null);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [analyticsDate, setAnalyticsDate] = useState('');
-  const [showReport, setShowReport] = useState(false);
-  const [reportText, setReportText] = useState('');
-  const [reportDate, setReportDate] = useState('');
-  const [showReportConfig, setShowReportConfig] = useState(false);
   const prefillRequestRef = useRef(0);
 
   const isSuperadmin = user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
+  const canEditAnalytics = user?.role === 'superadmin' || (user?.role === 'admin' && !user?.departmentType);
 
   const { data: stores = [] } = useQuery<Store[]>({
     queryKey: ['stores'],
@@ -110,14 +74,14 @@ export default function PMSPage() {
   const { data: datesData } = useQuery({
     queryKey: ['raw-analytics-dates', selectedStoreId],
     queryFn: () => api.getRawMaterialAnalytics(selectedStoreId),
-    enabled: !!selectedStoreId && showAnalytics,
+    enabled: !!selectedStoreId,
   });
 
   const availableDates = (datesData?.dates ?? []) as string[];
 
   useEffect(() => {
     if (availableDates.length > 0 && !analyticsDate) setAnalyticsDate(availableDates[0]);
-  }, [availableDates.length]);
+  }, [availableDates, analyticsDate]);
 
   const { data: dayData, isLoading: dayLoading } = useQuery({
     queryKey: ['raw-analytics-day', selectedStoreId, analyticsDate],
@@ -137,8 +101,8 @@ export default function PMSPage() {
   });
 
   const entryMutation = useMutation({
-    mutationFn: (d: { id: string; openingStock: number; stockIn: number; processed: number; outputLitres: number }) =>
-      api.upsertRawMaterialEntry(d.id, { openingStock: d.openingStock, stockIn: d.stockIn, processed: d.processed, outputLitres: d.outputLitres }),
+    mutationFn: (d: { id: string; openingStock: number; stockIn: number; processed: number; outputLitres: number; adminPassword?: string }) =>
+      api.upsertRawMaterialEntry(d.id, { openingStock: d.openingStock, stockIn: d.stockIn, processed: d.processed, outputLitres: d.outputLitres, adminPassword: d.adminPassword }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['raw-materials'] });
       queryClient.invalidateQueries({ queryKey: ['raw-analytics-dates'] });
@@ -187,43 +151,48 @@ export default function PMSPage() {
   const totalOutput = dayItems.reduce((s, i) => s + (i.outputLitres ?? 0), 0);
   const totalClosing = dayItems.reduce((s, i) => s + i.closing, 0);
 
-  function generateReport() {
-    if (!reportDate) return;
-    const d = reportDate;
+  async function generateReport() {
+    const dates = availableDates.length ? { dates: availableDates } : await api.getRawMaterialAnalytics(selectedStoreId);
+    const d = analyticsDate || (dates.dates ?? [])[0];
+    if (!d) {
+      toast({ title: 'No production entries available for report', variant: 'destructive' });
+      return;
+    }
     const formattedDate = new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-
-    api.getRawMaterialAnalytics(selectedStoreId, { date: d }).then((res) => {
+    try {
+      const res = await api.getRawMaterialAnalytics(selectedStoreId, { date: d });
       const items = (res.items ?? []) as RawMaterialDailyItem[];
-      const sep = '─'.repeat(60);
-      const lines: string[] = [
-        '🏭 PRODUCTION MANAGEMENT REPORT',
-        sep,
-        `Store   : ${storeName}`,
-        `Date    : ${formattedDate}`,
-        '',
-        'PRODUCTION LOG',
-        sep,
-        `${'Material'.padEnd(18)} ${'Open(kg)'.padStart(9)} ${'In(kg)'.padStart(8)} ${'Used(kg)'.padStart(9)} ${'Out(L)'.padStart(8)} ${'Close(kg)'.padStart(10)}`,
-        sep,
-        ...items.map((i) =>
-          `${(i.materialName ?? '—').substring(0, 17).padEnd(18)} ${String(i.openingStock).padStart(9)} ${String(i.stockIn).padStart(8)} ${String(i.processed).padStart(9)} ${String(i.outputLitres ?? 0).padStart(8)} ${String(i.closing).padStart(10)}`
-        ),
-        sep,
-        '',
-        'TOTALS',
-        sep,
-        `Total Stock In  : ${items.reduce((s, i) => s + i.stockIn, 0)} kg`,
-        `Total Processed : ${items.reduce((s, i) => s + i.processed, 0)} kg`,
-        `Total Output    : ${items.reduce((s, i) => s + (i.outputLitres ?? 0), 0)} L`,
-        `Total Closing   : ${items.reduce((s, i) => s + i.closing, 0)} kg`,
-        '',
-        sep,
-        'Generated by Nature Lite Admin Panel',
-      ];
-      setReportText(lines.join('\n'));
-      setShowReportConfig(false);
-      setShowReport(true);
-    }).catch(() => toast({ title: 'Failed to load data for report', variant: 'destructive' }));
+      await downloadReportPdf({
+        title: 'PMS - Production Management Report',
+        subtitle: 'Daily raw material usage and oil output',
+        meta: [
+          { label: 'Store', value: storeName },
+          { label: 'Date', value: formattedDate },
+          { label: 'Generated', value: 'Admin Panel' },
+        ],
+        summary: [
+          { label: 'Stock In', value: `${items.reduce((s, i) => s + i.stockIn, 0)} kg` },
+          { label: 'Processed', value: `${items.reduce((s, i) => s + i.processed, 0)} kg` },
+          { label: 'Output', value: `${items.reduce((s, i) => s + (i.outputLitres ?? 0), 0)} L` },
+          { label: 'Entries', value: items.reduce((s, i) => s + (i.entryCount ?? i.entries?.length ?? 0), 0) },
+        ],
+        table: {
+          columns: ['Material', 'Entries', 'Opening', 'Stock In', 'Processed', 'Output L', 'Closing'],
+          rows: items.map((i) => [
+            i.materialName ?? '-',
+            i.entryCount ?? i.entries?.length ?? 0,
+            i.openingStock,
+            i.stockIn,
+            i.processed,
+            i.outputLitres ?? 0,
+            i.closing,
+          ]),
+        },
+        filename: `PMS-Production-Report-${storeName}-${d}.pdf`,
+      });
+    } catch {
+      toast({ title: 'Failed to download production report', variant: 'destructive' });
+    }
   }
 
   return (
@@ -251,7 +220,18 @@ export default function PMSPage() {
               </SelectContent>
             </Select>
           )}
-          <Button onClick={() => setShowReportConfig(true)} disabled={!selectedStoreId} variant="outline" className="gap-2 h-9">
+          {availableDates.length > 0 && (
+            <Select value={analyticsDate} onValueChange={setAnalyticsDate}>
+              <SelectTrigger className="w-40 h-9">
+                <Calendar className="h-4 w-4 mr-2 text-gray-500" />
+                <SelectValue placeholder="Report date" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableDates.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
+          <Button onClick={generateReport} disabled={!selectedStoreId} variant="outline" className="gap-2 h-9">
             <FileText className="h-4 w-4" /> Generate Report
           </Button>
         </div>
@@ -273,9 +253,14 @@ export default function PMSPage() {
           Daily Log
           {showAnalytics ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
         </Button>
-        <Button onClick={() => setAddDialog(true)} disabled={!selectedStoreId} className="gap-2">
+        <Button onClick={() => setAddDialog(true)} disabled={!selectedStoreId || !canEditAnalytics} className="gap-2">
           <Plus className="h-4 w-4" /> Add Material
         </Button>
+        {!canEditAnalytics && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            Read-only mode: only full admin can edit PMS values.
+          </p>
+        )}
       </div>
 
       {/* Materials Table */}
@@ -358,12 +343,16 @@ export default function PMSPage() {
                         </span>
                       </td>
                       <td className="px-5 py-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5 opacity-70 group-hover:opacity-100">
-                          <Button variant="outline" size="sm" onClick={() => openUpdateDialog(m)} className="h-8 text-xs">Log Entry</Button>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50" onClick={() => setDeleteTarget(m)}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
+                        {canEditAnalytics ? (
+                          <div className="flex items-center justify-end gap-1.5 opacity-70 group-hover:opacity-100">
+                            <Button variant="outline" size="sm" onClick={() => openUpdateDialog(m)} className="h-8 text-xs">Log Entry</Button>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50" onClick={() => setDeleteTarget(m)}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">View only</span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -423,8 +412,9 @@ export default function PMSPage() {
                   <thead>
                     <tr className="bg-gray-50 border-b">
                       <th className="text-left px-5 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">Material</th>
-                      <th className="text-center px-4 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">Opening</th>
-                      <th className="text-center px-4 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">Stock In</th>
+                  <th className="text-center px-4 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">Opening</th>
+                  <th className="text-center px-4 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">Entries</th>
+                  <th className="text-center px-4 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">Stock In</th>
                       <th className="text-center px-4 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">Processed</th>
                       <th className="text-center px-4 py-3 font-semibold text-blue-500 text-xs uppercase tracking-wide">Output (L)</th>
                       <th className="text-center px-4 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">Closing</th>
@@ -438,6 +428,7 @@ export default function PMSPage() {
                           <p className="text-xs text-gray-400">{item.materialUnit ?? ''}</p>
                         </td>
                         <td className="px-4 py-3.5 text-center font-medium text-gray-600">{item.openingStock}</td>
+                        <td className="px-4 py-3.5 text-center font-bold text-gray-700">{item.entryCount ?? item.entries?.length ?? 0}</td>
                         <td className="px-4 py-3.5 text-center">
                           <span className={`font-semibold ${item.stockIn > 0 ? 'text-emerald-600' : 'text-gray-400'}`}>
                             {item.stockIn > 0 ? `+${item.stockIn}` : '0'}
@@ -470,7 +461,7 @@ export default function PMSPage() {
       )}
 
       {/* Add Material Dialog */}
-      <Dialog open={addDialog} onOpenChange={(o) => { if (!o) { setAddDialog(false); setNewName(''); setNewUnit('kg'); } }}>
+      <Dialog open={addDialog && canEditAnalytics} onOpenChange={(o) => { if (!o) { setAddDialog(false); setNewName(''); setNewUnit('kg'); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>New Raw Material</DialogTitle></DialogHeader>
           <div className="space-y-4 py-1">
@@ -494,7 +485,7 @@ export default function PMSPage() {
       </Dialog>
 
       {/* Daily Entry Dialog */}
-      <Dialog open={!!editMaterial} onOpenChange={() => { setEditMaterial(null); setPrefill(null); }}>
+      <Dialog open={!!editMaterial && canEditAnalytics} onOpenChange={() => { setEditMaterial(null); setPrefill(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <div className="flex items-start justify-between">
@@ -504,7 +495,7 @@ export default function PMSPage() {
               </div>
               {prefill && (
                 <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${prefill.isExisting ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
-                  {prefill.isExisting ? 'Editing today' : 'New entry'}
+                  {prefill.isExisting ? 'Additional entry' : 'New entry'}
                 </span>
               )}
             </div>
@@ -591,7 +582,7 @@ export default function PMSPage() {
       </Dialog>
 
       {/* Delete Confirm */}
-      <Dialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
+      <Dialog open={!!deleteTarget && canEditAnalytics} onOpenChange={() => setDeleteTarget(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Delete Raw Material</DialogTitle></DialogHeader>
           <p className="text-sm text-gray-500 py-1">Delete <span className="font-semibold text-gray-800">{deleteTarget?.name}</span>? History remains but it won&apos;t appear in PMS anymore.</p>
@@ -604,36 +595,6 @@ export default function PMSPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Report Config Dialog */}
-      <Dialog open={showReportConfig} onOpenChange={setShowReportConfig}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Generate Production Report</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1.5 block">Select Date</label>
-              {availableDates.length > 0 ? (
-                <Select value={reportDate} onValueChange={setReportDate}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder="Choose a date" /></SelectTrigger>
-                  <SelectContent>
-                    {availableDates.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <p className="text-sm text-gray-400">No entries available yet. Log some entries first.</p>
-              )}
-            </div>
-          </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setShowReportConfig(false)}>Cancel</Button>
-            <Button onClick={generateReport} disabled={!reportDate || availableDates.length === 0}>
-              Generate
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Report Modal */}
-      <ReportModal open={showReport} onClose={() => setShowReport(false)} reportText={reportText} reportTitle="PMS — Production Report" />
     </div>
   );
 }

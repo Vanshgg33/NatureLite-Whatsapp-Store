@@ -32,6 +32,10 @@ export class UpsertDailyEntryDto {
   @IsNumber()
   @Min(0)
   outputLitres?: number;
+
+  @IsString()
+  @IsOptional()
+  adminPassword?: string;
 }
 
 export class RawMaterialQueryDto {
@@ -44,4 +48,35 @@ export class RawMaterialAnalyticsQueryDto {
   @IsString()
   @IsOptional()
   date?: string;
+}
+
+export class UpdateRawMaterialAnalyticsDto {
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  openingStock?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  stockIn?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  processed?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  outputLitres?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  closing?: number;
+
+  @IsString()
+  @IsNotEmpty()
+  adminPassword: string;
 }

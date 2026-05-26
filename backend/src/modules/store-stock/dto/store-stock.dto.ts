@@ -43,6 +43,10 @@ export class SetStoreStockDto {
   @Min(0)
   @IsOptional()
   lowStockThreshold?: number;
+
+  @IsString()
+  @IsOptional()
+  adminPassword?: string;
 }
 
 export class BulkStockItemDto {
@@ -82,6 +86,37 @@ export class StockAnalyticsQueryDto {
   @IsString()
   @IsOptional()
   endDate?: string;
+}
+
+export class UpdateStockAnalyticsDto {
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  stockInDelta?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  returnedDelta?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  damagedDelta?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  saleLogDelta?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  totalStock?: number;
+
+  @IsString()
+  @IsNotEmpty()
+  adminPassword: string;
 }
 
 export class StockQueryDto {

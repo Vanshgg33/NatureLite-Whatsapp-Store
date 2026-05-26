@@ -1,18 +1,35 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, UnauthorizedException, NotFoundException } from '@nestjs/common';
 import { Types, ClientSession } from 'mongoose';
+import * as bcrypt from 'bcrypt';
 import { StoreStock } from './schemas/store-stock.schema';
 import { StoreStockRepository } from './repositories/store-stock.repository';
 import { StockSnapshotRepository } from './repositories/stock-snapshot.repository';
-import { SetStoreStockDto, BulkSetStockDto, StockQueryDto, StockAnalyticsQueryDto } from './dto/store-stock.dto';
+import { AdminUserRepository } from '../admin/repositories/admin-user.repository';
+import { SetStoreStockDto, BulkSetStockDto, StockQueryDto, StockAnalyticsQueryDto, UpdateStockAnalyticsDto } from './dto/store-stock.dto';
 import { PaginatedResult } from '../../common/types/pagination.types';
 import { parseObjectId } from '../../common/utils/objectid.util';
+import { JwtPayload } from '../../common/decorators/current-user.decorator';
 
 @Injectable()
 export class StoreStockService {
   constructor(
     private readonly storeStockRepository: StoreStockRepository,
     private readonly stockSnapshotRepository: StockSnapshotRepository,
+    private readonly adminUserRepository: AdminUserRepository,
   ) {}
+
+  private async verifyAdminPassword(user: JwtPayload | undefined, password: string | undefined): Promise<void> {
+    if (!user) {
+      return;
+    }
+    if (!user?.sub || !password) {
+      throw new UnauthorizedException('Admin password is required to edit stock entries');
+    }
+    const admin = await this.adminUserRepository.findById(parseObjectId(user.sub, 'userId'));
+    if (!admin?.password || !(await bcrypt.compare(password, admin.password))) {
+      throw new UnauthorizedException('Admin password is incorrect');
+    }
+  }
 
   async getStockByStore(
     storeId: string,
@@ -48,7 +65,7 @@ export class StoreStockService {
     return out;
   }
 
-  async setStock(dto: SetStoreStockDto): Promise<StoreStock> {
+  async setStock(dto: SetStoreStockDto, user?: JwtPayload): Promise<StoreStock> {
     const storeObjId = parseObjectId(dto.storeId, 'storeId');
     const productObjId = parseObjectId(dto.productId, 'productId');
 
@@ -58,7 +75,7 @@ export class StoreStockService {
     const saleLogDelta = dto.saleLogDelta ?? 0;
     const hasDeltaUpdate = stockInDelta > 0 || returnedDelta > 0 || damagedDelta > 0 || saleLogDelta > 0;
 
-    if (dto.variantSku) {
+    if (dto.variantSku && !hasDeltaUpdate) {
       let storeStock = await this.storeStockRepository.findOneByStoreAndProduct(
         storeObjId,
         productObjId,
@@ -93,14 +110,30 @@ export class StoreStockService {
 
     if (hasDeltaUpdate) {
       const netDelta = stockInDelta + returnedDelta + damagedDelta - saleLogDelta;
-      result = await this.storeStockRepository.applyStockDeltas(storeObjId, productObjId, {
-        stockInDelta,
-        returnedDelta,
-        damagedDelta,
-        saleLogDelta,
-        netDelta,
-        lowStockThreshold: dto.lowStockThreshold,
-      });
+      if (dto.variantSku) {
+        result = await this.storeStockRepository.applyVariantStockDeltas(
+          storeObjId,
+          productObjId,
+          dto.variantSku,
+          {
+            stockInDelta,
+            returnedDelta,
+            damagedDelta,
+            saleLogDelta,
+            netDelta,
+            lowStockThreshold: dto.lowStockThreshold,
+          },
+        );
+      } else {
+        result = await this.storeStockRepository.applyStockDeltas(storeObjId, productObjId, {
+          stockInDelta,
+          returnedDelta,
+          damagedDelta,
+          saleLogDelta,
+          netDelta,
+          lowStockThreshold: dto.lowStockThreshold,
+        });
+      }
 
       const todayIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
       await this.stockSnapshotRepository.upsertSnapshot(
@@ -108,7 +141,14 @@ export class StoreStockService {
         productObjId,
         todayIST,
         { stockInDelta, returnedDelta, damagedDelta, saleLogDelta },
-        result.stock,
+        dto.variantSku
+          ? result.variantStocks.find((v) => v.variantSku === dto.variantSku)?.stock ?? 0
+          : result.stock,
+        {
+          loggedBy: user?.sub ? parseObjectId(user.sub, 'userId') : undefined,
+          loggedByName: user?.phone ?? user?.role,
+          variantSku: dto.variantSku,
+        },
       );
     } else {
       const update: Record<string, unknown> = {};
@@ -130,6 +170,21 @@ export class StoreStockService {
 
     const dates = await this.stockSnapshotRepository.getAvailableDates(storeObjId);
     return { dates };
+  }
+
+  async updateStockAnalytics(snapshotId: string, dto: UpdateStockAnalyticsDto, user: JwtPayload): Promise<unknown> {
+    await this.verifyAdminPassword(user, dto.adminPassword);
+    const snapshotObjId = parseObjectId(snapshotId, 'snapshotId');
+    const update: Record<string, number> = {};
+    if (dto.stockInDelta !== undefined) update.stockInDelta = dto.stockInDelta;
+    if (dto.returnedDelta !== undefined) update.returnedDelta = dto.returnedDelta;
+    if (dto.damagedDelta !== undefined) update.damagedDelta = dto.damagedDelta;
+    if (dto.saleLogDelta !== undefined) update.saleLogDelta = dto.saleLogDelta;
+    if (dto.totalStock !== undefined) update.totalStock = dto.totalStock;
+
+    const updated = await this.stockSnapshotRepository.updateSnapshot(snapshotObjId, update);
+    if (!updated) throw new NotFoundException('Stock analytics entry not found');
+    return updated;
   }
 
   async decrementStock(

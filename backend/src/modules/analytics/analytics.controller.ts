@@ -87,6 +87,22 @@ export class AnalyticsController {
     );
   }
 
+  @Get('reports/daily/latest')
+  async getLatestDailyReport(): Promise<Record<string, unknown> | null> {
+    return this.analyticsService.getLatestDailyReport();
+  }
+
+  @Get('reports/narrative')
+  async getNarrativeReport(
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+  ): Promise<Record<string, unknown>> {
+    return this.analyticsService.getNarrativeReport(
+      new Date(startDate),
+      new Date(endDate),
+    );
+  }
+
   // ==================== MULTI-STORE ANALYTICS ====================
 
   @Get('stores/dashboard/:storeId')
