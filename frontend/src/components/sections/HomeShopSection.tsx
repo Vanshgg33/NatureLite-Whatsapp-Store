@@ -9,6 +9,8 @@ import { useQuery } from '@tanstack/react-query';
 import { PremiumProductCard } from '@/components/ecommerce/premium-product-card';
 import { Product, Category } from '@/types';
 import { api } from '@/lib/api';
+import { ScrollReveal } from '@/components/ui/scroll-reveal';
+import { Magnetic } from '@/components/ui/magnetic';
 
 const WOOD_PRESSED_SLUGS  = new Set(['wood-pressed-oils', 'wood-pressed-oil', 'cold-pressed-oils', 'cold-pressed-oil']);
 const BILONA_GHEE_SLUGS   = new Set(['bilona-ghee', 'bilona-cow-ghee', 'a2-bilona-ghee', 'ghee']);
@@ -149,7 +151,7 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
       <div className="relative max-w-[1440px] mx-auto px-3 sm:px-4 lg:px-6">
 
         {/* ── Section header ──────────────────────────────────── */}
-        <div className="text-center mb-4">
+        <ScrollReveal className="text-center mb-4">
           <p style={{
             fontSize: 10, letterSpacing: '0.35em', textTransform: 'uppercase',
             color: '#a07010', fontFamily: 'monospace', marginBottom: 6,
@@ -163,7 +165,7 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
             Shop Our Collection
           </h2>
           <div style={{ width: 48, height: 2.5, background: 'linear-gradient(90deg,#1a5210,#a07010)', margin: '8px auto 0', borderRadius: 2 }} />
-        </div>
+        </ScrollReveal>
 
         {/* ── Category chips ──────────────────────────────────── */}
         {safeCategories.length > 0 && (
@@ -425,22 +427,25 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
               </span>
             </motion.button>
           )}
-          <Link
-            href="/products"
-            className="inline-flex items-center gap-2 px-7 py-3 rounded-xl font-semibold text-sm transition-all duration-200 hover:-translate-y-0.5"
-            style={{ border: '2px solid rgba(26,82,16,0.22)', color: '#1a5210', background: 'transparent' }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background = '#1a5210';
-              (e.currentTarget as HTMLElement).style.color = '#fff';
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.background = 'transparent';
-              (e.currentTarget as HTMLElement).style.color = '#1a5210';
-            }}
-          >
-            View All Products
-            <ArrowRight className="w-4 h-4" />
-          </Link>
+          <Magnetic strength={0.25}>
+            <Link
+              href="/products"
+              data-cursor="VIEW"
+              className="inline-flex items-center gap-2 px-7 py-3 rounded-xl font-semibold text-sm transition-all duration-200 hover:-translate-y-0.5"
+              style={{ border: '2px solid rgba(26,82,16,0.22)', color: '#1a5210', background: 'transparent' }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.background = '#1a5210';
+                (e.currentTarget as HTMLElement).style.color = '#fff';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.background = 'transparent';
+                (e.currentTarget as HTMLElement).style.color = '#1a5210';
+              }}
+            >
+              View All Products
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </Magnetic>
         </div>
       </div>
     </section>

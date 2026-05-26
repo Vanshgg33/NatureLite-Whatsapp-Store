@@ -140,43 +140,66 @@ export default function AddressesPage() {
   const addresses = customer?.addresses || [];
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
+    <div className="space-y-4">
+
+      {/* ── Page Header ─────────────────────────────────────────── */}
       <motion.div
         className="relative overflow-hidden rounded-2xl"
+        style={{ background: 'linear-gradient(125deg,#5a2f08 0%,#7a4010 30%,#3d1f04 70%,#1e0e02 100%)' }}
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
       >
         <div
-          className="absolute inset-0"
-          style={{ background: 'linear-gradient(125deg,#5a2f08 0%,#7a4010 30%,#3d1f04 70%,#1e0e02 100%)' }}
-        />
-        <div
           aria-hidden
           className="pointer-events-none absolute rounded-full"
           style={{
-            top: '-60%', right: '-5%', width: 240, height: 240,
+            top: '-60%',
+            right: '-5%',
+            width: 240,
+            height: 240,
             background: 'radial-gradient(circle,rgba(212,152,64,0.22) 0%,transparent 65%)',
             filter: 'blur(28px)',
           }}
         />
-        <div className="relative px-5 py-5 flex items-center justify-between">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            backgroundImage:
+              "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
+            mixBlendMode: 'overlay',
+          }}
+        />
+        <div className="relative px-6 py-6 flex items-center justify-between">
           <div>
             <p
-              style={{ fontSize: 10, letterSpacing: '0.30em', textTransform: 'uppercase', color: 'rgba(212,152,64,0.55)', fontFamily: 'monospace', marginBottom: 4 }}
+              style={{
+                fontSize: 10,
+                letterSpacing: '0.30em',
+                textTransform: 'uppercase',
+                color: 'rgba(212,152,64,0.55)',
+                fontFamily: 'monospace',
+                marginBottom: 4,
+              }}
             >
               Account
             </p>
-            <h1 className="font-display text-xl font-bold" style={{ color: '#f5e8cc' }}>My Addresses</h1>
+            <h1 className="font-display text-xl font-bold" style={{ color: '#f5e8cc' }}>
+              My Addresses
+            </h1>
             <p className="font-body text-sm mt-0.5" style={{ color: 'rgba(245,232,204,0.45)' }}>
-              Manage your saved delivery addresses
+              Manage your saved delivery locations
             </p>
           </div>
           {!isAdding && (
             <Button
               onClick={() => setIsAdding(true)}
-              className="shrink-0"
-              style={{ background: 'rgba(212,152,64,0.20)', color: '#d49840', border: '1px solid rgba(212,152,64,0.30)' }}
+              className="shrink-0 font-body text-sm"
+              style={{
+                background: 'rgba(212,152,64,0.18)',
+                color: '#d49840',
+                border: '1px solid rgba(212,152,64,0.30)',
+              }}
             >
               <Plus className="w-4 h-4 mr-1.5" />
               Add Address
@@ -185,7 +208,7 @@ export default function AddressesPage() {
         </div>
       </motion.div>
 
-      {/* Add/Edit Form */}
+      {/* ── Add / Edit Form ─────────────────────────────────────── */}
       {isAdding && (
         <motion.div
           className="bg-white rounded-2xl shadow-brand-sm overflow-hidden"
@@ -307,7 +330,7 @@ export default function AddressesPage() {
         </motion.div>
       )}
 
-      {/* Empty state */}
+      {/* ── Empty State ─────────────────────────────────────────── */}
       {addresses.length === 0 && !isAdding ? (
         <motion.div
           className="bg-white rounded-2xl p-12 shadow-brand-sm text-center"
@@ -330,6 +353,7 @@ export default function AddressesPage() {
           </Button>
         </motion.div>
       ) : (
+        /* ── Address Cards ──────────────────────────────────────── */
         <div className="grid sm:grid-cols-2 gap-4">
           {addresses.map((address, index) => (
             <motion.div
@@ -337,7 +361,7 @@ export default function AddressesPage() {
               className={cn(
                 'bg-white rounded-2xl shadow-brand-sm overflow-hidden transition-all duration-200',
                 address.isDefault
-                  ? 'ring-2 ring-brand-mustard/40'
+                  ? 'ring-2 ring-brand-mustard/35'
                   : 'border border-brand-border hover:border-brand-mustard/30'
               )}
               initial={{ opacity: 0, y: 16 }}
@@ -346,20 +370,42 @@ export default function AddressesPage() {
             >
               {/* Card header */}
               <div
-                className="px-4 py-3 flex items-center justify-between border-b border-brand-border/60"
+                className="px-5 py-3.5 flex items-center justify-between border-b border-brand-border/60"
                 style={
                   address.isDefault
-                    ? { background: 'linear-gradient(90deg,rgba(160,112,16,0.06) 0%,transparent 100%)' }
+                    ? {
+                        background:
+                          'linear-gradient(90deg,rgba(160,112,16,0.07) 0%,transparent 100%)',
+                      }
                     : {}
                 }
               >
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-3.5 h-3.5 text-brand-mustard shrink-0" />
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                    style={{
+                      background: address.isDefault
+                        ? 'rgba(212,152,64,0.15)'
+                        : 'rgba(0,0,0,0.04)',
+                    }}
+                  >
+                    <MapPin
+                      className="w-3.5 h-3.5"
+                      style={{ color: address.isDefault ? '#d49840' : 'hsl(var(--brand-muted))' }}
+                    />
+                  </div>
                   <span className="font-display font-semibold text-brand-charcoal text-sm">
                     {address.label}
                   </span>
                   {address.isDefault && (
-                    <span className="px-1.5 py-0.5 bg-brand-mustard/10 text-brand-mustard text-[10px] font-body font-medium rounded-full leading-none">
+                    <span
+                      className="px-2 py-0.5 rounded-full font-body font-medium leading-none"
+                      style={{
+                        fontSize: 10,
+                        background: 'rgba(212,152,64,0.12)',
+                        color: '#b8821e',
+                      }}
+                    >
                       Default
                     </span>
                   )}
@@ -373,7 +419,7 @@ export default function AddressesPage() {
                   </button>
                   <button
                     onClick={() => handleDelete(index)}
-                    className="p-1.5 text-brand-muted hover:text-brand-error hover:bg-red-50 rounded-lg transition-colors"
+                    className="p-1.5 text-brand-muted hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -381,20 +427,20 @@ export default function AddressesPage() {
               </div>
 
               {/* Card body */}
-              <div className="px-4 py-3.5">
+              <div className="px-5 py-4">
                 <div className="font-body text-sm text-brand-text space-y-0.5">
-                  <p>{address.street}</p>
+                  <p className="font-medium text-brand-charcoal">{address.street}</p>
                   {address.landmark && (
                     <p className="text-brand-muted text-xs">{address.landmark}</p>
                   )}
-                  <p>
+                  <p className="text-brand-muted">
                     {address.city}, {address.state} — {address.pincode}
                   </p>
                 </div>
                 {!address.isDefault && (
                   <button
                     onClick={() => setDefaultAddress(index)}
-                    className="mt-3 font-body text-xs text-brand-mustard hover:text-brand-mustard-dark flex items-center gap-1.5 transition-colors"
+                    className="mt-3.5 font-body text-xs text-brand-mustard hover:text-brand-mustard-dark flex items-center gap-1.5 transition-colors"
                   >
                     <Check className="w-3 h-3" />
                     Set as default

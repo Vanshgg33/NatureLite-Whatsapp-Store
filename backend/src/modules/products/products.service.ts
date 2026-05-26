@@ -198,6 +198,8 @@ export class ProductsService implements OnModuleInit {
     if (isValidObjectIdString(catId)) {
       await product.populate('category', 'name slug');
     }
+    await product.populate('relatedProducts', 'name');
+    await product.populate('upsellProducts', 'name');
     await this.overlayStoreStock([product as unknown as { _id: Types.ObjectId; stock?: number; variants?: Array<{ sku: string; stock?: number }> }]);
     return product as Product;
   }
@@ -404,6 +406,95 @@ export class ProductsService implements OnModuleInit {
       { $set: { category: catId } },
     ).exec();
     return { modifiedCount: result.modifiedCount };
+  }
+
+  async exportToCsv(categoryId?: string): Promise<string> {
+    const query: ProductQueryDto = { limit: 5000, page: 1 };
+    if (categoryId) query.category = categoryId;
+    const result = await this.productRepository.findAllPaginated(query);
+    const products = result.items as (Product & { _id: Types.ObjectId })[];
+
+    const headers = [
+      'name', 'sku', 'price', 'compareAtPrice', 'specialOfferPrice', 'specialOfferLabel',
+      'stock', 'category', 'shortDescription', 'tags', 'isActive', 'isFeatured',
+      'gstPercentage', 'hsnCode', 'videoUrl', 'seoTitle', 'seoDescription', 'seoKeywords', 'canonicalUrl',
+    ];
+
+    const escape = (v: unknown) => {
+      const s = v == null ? '' : String(v);
+      return s.includes(',') || s.includes('"') || s.includes('\n')
+        ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const rows = products.map((p) => [
+      p.name, p.sku, p.price, p.compareAtPrice ?? '', p.specialOfferPrice ?? '',
+      p.specialOfferLabel ?? '', p.stock,
+      typeof p.category === 'object' ? (p.category as unknown as { name?: string }).name ?? '' : '',
+      p.shortDescription ?? '', (p.tags ?? []).join('|'), p.isActive, p.isFeatured,
+      p.gstPercentage, p.hsnCode ?? '', p.videoUrl ?? '',
+      p.seo?.title ?? '', p.seo?.description ?? '', p.seo?.keywords ?? '', p.seo?.canonicalUrl ?? '',
+    ].map(escape).join(','));
+
+    return [headers.join(','), ...rows].join('\n');
+  }
+
+  async importFromCsvRows(
+    rows: Record<string, string>[],
+    defaultCategoryId: string,
+  ): Promise<{ created: number; skipped: number; errors: string[] }> {
+    let created = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+
+    const categoryId = parseObjectId(defaultCategoryId, 'defaultCategoryId');
+
+    for (const row of rows) {
+      try {
+        const sku = row.sku?.trim();
+        if (!sku) { errors.push(`Row missing SKU: ${JSON.stringify(row)}`); skipped++; continue; }
+
+        const existing = await this.productRepository.findOneBySku(sku);
+        if (existing) { skipped++; continue; }
+
+        const name = row.name?.trim();
+        if (!name) { errors.push(`Row missing name for SKU ${sku}`); skipped++; continue; }
+
+        const price = parseFloat(row.price);
+        if (isNaN(price)) { errors.push(`Invalid price for SKU ${sku}`); skipped++; continue; }
+
+        await this.productRepository.create({
+          name,
+          sku,
+          slug: this.generateSlug(name),
+          price,
+          compareAtPrice: row.compareAtPrice ? parseFloat(row.compareAtPrice) : undefined,
+          stock: row.stock ? parseInt(row.stock, 10) : 0,
+          shortDescription: row.shortDescription || undefined,
+          tags: row.tags ? row.tags.split('|').map((t) => t.trim()).filter(Boolean) : [],
+          isActive: row.isActive !== 'false',
+          isFeatured: row.isFeatured === 'true',
+          gstPercentage: row.gstPercentage ? parseFloat(row.gstPercentage) : 0,
+          hsnCode: row.hsnCode || undefined,
+          videoUrl: row.videoUrl || undefined,
+          category: categoryId,
+          variants: [],
+          images: [],
+          imageAlts: [],
+          trackStock: false,
+          lowStockThreshold: 0,
+          relatedProducts: [],
+          upsellProducts: [],
+          specialOfferActive: false,
+          metadata: {},
+        } as any);
+        created++;
+      } catch (err) {
+        errors.push(`Error on SKU ${row.sku}: ${(err as Error).message}`);
+        skipped++;
+      }
+    }
+
+    return { created, skipped, errors };
   }
 
   private generateSlug(name: string): string {

@@ -13,6 +13,7 @@ import FeaturedProductsSection from '@/components/sections/FeaturedProductsSecti
 import SocialProofSection from '@/components/sections/SocialProofSection';
 import RecencyBlock from '@/components/sections/RecencyBlock';
 import { NewsletterSection } from '@/components/ecommerce/newsletter-section';
+import { MarqueeTicker } from '@/components/ui/marquee-ticker';
 import WhatsAppStrip from '@/components/ecommerce/whatsapp-strip';
 import { MapPin } from 'lucide-react';
 
@@ -71,32 +72,27 @@ const MOTES = [
   { x: 140, y: 139, dx:  -9, delay: 1.4,  dur: 3.7, size: 1.0 },
 ];
 
-function LoadingScreen({ onDone, dataReady }: { onDone: () => void; dataReady: boolean }) {
-  const [percent,      setPercent]      = useState(0);
-  const [exiting,      setExiting]      = useState(false);
-  const [minTimerDone, setMinTimerDone] = useState(false);
-  const [phraseIdx,    setPhraseIdx]    = useState(0);
+function LoadingScreen({ onDone }: { onDone: () => void }) {
+  const [percent,   setPercent]   = useState(0);
+  const [exiting,   setExiting]   = useState(false);
+  const [phraseIdx, setPhraseIdx] = useState(0);
 
   useEffect(() => {
     const start = performance.now();
     let raf = 0;
     const tick = (now: number) => {
-      const p = Math.min(0.9, (now - start) / LOADER_DURATION);
+      const p = Math.min(1, (now - start) / LOADER_DURATION);
       setPercent(Math.round(p * 100));
-      if (p < 0.9) raf = requestAnimationFrame(tick);
+      if (p < 1) {
+        raf = requestAnimationFrame(tick);
+      }
     };
     raf = requestAnimationFrame(tick);
-    const t = setTimeout(() => setMinTimerDone(true), LOADER_DURATION);
-    return () => { cancelAnimationFrame(raf); clearTimeout(t); };
-  }, []);
 
-  useEffect(() => {
-    if (!minTimerDone || !dataReady) return;
-    setPercent(100);
-    const t1 = setTimeout(() => setExiting(true), 300);
-    const t2 = setTimeout(onDone, 1000);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [minTimerDone, dataReady, onDone]);
+    const t1 = setTimeout(() => setExiting(true), LOADER_DURATION + 200);
+    const t2 = setTimeout(onDone, LOADER_DURATION + 900);
+    return () => { cancelAnimationFrame(raf); clearTimeout(t1); clearTimeout(t2); };
+  }, [onDone]);
 
   useEffect(() => {
     const t = setInterval(() => setPhraseIdx(i => (i + 1) % PHRASES.length), 1900);
@@ -469,10 +465,8 @@ export default function HomePage() {
 
   const products = productsData?.items ?? [];
   const categories = categoriesData ?? [];
-  const dataReady = productsData !== undefined && categoriesData !== undefined;
-
   if (!loaderExited) {
-    return <LoadingScreen onDone={() => setLoaderExited(true)} dataReady={dataReady} />;
+    return <LoadingScreen onDone={() => setLoaderExited(true)} />;
   }
 
   return (
@@ -509,6 +503,28 @@ export default function HomePage() {
       <motion.div variants={sectionVariants}>
         <ImmersiveHeroSection />
       </motion.div>
+
+      {/* 1c. Trust marquee ticker */}
+      <MarqueeTicker
+        speed={38}
+        style={{
+          background: 'linear-gradient(90deg,#0d2b0a,#122e0e)',
+          color: 'rgba(212,180,100,0.85)',
+          padding: '11px 0',
+          borderTop:    '1px solid rgba(184,138,20,0.18)',
+          borderBottom: '1px solid rgba(184,138,20,0.18)',
+        }}
+        items={[
+          { icon: '🌿', text: '100% Wood-Pressed' },
+          { icon: '🧪', text: 'Zero Chemicals' },
+          { icon: '🚚', text: 'Free Delivery Over ₹499' },
+          { icon: '🏆', text: 'Traditional Ghani Method' },
+          { icon: '🌾', text: 'Cold-Pressed · Unrefined' },
+          { icon: '✅', text: 'FSSAI Certified' },
+          { icon: '🫙', text: 'No Preservatives' },
+          { icon: '💚', text: 'Farmer Sourced' },
+        ]}
+      />
 
       {/* 2. Product collection with category filter */}
       {products.length > 0 && (

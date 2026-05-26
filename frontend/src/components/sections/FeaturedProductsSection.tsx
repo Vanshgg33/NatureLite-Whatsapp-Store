@@ -6,6 +6,8 @@ import { motion } from 'framer-motion';
 import { ArrowRight, Sparkles } from 'lucide-react';
 import { PremiumProductCard } from '@/components/ecommerce/premium-product-card';
 import { Product } from '@/types';
+import { ScrollReveal } from '@/components/ui/scroll-reveal';
+import { Magnetic } from '@/components/ui/magnetic';
 
 interface FeaturedProductsSectionProps {
   products: Product[];
@@ -101,19 +103,22 @@ export default function FeaturedProductsSection({ products }: FeaturedProductsSe
             transition={{ delay: 0.18 }}
             className="hidden sm:block"
           >
-            <Link
-              href="/products?sort=newest"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200"
-              style={{
-                background: 'rgba(160,112,16,0.12)',
-                border: '1px solid rgba(160,112,16,0.25)',
-                color: 'rgba(184,138,20,0.85)',
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(160,112,16,0.22)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(160,112,16,0.12)'; }}
-            >
-              View All <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
+            <Magnetic strength={0.3}>
+              <Link
+                href="/products?sort=newest"
+                data-cursor="VIEW"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200"
+                style={{
+                  background: 'rgba(160,112,16,0.12)',
+                  border: '1px solid rgba(160,112,16,0.25)',
+                  color: 'rgba(184,138,20,0.85)',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(160,112,16,0.22)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(160,112,16,0.12)'; }}
+              >
+                View All <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </Magnetic>
           </motion.div>
         </div>
 

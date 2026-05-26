@@ -72,12 +72,19 @@ export interface ProductVariant {
   stock: number;
   attributes: ProductVariantAttributes;
   isActive: boolean;
+  images?: string[];
 }
 
 export interface ProductDimensions {
   length: number;
   width: number;
   height: number;
+}
+
+export interface NutritionalFactRow {
+  name: string;
+  per100g: string;
+  perServing: string;
 }
 
 export interface Product {
@@ -88,8 +95,13 @@ export interface Product {
   shortDescription?: string;
   category: Category | string;
   images: string[];
+  imageAlts?: string[];
+  videoUrl?: string;
   price: number;
   compareAtPrice?: number;
+  specialOfferPrice?: number;
+  specialOfferLabel?: string;
+  specialOfferActive?: boolean;
   sku: string;
   stock: number;
   trackStock: boolean;
@@ -103,6 +115,26 @@ export interface Product {
   dimensions?: ProductDimensions;
   gstPercentage: number;
   hsnCode?: string;
+  seo?: {
+    title?: string;
+    description?: string;
+    keywords?: string;
+    canonicalUrl?: string;
+  };
+  nutritionalFacts?: {
+    isActive: boolean;
+    rows: NutritionalFactRow[];
+  };
+  ingredients?: {
+    isActive: boolean;
+    text: string;
+  };
+  allergenDeclaration?: {
+    isActive: boolean;
+    text: string;
+  };
+  relatedProducts?: (string | { _id: string; name: string })[];
+  upsellProducts?: (string | { _id: string; name: string })[];
   totalSold: number;
   viewCount: number;
   createdAt: string;

@@ -41,6 +41,11 @@ export class ProductVariantDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  images?: string[];
 }
 
 export class BatchInfoDto {
@@ -91,6 +96,53 @@ export class ProductDimensionsDto {
   height: number;
 }
 
+export class ProductSeoDto {
+  @IsString()
+  @IsOptional()
+  title?: string;
+
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @IsString()
+  @IsOptional()
+  keywords?: string;
+
+  @IsString()
+  @IsOptional()
+  canonicalUrl?: string;
+}
+
+export class NutritionalFactRowDto {
+  @IsString()
+  name: string;
+
+  @IsString()
+  per100g: string;
+
+  @IsString()
+  perServing: string;
+}
+
+export class NutritionalFactsDto {
+  @IsBoolean()
+  isActive: boolean;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => NutritionalFactRowDto)
+  rows: NutritionalFactRowDto[];
+}
+
+export class ToggleableTextField {
+  @IsBoolean()
+  isActive: boolean;
+
+  @IsString()
+  text: string;
+}
+
 export class CreateProductDto {
   @IsString()
   @IsNotEmpty()
@@ -117,6 +169,15 @@ export class CreateProductDto {
   @IsOptional()
   images?: string[];
 
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  imageAlts?: string[];
+
+  @IsString()
+  @IsOptional()
+  videoUrl?: string;
+
   @IsNumber()
   @Min(0)
   price: number;
@@ -125,6 +186,19 @@ export class CreateProductDto {
   @IsOptional()
   @Min(0)
   compareAtPrice?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  specialOfferPrice?: number;
+
+  @IsString()
+  @IsOptional()
+  specialOfferLabel?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  specialOfferActive?: boolean;
 
   @IsString()
   @IsNotEmpty()
@@ -183,6 +257,36 @@ export class CreateProductDto {
   hsnCode?: string;
 
   @ValidateNested()
+  @Type(() => ProductSeoDto)
+  @IsOptional()
+  seo?: ProductSeoDto;
+
+  @ValidateNested()
+  @Type(() => NutritionalFactsDto)
+  @IsOptional()
+  nutritionalFacts?: NutritionalFactsDto;
+
+  @ValidateNested()
+  @Type(() => ToggleableTextField)
+  @IsOptional()
+  ingredients?: ToggleableTextField;
+
+  @ValidateNested()
+  @Type(() => ToggleableTextField)
+  @IsOptional()
+  allergenDeclaration?: ToggleableTextField;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  relatedProducts?: string[];
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  upsellProducts?: string[];
+
+  @ValidateNested()
   @Type(() => BatchInfoDto)
   @IsOptional()
   batchInfo?: BatchInfoDto;
@@ -214,6 +318,15 @@ export class UpdateProductDto {
   @IsOptional()
   images?: string[];
 
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  imageAlts?: string[];
+
+  @IsString()
+  @IsOptional()
+  videoUrl?: string;
+
   @IsNumber()
   @IsOptional()
   @Min(0)
@@ -223,6 +336,19 @@ export class UpdateProductDto {
   @IsOptional()
   @Min(0)
   compareAtPrice?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  specialOfferPrice?: number;
+
+  @IsString()
+  @IsOptional()
+  specialOfferLabel?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  specialOfferActive?: boolean;
 
   @IsString()
   @IsOptional()
@@ -279,6 +405,36 @@ export class UpdateProductDto {
   @IsString()
   @IsOptional()
   hsnCode?: string;
+
+  @ValidateNested()
+  @Type(() => ProductSeoDto)
+  @IsOptional()
+  seo?: ProductSeoDto;
+
+  @ValidateNested()
+  @Type(() => NutritionalFactsDto)
+  @IsOptional()
+  nutritionalFacts?: NutritionalFactsDto;
+
+  @ValidateNested()
+  @Type(() => ToggleableTextField)
+  @IsOptional()
+  ingredients?: ToggleableTextField;
+
+  @ValidateNested()
+  @Type(() => ToggleableTextField)
+  @IsOptional()
+  allergenDeclaration?: ToggleableTextField;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  relatedProducts?: string[];
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  upsellProducts?: string[];
 
   @ValidateNested()
   @Type(() => BatchInfoDto)

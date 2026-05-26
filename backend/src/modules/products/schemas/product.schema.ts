@@ -25,6 +25,9 @@ export class ProductVariant {
 
   @Prop({ default: true })
   isActive: boolean;
+
+  @Prop({ type: [String], default: [] })
+  images: string[];
 }
 
 export const ProductVariantSchema = SchemaFactory.createForClass(ProductVariant);
@@ -51,11 +54,26 @@ export class Product {
   @Prop({ type: [String], default: [] })
   images: string[];
 
+  @Prop({ type: [String], default: [] })
+  imageAlts: string[];
+
+  @Prop()
+  videoUrl?: string;
+
   @Prop({ required: true })
   price: number;
 
   @Prop()
   compareAtPrice?: number;
+
+  @Prop()
+  specialOfferPrice?: number;
+
+  @Prop()
+  specialOfferLabel?: string;
+
+  @Prop({ default: false })
+  specialOfferActive: boolean;
 
   @Prop({ required: true, unique: true })
   sku: string;
@@ -96,6 +114,38 @@ export class Product {
 
   @Prop()
   hsnCode?: string;
+
+  @Prop({ type: Object })
+  seo?: {
+    title?: string;
+    description?: string;
+    keywords?: string;
+    canonicalUrl?: string;
+  };
+
+  @Prop({ type: Object })
+  nutritionalFacts?: {
+    isActive: boolean;
+    rows: { name: string; per100g: string; perServing: string }[];
+  };
+
+  @Prop({ type: Object })
+  ingredients?: {
+    isActive: boolean;
+    text: string;
+  };
+
+  @Prop({ type: Object })
+  allergenDeclaration?: {
+    isActive: boolean;
+    text: string;
+  };
+
+  @Prop({ type: [{ type: Types.ObjectId, ref: 'Product' }], default: [] })
+  relatedProducts: Types.ObjectId[];
+
+  @Prop({ type: [{ type: Types.ObjectId, ref: 'Product' }], default: [] })
+  upsellProducts: Types.ObjectId[];
 
   @Prop({ type: Object, default: {} })
   metadata: Record<string, unknown>;

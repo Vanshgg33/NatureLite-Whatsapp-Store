@@ -28,14 +28,15 @@ export function PremiumProductCard({
   showOnlyXLeft: forceShowOnlyXLeft,
   compact = false,
 }: PremiumProductCardProps) {
-  const [isHovered,     setIsHovered]     = useState(false);
-  const [isWishlisted,  setIsWishlisted]  = useState(false);
-  const [imageLoaded,   setImageLoaded]   = useState(false);
-  const [imageError,    setImageError]    = useState(false);
-  const [isAddingToCart,setIsAddingToCart]= useState(false);
-  const [showSuccess,   setShowSuccess]   = useState(false);
-  const [heartBurst,    setHeartBurst]    = useState(false);
-  const [tilt,          setTilt]          = useState({ x: 0, y: 0, shineX: 50, shineY: 50 });
+  const [isHovered,        setIsHovered]        = useState(false);
+  const [isWishlisted,     setIsWishlisted]     = useState(false);
+  const [imageLoaded,      setImageLoaded]      = useState(false);
+  const [imageError,       setImageError]       = useState(false);
+  const [isAddingToCart,   setIsAddingToCart]   = useState(false);
+  const [showSuccess,      setShowSuccess]      = useState(false);
+  const [heartBurst,       setHeartBurst]       = useState(false);
+  const [tilt,             setTilt]             = useState({ x: 0, y: 0, shineX: 50, shineY: 50 });
+  const [selectedVarIdx,   setSelectedVarIdx]   = useState(0);
   const addToCartBtnRef = useRef<HTMLButtonElement>(null);
 
   const handleCardMouseMove = (e: React.MouseEvent<HTMLElement>) => {
@@ -50,8 +51,13 @@ export function PremiumProductCard({
   const { toast }  = useToast();
   const flyAnimation = useAddToCartAnimation();
 
-  const discount   = product.compareAtPrice
-    ? Math.round(((product.compareAtPrice - product.price) / product.compareAtPrice) * 100) : 0;
+  const activeVariants = product.variants?.filter((v) => v.isActive && v.stock > 0) ?? [];
+  const displayVariants = product.variants?.filter((v) => v.isActive) ?? [];
+  const selectedVar  = displayVariants[selectedVarIdx] ?? null;
+  const displayPrice = selectedVar?.price ?? product.price;
+  const displayCompare = selectedVar?.compareAtPrice ?? product.compareAtPrice;
+  const discount   = displayCompare
+    ? Math.round(((displayCompare - displayPrice) / displayCompare) * 100) : 0;
   const isNew      = new Date(product.createdAt).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000;
   const totalStock = getProductTotalStock(product);
   const isLowStock = forceShowOnlyXLeft ?? (totalStock <= (product.lowStockThreshold || 5) && totalStock > 0);
@@ -64,8 +70,9 @@ export function PremiumProductCard({
     setIsAddingToCart(true);
     const cartItem: Omit<CartItem, 'quantity'> = {
       productId: product._id, name: product.name, slug: product.slug,
-      image: product.images?.[0] || '', price: product.price,
-      compareAtPrice: product.compareAtPrice, gstPercentage: product.gstPercentage || 5,
+      image: product.images?.[0] || '', price: displayPrice,
+      compareAtPrice: displayCompare, gstPercentage: product.gstPercentage || 5,
+      ...(selectedVar && { variantSku: selectedVar.sku, variantName: selectedVar.name }),
     };
     try {
       await addItem(cartItem, 1);
@@ -280,22 +287,49 @@ export function PremiumProductCard({
                 <span style={{ fontSize: 10, color: 'rgba(46,66,37,0.42)' }}>({reviewCount})</span>
               </div>
 
+              {/* Variant pills */}
+              {displayVariants.length > 1 && (
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {displayVariants.slice(0, 5).map((v, i) => {
+                    const label = v.attributes?.volume ?? v.attributes?.size ?? v.attributes?.weight ?? v.name;
+                    const isSelected = i === selectedVarIdx;
+                    const isOOS = v.stock <= 0;
+                    return (
+                      <button
+                        key={v.sku}
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedVarIdx(i); }}
+                        style={{
+                          fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 99, cursor: isOOS ? 'not-allowed' : 'pointer',
+                          background: isSelected ? '#0b1c08' : 'transparent',
+                          color: isSelected ? '#fff' : isOOS ? 'rgba(46,66,37,0.22)' : 'rgba(46,66,37,0.65)',
+                          border: `1px solid ${isSelected ? '#0b1c08' : isOOS ? 'rgba(46,66,37,0.12)' : 'rgba(46,66,37,0.28)'}`,
+                          textDecoration: isOOS ? 'line-through' : 'none',
+                          transition: 'all 0.15s',
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* Price */}
               <div className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5">
                 <span style={{ fontSize: 15, fontWeight: 700, color: '#0b1c08', letterSpacing: '-0.02em' }}>
-                  ₹{product.price.toLocaleString()}
+                  ₹{displayPrice.toLocaleString()}
                 </span>
-                {product.compareAtPrice && product.compareAtPrice > product.price && (
+                {displayCompare && displayCompare > displayPrice && (
                   <span style={{ fontSize: 11, color: 'rgba(46,66,37,0.35)', textDecoration: 'line-through' }}>
-                    ₹{product.compareAtPrice.toLocaleString()}
+                    ₹{displayCompare.toLocaleString()}
+                  </span>
+                )}
+                {discount > 0 && (
+                  <span style={{ fontSize: 10, fontWeight: 700, color: '#fff', background: '#c0392b', padding: '1px 5px', borderRadius: 4 }}>
+                    {discount}% off
                   </span>
                 )}
               </div>
-              {discount > 0 && product.compareAtPrice && (
-                <p style={{ fontSize: 10, fontWeight: 600, color: '#1a5210', marginTop: 2 }}>
-                  Save ₹{(product.compareAtPrice - product.price).toLocaleString()}
-                </p>
-              )}
             </div>
           </div>
         </Link>

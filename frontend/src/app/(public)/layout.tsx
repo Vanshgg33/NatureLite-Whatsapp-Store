@@ -13,22 +13,21 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { StickyCartBar } from '@/components/ecommerce/sticky-cart-bar';
 import { PincodeChecker } from '@/components/ecommerce/pincode-checker';
 import { WhatsAppFab } from '@/components/ecommerce/whatsapp-fab';
+import dynamic from 'next/dynamic';
 
-export default function PublicLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+const ScrollProgress = dynamic(
+  () => import('@/components/ui/scroll-progress').then(m => ({ default: m.ScrollProgress })),
+  { ssr: false }
+);
+
+export default function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
     <SiteSettingsProvider>
       <LoadingProvider>
         <AddToCartAnimationProvider>
-          {/* afterInteractive: WhatsApp /pay page mounts and immediately checks
-              window.Razorpay; lazyOnload defers past hydration, racing the
-              page-mount checkout call and showing a spurious "widget failed
-              to load" error to first-time payers on slower networks. */}
+          <ScrollProgress />
           <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="afterInteractive" />
-          <div className="sticky top-0 z-50 w-full bg-white">
+          <div className="sticky top-0 z-50 w-full">
             <AnnouncementBar />
             <PromoBar />
             <PublicHeader />
@@ -38,7 +37,7 @@ export default function PublicLayout({
               <ErrorBoundary>{children}</ErrorBoundary>
             </main>
             <PublicFooter />
-          <StickyCartBar />
+            <StickyCartBar />
           </div>
           <PincodeChecker />
           <WhatsAppFab />

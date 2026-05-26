@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { ShieldCheck, MessageCircle, ArrowRight } from 'lucide-react';
+import { Magnetic } from '@/components/ui/magnetic';
 
 const WHATSAPP_QUICK_ORDER_URL =
   `https://wa.me/918817200740?text=${encodeURIComponent('Hi! I\'d like to place an order from Nature Lite Foods. Can you help me?')}`;
@@ -97,27 +98,33 @@ export default function RecencyBlock() {
           viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.26 }}
         >
-          <Link
-            href="/products"
-            className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl font-bold text-sm transition-all duration-200 hover:-translate-y-0.5"
-            style={{ background: '#a07010', color: '#fff', boxShadow: '0 4px 24px -4px rgba(160,112,16,0.55)', fontSize: 14 }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#7a5408'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#a07010'; }}
-          >
-            See All Products
-            <ArrowRight className="w-4 h-4" />
-          </Link>
+          <Magnetic strength={0.3}>
+            <Link
+              href="/products"
+              data-cursor="SHOP"
+              className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl font-bold text-sm transition-all duration-200 hover:-translate-y-0.5"
+              style={{ background: '#a07010', color: '#fff', boxShadow: '0 4px 24px -4px rgba(160,112,16,0.55)', fontSize: 14 }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#7a5408'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#a07010'; }}
+            >
+              See All Products
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </Magnetic>
 
-          <a
-            href={WHATSAPP_QUICK_ORDER_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl font-bold text-sm transition-all duration-200 hover:-translate-y-0.5"
-            style={{ background: '#25D366', color: '#fff', boxShadow: '0 4px 24px -4px rgba(37,211,102,0.40)', fontSize: 14 }}
-          >
-            <MessageCircle className="w-4 h-4" />
-            Quick Order via WhatsApp
-          </a>
+          <Magnetic strength={0.3}>
+            <a
+              href={WHATSAPP_QUICK_ORDER_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-cursor="ORDER"
+              className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl font-bold text-sm transition-all duration-200 hover:-translate-y-0.5"
+              style={{ background: '#25D366', color: '#fff', boxShadow: '0 4px 24px -4px rgba(37,211,102,0.40)', fontSize: 14 }}
+            >
+              <MessageCircle className="w-4 h-4" />
+              Quick Order via WhatsApp
+            </a>
+          </Magnetic>
         </motion.div>
       </div>
     </section>

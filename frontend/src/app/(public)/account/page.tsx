@@ -125,159 +125,151 @@ export default function AccountDashboardPage() {
 
   const isLoading = isProfileLoading || isOrdersLoading;
 
+  const stats = [
+    {
+      label: 'Orders',
+      value: isLoading ? null : orderStats.totalOrders,
+      Icon: Package,
+      href: '/account/orders',
+    },
+    {
+      label: 'Total Spent',
+      value: isLoading ? null : formatPrice(orderStats.totalSpent),
+      Icon: IndianRupee,
+      href: '/account/orders',
+    },
+    {
+      label: 'Addresses',
+      value: isProfileLoading ? null : orderStats.savedAddresses,
+      Icon: MapPin,
+      href: '/account/addresses',
+    },
+  ];
+
   return (
     <div className="space-y-4">
-      {/* ── Welcome Banner ─────────────────────────────────────────────────── */}
-      <motion.div
-        className="relative overflow-hidden rounded-2xl"
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-      >
-        {/* Rich warm gradient */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              'linear-gradient(125deg,#5a2f08 0%,#7a4010 30%,#3d1f04 70%,#1e0e02 100%)',
-          }}
-        />
-        {/* Grain */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0"
-          style={{
-            backgroundImage:
-              "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
-            mixBlendMode: 'overlay',
-          }}
-        />
-        {/* Glow orb */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute rounded-full"
-          style={{
-            top: '-40%',
-            right: '-5%',
-            width: 320,
-            height: 320,
-            background:
-              'radial-gradient(circle,rgba(212,152,64,0.28) 0%,transparent 65%)',
-            filter: 'blur(32px)',
-          }}
-        />
 
-        <div className="relative px-6 py-6 flex items-center gap-4">
-          {/* Avatar */}
-          <div
-            className="w-14 h-14 rounded-full flex items-center justify-center shrink-0"
-            style={{
-              background: 'rgba(212,152,64,0.18)',
-              boxShadow: '0 0 0 2px rgba(212,152,64,0.30)',
-            }}
-          >
-            <span className="font-display text-2xl font-bold" style={{ color: '#d49840' }}>
-              {dashboardCustomer?.name?.[0]?.toUpperCase() ||
-                dashboardCustomer?.email?.[0]?.toUpperCase() ||
-                'U'}
-            </span>
-          </div>
-
-          <div>
-            <p
-              style={{
-                fontSize: 10,
-                letterSpacing: '0.30em',
-                textTransform: 'uppercase',
-                color: 'rgba(212,152,64,0.60)',
-                fontFamily: 'monospace',
-                marginBottom: 4,
-              }}
-            >
-              My Account
-            </p>
-            <h1
-              className="font-display font-bold leading-tight"
-              style={{ color: '#f5e8cc', fontSize: '1.35rem' }}
-            >
-              Welcome back,{' '}
-              <span style={{ color: '#d49840' }}>
-                {dashboardCustomer?.name?.split(' ')[0] || 'there'}
-              </span>
-              !
-            </h1>
-            <p
-              className="font-body text-sm mt-0.5"
-              style={{ color: 'rgba(245,232,204,0.45)' }}
-            >
-              {dashboardCustomer?.phone || dashboardCustomer?.email || 'Manage your account'}
-            </p>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* ── Stats ──────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          {
-            label: 'Orders',
-            value: isLoading ? null : orderStats.totalOrders,
-            Icon: Package,
-            href: '/account/orders',
-          },
-          {
-            label: 'Total Spent',
-            value: isLoading ? null : formatPrice(orderStats.totalSpent),
-            Icon: IndianRupee,
-            href: '/account/orders',
-          },
-          {
-            label: 'Addresses',
-            value: isProfileLoading ? null : orderStats.savedAddresses,
-            Icon: MapPin,
-            href: '/account/addresses',
-          },
-        ].map((stat, i) => (
-          <motion.div
-            key={stat.label}
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.07 * (i + 1), duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <Link href={stat.href}>
-              <div className="bg-white rounded-xl px-4 py-4 shadow-brand-sm hover:shadow-brand-md transition-all duration-200 group border border-transparent hover:border-brand-border">
-                <div className="flex items-center justify-between mb-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-brand-mustard/10 flex items-center justify-center">
-                    <stat.Icon className="w-4 h-4 text-brand-mustard" />
-                  </div>
-                  <ArrowRight className="w-3.5 h-3.5 text-brand-muted/30 group-hover:text-brand-mustard group-hover:translate-x-0.5 transition-all duration-200" />
-                </div>
-                {stat.value === null ? (
-                  <div className="h-6 w-12 bg-brand-sand rounded animate-pulse mb-1" />
-                ) : (
-                  <p className="font-display text-xl font-bold text-brand-charcoal leading-none mb-1">
-                    {stat.value}
-                  </p>
-                )}
-                <p className="font-body text-xs text-brand-muted">{stat.label}</p>
-              </div>
-            </Link>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* ── Profile ────────────────────────────────────────────────────────── */}
+      {/* ── Hero Card: Welcome + Stats ──────────────────────────── */}
       <motion.div
         className="bg-white rounded-2xl shadow-brand-sm overflow-hidden"
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.22, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
       >
-        <div className="px-5 py-3.5 border-b border-brand-border flex items-center justify-between">
-          <span className="font-display text-sm font-semibold text-brand-charcoal flex items-center gap-2">
-            <User className="w-3.5 h-3.5 text-brand-mustard" />
-            Profile Information
-          </span>
+        {/* Dark gradient top */}
+        <div
+          className="relative px-6 py-6 overflow-hidden"
+          style={{
+            background:
+              'linear-gradient(125deg,#5a2f08 0%,#7a4010 30%,#3d1f04 70%,#1e0e02 100%)',
+          }}
+        >
+          {/* Grain overlay */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0"
+            style={{
+              backgroundImage:
+                "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
+              mixBlendMode: 'overlay',
+            }}
+          />
+          {/* Glow orb */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute rounded-full"
+            style={{
+              top: '-40%',
+              right: '-5%',
+              width: 280,
+              height: 280,
+              background: 'radial-gradient(circle,rgba(212,152,64,0.25) 0%,transparent 65%)',
+              filter: 'blur(28px)',
+            }}
+          />
+
+          <div className="relative flex items-center gap-4">
+            {/* Square avatar */}
+            <div
+              className="rounded-2xl flex items-center justify-center shrink-0"
+              style={{
+                width: 60,
+                height: 60,
+                background: 'rgba(212,152,64,0.18)',
+                border: '1.5px solid rgba(212,152,64,0.32)',
+              }}
+            >
+              <span className="font-display text-2xl font-bold" style={{ color: '#d49840' }}>
+                {dashboardCustomer?.name?.[0]?.toUpperCase() ||
+                  dashboardCustomer?.email?.[0]?.toUpperCase() ||
+                  'U'}
+              </span>
+            </div>
+
+            <div>
+              <p
+                style={{
+                  fontSize: 10,
+                  letterSpacing: '0.28em',
+                  textTransform: 'uppercase',
+                  color: 'rgba(212,152,64,0.55)',
+                  fontFamily: 'monospace',
+                  marginBottom: 4,
+                }}
+              >
+                My Account
+              </p>
+              <h1
+                className="font-display font-bold leading-tight"
+                style={{ color: '#f5e8cc', fontSize: '1.4rem' }}
+              >
+                {dashboardCustomer?.name || dashboardCustomer?.email?.split('@')[0] || 'Welcome'}
+              </h1>
+              <p className="font-body text-sm mt-0.5" style={{ color: 'rgba(245,232,204,0.45)' }}>
+                {dashboardCustomer?.phone || dashboardCustomer?.email || 'Manage your account'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats row — divided, no separate cards */}
+        <div className="grid grid-cols-3 divide-x divide-brand-border/60">
+          {stats.map((stat) => (
+            <Link key={stat.label} href={stat.href}>
+              <div className="px-4 py-4 hover:bg-brand-sand/50 transition-colors group cursor-pointer">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <stat.Icon className="w-3.5 h-3.5 text-brand-mustard/70" />
+                  <p className="font-body text-xs text-brand-muted">{stat.label}</p>
+                </div>
+                {stat.value === null ? (
+                  <div className="h-7 w-14 bg-brand-sand rounded animate-pulse" />
+                ) : (
+                  <p className="font-display text-xl font-bold text-brand-charcoal leading-none">
+                    {stat.value}
+                  </p>
+                )}
+              </div>
+            </Link>
+          ))}
+        </div>
+      </motion.div>
+
+      {/* ── Profile Information ─────────────────────────────────── */}
+      <motion.div
+        className="bg-white rounded-2xl shadow-brand-sm overflow-hidden"
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.12, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <div className="px-6 py-4 border-b border-brand-border flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-brand-mustard/10 flex items-center justify-center">
+              <User className="w-3.5 h-3.5 text-brand-mustard" />
+            </div>
+            <span className="font-display text-sm font-semibold text-brand-charcoal">
+              Profile Information
+            </span>
+          </div>
           {!isEditing ? (
             <button
               onClick={handleStartEdit}
@@ -312,24 +304,16 @@ export default function AccountDashboardPage() {
           )}
         </div>
 
-        <div className="px-5 py-4">
+        <div className="px-6 py-5">
           {!isEditing ? (
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-6">
               {[
                 { label: 'Name', value: dashboardCustomer?.name || '—' },
                 { label: 'Email', value: dashboardCustomer?.email || '—' },
                 { label: 'Phone', value: dashboardCustomer?.phone || '—' },
               ].map((field) => (
                 <div key={field.label}>
-                  <p
-                    className="font-body mb-1"
-                    style={{
-                      fontSize: 9,
-                      letterSpacing: '0.12em',
-                      textTransform: 'uppercase',
-                      color: 'hsl(var(--brand-muted))',
-                    }}
-                  >
+                  <p className="font-body text-xs text-brand-muted mb-1.5 uppercase tracking-wide">
                     {field.label}
                   </p>
                   <p className="font-body text-sm font-medium text-brand-charcoal break-all">
@@ -339,8 +323,8 @@ export default function AccountDashboardPage() {
               ))}
             </div>
           ) : (
-            <div className="space-y-3.5">
-              <div className="grid sm:grid-cols-2 gap-3.5">
+            <div className="space-y-4">
+              <div className="grid sm:grid-cols-2 gap-4">
                 <div>
                   <label className="font-body text-xs text-brand-text mb-1.5 block">Full Name</label>
                   <Input
@@ -375,57 +359,66 @@ export default function AccountDashboardPage() {
         </div>
       </motion.div>
 
-      {/* ── Quick Actions ──────────────────────────────────────────────────── */}
+      {/* ── Quick Actions ───────────────────────────────────────── */}
       <motion.div
-        className="bg-white rounded-2xl shadow-brand-sm p-4"
+        className="bg-white rounded-2xl shadow-brand-sm overflow-hidden"
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ delay: 0.22, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
       >
-        <p
-          className="font-body mb-3"
-          style={{
-            fontSize: 9,
-            letterSpacing: '0.28em',
-            textTransform: 'uppercase',
-            color: 'hsl(var(--brand-muted))',
-          }}
-        >
-          Quick Actions
-        </p>
-        <div className="grid sm:grid-cols-2 gap-2.5">
+        <div className="px-6 py-4 border-b border-brand-border">
+          <span className="font-display text-sm font-semibold text-brand-charcoal">
+            Quick Actions
+          </span>
+        </div>
+        <div className="p-4 grid sm:grid-cols-2 gap-3">
           {[
-            { href: '/products', Icon: ShoppingBag, label: 'Browse Products' },
-            { href: '/account/addresses', Icon: MapPin, label: 'Manage Addresses' },
-          ].map(({ href, Icon, label }) => (
+            {
+              href: '/products',
+              Icon: ShoppingBag,
+              label: 'Browse Products',
+              desc: 'Explore our premium collection',
+            },
+            {
+              href: '/account/addresses',
+              Icon: MapPin,
+              label: 'Manage Addresses',
+              desc: 'Add or edit delivery locations',
+            },
+          ].map(({ href, Icon, label, desc }) => (
             <Link key={href} href={href}>
-              <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-brand-border hover:border-brand-mustard/40 hover:bg-brand-mustard/4 transition-all duration-200 group">
-                <div className="w-7 h-7 rounded-lg bg-brand-mustard/10 flex items-center justify-center shrink-0">
-                  <Icon className="w-3.5 h-3.5 text-brand-mustard" />
+              <div className="flex items-center gap-3.5 px-4 py-4 rounded-xl border border-brand-border hover:border-brand-mustard/40 hover:bg-brand-mustard/5 transition-all duration-200 group">
+                <div className="w-10 h-10 rounded-xl bg-brand-mustard/10 flex items-center justify-center shrink-0">
+                  <Icon className="w-5 h-5 text-brand-mustard" />
                 </div>
-                <span className="font-body text-sm text-brand-text group-hover:text-brand-charcoal">
-                  {label}
-                </span>
-                <ArrowRight className="w-3.5 h-3.5 text-brand-muted/30 group-hover:text-brand-mustard ml-auto transition-colors" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-body text-sm font-medium text-brand-charcoal">{label}</p>
+                  <p className="font-body text-xs text-brand-muted mt-0.5">{desc}</p>
+                </div>
+                <ArrowRight className="w-4 h-4 text-brand-muted/30 group-hover:text-brand-mustard group-hover:translate-x-0.5 transition-all duration-200 shrink-0" />
               </div>
             </Link>
           ))}
         </div>
       </motion.div>
 
-      {/* ── Default Address ────────────────────────────────────────────────── */}
+      {/* ── Default Address ─────────────────────────────────────── */}
       {customer?.addresses && customer.addresses.length > 0 && (
         <motion.div
           className="bg-white rounded-2xl shadow-brand-sm overflow-hidden"
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.37, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ delay: 0.3, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
         >
-          <div className="px-5 py-3.5 border-b border-brand-border flex items-center justify-between">
-            <span className="font-display text-sm font-semibold text-brand-charcoal flex items-center gap-2">
-              <MapPin className="w-3.5 h-3.5 text-brand-mustard" />
-              Default Delivery Address
-            </span>
+          <div className="px-6 py-4 border-b border-brand-border flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-brand-mustard/10 flex items-center justify-center">
+                <MapPin className="w-3.5 h-3.5 text-brand-mustard" />
+              </div>
+              <span className="font-display text-sm font-semibold text-brand-charcoal">
+                Default Delivery Address
+              </span>
+            </div>
             <Link
               href="/account/addresses"
               className="font-body text-xs text-brand-mustard hover:text-brand-mustard-dark transition-colors"
@@ -437,9 +430,9 @@ export default function AccountDashboardPage() {
             const addr =
               customer.addresses.find((a) => a.isDefault) || customer.addresses[0];
             return (
-              <div className="px-5 py-4">
+              <div className="px-6 py-5">
                 <p className="font-body text-sm font-semibold text-brand-charcoal">{addr.label}</p>
-                <p className="font-body text-sm text-brand-muted mt-0.5">{addr.street}</p>
+                <p className="font-body text-sm text-brand-muted mt-1">{addr.street}</p>
                 {addr.landmark && (
                   <p className="font-body text-sm text-brand-muted">{addr.landmark}</p>
                 )}

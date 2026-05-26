@@ -1,108 +1,166 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { ArrowLeft, X, Upload, AlertCircle } from 'lucide-react';
+import { ArrowLeft, X, Upload, AlertCircle, Plus, ChevronUp, ChevronDown, Video, Globe, Leaf, AlertTriangle, Link2, ShoppingBag } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { SimpleEditor } from '@/components/admin/simple-editor';
 import { api } from '@/lib/api';
 import { validateProduct, getFieldError, ValidationError } from '@/lib/validation';
 import { BarcodeScanCard } from '@/components/admin/barcode-scan-card';
 import type { BarcodeProduct } from '@/lib/barcode-lookup';
+import type { NutritionalFactRow, Product } from '@/types';
+
+type VariantRow = {
+  name: string; sku: string; price: string; compareAtPrice: string; stock: string;
+  images: string[];
+};
+
+type NutritionRow = NutritionalFactRow;
+
+function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${checked ? 'bg-primary' : 'bg-input'}`}
+      aria-label={label}
+    >
+      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`} />
+    </button>
+  );
+}
 
 export default function NewProductPage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    shortDescription: '',
-    category: '',
-    price: '',
-    compareAtPrice: '',
-    sku: '',
-    stock: '0',
-    trackStock: true,
-    lowStockThreshold: '5',
-    isActive: true,
-    isFeatured: false,
-    gstPercentage: '18',
-    hsnCode: '',
-    tags: '',
+    name: '', shortDescription: '', description: '', category: '',
+    price: '', compareAtPrice: '', sku: '',
+    specialOfferPrice: '', specialOfferLabel: '', specialOfferActive: false,
+    stock: '0', trackStock: true, lowStockThreshold: '5',
+    isActive: true, isFeatured: false, gstPercentage: '18', hsnCode: '', tags: '',
+    videoUrl: '',
+    seoTitle: '', seoDescription: '', seoKeywords: '', canonicalUrl: '',
   });
   const [images, setImages] = useState<string[]>([]);
-  const [variants, setVariants] = useState<{ name: string; sku: string; price: string; compareAtPrice: string; stock: string }[]>([]);
+  const [imageAlts, setImageAlts] = useState<string[]>([]);
+  const [variants, setVariants] = useState<VariantRow[]>([]);
+  const [nutritionRows, setNutritionRows] = useState<NutritionRow[]>([{ name: '', per100g: '', perServing: '' }]);
+  const [nutritionActive, setNutritionActive] = useState(false);
+  const [ingredients, setIngredients] = useState('');
+  const [ingredientsActive, setIngredientsActive] = useState(false);
+  const [allergen, setAllergen] = useState('');
+  const [allergenActive, setAllergenActive] = useState(false);
+  const [relatedSearch, setRelatedSearch] = useState('');
+  const [relatedProducts, setRelatedProducts] = useState<{ id: string; name: string }[]>([]);
+  const [upsellSearch, setUpsellSearch] = useState('');
+  const [upsellProducts, setUpsellProducts] = useState<{ id: string; name: string }[]>([]);
+  const [skuError, setSkuError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [errors, setErrors] = useState<ValidationError[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const { data: categories } = useQuery({
-    queryKey: ['categories'],
-    queryFn: () => api.getCategories({ limit: 100 }),
+  const { data: categories } = useQuery({ queryKey: ['categories'], queryFn: () => api.getCategories({ limit: 100 }) });
+  const { data: searchResults } = useQuery({
+    queryKey: ['product-search', relatedSearch],
+    queryFn: () => relatedSearch.length > 1 ? api.searchProducts(relatedSearch) : Promise.resolve([]),
+    enabled: relatedSearch.length > 1,
+  });
+  const { data: upsellResults } = useQuery({
+    queryKey: ['product-search-upsell', upsellSearch],
+    queryFn: () => upsellSearch.length > 1 ? api.searchProducts(upsellSearch) : Promise.resolve([]),
+    enabled: upsellSearch.length > 1,
   });
 
   const createMutation = useMutation({
     mutationFn: (data: Parameters<typeof api.createProduct>[0]) => api.createProduct(data),
-    onSuccess: () => {
-      router.push('/admin/products');
-    },
-    onError: (error: Error) => {
-      setSubmitError(error.message || 'Failed to create product. Please try again.');
-    },
+    onSuccess: () => router.push('/admin/products'),
+    onError: (error: Error) => setSubmitError(error.message || 'Failed to create product.'),
   });
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const checkSku = useCallback(async (sku: string) => {
+    if (sku.length < 3) { setSkuError(''); return; }
+    const exists = await api.checkSkuExists(sku);
+    setSkuError(exists ? `SKU "${sku}" is already in use` : '');
+  }, []);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, variantIndex?: number) => {
     const files = e.target.files;
     if (!files) return;
-
     setUploading(true);
     try {
       for (const file of Array.from(files)) {
         const result = await api.uploadImage(file, 'products');
-        setImages((prev) => [...prev, result.secureUrl]);
+        if (variantIndex !== undefined) {
+          setVariants((prev) => prev.map((v, i) => i === variantIndex ? { ...v, images: [...v.images, result.secureUrl] } : v));
+        } else {
+          setImages((prev) => [...prev, result.secureUrl]);
+          setImageAlts((prev) => [...prev, '']);
+        }
       }
-    } catch (error) {
-      setSubmitError('Failed to upload image. Please try again.');
-    } finally {
-      setUploading(false);
-    }
+    } catch { setSubmitError('Image upload failed.'); }
+    finally { setUploading(false); }
+  };
+
+  const moveImage = (index: number, dir: -1 | 1) => {
+    const to = index + dir;
+    if (to < 0 || to >= images.length) return;
+    setImages((prev) => { const a = [...prev]; [a[index], a[to]] = [a[to], a[index]]; return a; });
+    setImageAlts((prev) => { const a = [...prev]; [a[index], a[to]] = [a[to], a[index]]; return a; });
   };
 
   const removeImage = (index: number) => {
     setImages((prev) => prev.filter((_, i) => i !== index));
+    setImageAlts((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const addVariant = () => {
-    setVariants((prev) => [...prev, { name: '', sku: '', price: '', compareAtPrice: '', stock: '0' }]);
+  const updateImageAlt = (index: number, alt: string) => {
+    setImageAlts((prev) => prev.map((a, i) => i === index ? alt : a));
   };
 
-  const updateVariant = (index: number, field: string, value: string) => {
-    setVariants((prev) => prev.map((v, i) => (i === index ? { ...v, [field]: value } : v)));
-  };
+  const addVariant = () => setVariants((prev) => [...prev, { name: '', sku: '', price: '', compareAtPrice: '', stock: '0', images: [] }]);
+  const updateVariant = (index: number, field: keyof VariantRow, value: string) =>
+    setVariants((prev) => prev.map((v, i) => i === index ? { ...v, [field]: value } : v));
+  const removeVariant = (index: number) => setVariants((prev) => prev.filter((_, i) => i !== index));
 
-  const removeVariant = (index: number) => {
-    setVariants((prev) => prev.filter((_, i) => i !== index));
+  const addNutritionRow = () => setNutritionRows((prev) => [...prev, { name: '', per100g: '', perServing: '' }]);
+  const updateNutritionRow = (index: number, field: keyof NutritionRow, value: string) =>
+    setNutritionRows((prev) => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
+  const removeNutritionRow = (index: number) => setNutritionRows((prev) => prev.filter((_, i) => i !== index));
+
+  const addRelated = (product: Product) => {
+    if (!relatedProducts.find((p) => p.id === product._id)) {
+      setRelatedProducts((prev) => [...prev, { id: product._id, name: product.name }]);
+    }
+    setRelatedSearch('');
   };
+  const removeRelated = (id: string) => setRelatedProducts((prev) => prev.filter((p) => p.id !== id));
+
+  const addUpsell = (product: Product) => {
+    if (!upsellProducts.find((p) => p.id === product._id)) {
+      setUpsellProducts((prev) => [...prev, { id: product._id, name: product.name }]);
+    }
+    setUpsellSearch('');
+  };
+  const removeUpsell = (id: string) => setUpsellProducts((prev) => prev.filter((p) => p.id !== id));
+
+  const set = (field: string, value: string | boolean) => setFormData((prev) => ({ ...prev, [field]: value }));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrors([]);
     setSubmitError(null);
-
-    // Validate form
     const validation = validateProduct(formData);
-    if (!validation.isValid) {
-      setErrors(validation.errors);
-      return;
-    }
+    if (!validation.isValid) { setErrors(validation.errors); return; }
 
     createMutation.mutate({
       name: formData.name,
@@ -111,6 +169,9 @@ export default function NewProductPage() {
       category: formData.category,
       price: parseFloat(formData.price),
       compareAtPrice: formData.compareAtPrice ? parseFloat(formData.compareAtPrice) : undefined,
+      specialOfferPrice: formData.specialOfferPrice ? parseFloat(formData.specialOfferPrice) : undefined,
+      specialOfferLabel: formData.specialOfferLabel || undefined,
+      specialOfferActive: formData.specialOfferActive,
       sku: formData.sku,
       stock: parseInt(formData.stock),
       trackStock: formData.trackStock,
@@ -120,400 +181,463 @@ export default function NewProductPage() {
       gstPercentage: parseFloat(formData.gstPercentage),
       hsnCode: formData.hsnCode || undefined,
       images,
+      imageAlts,
+      videoUrl: formData.videoUrl || undefined,
       tags: formData.tags.split(',').map((t) => t.trim()).filter(Boolean),
-      variants: variants
-        .filter((v) => v.name && v.sku && v.price)
-        .map((v) => ({
-          name: v.name,
-          sku: v.sku,
-          price: parseFloat(v.price),
-          compareAtPrice: v.compareAtPrice ? parseFloat(v.compareAtPrice) : undefined,
-          stock: parseInt(v.stock) || 0,
-          attributes: {},
-        })),
-    });
+      seo: (formData.seoTitle || formData.seoDescription || formData.seoKeywords || formData.canonicalUrl) ? {
+        title: formData.seoTitle || undefined,
+        description: formData.seoDescription || undefined,
+        keywords: formData.seoKeywords || undefined,
+        canonicalUrl: formData.canonicalUrl || undefined,
+      } : undefined,
+      nutritionalFacts: nutritionActive || nutritionRows.some((r) => r.name) ? {
+        isActive: nutritionActive,
+        rows: nutritionRows.filter((r) => r.name),
+      } : undefined,
+      ingredients: (ingredients || ingredientsActive) ? { isActive: ingredientsActive, text: ingredients } : undefined,
+      allergenDeclaration: (allergen || allergenActive) ? { isActive: allergenActive, text: allergen } : undefined,
+      relatedProducts: relatedProducts.map((p) => p.id),
+      upsellProducts: upsellProducts.map((p) => p.id),
+      variants: variants.filter((v) => v.name && v.sku && v.price).map((v) => ({
+        name: v.name, sku: v.sku,
+        price: parseFloat(v.price),
+        compareAtPrice: v.compareAtPrice ? parseFloat(v.compareAtPrice) : undefined,
+        stock: parseInt(v.stock) || 0,
+        attributes: {},
+        images: v.images,
+      })),
+    } as Parameters<typeof api.createProduct>[0]);
   };
 
   const getError = (field: string) => getFieldError(errors, field);
 
-  const handleBarcodeProduct = (product: BarcodeProduct) => {
-    setFormData((prev) => ({
-      ...prev,
-      ...(product.name && { name: product.name }),
-      ...(product.sku && { sku: product.sku }),
-      ...(product.description && { description: product.description }),
-      ...(product.quantity && { shortDescription: `Size: ${product.quantity}` }),
-    }));
-    if (product.imageUrl && !images.includes(product.imageUrl)) {
-      setImages((prev) => [...prev, product.imageUrl!]);
-    }
-  };
-
   return (
     <div>
-      <Header
-        title="Add Product"
-        description="Create a new product"
-        action={
-          <Link href="/admin/products">
-            <Button variant="outline">
-              <ArrowLeft className="mr-2 h-4 w-4" /> Back
-            </Button>
-          </Link>
-        }
+      <Header title="Add Product" description="Create a new product"
+        action={<Link href="/admin/products"><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" /> Back</Button></Link>}
       />
 
       <form onSubmit={handleSubmit} className="p-6 space-y-6">
-        {submitError && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{submitError}</AlertDescription>
-          </Alert>
-        )}
-
+        {submitError && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertDescription>{submitError}</AlertDescription></Alert>}
         {errors.length > 0 && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
+          <Alert variant="destructive"><AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Please fix the following errors:
-              <ul className="list-disc list-inside mt-2">
-                {errors.map((error, i) => (
-                  <li key={i}>{error.message}</li>
-                ))}
-              </ul>
+              Please fix: <ul className="list-disc list-inside mt-1">{errors.map((e, i) => <li key={i}>{e.message}</li>)}</ul>
             </AlertDescription>
           </Alert>
         )}
 
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-6">
-            <BarcodeScanCard onProductFound={handleBarcodeProduct} />
+            <BarcodeScanCard onProductFound={(p: BarcodeProduct) => {
+              if (p.name) set('name', p.name);
+              if (p.sku) set('sku', p.sku);
+              if (p.description) set('description', p.description);
+              if (p.quantity) set('shortDescription', `Size: ${p.quantity}`);
+              if (p.imageUrl && !images.includes(p.imageUrl)) { setImages((prev) => [...prev, p.imageUrl!]); setImageAlts((prev) => [...prev, '']); }
+            }} />
 
+            {/* Basic Info */}
             <Card>
-              <CardHeader>
-                <CardTitle>Basic Information</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle>Basic Information</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="name">Product Name *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Enter product name"
-                    className={getError('name') ? 'border-red-500' : ''}
-                  />
-                  {getError('name') && (
-                    <p className="text-sm text-red-500">{getError('name')}</p>
-                  )}
+                  <Input id="name" value={formData.name} onChange={(e) => set('name', e.target.value)} className={getError('name') ? 'border-red-500' : ''} />
+                  {getError('name') && <p className="text-sm text-red-500">{getError('name')}</p>}
                 </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="shortDescription">Short Description</Label>
-                  <Input
-                    id="shortDescription"
-                    value={formData.shortDescription}
-                    onChange={(e) => setFormData({ ...formData, shortDescription: e.target.value })}
-                    placeholder="Brief description for listings"
-                  />
+                  <Input id="shortDescription" value={formData.shortDescription} onChange={(e) => set('shortDescription', e.target.value)} placeholder="Brief description for listings" />
                 </div>
-
                 <div className="space-y-2">
-                  <Label htmlFor="description">Full Description</Label>
-                  <Textarea
-                    id="description"
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Detailed product description"
-                    rows={5}
-                  />
+                  <Label>Full Description</Label>
+                  <SimpleEditor value={formData.description} onChange={(html) => set('description', html)} placeholder="Detailed product description..." minHeight={160} />
                 </div>
               </CardContent>
             </Card>
 
+            {/* Images */}
             <Card>
-              <CardHeader>
-                <CardTitle>Images</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-4 gap-4">
+              <CardHeader><CardTitle>Images & Media</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
                   {images.map((url, index) => (
-                    <div key={index} className="relative aspect-square">
-                      <Image
-                        src={url}
-                        alt={`Product ${index + 1}`}
-                        fill
-                        className="object-cover rounded-lg"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeImage(index)}
-                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
+                    <div key={index} className="flex items-start gap-3 p-3 border rounded-xl bg-muted/20">
+                      <div className="relative w-16 h-16 shrink-0">
+                        <Image src={url} alt={imageAlts[index] || `Image ${index + 1}`} fill className="object-cover rounded-lg" />
+                      </div>
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <Input
+                          placeholder="Alt text (SEO)"
+                          value={imageAlts[index] || ''}
+                          onChange={(e) => updateImageAlt(index, e.target.value)}
+                          className="text-sm h-8"
+                        />
+                        <p className="text-xs text-muted-foreground truncate">{url.split('/').pop()}</p>
+                      </div>
+                      <div className="flex flex-col gap-1 shrink-0">
+                        <button type="button" onClick={() => moveImage(index, -1)} disabled={index === 0} className="p-1 rounded hover:bg-accent disabled:opacity-30"><ChevronUp className="h-3.5 w-3.5" /></button>
+                        <button type="button" onClick={() => moveImage(index, 1)} disabled={index === images.length - 1} className="p-1 rounded hover:bg-accent disabled:opacity-30"><ChevronDown className="h-3.5 w-3.5" /></button>
+                        <button type="button" onClick={() => removeImage(index)} className="p-1 rounded hover:bg-destructive/10 text-destructive"><X className="h-3.5 w-3.5" /></button>
+                      </div>
                     </div>
                   ))}
-                  <label className="aspect-square border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors">
-                    <Upload className="h-8 w-8 text-muted-foreground mb-2" />
-                    <span className="text-sm text-muted-foreground">
-                      {uploading ? 'Uploading...' : 'Upload'}
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={handleImageUpload}
-                      className="hidden"
-                      disabled={uploading}
-                    />
+                  <label className="flex items-center justify-center gap-2 border-2 border-dashed rounded-xl py-5 cursor-pointer hover:bg-muted/50 transition-colors">
+                    <Upload className="h-5 w-5 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">{uploading ? 'Uploading…' : 'Add Images'}</span>
+                    <input type="file" accept="image/*" multiple onChange={handleImageUpload} className="hidden" disabled={uploading} />
                   </label>
+                </div>
+
+                {/* Video URL */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5"><Video className="h-3.5 w-3.5" /> Video URL</Label>
+                  <Input placeholder="YouTube / Vimeo embed URL" value={formData.videoUrl} onChange={(e) => set('videoUrl', e.target.value)} />
                 </div>
               </CardContent>
             </Card>
 
+            {/* Pricing */}
             <Card>
-              <CardHeader>
-                <CardTitle>Pricing</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle>Pricing</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-3">
                   <div className="space-y-2">
-                    <Label htmlFor="price">Price (₹) *</Label>
-                    <Input
-                      id="price"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={formData.price}
-                      onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                      placeholder="0.00"
-                      className={getError('price') ? 'border-red-500' : ''}
-                    />
-                    {getError('price') && (
-                      <p className="text-sm text-red-500">{getError('price')}</p>
-                    )}
+                    <Label htmlFor="compareAtPrice">MRP (₹)</Label>
+                    <Input id="compareAtPrice" type="number" min="0" step="0.01" value={formData.compareAtPrice} onChange={(e) => set('compareAtPrice', e.target.value)} placeholder="Original price" />
+                    <p className="text-xs text-muted-foreground">Strikethrough price shown to customers</p>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="compareAtPrice">Compare at Price (₹)</Label>
-                    <Input
-                      id="compareAtPrice"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={formData.compareAtPrice}
-                      onChange={(e) => setFormData({ ...formData, compareAtPrice: e.target.value })}
-                      placeholder="Original price"
-                      className={getError('compareAtPrice') ? 'border-red-500' : ''}
-                    />
-                    {getError('compareAtPrice') && (
-                      <p className="text-sm text-red-500">{getError('compareAtPrice')}</p>
-                    )}
+                    <Label htmlFor="price">Sale Price (₹) *</Label>
+                    <Input id="price" type="number" min="0" step="0.01" value={formData.price} onChange={(e) => set('price', e.target.value)} className={getError('price') ? 'border-red-500' : ''} />
+                    {getError('price') && <p className="text-sm text-red-500">{getError('price')}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="specialOfferPrice">Special Offer Price (₹)</Label>
+                      <Toggle checked={formData.specialOfferActive} onChange={(v) => set('specialOfferActive', v)} label="Special offer active" />
+                    </div>
+                    <Input id="specialOfferPrice" type="number" min="0" step="0.01" value={formData.specialOfferPrice} onChange={(e) => set('specialOfferPrice', e.target.value)} placeholder="e.g. 399" disabled={!formData.specialOfferActive} />
+                    <Input placeholder="Offer label (e.g. Festive Offer)" value={formData.specialOfferLabel} onChange={(e) => set('specialOfferLabel', e.target.value)} className="text-sm" disabled={!formData.specialOfferActive} />
                   </div>
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="sku">Product SKU *</Label>
-                  <Input
-                    id="sku"
-                    value={formData.sku}
-                    onChange={(e) => setFormData({ ...formData, sku: e.target.value.toUpperCase() })}
-                    placeholder="e.g. OIL-001"
-                    className={getError('sku') ? 'border-red-500' : ''}
-                  />
-                  {getError('sku') && (
-                    <p className="text-sm text-red-500">{getError('sku')}</p>
-                  )}
-                  <p className="text-xs text-muted-foreground">Unique identifier for this product. Stock is tracked per variant below.</p>
+                  <Input id="sku" value={formData.sku} onChange={(e) => { set('sku', e.target.value.toUpperCase()); checkSku(e.target.value); }} className={`${getError('sku') || skuError ? 'border-red-500' : ''}`} placeholder="e.g. OIL-001" />
+                  {(getError('sku') || skuError) && <p className="text-sm text-red-500">{getError('sku') || skuError}</p>}
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="gstPercentage">GST %</Label>
-                    <Input
-                      id="gstPercentage"
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={formData.gstPercentage}
-                      onChange={(e) => setFormData({ ...formData, gstPercentage: e.target.value })}
-                      className={getError('gstPercentage') ? 'border-red-500' : ''}
-                    />
-                    {getError('gstPercentage') && (
-                      <p className="text-sm text-red-500">{getError('gstPercentage')}</p>
-                    )}
+                    <Input id="gstPercentage" type="number" min="0" max="100" value={formData.gstPercentage} onChange={(e) => set('gstPercentage', e.target.value)} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="hsnCode">HSN Code</Label>
-                    <Input
-                      id="hsnCode"
-                      value={formData.hsnCode}
-                      onChange={(e) => setFormData({ ...formData, hsnCode: e.target.value })}
-                      placeholder="HSN/SAC Code"
-                    />
+                    <Input id="hsnCode" value={formData.hsnCode} onChange={(e) => set('hsnCode', e.target.value)} placeholder="HSN/SAC Code" />
                   </div>
                 </div>
               </CardContent>
             </Card>
 
+            {/* Variants */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   <span>Size / Weight Variants</span>
-                  <Button type="button" variant="outline" size="sm" onClick={addVariant}>
-                    + Add Variant
-                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={addVariant}><Plus className="h-3.5 w-3.5 mr-1" /> Add</Button>
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {variants.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No variants. Add variants for different sizes like 250ml, 500ml, 1L or 250g, 500g, 1kg.
-                  </p>
+                  <p className="text-sm text-muted-foreground text-center py-4">No variants. Add for different sizes/weights.</p>
                 ) : (
                   <div className="space-y-4">
                     {variants.map((variant, index) => (
-                      <div key={index} className="grid gap-3 md:grid-cols-6 items-end p-4 border rounded-lg">
-                        <div className="space-y-1">
-                          <Label className="text-xs">Name *</Label>
-                          <Input
-                            placeholder="e.g. 500ml"
-                            value={variant.name}
-                            onChange={(e) => updateVariant(index, 'name', e.target.value)}
-                          />
+                      <div key={index} className="border rounded-xl p-4 space-y-3">
+                        <div className="grid gap-3 md:grid-cols-5 items-end">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Name *</Label>
+                            <Input placeholder="500ml" value={variant.name} onChange={(e) => updateVariant(index, 'name', e.target.value)} />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">SKU *</Label>
+                            <Input placeholder="OIL-500ML" value={variant.sku} onChange={(e) => updateVariant(index, 'sku', e.target.value.toUpperCase())} />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">MRP (₹)</Label>
+                            <Input type="number" min="0" step="0.01" placeholder="0" value={variant.compareAtPrice} onChange={(e) => updateVariant(index, 'compareAtPrice', e.target.value)} />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Sale Price (₹) *</Label>
+                            <Input type="number" min="0" step="0.01" placeholder="0" value={variant.price} onChange={(e) => updateVariant(index, 'price', e.target.value)} />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Stock</Label>
+                            <Input type="number" min="0" placeholder="0" value={variant.stock} onChange={(e) => updateVariant(index, 'stock', e.target.value)} />
+                          </div>
                         </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">SKU *</Label>
-                          <Input
-                            placeholder="e.g. OIL-500ML"
-                            value={variant.sku}
-                            onChange={(e) => updateVariant(index, 'sku', e.target.value.toUpperCase())}
-                          />
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1">
+                            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer border rounded-lg px-3 py-2 hover:bg-muted/40">
+                              <Upload className="h-3.5 w-3.5" />
+                              {variant.images.length > 0 ? `${variant.images.length} image(s)` : 'Add variant images'}
+                              <input type="file" accept="image/*" multiple onChange={(e) => handleImageUpload(e, index)} className="hidden" disabled={uploading} />
+                            </label>
+                          </div>
+                          <div className="flex gap-1">
+                            {variant.images.slice(0, 3).map((img, ii) => (
+                              <div key={ii} className="relative w-8 h-8">
+                                <Image src={img} alt="" fill className="object-cover rounded" />
+                                <button type="button" onClick={() => setVariants((prev) => prev.map((v, vi) => vi === index ? { ...v, images: v.images.filter((_, iii) => iii !== ii) } : v))} className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 text-white rounded-full flex items-center justify-center">
+                                  <X className="h-2 w-2" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => removeVariant(index)} className="text-red-500 hover:bg-red-50">
+                            <X className="h-4 w-4" />
+                          </Button>
                         </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Price (₹) *</Label>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="0"
-                            value={variant.price}
-                            onChange={(e) => updateVariant(index, 'price', e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">MRP (₹)</Label>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="0"
-                            value={variant.compareAtPrice}
-                            onChange={(e) => updateVariant(index, 'compareAtPrice', e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Stock</Label>
-                          <Input
-                            type="number"
-                            min="0"
-                            placeholder="0"
-                            value={variant.stock}
-                            onChange={(e) => updateVariant(index, 'stock', e.target.value)}
-                          />
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeVariant(index)}
-                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
                       </div>
                     ))}
                   </div>
                 )}
               </CardContent>
             </Card>
-          </div>
 
-          <div className="space-y-6">
+            {/* Nutritional Facts */}
             <Card>
               <CardHeader>
-                <CardTitle>Organization</CardTitle>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2"><Leaf className="h-4 w-4 text-green-600" /> Nutritional Facts</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-normal text-muted-foreground">{nutritionActive ? 'Visible' : 'Hidden'}</span>
+                    <Toggle checked={nutritionActive} onChange={setNutritionActive} label="Show nutritional facts" />
+                  </div>
+                </CardTitle>
               </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2 pr-3 font-medium text-muted-foreground text-xs">Nutrient</th>
+                        <th className="text-left py-2 px-3 font-medium text-muted-foreground text-xs">Per 100g</th>
+                        <th className="text-left py-2 px-3 font-medium text-muted-foreground text-xs">Per Serving</th>
+                        <th className="w-8" />
+                      </tr>
+                    </thead>
+                    <tbody className="space-y-1">
+                      {nutritionRows.map((row, i) => (
+                        <tr key={i} className="border-b border-dashed">
+                          <td className="py-1.5 pr-3"><Input value={row.name} onChange={(e) => updateNutritionRow(i, 'name', e.target.value)} placeholder="e.g. Energy" className="h-7 text-xs" /></td>
+                          <td className="py-1.5 px-3"><Input value={row.per100g} onChange={(e) => updateNutritionRow(i, 'per100g', e.target.value)} placeholder="0 kcal" className="h-7 text-xs" /></td>
+                          <td className="py-1.5 px-3"><Input value={row.perServing} onChange={(e) => updateNutritionRow(i, 'perServing', e.target.value)} placeholder="0 kcal" className="h-7 text-xs" /></td>
+                          <td className="py-1.5"><button type="button" onClick={() => removeNutritionRow(i)} className="p-1 hover:text-destructive"><X className="h-3.5 w-3.5" /></button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={addNutritionRow} className="mt-3">
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Add Row
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Ingredients */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2"><Leaf className="h-4 w-4 text-emerald-600" /> Ingredients</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-normal text-muted-foreground">{ingredientsActive ? 'Visible' : 'Hidden'}</span>
+                    <Toggle checked={ingredientsActive} onChange={setIngredientsActive} label="Show ingredients" />
+                  </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <textarea
+                  value={ingredients}
+                  onChange={(e) => setIngredients(e.target.value)}
+                  placeholder="List all ingredients here. E.g. Pure A2 Cow Milk (100%)"
+                  rows={3}
+                  className="w-full text-sm border border-input rounded-md px-3 py-2 resize-y outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                />
+              </CardContent>
+            </Card>
+
+            {/* Allergen */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-500" /> Allergen Declaration</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-normal text-muted-foreground">{allergenActive ? 'Visible' : 'Hidden'}</span>
+                    <Toggle checked={allergenActive} onChange={setAllergenActive} label="Show allergen info" />
+                  </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <textarea
+                  value={allergen}
+                  onChange={(e) => setAllergen(e.target.value)}
+                  placeholder="E.g. Contains milk and dairy products. Manufactured in a facility that handles nuts."
+                  rows={3}
+                  className="w-full text-sm border border-input rounded-md px-3 py-2 resize-y outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                />
+              </CardContent>
+            </Card>
+
+            {/* SEO */}
+            <Card>
+              <CardHeader><CardTitle className="flex items-center gap-2"><Globe className="h-4 w-4" /> SEO</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>SEO Title</Label>
+                  <Input value={formData.seoTitle} onChange={(e) => set('seoTitle', e.target.value)} placeholder="Defaults to product name if empty" />
+                  <p className="text-xs text-muted-foreground">{formData.seoTitle.length}/60 characters</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>SEO Description</Label>
+                  <textarea
+                    value={formData.seoDescription}
+                    onChange={(e) => set('seoDescription', e.target.value)}
+                    placeholder="Brief description for search engines (150–160 chars)"
+                    rows={3}
+                    className="w-full text-sm border border-input rounded-md px-3 py-2 resize-none outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  />
+                  <p className="text-xs text-muted-foreground">{formData.seoDescription.length}/160 characters</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Keywords</Label>
+                  <Input value={formData.seoKeywords} onChange={(e) => set('seoKeywords', e.target.value)} placeholder="bilona ghee, a2 ghee, wood pressed oil" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5"><Link2 className="h-3.5 w-3.5" /> Canonical URL</Label>
+                  <Input value={formData.canonicalUrl} onChange={(e) => set('canonicalUrl', e.target.value)} placeholder="https://naturelitefoods.com/products/..." />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Related Products */}
+            <Card>
+              <CardHeader><CardTitle className="flex items-center gap-2"><ShoppingBag className="h-4 w-4" /> Related Products</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Search to add related products (shown on product page)</Label>
+                  <Input placeholder="Search products…" value={relatedSearch} onChange={(e) => setRelatedSearch(e.target.value)} />
+                  {searchResults && searchResults.length > 0 && relatedSearch && (
+                    <div className="border rounded-lg divide-y max-h-40 overflow-y-auto">
+                      {(searchResults as Product[]).map((p) => (
+                        <button key={p._id} type="button" onClick={() => addRelated(p)} className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 flex items-center justify-between">
+                          <span>{p.name}</span>
+                          <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {relatedProducts.map((p) => (
+                      <span key={p.id} className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-1 rounded-full">
+                        {p.name}
+                        <button type="button" onClick={() => removeRelated(p.id)}><X className="h-3 w-3" /></button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-2 border-t">
+                  <Label className="text-xs text-muted-foreground">Upsell / Cross-sell Products</Label>
+                  <Input placeholder="Search products…" value={upsellSearch} onChange={(e) => setUpsellSearch(e.target.value)} />
+                  {upsellResults && upsellResults.length > 0 && upsellSearch && (
+                    <div className="border rounded-lg divide-y max-h-40 overflow-y-auto">
+                      {(upsellResults as Product[]).map((p) => (
+                        <button key={p._id} type="button" onClick={() => addUpsell(p)} className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 flex items-center justify-between">
+                          <span>{p.name}</span>
+                          <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {upsellProducts.map((p) => (
+                      <span key={p.id} className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full">
+                        {p.name}
+                        <button type="button" onClick={() => removeUpsell(p.id)}><X className="h-3 w-3" /></button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Right sidebar */}
+          <div className="space-y-6">
+            <Card>
+              <CardHeader><CardTitle>Organization</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label>Category *</Label>
-                  <Select
-                    value={formData.category}
-                    onValueChange={(value) => setFormData({ ...formData, category: value })}
-                  >
+                  <Select value={formData.category} onValueChange={(value) => set('category', value)}>
                     <SelectTrigger className={getError('category') ? 'border-red-500' : ''}>
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
                       {categories?.items.map((cat) => (
-                        <SelectItem key={cat._id} value={cat._id}>
-                          {cat.name}
-                        </SelectItem>
+                        <SelectItem key={cat._id} value={cat._id}>{cat.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {getError('category') && (
-                    <p className="text-sm text-red-500">{getError('category')}</p>
-                  )}
+                  {getError('category') && <p className="text-sm text-red-500">{getError('category')}</p>}
                 </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="tags">Tags</Label>
-                  <Input
-                    id="tags"
-                    value={formData.tags}
-                    onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-                    placeholder="Comma separated tags"
-                  />
+                  <Input id="tags" value={formData.tags} onChange={(e) => set('tags', e.target.value)} placeholder="Comma separated tags" />
                 </div>
               </CardContent>
             </Card>
 
             <Card>
-              <CardHeader>
-                <CardTitle>Status</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle>Status</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="isActive"
-                    checked={formData.isActive}
-                    onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                    className="rounded"
-                  />
-                  <Label htmlFor="isActive">Active (visible to customers)</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="isActive">Active (visible)</Label>
+                  <Toggle checked={formData.isActive} onChange={(v) => set('isActive', v)} label="Active" />
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="isFeatured"
-                    checked={formData.isFeatured}
-                    onChange={(e) => setFormData({ ...formData, isFeatured: e.target.checked })}
-                    className="rounded"
-                  />
-                  <Label htmlFor="isFeatured">Featured product</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="isFeatured">Featured</Label>
+                  <Toggle checked={formData.isFeatured} onChange={(v) => set('isFeatured', v)} label="Featured" />
                 </div>
               </CardContent>
             </Card>
 
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={createMutation.isPending}
-            >
-              {createMutation.isPending ? 'Creating...' : 'Create Product'}
+            <Card>
+              <CardHeader><CardTitle>Stock</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label>Track stock</Label>
+                  <Toggle checked={formData.trackStock} onChange={(v) => set('trackStock', v)} label="Track stock" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Stock</Label>
+                    <Input type="number" min="0" value={formData.stock} onChange={(e) => set('stock', e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Low stock at</Label>
+                    <Input type="number" min="0" value={formData.lowStockThreshold} onChange={(e) => set('lowStockThreshold', e.target.value)} />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Button type="submit" className="w-full" disabled={createMutation.isPending}>
+              {createMutation.isPending ? 'Creating…' : 'Create Product'}
             </Button>
           </div>
         </div>

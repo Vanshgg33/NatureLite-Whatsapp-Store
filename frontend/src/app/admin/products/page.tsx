@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, Search, Package, Tag, X, CheckSquare } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Package, Tag, X, CheckSquare, Download, Upload, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Header } from '@/components/layout/header';
@@ -15,16 +15,30 @@ import { api } from '@/lib/api';
 import { formatCurrency, getProductTotalStock } from '@/lib/utils';
 import { Product, Category } from '@/types';
 
+type SortField = 'name' | 'sku' | 'price' | 'stock' | 'isActive' | 'createdAt';
+type SortDir = 'asc' | 'desc';
+
+function SortIcon({ field, current, dir }: { field: SortField; current: SortField; dir: SortDir }) {
+  if (field !== current) return <ArrowUpDown className="ml-1 h-3.5 w-3.5 opacity-30 inline" />;
+  return dir === 'asc'
+    ? <ArrowUp className="ml-1 h-3.5 w-3.5 inline text-primary" />
+    : <ArrowDown className="ml-1 h-3.5 w-3.5 inline text-primary" />;
+}
+
 export default function ProductsPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkCategoryId, setBulkCategoryId] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [sortBy, setSortBy] = useState<SortField>('createdAt');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [exporting, setExporting] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: rawData, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['products', page, search],
-    queryFn: () => api.getProducts({ page, limit: 20, search }),
+    queryKey: ['products', page, search, filterCategory, sortBy, sortDir],
+    queryFn: () => api.getProducts({ page, limit: 20, search, category: filterCategory || undefined, sortBy, sortOrder: sortDir }),
   });
 
   const { data: categories } = useQuery({
@@ -75,14 +89,41 @@ export default function ProductsPage() {
   });
 
   const handleDelete = (product: Product) => {
-    if (confirm(`Are you sure you want to delete "${product.name}"?`)) {
-      deleteMutation.mutate(product._id);
-    }
+    if (confirm(`Delete "${product.name}"?`)) deleteMutation.mutate(product._id);
   };
 
   const handleBulkCategory = () => {
     if (!bulkCategoryId || selected.size === 0) return;
     bulkCategoryMutation.mutate({ productIds: Array.from(selected), categoryId: bulkCategoryId });
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const csv = await api.exportProductsCsv(filterCategory || undefined);
+      const catName = categoryList.find((c) => c._id === filterCategory)?.name;
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = catName ? `products-${catName.toLowerCase().replace(/\s+/g, '-')}.csv` : 'products.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Export failed');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const toggleSort = (field: SortField) => {
+    if (sortBy === field) {
+      setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortDir('asc');
+    }
+    setPage(1);
   };
 
   const allIds = items.map((p) => p._id);
@@ -91,23 +132,17 @@ export default function ProductsPage() {
 
   const toggleAll = () => {
     if (allSelected) {
-      setSelected((prev) => {
-        const next = new Set(prev);
-        allIds.forEach((id) => next.delete(id));
-        return next;
-      });
+      setSelected((prev) => { const next = new Set(prev); allIds.forEach((id) => next.delete(id)); return next; });
     } else {
       setSelected((prev) => new Set(Array.from(prev).concat(allIds)));
     }
   };
 
   const toggleOne = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+    setSelected((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
   };
+
+  const thClass = 'cursor-pointer select-none hover:text-foreground transition-colors whitespace-nowrap';
 
   return (
     <div>
@@ -115,11 +150,20 @@ export default function ProductsPage() {
         title="Products"
         description="Manage your product catalog"
         action={
-          <Link href="/admin/products/new">
-            <Button>
-              <Plus className="mr-2 h-4 w-4" /> Add Product
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting}>
+              <Download className="mr-1.5 h-4 w-4" />
+              {exporting ? 'Exporting…' : 'Export CSV'}
             </Button>
-          </Link>
+            <Link href="/admin/products/import">
+              <Button variant="outline" size="sm">
+                <Upload className="mr-1.5 h-4 w-4" /> Import CSV
+              </Button>
+            </Link>
+            <Link href="/admin/products/new">
+              <Button><Plus className="mr-2 h-4 w-4" /> Add Product</Button>
+            </Link>
+          </div>
         }
       />
 
@@ -143,18 +187,10 @@ export default function ProductsPage() {
                   <option key={cat._id} value={cat._id}>{cat.name}</option>
                 ))}
               </select>
-              <Button
-                size="sm"
-                disabled={!bulkCategoryId || bulkCategoryMutation.isPending}
-                onClick={handleBulkCategory}
-              >
+              <Button size="sm" disabled={!bulkCategoryId || bulkCategoryMutation.isPending} onClick={handleBulkCategory}>
                 {bulkCategoryMutation.isPending ? 'Updating…' : 'Apply'}
               </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setSelected(new Set())}
-              >
+              <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -163,22 +199,41 @@ export default function ProductsPage() {
 
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center gap-4 mb-6">
-              <div className="relative flex-1 max-w-sm">
+            <div className="flex items-center gap-3 mb-6 flex-wrap">
+              <div className="relative flex-1 min-w-[200px] max-w-sm">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                 <Input
                   type="search"
                   placeholder="Search products..."
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                   className="pl-9"
                 />
               </div>
+              <select
+                value={filterCategory}
+                onChange={(e) => { setFilterCategory(e.target.value); setPage(1); }}
+                className="text-sm border rounded-lg px-3 py-2 bg-background outline-none focus:ring-2 focus:ring-primary/30 min-w-[160px]"
+              >
+                <option value="">All categories</option>
+                {categoryList.map((cat) => (
+                  <option key={cat._id} value={cat._id}>{cat.name}</option>
+                ))}
+              </select>
+              {filterCategory && (
+                <button
+                  type="button"
+                  onClick={() => { setFilterCategory(''); setPage(1); }}
+                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                >
+                  <X className="h-3.5 w-3.5" /> Clear filter
+                </button>
+              )}
             </div>
 
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
               </div>
             ) : isError ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -187,11 +242,9 @@ export default function ProductsPage() {
                 </div>
                 <h3 className="text-sm font-medium">Unable to load products</h3>
                 <p className="text-sm text-muted-foreground max-w-sm mb-4">
-                  {error instanceof Error ? error.message : 'Check your connection and that the API is running.'}
+                  {error instanceof Error ? error.message : 'Check your connection.'}
                 </p>
-                <Button variant="outline" onClick={() => refetch()}>
-                  Try again
-                </Button>
+                <Button variant="outline" onClick={() => refetch()}>Try again</Button>
               </div>
             ) : data?.items.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -221,12 +274,22 @@ export default function ProductsPage() {
                           aria-label="Select all"
                         />
                       </TableHead>
-                      <TableHead className="w-12"></TableHead>
-                      <TableHead>Product</TableHead>
-                      <TableHead>SKU</TableHead>
-                      <TableHead>Price</TableHead>
-                      <TableHead>Stock</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead className="w-12" />
+                      <TableHead className={thClass} onClick={() => toggleSort('name')}>
+                        Product <SortIcon field="name" current={sortBy} dir={sortDir} />
+                      </TableHead>
+                      <TableHead className={thClass} onClick={() => toggleSort('sku')}>
+                        SKU <SortIcon field="sku" current={sortBy} dir={sortDir} />
+                      </TableHead>
+                      <TableHead className={thClass} onClick={() => toggleSort('price')}>
+                        Price <SortIcon field="price" current={sortBy} dir={sortDir} />
+                      </TableHead>
+                      <TableHead className={thClass} onClick={() => toggleSort('stock')}>
+                        Stock <SortIcon field="stock" current={sortBy} dir={sortDir} />
+                      </TableHead>
+                      <TableHead className={thClass} onClick={() => toggleSort('isActive')}>
+                        Status <SortIcon field="isActive" current={sortBy} dir={sortDir} />
+                      </TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -235,10 +298,7 @@ export default function ProductsPage() {
                       const totalStock = getProductTotalStock(product);
                       const isChecked = selected.has(product._id);
                       return (
-                        <TableRow
-                          key={product._id}
-                          className={isChecked ? 'bg-primary/5' : undefined}
-                        >
+                        <TableRow key={product._id} className={isChecked ? 'bg-primary/5' : undefined}>
                           <TableCell>
                             <input
                               type="checkbox"
@@ -251,8 +311,8 @@ export default function ProductsPage() {
                           <TableCell>
                             {product.images?.[0] ? (
                               <Image
-                                src={product.images?.[0] as string}
-                                alt={product.name}
+                                src={product.images[0] as string}
+                                alt={product.imageAlts?.[0] || product.name}
                                 width={40}
                                 height={40}
                                 className="rounded-md object-cover"
@@ -278,6 +338,11 @@ export default function ProductsPage() {
                               {product.compareAtPrice && (
                                 <p className="text-xs text-muted-foreground line-through">
                                   {formatCurrency(product.compareAtPrice)}
+                                </p>
+                              )}
+                              {product.specialOfferActive && product.specialOfferPrice && (
+                                <p className="text-xs text-green-600 font-medium">
+                                  {product.specialOfferLabel || 'Offer'}: {formatCurrency(product.specialOfferPrice)}
                                 </p>
                               )}
                             </div>
@@ -327,24 +392,13 @@ export default function ProductsPage() {
                 {data && data.totalPages > 1 && (
                   <div className="flex items-center justify-between mt-6">
                     <p className="text-sm text-muted-foreground">
-                      Showing {(page - 1) * 20 + 1} to {Math.min(page * 20, data.total)} of{' '}
-                      {data.total} products
+                      Showing {(page - 1) * 20 + 1}–{Math.min(page * 20, data.total)} of {data.total} products
                     </p>
                     <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setPage((p) => Math.max(1, p - 1))}
-                        disabled={!data.hasPrevious}
-                      >
+                      <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={!data.hasPrevious}>
                         Previous
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setPage((p) => p + 1)}
-                        disabled={!data.hasNext}
-                      >
+                      <Button variant="outline" size="sm" onClick={() => setPage((p) => p + 1)} disabled={!data.hasNext}>
                         Next
                       </Button>
                     </div>

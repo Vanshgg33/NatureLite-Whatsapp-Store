@@ -3,6 +3,7 @@
 import { useRef, useState, useEffect } from 'react';
 import { motion, useInView } from 'framer-motion';
 import { Users, Leaf, Truck, Award, Star, BadgeCheck } from 'lucide-react';
+import { ScrollReveal } from '@/components/ui/scroll-reveal';
 
 function useCountUp(end: number, duration: number = 2000, start: boolean = false) {
   const [count, setCount] = useState(0);
@@ -87,14 +88,14 @@ export default function SocialProofSection() {
       {/* Stats band */}
       <div className="py-8 lg:py-10" style={{ borderBottom: '1px solid rgba(26,82,16,0.08)' }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-6">
+          <ScrollReveal className="text-center mb-6">
             <p style={{ fontSize: 10, letterSpacing: '0.30em', textTransform: 'uppercase', color: '#a07010', fontFamily: 'monospace', marginBottom: 8 }}>
               Our Impact
             </p>
             <h2 className="font-display text-2xl sm:text-3xl font-bold" style={{ color: '#0b1c08', letterSpacing: '-0.02em' }}>
               Trusted by Families Across India
             </h2>
-          </div>
+          </ScrollReveal>
           <StatsRow />
         </div>
       </div>

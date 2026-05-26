@@ -488,6 +488,15 @@ class ApiClient {
     return response.data.data;
   }
 
+  async checkSkuExists(sku: string): Promise<boolean> {
+    try {
+      await this.client.get(`/products/sku/${encodeURIComponent(sku)}`);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async getFeaturedProducts(limit: number = 10): Promise<Product[]> {
     const response = await this.client.get<ApiResponse<Product[]>>(`/products/featured?limit=${limit}`);
     return response.data.data;
@@ -524,6 +533,17 @@ class ApiClient {
 
   async bulkUpdateProductCategory(productIds: string[], categoryId: string): Promise<{ modifiedCount: number }> {
     const res = await this.client.patch<ApiResponse<{ modifiedCount: number }>>('/products/bulk-category', { productIds, categoryId });
+    return res.data.data;
+  }
+
+  async exportProductsCsv(categoryId?: string): Promise<string> {
+    const params = categoryId ? { category: categoryId } : {};
+    const res = await this.client.get<string>('/products/export/csv', { params, responseType: 'text' });
+    return res.data;
+  }
+
+  async importProductsCsv(rows: Record<string, string>[], defaultCategoryId: string): Promise<{ created: number; skipped: number; errors: string[] }> {
+    const res = await this.client.post<ApiResponse<{ created: number; skipped: number; errors: string[] }>>('/products/import/csv', { rows, defaultCategoryId });
     return res.data.data;
   }
 

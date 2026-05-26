@@ -28,7 +28,12 @@ export function WhatsAppFab() {
   if (dismissed) return null;
 
   return (
-    <div className="fixed z-[44]" style={{ bottom: 28, right: 20 }}>
+    <motion.div
+      className="fixed z-[44]"
+      style={{ bottom: 28, right: 20 }}
+      animate={{ y: [0, -6, 0] }}
+      transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+    >
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
         {/* Label tooltip */}
         <AnimatePresence>
@@ -126,6 +131,6 @@ export function WhatsAppFab() {
           100% { transform: scale(1.65); opacity: 0; }
         }
       `}} />
-    </div>
+    </motion.div>
   );
 }

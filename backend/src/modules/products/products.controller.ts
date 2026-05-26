@@ -9,7 +9,9 @@ import {
   Param,
   Query,
   UseGuards,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ProductsService } from './products.service';
 import {
   CreateProductDto,
@@ -125,5 +127,27 @@ export class ProductsController {
   async delete(@Param('id') id: string): Promise<{ message: string }> {
     await this.productsService.delete(id);
     return { message: 'Product deleted successfully' };
+  }
+
+  @Get('export/csv')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  async exportCsv(
+    @Query('category') category: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
+    const csv = await this.productsService.exportToCsv(category);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="products.csv"');
+    res.send(csv);
+  }
+
+  @Post('import/csv')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  async importCsv(
+    @Body() body: { rows: Record<string, string>[]; defaultCategoryId: string },
+  ): Promise<{ created: number; skipped: number; errors: string[] }> {
+    return this.productsService.importFromCsvRows(body.rows, body.defaultCategoryId);
   }
 }
