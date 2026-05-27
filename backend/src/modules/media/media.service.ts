@@ -1,7 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
-import * as FormDataNode from 'form-data';
 import axios from 'axios';
 import { v2 as cloudinary, UploadApiResponse, UploadApiErrorResponse } from 'cloudinary';
 import { CloudinaryConfig } from '../../config/configuration';
@@ -178,35 +177,39 @@ export class MediaService {
       .update(paramsToSign + this.apiSecret)
       .digest('hex');
 
-    const form = new FormDataNode();
-    form.append('file', file.buffer, { filename: file.originalname, contentType: file.mimetype });
+    const form = new FormData();
+    form.append('file', new Blob([new Uint8Array(file.buffer)], { type: file.mimetype }), file.originalname);
     form.append('api_key', this.apiKey);
     form.append('timestamp', String(timestamp));
     form.append('signature', signature);
     form.append('folder', folder);
 
     try {
-      const response = await axios.post<{
+      const res = await fetch(
+        `https://api.cloudinary.com/v1_1/${this.cloudName}/raw/upload`,
+        { method: 'POST', body: form },
+      );
+      const data = await res.json() as {
         public_id: string; url: string; secure_url: string;
         format: string; width: number; height: number; bytes: number;
-      }>(
-        `https://api.cloudinary.com/v1_1/${this.cloudName}/raw/upload`,
-        form,
-        { headers: form.getHeaders(), maxBodyLength: Infinity, maxContentLength: Infinity },
-      );
+        error?: { message: string };
+      };
+      if (!res.ok || data.error) {
+        throw new BadRequestException(data.error?.message || 'Cloudinary upload failed');
+      }
       return {
-        publicId: response.data.public_id,
-        url: response.data.url,
-        secureUrl: response.data.secure_url,
-        format: response.data.format,
-        width: response.data.width || 0,
-        height: response.data.height || 0,
-        bytes: response.data.bytes,
+        publicId: data.public_id,
+        url: data.url,
+        secureUrl: data.secure_url,
+        format: data.format,
+        width: data.width || 0,
+        height: data.height || 0,
+        bytes: data.bytes,
       };
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
-      this.logger.error('Video upload failed', msg || err);
-      throw new BadRequestException(msg || 'Failed to upload video');
+      const msg = err instanceof BadRequestException ? err.message : 'Failed to upload video';
+      this.logger.error('Video upload failed', msg);
+      throw err instanceof BadRequestException ? err : new BadRequestException(msg);
     }
   }
 
