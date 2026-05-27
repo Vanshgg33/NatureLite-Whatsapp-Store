@@ -278,7 +278,7 @@ export default function AdminChatbotPage() {
 
   return (
     <div className="flex flex-col h-screen bg-[#F7F5F0] dark:bg-background">
-      <Header title="AI Chatbot" description="Talk to your dashboard data intelligently" />
+      <Header title="AI - Aditya Intelligence" description="Talk to your dashboard data intelligently" />
 
       {/* Main Container */}
       <div className="flex-1 flex flex-col min-h-0 p-6">
@@ -295,7 +295,7 @@ export default function AdminChatbotPage() {
                   <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-white" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-[15px] text-gray-900 dark:text-white leading-tight">Naturelite AI Assistant</h3>
+                  <h3 className="font-semibold text-[15px] text-gray-900 dark:text-white leading-tight">AI - Aditya Intelligence</h3>
                   <span className="text-[10px] text-muted-foreground font-mono">powered by gemini-2.0-flash</span>
                 </div>
               </div>
@@ -325,7 +325,7 @@ export default function AdminChatbotPage() {
                     <div className="h-16 w-16 rounded-full bg-brand-green/5 border border-brand-green/20 flex items-center justify-center mb-5 animate-bounce">
                       <Bot className="h-8 w-8 text-brand-green" />
                     </div>
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Welcome to Naturelite AI!</h2>
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Welcome to AI - Aditya Intelligence!</h2>
                     <p className="text-sm text-muted-foreground mb-8">
                       I have complete dynamic access to your admin logins count, low stock inventories, incomplete support chats, and order revenue. Feel free to click any suggestion below to test me instantly!
                     </p>
@@ -456,7 +456,7 @@ export default function AdminChatbotPage() {
                 </div>
                 
                 <p className="text-xs leading-normal text-muted-foreground">
-                  Our custom query pipeline hooks directly into Naturelite's live databases. Hallucinations are actively disabled by supplying strict dynamic variables:
+                  Our custom query pipeline hooks directly into your live databases. Hallucinations are actively disabled by supplying strict dynamic variables:
                 </p>
 
                 <div className="space-y-3 pt-2">
