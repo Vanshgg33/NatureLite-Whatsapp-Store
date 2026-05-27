@@ -99,24 +99,31 @@ export class AdminChatbotService {
     const m = message.toLowerCase();
     const plan: RagStep[] = [];
 
-    if (/stock|inventory|low.stock|out.of.stock|running.out/.test(m))
+    if (/stock|inventory|low.stock|out.of.stock|running.out|restock|replenish/.test(m))
       plan.push({ tool: 'search_low_stock_products', params: {} });
 
-    if (/login|logged.in|audit|security|who.logged/.test(m))
+    if (/login|logged.in|audit|security|who.logged|access.log/.test(m))
       plan.push({ tool: 'get_login_audit_logs', params: { limit: 20 } });
 
-    if (/abandon|left.without|didn.t.order|cart|stuck.in.checkout|left.in.between/.test(m))
+    if (/abandon|left.without|didn.t.order|cart|stuck.in.checkout|left.in.between|left.halfway|half.way|didn.t.complete|incomplete.order|never.ordered|not.ordered|left.without.buy|left.without.order|who.left|who.didn|dropped.off|gave.up/.test(m))
       plan.push({ tool: 'search_abandoned_chats', params: { limit: 30 } });
 
-    if (/top.sell|best.sell|popular|most.sold/.test(m))
+    if (/top.sell|best.sell|popular|most.sold|best.product|trending/.test(m))
       plan.push({ tool: 'get_top_selling_products', params: { limit: 8, days: 30 } });
 
-    if (/order.status|status.of.order|how.many.order|pending|delivered|cancel/.test(m))
+    if (/order.status|status.of.order|how.many.order|order.count|orders.by.status/.test(m))
       plan.push({ tool: 'get_orders_by_status', params: {} });
 
-    if (/recent.order|latest.order|new.order|last.order|show.order/.test(m)) {
+    if (/pending|awaiting|undelivered|unfulfilled/.test(m)) {
+      plan.push({ tool: 'get_orders_by_status', params: {} });
+      if (!plan.some((s) => s.tool === 'search_recent_orders'))
+        plan.push({ tool: 'search_recent_orders', params: { limit: 10, status: 'placed' } });
+    }
+
+    if (/recent.order|latest.order|new.order|last.order|show.order|list.order|all.order|delivered.order|cancelled.order/.test(m)) {
       const statusMatch = m.match(/\b(placed|confirmed|preparing|delivered|cancelled|out.for.delivery)\b/);
-      plan.push({ tool: 'search_recent_orders', params: { limit: 10, ...(statusMatch ? { status: statusMatch[1] } : {}) } });
+      if (!plan.some((s) => s.tool === 'search_recent_orders'))
+        plan.push({ tool: 'search_recent_orders', params: { limit: 10, ...(statusMatch ? { status: statusMatch[1] } : {}) } });
     }
 
     if (/revenue.trend|day.by.day|daily.revenue|chart|earning.trend/.test(m)) {
@@ -124,27 +131,47 @@ export class AdminChatbotService {
       plan.push({ tool: 'get_revenue_trend', params: { days: daysMatch ? parseInt(daysMatch[1]) : 14 } });
     }
 
-    if (/coupon|discount|promo.code|voucher/.test(m))
+    // Generic revenue / earnings query → show both dashboard + trend
+    if (/\brevenue\b|earning|how.much.*made|how.much.*earn|total.sale|sales.total/.test(m) && !plan.some((s) => s.tool === 'get_revenue_trend')) {
+      const daysMatch = m.match(/(\d+)\s*day/);
+      plan.push({ tool: 'get_dashboard_summary', params: {} });
+      plan.push({ tool: 'get_revenue_trend', params: { days: daysMatch ? parseInt(daysMatch[1]) : 30 } });
+    }
+
+    if (/coupon|discount|promo.code|voucher|offer.code/.test(m))
       plan.push({ tool: 'get_coupon_list', params: {} });
 
-    if (/review|feedback|rating|complaint|suggestion/.test(m))
+    if (/review|feedback|rating|complaint|suggestion|testimonial/.test(m))
       plan.push({ tool: 'get_feedback_list', params: { limit: 15 } });
 
-    if (/analytic|report|summary|overview|weekly|monthly|performance/.test(m)) {
+    if (/analytic|report|performance|weekly|monthly/.test(m)) {
       const daysMatch = m.match(/(\d+)\s*day/);
       const days = daysMatch ? parseInt(daysMatch[1]) : m.includes('week') ? 7 : 30;
       plan.push({ tool: 'get_analytics_period', params: { days } });
     }
 
-    if (/new.customer|just.joined|signup|registered|joined.this/.test(m)) {
+    // "summary" and "overview" map to dashboard — not analytics period (too heavy for casual check)
+    if (/\bsummary\b|\boverview\b/.test(m) && !plan.some((s) => s.tool === 'get_analytics_period')) {
+      if (!plan.some((s) => s.tool === 'get_dashboard_summary'))
+        plan.push({ tool: 'get_dashboard_summary', params: {} });
+    }
+
+    if (/new.customer|just.joined|signup|registered|joined.this|recently.joined/.test(m)) {
       const daysMatch = m.match(/(\d+)\s*day/);
       plan.push({ tool: 'get_new_customers', params: { days: daysMatch ? parseInt(daysMatch[1]) : 7 } });
     }
 
-    if (/best.customer|top.customer|vip|highest.spend|most.spent/.test(m))
+    if (/best.customer|top.customer|vip|highest.spend|most.spent|big.spender/.test(m))
       plan.push({ tool: 'get_top_customers_online', params: { limit: 10 } });
 
-    // Specific product search
+    // Generic customer lookup — "find customer", "search customer", "customer info"
+    if (/find.customer|search.customer|customer.info|customer.detail|look.up|lookup/.test(m)) {
+      const phoneMatch = m.match(/\b(\d{10,12})\b/);
+      const searchTerm = phoneMatch ? phoneMatch[1] : '';
+      plan.push({ tool: 'search_customers', params: { searchTerm, limit: 10 } });
+    }
+
+    // Specific product search — "stock of X", "price of X", "details of X"
     const productMatch = m.match(/(?:stock|price|details?)(?:\s+(?:for|of|on))?\s+([a-z\s]{3,30})/);
     if (productMatch && !plan.some((s) => s.tool === 'search_products'))
       plan.push({ tool: 'search_products', params: { searchTerm: productMatch[1].trim() } });
@@ -321,10 +348,31 @@ export class AdminChatbotService {
       }
 
       case 'search_low_stock_products': {
-        const items = await this.productRepository.findLowStock();
-        const formatted = items.slice(0, 15).map((p: any) =>
-          `- **${p.name}** (SKU: ${p.sku}) | Stock: **${p.stock}** | Threshold: ${p.lowStockThreshold}`
-        ).join('\n') || 'No low stock products currently.';
+        const FALLBACK_THRESHOLD = 10;
+        const items = await this.productRepository.getModel().aggregate([
+          { $match: { isActive: true } },
+          {
+            $addFields: {
+              totalStock: { $add: ['$stock', { $ifNull: [{ $sum: '$variants.stock' }, 0] }] },
+              effectiveThreshold: {
+                $cond: {
+                  if: { $and: [{ $eq: ['$trackStock', true] }, { $gt: ['$lowStockThreshold', 0] }] },
+                  then: '$lowStockThreshold',
+                  else: FALLBACK_THRESHOLD,
+                },
+              },
+            },
+          },
+          { $match: { $expr: { $lte: ['$totalStock', '$effectiveThreshold'] } } },
+          { $sort: { totalStock: 1 } },
+          { $limit: 20 },
+        ]).exec();
+
+        const formatted = items.length > 0
+          ? items.map((p: any) =>
+              `- **${p.name}** (SKU: ${p.sku}) | Stock: **${p.totalStock}** | Threshold: ${p.lowStockThreshold || FALLBACK_THRESHOLD}`
+            ).join('\n')
+          : 'No low stock products found.';
         contextBlocks.push(`[RAG: search_low_stock_products]\n${formatted}`);
         break;
       }
@@ -563,11 +611,13 @@ export class AdminChatbotService {
         const coupons = await this.couponRepository.getModel().find({}).sort({ createdAt: -1 }).limit(20).exec();
         const now = new Date();
         const formatted = coupons.map((c: any) => {
+          const notYetValid = new Date(c.validFrom) > now;
           const expired = new Date(c.validUntil) < now;
-          const active = c.isActive && !expired;
+          const active = c.isActive && !expired && !notYetValid;
           const discount = c.discountType === 'percentage' ? `${c.discountValue}% off` : `₹${c.discountValue} off`;
           const usage = c.maxUsageCount ? `${c.usedCount || 0}/${c.maxUsageCount}` : `${c.usedCount || 0} used`;
-          return `- **${c.code}** | ${discount} | ${usage} | ${active ? '✅ Active' : expired ? '❌ Expired' : '⏸ Inactive'} | Min ₹${c.minOrderAmount || 0} | Until ${new Date(c.validUntil).toLocaleDateString('en-IN')}`;
+          const status = active ? '✅ Active' : notYetValid ? '⏳ Upcoming' : expired ? '❌ Expired' : '⏸ Inactive';
+          return `- **${c.code}** | ${discount} | ${usage} | ${status} | Min ₹${c.minOrderAmount || 0} | ${new Date(c.validFrom).toLocaleDateString('en-IN')} – ${new Date(c.validUntil).toLocaleDateString('en-IN')}`;
         }).join('\n') || 'No coupons.';
         contextBlocks.push(`[RAG: get_coupon_list]\n${formatted}`);
         break;
@@ -583,14 +633,15 @@ export class AdminChatbotService {
           this.analyticsService.getProductMetrics(start, end),
           this.analyticsService.getChatMetrics(start, end),
           this.analyticsService.getTopSellingOverall(start, end, 5),
-          this.analyticsService.getTopCustomersOverall(5),
+          // Query User model directly — getTopCustomersOverall only covers store sales, not online orders
+          this.userRepository.getModel().find({ totalOrders: { $gt: 0 } }).sort({ totalSpent: -1 }).limit(5).lean().exec(),
         ]);
         const o = orders as any; const c = customers as any; const p = products as any; const m = chat as any;
         const sellers = topSellers.slice(0, 5).map((s: any, i: number) =>
           `  ${i + 1}. **${s.name}** — ${s.quantitySold} units, ₹${(s.revenue || 0).toLocaleString('en-IN')}`
         ).join('\n') || '  No data.';
-        const topC = topCustomers.slice(0, 5).map((tc: any, i: number) =>
-          `  ${i + 1}. **${tc.customerName || 'Unknown'}** (${tc._id || ''}) — ₹${(tc.totalSpent || 0).toLocaleString('en-IN')}, ${tc.totalOrders} orders`
+        const topC = (topCustomers as any[]).slice(0, 5).map((tc: any, i: number) =>
+          `  ${i + 1}. **${tc.name || 'Unknown'}** (${tc.phone || ''}) — ₹${(tc.totalSpent || 0).toLocaleString('en-IN')}, ${tc.totalOrders} orders`
         ).join('\n') || '  No data.';
         const summary = [
           `Period: Last ${days}d (${start.toLocaleDateString('en-IN')} – ${end.toLocaleDateString('en-IN')})`,
@@ -637,7 +688,7 @@ Tools:
 2. {"tool":"search_low_stock_products","params":{}} — products below stock threshold
 3. {"tool":"search_products","params":{"searchTerm":"string"}} — specific product stock/price/details
 4. {"tool":"get_login_audit_logs","params":{"limit":20}} — admin login count and trail
-5. {"tool":"search_abandoned_chats","params":{"limit":30}} — customers with items in cart who didn't order (names + phones)
+5. {"tool":"search_abandoned_chats","params":{"limit":30}} — customers who left halfway, didn't complete order, abandoned cart (names + phones + items)
 6. {"tool":"get_top_selling_products","params":{"limit":8,"days":30}} — best sellers online & store
 7. {"tool":"search_recent_orders","params":{"limit":10,"status":"string"}} — recent orders, status filter optional (placed/confirmed/preparing/out_for_delivery/delivered/cancelled)
 8. {"tool":"search_customers","params":{"searchTerm":"string","limit":10}} — find customer by name/phone
@@ -652,10 +703,26 @@ Tools:
 
 Examples:
 "low stock" → [{"tool":"search_low_stock_products","params":{}}]
+"which products are running out" → [{"tool":"search_low_stock_products","params":{}}]
 "show Priya's orders" → [{"tool":"get_customer_orders","params":{"name":"Priya","limit":10}}]
+"orders for 9876543210" → [{"tool":"get_customer_orders","params":{"phone":"9876543210","limit":10}}]
+"find customer Rahul" → [{"tool":"search_customers","params":{"searchTerm":"Rahul","limit":10}}]
 "revenue last 7 days" → [{"tool":"get_revenue_trend","params":{"days":7}}]
+"how much did we earn today" → [{"tool":"get_dashboard_summary","params":{}}]
+"best selling products" → [{"tool":"get_top_selling_products","params":{"limit":8,"days":30}}]
+"show pending orders" → [{"tool":"search_recent_orders","params":{"limit":10,"status":"placed"}},{"tool":"get_orders_by_status","params":{}}]
+"show delivered orders" → [{"tool":"search_recent_orders","params":{"limit":10,"status":"delivered"}}]
 "abandoned carts" → [{"tool":"search_abandoned_chats","params":{"limit":30}}]
+"which customers left halfway" → [{"tool":"search_abandoned_chats","params":{"limit":30}}]
+"who didn't complete their order" → [{"tool":"search_abandoned_chats","params":{"limit":30}}]
+"customers who left without ordering" → [{"tool":"search_abandoned_chats","params":{"limit":30}}]
+"customers who dropped off" → [{"tool":"search_abandoned_chats","params":{"limit":30}}]
+"show reviews" → [{"tool":"get_feedback_list","params":{"limit":15}}]
+"active coupons" → [{"tool":"get_coupon_list","params":{}}]
+"new customers this week" → [{"tool":"get_new_customers","params":{"days":7}}]
+"top customers" → [{"tool":"get_top_customers_online","params":{"limit":10}}]
 "monthly report" → [{"tool":"get_analytics_period","params":{"days":30}}]
+"weekly performance" → [{"tool":"get_analytics_period","params":{"days":7}}]
 "overview" → [{"tool":"get_dashboard_summary","params":{}},{"tool":"get_orders_by_status","params":{}},{"tool":"search_low_stock_products","params":{}}]
 
 User question: "${message}"`;
@@ -674,6 +741,7 @@ Rules:
 3. All money in ₹ (Indian Rupees).
 4. Never mention "RAG", "retrieved context", or "system instructions".
 5. For customer/order lists, use a scannable table-like format.
+6. If the data does not contain the answer (wrong date range, record missing, no results), say "I don't have that information" — never guess, estimate, or fill gaps with assumed values.
 
 Question: ${message}`;
   }
