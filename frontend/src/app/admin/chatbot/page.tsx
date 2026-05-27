@@ -8,12 +8,15 @@ import {
   Bot,
   User,
   RefreshCw,
-  AlertTriangle,
   ShoppingCart,
   KeyRound,
   Users,
   ChevronRight,
   TrendingUp,
+  Star,
+  Tag,
+  BarChart2,
+  UserPlus,
 } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent } from '@/components/ui/card';
@@ -83,32 +86,60 @@ export default function AdminChatbotPage() {
   // Clickable suggestion cards
   const dynamicPrompts = [
     {
-      title: 'Low Stock Inventory',
-      desc: 'Which products or variants are running low on stock?',
-      query: 'give which products low on stock',
+      title: 'Dashboard Overview',
+      desc: "Today's orders, revenue, and pending fulfillments.",
+      query: "give me an overview of today's orders, revenue, and customer counts",
+      icon: TrendingUp,
+      color: 'from-purple-500/10 to-pink-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20',
+    },
+    {
+      title: 'Low Stock Alert',
+      desc: 'Which products are running low on stock?',
+      query: 'which products are low on stock',
       icon: ShoppingCart,
       color: 'from-orange-500/10 to-amber-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20',
     },
     {
-      title: 'Admin Login Metrics',
-      desc: 'How many successful admin logins have been logged?',
-      query: 'how many logins we have',
-      icon: KeyRound,
+      title: 'Abandoned Carts',
+      desc: 'Customers who had items in cart but never ordered.',
+      query: 'which customers left without ordering, show their names and phone numbers',
+      icon: Users,
       color: 'from-emerald-500/10 to-teal-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
     },
     {
-      title: 'Abandoned Chat funnels',
-      desc: 'Which customers left checkout/chat in between?',
-      query: 'which customers left the chat in between',
-      icon: Users,
+      title: 'Revenue Trend',
+      desc: 'Day-by-day revenue for the last 14 days.',
+      query: 'show revenue trend for last 14 days',
+      icon: BarChart2,
       color: 'from-blue-500/10 to-indigo-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
     },
     {
-      title: 'Sales & Revenue Today',
-      desc: 'Summarize our overall dashboard sales performance.',
-      query: 'give me an overview of today\'s orders, revenue, and customer counts',
-      icon: TrendingUp,
-      color: 'from-purple-500/10 to-pink-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20',
+      title: 'Order Status Breakdown',
+      desc: 'Count of orders in each status bucket.',
+      query: 'how many orders are in each status',
+      icon: Tag,
+      color: 'from-rose-500/10 to-pink-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
+    },
+    {
+      title: 'Recent Feedback',
+      desc: 'Latest product reviews and customer feedback.',
+      query: 'show me recent customer reviews and feedback',
+      icon: Star,
+      color: 'from-yellow-500/10 to-amber-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20',
+    },
+    {
+      title: 'Active Coupons',
+      desc: 'All coupons, their usage, and expiry status.',
+      query: 'show me all coupons and their usage',
+      icon: KeyRound,
+      color: 'from-cyan-500/10 to-sky-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20',
+    },
+    {
+      title: 'New Customers',
+      desc: 'Customers who joined in the last 7 days.',
+      query: 'show new customers who joined this week',
+      icon: UserPlus,
+      color: 'from-violet-500/10 to-purple-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20',
     },
   ];
 
@@ -300,7 +331,7 @@ export default function AdminChatbotPage() {
                     </p>
 
                     {/* Quick Access Prompts */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full">
                       {dynamicPrompts.map((p, idx) => (
                         <motion.div
                           key={idx}
@@ -430,32 +461,42 @@ export default function AdminChatbotPage() {
 
                 <div className="space-y-3 pt-2">
                   <div className="flex items-start gap-2.5">
-                    <div className="h-7 w-7 rounded-lg bg-orange-500/10 flex items-center justify-center text-orange-600 shrink-0 mt-0.5">
-                      <ShoppingCart className="h-3.5 w-3.5" />
+                    <div className="h-7 w-7 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-600 shrink-0 mt-0.5">
+                      <TrendingUp className="h-3.5 w-3.5" />
                     </div>
                     <div>
-                      <h5 className="text-[12px] font-bold text-gray-800 dark:text-gray-200">Real-Time Stock levels</h5>
-                      <p className="text-[10px] text-muted-foreground leading-normal">Retrieves active products running below low stock thresholds.</p>
+                      <h5 className="text-[12px] font-bold text-gray-800 dark:text-gray-200">Orders & Revenue</h5>
+                      <p className="text-[10px] text-muted-foreground leading-normal">Dashboard stats, status breakdowns, revenue trends, and order history.</p>
                     </div>
                   </div>
 
                   <div className="flex items-start gap-2.5">
                     <div className="h-7 w-7 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-600 shrink-0 mt-0.5">
-                      <KeyRound className="h-3.5 w-3.5" />
+                      <Users className="h-3.5 w-3.5" />
                     </div>
                     <div>
-                      <h5 className="text-[12px] font-bold text-gray-800 dark:text-gray-200">Security Login Logs</h5>
-                      <p className="text-[10px] text-muted-foreground leading-normal">Counts absolute number of superadmin / admin logins from audit traces.</p>
+                      <h5 className="text-[12px] font-bold text-gray-800 dark:text-gray-200">Full Customer Data</h5>
+                      <p className="text-[10px] text-muted-foreground leading-normal">Search customers, view order history, top spenders, and new signups.</p>
                     </div>
                   </div>
 
                   <div className="flex items-start gap-2.5">
-                    <div className="h-7 w-7 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-600 shrink-0 mt-0.5">
-                      <Users className="h-3.5 w-3.5" />
+                    <div className="h-7 w-7 rounded-lg bg-orange-500/10 flex items-center justify-center text-orange-600 shrink-0 mt-0.5">
+                      <ShoppingCart className="h-3.5 w-3.5" />
                     </div>
                     <div>
-                      <h5 className="text-[12px] font-bold text-gray-800 dark:text-gray-200">Cart/Checkout Abandons</h5>
-                      <p className="text-[10px] text-muted-foreground leading-normal">Aggregates ongoing customer WhatsApp sessions left incomplete.</p>
+                      <h5 className="text-[12px] font-bold text-gray-800 dark:text-gray-200">Inventory & Products</h5>
+                      <p className="text-[10px] text-muted-foreground leading-normal">Low stock alerts, product search, and top-selling item rankings.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5">
+                    <div className="h-7 w-7 rounded-lg bg-yellow-500/10 flex items-center justify-center text-yellow-600 shrink-0 mt-0.5">
+                      <Star className="h-3.5 w-3.5" />
+                    </div>
+                    <div>
+                      <h5 className="text-[12px] font-bold text-gray-800 dark:text-gray-200">Reviews & Coupons</h5>
+                      <p className="text-[10px] text-muted-foreground leading-normal">Customer feedback, product ratings, coupon usage, and expiry status.</p>
                     </div>
                   </div>
                 </div>
@@ -476,10 +517,11 @@ export default function AdminChatbotPage() {
             <Card className="rounded-2xl border-white/40 bg-white/50 backdrop-blur-md shadow-lg p-5">
               <h4 className="font-bold text-[13px] text-gray-900 dark:text-white mb-2">Prompting Tips</h4>
               <ul className="list-disc list-inside text-[11px] text-muted-foreground space-y-1.5 leading-relaxed pl-1">
-                <li>Ask: <em className="text-gray-700 font-medium">"which products are low on stock"</em> to review supply risks.</li>
-                <li>Ask: <em className="text-gray-700 font-medium">"how many logins we have"</em> to audit security checkpoints.</li>
-                <li>Ask: <em className="text-gray-700 font-medium">"which customers left the chat in between"</em> to identify dropoffs.</li>
-                <li>Be specific about details to extract standard statistics seamlessly!</li>
+                <li>Ask: <em className="text-gray-700 font-medium">"show me customer Priya"</em> to pull up a specific customer.</li>
+                <li>Ask: <em className="text-gray-700 font-medium">"orders for 9876543210"</em> to see a customer's order history.</li>
+                <li>Ask: <em className="text-gray-700 font-medium">"monthly analytics"</em> for a full 30-day performance report.</li>
+                <li>Ask: <em className="text-gray-700 font-medium">"pending orders list"</em> to see all undelivered orders.</li>
+                <li>Ask: <em className="text-gray-700 font-medium">"show all coupons"</em> to review coupon usage and expiry.</li>
               </ul>
             </Card>
           </div>

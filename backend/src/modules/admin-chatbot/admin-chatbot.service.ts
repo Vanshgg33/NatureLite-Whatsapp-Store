@@ -4,6 +4,10 @@ import { ChatSessionRepository } from '../chatbot/repositories/chat-session.repo
 import { AuditLogRepository } from '../audit/repositories/audit-log.repository';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { OrderRepository } from '../orders/repositories/order.repository';
+import { UserRepository } from '../users/repositories/user.repository';
+import { FeedbackRepository } from '../feedback/repositories/feedback.repository';
+import { CouponRepository } from '../coupons/repositories/coupon.repository';
+import { CartRepository } from '../cart/repositories/cart.repository';
 
 @Injectable()
 export class AdminChatbotService {
@@ -15,6 +19,10 @@ export class AdminChatbotService {
     private readonly auditLogRepository: AuditLogRepository,
     private readonly analyticsService: AnalyticsService,
     private readonly orderRepository: OrderRepository,
+    private readonly userRepository: UserRepository,
+    private readonly feedbackRepository: FeedbackRepository,
+    private readonly couponRepository: CouponRepository,
+    private readonly cartRepository: CartRepository,
   ) {}
 
   async chat(message: string): Promise<{ reply: string }> {
@@ -27,40 +35,66 @@ export class AdminChatbotService {
 
     try {
       // Step 1: Query Planner
-      // Leverage Gemini's strict JSON response format to decide which tools are required to retrieve facts
       const plannerPrompt = `You are the Retrieval-Augmented Generation (RAG) Data Planner for the Naturelite E-Commerce Admin Dashboard.
-Based on the user's question, determine which data retrieval tools should be invoked to fetch the absolute factual database context required to answer accurately without hallucinating.
+Based on the user's question, determine which data retrieval tools should be invoked to fetch factual database context to answer accurately without hallucinating.
 
-Return ONLY a valid JSON array of objects representing the plan. Do not write any markdown, no code fences, no extra text. Just a raw JSON array.
-If no tools are relevant (e.g. greeting, social talk), return an empty array: []
+Return ONLY a valid JSON array of objects representing the plan. No markdown, no code fences, no extra text. Just a raw JSON array.
+If no tools are relevant (e.g. greeting), return an empty array: []
 
 Available Tools:
-1. {"tool": "get_dashboard_summary", "params": {}} - Best for: today/month orders, today/month revenue, active customers, general business growth.
-2. {"tool": "search_low_stock_products", "params": {}} - Best for: listing low stock or out of stock items, threshold alerts.
-3. {"tool": "search_products", "params": {"searchTerm": "string"}} - Best for: stock status, pricing, details, variants of specific items (e.g. "Ghee", "honey", "SKU").
-4. {"tool": "get_login_audit_logs", "params": {"limit": number}} - Best for: counting logins, listing recent admin logins, security checkpoint queries.
-5. {"tool": "search_abandoned_chats", "params": {"limit": number}} - Best for: finding customers who left the chat/checkout in between, incomplete sessions.
-6. {"tool": "get_top_selling_products", "params": {"limit": number, "days": number}} - Best for: listing top-selling, best-selling online delivery or physical store products.
-7. {"tool": "search_recent_orders", "params": {"limit": number, "status": "string"}} - Best for: recent orders list, orders by status (e.g. pending, delivered, placed).
+1. {"tool": "get_dashboard_summary", "params": {}} - Today/month orders, revenue, active customers, general business overview.
+2. {"tool": "search_low_stock_products", "params": {}} - Products running low or out of stock.
+3. {"tool": "search_products", "params": {"searchTerm": "string"}} - Stock, price, details of specific products by name/SKU.
+4. {"tool": "get_login_audit_logs", "params": {"limit": number}} - Admin login count and recent login audit trail.
+5. {"tool": "search_abandoned_chats", "params": {"limit": number}} - Customers who added items to cart but didn't complete the order. Returns name, phone number, cart total, and items. Best for: "who left without ordering", "abandoned carts", "customers stuck in checkout", "who had items in cart".
+6. {"tool": "get_top_selling_products", "params": {"limit": number, "days": number}} - Best-selling products online and in store.
+7. {"tool": "search_recent_orders", "params": {"limit": number, "status": "string"}} - Recent orders, optionally filtered by status (placed/confirmed/preparing/out_for_delivery/delivered/cancelled).
+8. {"tool": "search_customers", "params": {"searchTerm": "string", "limit": number}} - Find customers by name or phone number.
+9. {"tool": "get_top_customers_online", "params": {"limit": number}} - Top customers by total online order spending.
+10. {"tool": "get_customer_orders", "params": {"phone": "string", "name": "string", "limit": number}} - All orders placed by a specific customer. Provide "phone" if known, OR "name" if only the name is known (not both required).
+11. {"tool": "get_revenue_trend", "params": {"days": number}} - Day-by-day revenue and order count for last N days.
+12. {"tool": "get_orders_by_status", "params": {}} - Count of orders grouped by each status (placed, confirmed, preparing, delivered, cancelled, etc).
+13. {"tool": "get_feedback_list", "params": {"limit": number}} - Recent product reviews and customer feedback with ratings.
+14. {"tool": "get_coupon_list", "params": {}} - All active coupons, discount type, usage count, expiry.
+15. {"tool": "get_analytics_period", "params": {"days": number}} - Full analytics report for last N days: orders, revenue, customers, chat metrics.
+16. {"tool": "get_new_customers", "params": {"days": number}} - Customers who joined in the last N days.
 
 Examples:
 Question: "which products low on stock"
 Reply: [{"tool": "search_low_stock_products", "params": {}}]
 
-Question: "do we have Priya's cart or chat?"
-Reply: [{"tool": "search_abandoned_chats", "params": {"limit": 10}}]
+Question: "show me customer Priya"
+Reply: [{"tool": "search_customers", "params": {"searchTerm": "Priya", "limit": 5}}]
 
-Question: "check stock for Ghee"
-Reply: [{"tool": "search_products", "params": {"searchTerm": "Ghee"}}]
+Question: "what are orders for 9876543210"
+Reply: [{"tool": "get_customer_orders", "params": {"phone": "9876543210", "limit": 10}}]
 
-Question: "now tell me top selling product"
-Reply: [{"tool": "get_top_selling_products", "params": {"limit": 10, "days": 30}}]
+Question: "show Priya's orders"
+Reply: [{"tool": "get_customer_orders", "params": {"name": "Priya", "limit": 10}}]
 
-Question: "who left chat in between or cart abandoned"
-Reply: [{"tool": "search_abandoned_chats", "params": {"limit": 10}}]
+Question: "revenue trend last 7 days"
+Reply: [{"tool": "get_revenue_trend", "params": {"days": 7}}]
 
-Question: "recent order list"
-Reply: [{"tool": "search_recent_orders", "params": {"limit": 10}}]
+Question: "how many orders in each status"
+Reply: [{"tool": "get_orders_by_status", "params": {}}]
+
+Question: "show me all reviews"
+Reply: [{"tool": "get_feedback_list", "params": {"limit": 20}}]
+
+Question: "what coupons do we have"
+Reply: [{"tool": "get_coupon_list", "params": {}}]
+
+Question: "weekly analytics"
+Reply: [{"tool": "get_analytics_period", "params": {"days": 7}}]
+
+Question: "new customers this week"
+Reply: [{"tool": "get_new_customers", "params": {"days": 7}}]
+
+Question: "who are our best customers"
+Reply: [{"tool": "get_top_customers_online", "params": {"limit": 10}}]
+
+Question: "give me an overview"
+Reply: [{"tool": "get_dashboard_summary", "params": {}}, {"tool": "get_orders_by_status", "params": {}}, {"tool": "search_low_stock_products", "params": {}}]
 
 User Question: "${message}"`;
 
@@ -72,7 +106,7 @@ User Question: "${message}"`;
           body: JSON.stringify({
             contents: [{ parts: [{ text: plannerPrompt }] }],
             generationConfig: {
-              temperature: 0.1, // very low temperature for deterministic plan
+              temperature: 0.1,
               responseMimeType: 'application/json',
             },
           }),
@@ -97,148 +131,455 @@ User Question: "${message}"`;
       try {
         const rawText = plannerData.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
         let cleanText = rawText.trim();
-        
-        // Strip markdown code fences if present (e.g. ```json ... ``` or ``` ... ```)
         if (cleanText.startsWith('```')) {
           cleanText = cleanText.replace(/^```(?:json)?\n?/i, '');
           cleanText = cleanText.replace(/\n?```$/i, '');
         }
-        
         plan = JSON.parse(cleanText.trim());
       } catch (err) {
-        this.logger.warn(`Failed to parse RAG Plan JSON. Defaulting to general stats and low stock.`);
+        this.logger.warn(`Failed to parse RAG Plan JSON. Defaulting to general stats.`);
         plan = [
           { tool: 'get_dashboard_summary', params: {} },
           { tool: 'search_low_stock_products', params: {} },
-          { tool: 'get_top_selling_products', params: { limit: 5, days: 30 } }
+          { tool: 'get_top_selling_products', params: { limit: 5, days: 30 } },
         ];
       }
 
       // Step 2: RAG Retrieval Stage
-      // Execute the database queries defined in the plan concurrently
       const contextBlocks: string[] = [];
 
-      // If the planner returned an empty array (e.g. greeting or ambiguous query), 
-      // we inject the baseline dashboard summary, low stock products, and top sellers as a failsafe!
       const finalPlan = plan.length > 0 ? plan : [
         { tool: 'get_dashboard_summary', params: {} },
+        { tool: 'get_orders_by_status', params: {} },
         { tool: 'search_low_stock_products', params: {} },
-        { tool: 'get_top_selling_products', params: { limit: 5, days: 30 } }
       ];
 
       await Promise.all(
         finalPlan.map(async (step) => {
-            try {
-              switch (step.tool) {
-                case 'get_dashboard_summary': {
-                  const stats = await this.analyticsService.getDashboardStats().catch(() => ({}));
-                  contextBlocks.push(`[RAG TOOL INVOCATION: get_dashboard_summary]\n${JSON.stringify(stats, null, 2)}`);
-                  break;
-                }
-                case 'search_low_stock_products': {
-                  const items = await this.productRepository.findLowStock().catch(() => []);
-                  const formatted = items.slice(0, 15).map((p: any) => 
-                    `- **${p.name}** (SKU: ${p.sku}) | Base Stock: **${p.stock}** | Low Stock Threshold: ${p.lowStockThreshold}`
-                  ).join('\n');
-                  contextBlocks.push(`[RAG TOOL INVOCATION: search_low_stock_products]\n${formatted || 'No low stock products currently.'}`);
-                  break;
-                }
-                case 'search_products': {
-                  const term = step.params?.searchTerm || '';
-                  const items = await this.productRepository.searchByText(term).catch(() => []);
-                  const formatted = items.slice(0, 10).map((p: any) => {
-                    const variantStock = p.variants?.map((v: any) => `${v.sku}: ${v.stock}`).join(', ') ?? '';
-                    return `- **${p.name}** (SKU: ${p.sku}) | Stock: **${p.stock}** ${variantStock ? `[Variants: ${variantStock}]` : ''} | Price: ₹${p.price} | Active: ${p.isActive}`;
-                  }).join('\n');
-                  contextBlocks.push(`[RAG TOOL INVOCATION: search_products (Term: "${term}")]\n${formatted || 'No matching products found.'}`);
-                  break;
-                }
-                case 'get_login_audit_logs': {
-                  const limit = step.params?.limit || 20;
-                  const count = await this.auditLogRepository.getModel().countDocuments({ action: 'admin.login' }).catch(() => 0);
-                  const logs = await this.auditLogRepository.getModel().find({ action: 'admin.login' }).sort({ createdAt: -1 }).limit(10).exec().catch(() => []);
-                  const formattedLogs = logs.map((log: any) => 
-                    `- Admin: **${log.performedByName || log.performedBy}** | IP Address: ${log.ipAddress || 'N/A'} | Timestamp: ${log.createdAt ? new Date(log.createdAt).toLocaleString('en-IN') : 'N/A'}`
-                  ).join('\n');
-                  contextBlocks.push(`[RAG TOOL INVOCATION: get_login_audit_logs]\n- Total Admin Logins: **${count}**\n- Recent Audit Entries:\n${formattedLogs || 'No login audit logs found.'}`);
-                  break;
-                }
-                case 'search_abandoned_chats': {
-                  const sessions = await this.chatSessionRepository.getModel().find({
+          try {
+            switch (step.tool) {
+
+              case 'get_dashboard_summary': {
+                const stats = await this.analyticsService.getDashboardStats().catch(() => ({}));
+                contextBlocks.push(`[RAG: get_dashboard_summary]\n${JSON.stringify(stats, null, 2)}`);
+                break;
+              }
+
+              case 'search_low_stock_products': {
+                const items = await this.productRepository.findLowStock().catch(() => []);
+                const formatted = items.slice(0, 15).map((p: any) =>
+                  `- **${p.name}** (SKU: ${p.sku}) | Stock: **${p.stock}** | Low Stock Threshold: ${p.lowStockThreshold}`
+                ).join('\n');
+                contextBlocks.push(`[RAG: search_low_stock_products]\n${formatted || 'No low stock products currently.'}`);
+                break;
+              }
+
+              case 'search_products': {
+                const term = step.params?.searchTerm || '';
+                const items = await this.productRepository.searchByText(term).catch(() => []);
+                const formatted = items.slice(0, 10).map((p: any) => {
+                  const variantStock = p.variants?.map((v: any) => `${v.sku}: ${v.stock}`).join(', ') ?? '';
+                  return `- **${p.name}** (SKU: ${p.sku}) | Stock: **${p.stock}** ${variantStock ? `[Variants: ${variantStock}]` : ''} | Price: ₹${p.price} | Active: ${p.isActive}`;
+                }).join('\n');
+                contextBlocks.push(`[RAG: search_products (Term: "${term}")]\n${formatted || 'No matching products found.'}`);
+                break;
+              }
+
+              case 'get_login_audit_logs': {
+                const count = await this.auditLogRepository.getModel().countDocuments({ action: 'admin.login' }).catch(() => 0);
+                const logs = await this.auditLogRepository.getModel().find({ action: 'admin.login' }).sort({ createdAt: -1 }).limit(10).exec().catch(() => []);
+                const formattedLogs = logs.map((log: any) =>
+                  `- Admin: **${log.performedByName || log.performedBy}** | IP: ${log.ipAddress || 'N/A'} | Time: ${log.createdAt ? new Date(log.createdAt).toLocaleString('en-IN') : 'N/A'}`
+                ).join('\n');
+                contextBlocks.push(`[RAG: get_login_audit_logs]\n- Total Admin Logins: **${count}**\n- Recent Entries:\n${formattedLogs || 'No login audit logs found.'}`);
+                break;
+              }
+
+              case 'search_abandoned_chats': {
+                const limit = step.params?.limit || 30;
+                // 60-minute threshold: carts active within the last hour are likely still shopping
+                const cutoff = new Date(Date.now() - 60 * 60 * 1000);
+
+                // Single aggregation that:
+                // 1. Only carts with items, not touched in 60+ min (excludes active shoppers)
+                // 2. Joins orders to exclude customers who placed an order after their last cart activity
+                // 3. Joins user for name + phone
+                const abandonedCarts = await this.cartRepository.getModel().aggregate([
+                  {
+                    $match: {
+                      'items.0': { $exists: true },
+                      updatedAt: { $lt: cutoff },
+                    },
+                  },
+                  {
+                    $lookup: {
+                      from: 'users',
+                      localField: 'user',
+                      foreignField: '_id',
+                      pipeline: [{ $project: { name: 1, phone: 1, isBlocked: 1 } }],
+                      as: 'userInfo',
+                    },
+                  },
+                  { $unwind: { path: '$userInfo', preserveNullAndEmptyArrays: true } },
+                  // Exclude blocked users
+                  { $match: { 'userInfo.isBlocked': { $ne: true } } },
+                  {
+                    // Check if user placed a non-cancelled order AFTER cart was last updated
+                    $lookup: {
+                      from: 'orders',
+                      let: { userId: '$user', cartUpdatedAt: '$updatedAt' },
+                      pipeline: [
+                        {
+                          $match: {
+                            $expr: {
+                              $and: [
+                                { $eq: ['$user', '$$userId'] },
+                                { $gt: ['$createdAt', '$$cartUpdatedAt'] },
+                                { $ne: ['$status', 'cancelled'] },
+                              ],
+                            },
+                          },
+                        },
+                        { $limit: 1 },
+                      ],
+                      as: 'ordersAfterCart',
+                    },
+                  },
+                  // Only keep carts where no order was placed after the cart was last updated
+                  { $match: { ordersAfterCart: { $size: 0 } } },
+                  { $sort: { updatedAt: -1 } },
+                  { $limit: limit },
+                ]).exec().catch(() => []);
+
+                // Secondary: active sessions stuck in checkout with no cart found
+                // (users currently in the flow but no cart record yet)
+                const sessionCutoff = new Date(Date.now() - 60 * 60 * 1000);
+                const coveredPhones = new Set(
+                  abandonedCarts.map((c: any) => c.userInfo?.phone).filter(Boolean)
+                );
+                const stuckSessions = await this.chatSessionRepository.getModel()
+                  .find({
                     currentState: { $in: ['cart', 'coupon_prompt', 'coupon_input', 'checkout', 'address_input', 'payment_selection'] },
-                    isExpired: { $ne: true }
+                    isExpired: { $ne: true },
+                    lastMessageAt: { $lt: sessionCutoff },
                   })
-                  .sort({ updatedAt: -1 })
-                  .limit(step.params?.limit || 10)
+                  .sort({ lastMessageAt: -1 })
+                  .limit(20)
                   .populate('user', 'name phone')
                   .exec()
                   .catch(() => []);
-                  const formatted = sessions.map((session: any) => {
-                    const name = session.user?.name ?? session.metadata?.contactName ?? 'Anonymous Customer';
-                    const total = session.context?.cart?.items?.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0) ?? 0;
-                    const itemsList = session.context?.cart?.items?.map((item: any) => `${item.name} (x${item.quantity})`).join(', ') ?? 'No items';
-                    return `- 📱 **${name}** (${session.phone}) | Current Checkout State: \`${session.currentState}\` | Cart Total: ₹${total} | items: [${itemsList}] | Last Active: ${session.updatedAt ? new Date(session.updatedAt).toLocaleString('en-IN') : 'N/A'}`;
-                  }).join('\n');
-                  contextBlocks.push(`[RAG TOOL INVOCATION: search_abandoned_chats]\n${formatted || 'No incomplete/abandoned chats found.'}`);
-                  break;
-                }
-                case 'get_top_selling_products': {
-                  const days = step.params?.days || 30;
-                  const limit = step.params?.limit || 8;
-                  const tAgo = new Date();
-                  tAgo.setDate(tAgo.getDate() - days);
-                  const [online, store] = await Promise.all([
-                    this.analyticsService.getProductMetrics(tAgo, new Date()).catch(() => ({})),
-                    this.analyticsService.getTopSellingOverall(tAgo, new Date(), limit).catch(() => []),
-                  ]);
-                  const formattedOnline = (online as any).topSellingProducts?.slice(0, limit).map((p: any) => 
-                    `- **${p.name}** | Units Sold: **${p.quantitySold}** | Revenue: ₹${p.revenue.toLocaleString('en-IN')} (Online)`
-                  ).join('\n') ?? 'No online top sellers.';
-                  const formattedStore = store.slice(0, limit).map((p: any) => 
-                    `- **${p.name}** | Units Sold: **${p.quantitySold}** | Revenue: ₹${p.revenue.toLocaleString('en-IN')} (Store)`
-                  ).join('\n') ?? 'No store top sellers.';
-                  contextBlocks.push(`[RAG TOOL INVOCATION: get_top_selling_products (Last ${days} days)]\n* Online order sales:\n${formattedOnline}\n\n* Store walk-in sales:\n${formattedStore}`);
-                  break;
-                }
-                case 'search_recent_orders': {
-                  const limit = step.params?.limit || 10;
-                  const status = step.params?.status;
-                  const filter: any = {};
-                  if (status) filter.status = status;
-                  const orders = await this.orderRepository.getModel().find(filter).sort({ createdAt: -1 }).limit(limit).populate('user', 'name phone').exec().catch(() => []);
-                  const formatted = orders.map((o: any) => 
-                    `- Order **#${o.orderNumber}** | Customer: **${o.user?.name ?? 'Guest'}** | Total: ₹${o.total} | Status: \`${o.status}\` | Date: ${o.createdAt ? new Date(o.createdAt).toLocaleString('en-IN') : 'N/A'}`
-                  ).join('\n');
-                  contextBlocks.push(`[RAG TOOL INVOCATION: search_recent_orders]\n${formatted || 'No matching orders found.'}`);
-                  break;
-                }
-              }
-            } catch (err) {
-              this.logger.error(`Error executing RAG tool ${step.tool}: ${(err as Error).message}`);
-            }
-          })
-        );
 
-      // Step 3: Synthesis / Generation Stage
-      // Inject the dynamically retrieved RAG context directly into the system instructions
-      const retrievedDataText = contextBlocks.length > 0 
+                const cartFormatted = abandonedCarts.map((cart: any) => {
+                  const name = cart.userInfo?.name || 'Unknown Customer';
+                  const phone = cart.userInfo?.phone || 'No Phone';
+                  const itemsList = cart.items.map((item: any) => `${item.name} (x${item.quantity})`).join(', ');
+                  const lastActive = cart.updatedAt ? new Date(cart.updatedAt).toLocaleString('en-IN') : 'N/A';
+                  const coupon = cart.couponCode ? ` | Coupon: ${cart.couponCode}` : '';
+                  const hoursAgo = Math.round((Date.now() - new Date(cart.updatedAt).getTime()) / 3600000);
+                  return `- 📱 **${name}** | Phone: **${phone}** | Cart: ₹${(cart.total || 0).toLocaleString('en-IN')} | Items: [${itemsList}]${coupon} | Abandoned ~${hoursAgo}h ago`;
+                });
+
+                const sessionFormatted = stuckSessions
+                  .filter((s: any) => {
+                    const phone = (s.user as any)?.phone || s.phone;
+                    return !coveredPhones.has(phone);
+                  })
+                  .map((session: any) => {
+                    const name = (session.user as any)?.name || session.metadata?.contactName || 'Unknown';
+                    const phone = session.phone;
+                    const minsAgo = Math.round((Date.now() - new Date(session.lastMessageAt || session.updatedAt).getTime()) / 60000);
+                    return `- 📱 **${name}** | Phone: **${phone}** | Stuck at: \`${session.currentState}\` | Silent for ~${minsAgo} min`;
+                  });
+
+                const allFormatted = [...cartFormatted, ...sessionFormatted];
+
+                contextBlocks.push(
+                  `[RAG: search_abandoned_chats]\nCustomers who had items in cart but did NOT complete an order: **${allFormatted.length}**\n(Threshold: inactive for 60+ minutes, orders placed after cart activity are excluded)\n\n${allFormatted.join('\n') || 'No abandoned carts found.'}`
+                );
+                break;
+              }
+
+              case 'get_top_selling_products': {
+                const days = step.params?.days || 30;
+                const limit = step.params?.limit || 8;
+                const tAgo = new Date();
+                tAgo.setDate(tAgo.getDate() - days);
+                const [online, store] = await Promise.all([
+                  this.analyticsService.getProductMetrics(tAgo, new Date()).catch(() => ({})),
+                  this.analyticsService.getTopSellingOverall(tAgo, new Date(), limit).catch(() => []),
+                ]);
+                const formattedOnline = (online as any).topSellingProducts?.slice(0, limit).map((p: any) =>
+                  `- **${p.name}** | Units Sold: **${p.quantitySold}** | Revenue: ₹${(p.revenue || 0).toLocaleString('en-IN')} (Online)`
+                ).join('\n') || 'No online top sellers.';
+                const formattedStore = store.slice(0, limit).map((p: any) =>
+                  `- **${p.name}** | Units Sold: **${p.quantitySold}** | Revenue: ₹${(p.revenue || 0).toLocaleString('en-IN')} (Store)`
+                ).join('\n') || 'No store top sellers.';
+                contextBlocks.push(`[RAG: get_top_selling_products (Last ${days} days)]\n* Online:\n${formattedOnline}\n\n* Store Walk-in:\n${formattedStore}`);
+                break;
+              }
+
+              case 'search_recent_orders': {
+                const limit = step.params?.limit || 10;
+                // Normalize legacy/alias status values the planner might send
+                const STATUS_MAP: Record<string, string> = {
+                  shipped: 'out_for_delivery',
+                  pending: 'placed',
+                  processing: 'preparing',
+                  dispatched: 'out_for_delivery',
+                  completed: 'delivered',
+                  done: 'delivered',
+                };
+                const rawStatus = step.params?.status as string | undefined;
+                const status = rawStatus ? (STATUS_MAP[rawStatus.toLowerCase()] ?? rawStatus.toLowerCase()) : undefined;
+                const filter: any = {};
+                if (status) filter.status = status;
+                const orders = await this.orderRepository.getModel()
+                  .find(filter)
+                  .sort({ createdAt: -1 })
+                  .limit(limit)
+                  .populate('user', 'name phone')
+                  .exec()
+                  .catch(() => []);
+                const formatted = orders.map((o: any) =>
+                  `- Order **#${o.orderNumber}** | Customer: **${o.user?.name ?? 'Guest'}** (${o.user?.phone ?? ''}) | Total: ₹${o.total} | Status: \`${o.status}\` | Payment: ${o.paymentMethod} | Date: ${o.createdAt ? new Date(o.createdAt).toLocaleString('en-IN') : 'N/A'}`
+                ).join('\n');
+                contextBlocks.push(`[RAG: search_recent_orders${status ? ` (status: ${status})` : ''}]\n${formatted || 'No orders found.'}`);
+                break;
+              }
+
+              case 'search_customers': {
+                const term = (step.params?.searchTerm || '').trim();
+                const limit = step.params?.limit || 10;
+                // Escape special regex chars to prevent injection / query errors
+                const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const customers = await this.userRepository.getModel()
+                  .find(escapedTerm ? {
+                    $or: [
+                      { name: { $regex: escapedTerm, $options: 'i' } },
+                      { phone: { $regex: escapedTerm, $options: 'i' } },
+                      { email: { $regex: escapedTerm, $options: 'i' } },
+                    ],
+                  } : {})
+                  .sort({ totalSpent: -1 })
+                  .limit(limit)
+                  .exec()
+                  .catch(() => []);
+                const formatted = customers.map((c: any) =>
+                  `- **${c.name || 'Unnamed'}** | Phone: ${c.phone || 'N/A'} | Email: ${c.email || 'N/A'} | Total Orders: ${c.totalOrders} | Total Spent: ₹${(c.totalSpent || 0).toLocaleString('en-IN')} | Status: ${c.isBlocked ? 'Blocked' : c.isActive ? 'Active' : 'Inactive'} | Joined: ${c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-IN') : 'N/A'}`
+                ).join('\n');
+                contextBlocks.push(`[RAG: search_customers${term ? ` (search: "${term}")` : ''}]\n${formatted || 'No matching customers found.'}`);
+                break;
+              }
+
+              case 'get_top_customers_online': {
+                const limit = step.params?.limit || 10;
+                const customers = await this.userRepository.getModel()
+                  .find({ totalOrders: { $gt: 0 } })
+                  .sort({ totalSpent: -1 })
+                  .limit(limit)
+                  .exec()
+                  .catch(() => []);
+                const formatted = customers.map((c: any, i: number) =>
+                  `${i + 1}. **${c.name || 'Unnamed'}** (${c.phone || 'N/A'}) | Orders: ${c.totalOrders} | Total Spent: ₹${(c.totalSpent || 0).toLocaleString('en-IN')} | Last Order: ${c.lastOrderAt ? new Date(c.lastOrderAt).toLocaleDateString('en-IN') : 'N/A'}`
+                ).join('\n');
+                contextBlocks.push(`[RAG: get_top_customers_online (Top ${limit})]\n${formatted || 'No customer spending data found.'}`);
+                break;
+              }
+
+              case 'get_customer_orders': {
+                const phone = (step.params?.phone || '').trim();
+                const name = (step.params?.name || '').trim();
+                const limit = step.params?.limit || 10;
+                let user: any = null;
+
+                if (phone) {
+                  // Exact match first, then partial (handles +91 prefix differences)
+                  user = await this.userRepository.findOneByPhone(phone).catch(() => null);
+                  if (!user) {
+                    const escapedPhone = phone.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    user = await this.userRepository.getModel()
+                      .findOne({ phone: { $regex: escapedPhone, $options: 'i' } })
+                      .exec()
+                      .catch(() => null);
+                  }
+                }
+
+                // Fallback: look up by name if phone lookup failed or no phone provided
+                if (!user && name) {
+                  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                  user = await this.userRepository.getModel()
+                    .findOne({ name: { $regex: escapedName, $options: 'i' } })
+                    .sort({ totalOrders: -1 })
+                    .exec()
+                    .catch(() => null);
+                }
+
+                if (!user) {
+                  contextBlocks.push(`[RAG: get_customer_orders]\nNo customer found with ${phone ? `phone: ${phone}` : `name: ${name}`}. Try using search_customers first to find the correct phone number.`);
+                  break;
+                }
+                const orders = await this.orderRepository.getModel()
+                  .find({ user: user._id })
+                  .sort({ createdAt: -1 })
+                  .limit(limit)
+                  .exec()
+                  .catch(() => []);
+                const formatted = orders.map((o: any) =>
+                  `- Order **#${o.orderNumber}** | Total: ₹${o.total} | Status: \`${o.status}\` | Payment: ${o.paymentMethod} (${o.paymentStatus}) | Date: ${o.createdAt ? new Date(o.createdAt).toLocaleString('en-IN') : 'N/A'}`
+                ).join('\n');
+                contextBlocks.push(`[RAG: get_customer_orders for ${user.name || phone}]\nCustomer: **${user.name || 'Unnamed'}** | Phone: ${user.phone} | Total Orders: ${user.totalOrders} | Total Spent: ₹${(user.totalSpent || 0).toLocaleString('en-IN')}\n\nOrder History:\n${formatted || 'No orders found.'}`);
+                break;
+              }
+
+              case 'get_revenue_trend': {
+                const days = step.params?.days || 14;
+                const trend = await this.analyticsService.getRevenueByDay(days).catch(() => []);
+                const formatted = trend.map((d: any) =>
+                  `- ${d.date} | Revenue: ₹${(d.revenue || 0).toLocaleString('en-IN')} | Orders: ${d.orders}`
+                ).join('\n');
+                const totalRev = (trend as any[]).reduce((s: number, d: any) => s + (d.revenue || 0), 0);
+                const totalOrds = (trend as any[]).reduce((s: number, d: any) => s + (d.orders || 0), 0);
+                contextBlocks.push(`[RAG: get_revenue_trend (Last ${days} days)]\nTotal Revenue: ₹${totalRev.toLocaleString('en-IN')} | Total Orders: ${totalOrds}\n\nDay-by-Day:\n${formatted || 'No revenue data.'}`);
+                break;
+              }
+
+              case 'get_orders_by_status': {
+                const statusCounts = await this.orderRepository.getOrdersByStatus().catch(() => ({}));
+                const formatted = Object.entries(statusCounts).map(([status, count]) =>
+                  `- \`${status}\`: **${count}** orders`
+                ).join('\n');
+                const total = Object.values(statusCounts).reduce((s: number, c: any) => s + (c || 0), 0);
+                contextBlocks.push(`[RAG: get_orders_by_status]\nTotal Orders All Time: **${total}**\n\nBreakdown:\n${formatted || 'No order data.'}`);
+                break;
+              }
+
+              case 'get_feedback_list': {
+                const limit = step.params?.limit || 15;
+                const feedbacks = await this.feedbackRepository.getModel()
+                  .find({})
+                  .populate('user', 'name phone')
+                  .populate('product', 'name')
+                  .sort({ createdAt: -1 })
+                  .limit(limit)
+                  .lean()
+                  .exec()
+                  .catch(() => []);
+                const formatted = feedbacks.map((f: any) => {
+                  const stars = f.rating ? `⭐ ${f.rating}/5` : '';
+                  const customer = f.user?.name || 'Anonymous';
+                  const product = f.product?.name || 'General';
+                  return `- **${customer}** on **${product}** ${stars} | Type: ${f.type} | Status: ${f.status} | "${f.message?.slice(0, 100) || 'No message'}" | Date: ${f.createdAt ? new Date(f.createdAt).toLocaleDateString('en-IN') : 'N/A'}`;
+                }).join('\n');
+                contextBlocks.push(`[RAG: get_feedback_list]\n${formatted || 'No feedback found.'}`);
+                break;
+              }
+
+              case 'get_coupon_list': {
+                const coupons = await this.couponRepository.getModel()
+                  .find({})
+                  .sort({ createdAt: -1 })
+                  .limit(20)
+                  .exec()
+                  .catch(() => []);
+                const now = new Date();
+                const formatted = coupons.map((c: any) => {
+                  const isExpired = c.validUntil && new Date(c.validUntil) < now;
+                  const isActive = c.isActive && !isExpired;
+                  const discount = c.discountType === 'percentage' ? `${c.discountValue}% off` : `₹${c.discountValue} off`;
+                  const usage = c.maxUsageCount ? `${c.usedCount || 0}/${c.maxUsageCount} used` : `${c.usedCount || 0} used (unlimited)`;
+                  return `- **${c.code}** | ${discount} | ${usage} | Status: ${isActive ? '✅ Active' : isExpired ? '❌ Expired' : '⏸ Inactive'} | Min Order: ₹${c.minOrderAmount || 0} | Valid Until: ${c.validUntil ? new Date(c.validUntil).toLocaleDateString('en-IN') : 'No expiry'}`;
+                }).join('\n');
+                contextBlocks.push(`[RAG: get_coupon_list]\n${formatted || 'No coupons found.'}`);
+                break;
+              }
+
+              case 'get_analytics_period': {
+                const days = step.params?.days || 30;
+                const endDate = new Date();
+                const startDate = new Date();
+                startDate.setDate(startDate.getDate() - days);
+                const [orders, customers, products, chat, topSellers, topCustomers] = await Promise.all([
+                  this.analyticsService.getOrderMetrics(startDate, endDate).catch(() => ({})),
+                  this.analyticsService.getCustomerMetrics(startDate, endDate).catch(() => ({})),
+                  this.analyticsService.getProductMetrics(startDate, endDate).catch(() => ({})),
+                  this.analyticsService.getChatMetrics(startDate, endDate).catch(() => ({})),
+                  this.analyticsService.getTopSellingOverall(startDate, endDate, 5).catch(() => []),
+                  this.analyticsService.getTopCustomersOverall(5).catch(() => []),
+                ]);
+                const o = orders as any;
+                const c = customers as any;
+                const p = products as any;
+                const m = chat as any;
+                const topSellersFormatted = topSellers.slice(0, 5).map((ps: any, i: number) =>
+                  `  ${i + 1}. **${ps.name}** — ${ps.quantitySold} units sold, ₹${(ps.revenue || 0).toLocaleString('en-IN')}`
+                ).join('\n') || '  No sales data for this period.';
+                const topCustomersFormatted = topCustomers.slice(0, 5).map((tc: any, i: number) =>
+                  `  ${i + 1}. **${tc.customerName || 'Unknown'}** (${tc._id || ''}) — ₹${(tc.totalSpent || 0).toLocaleString('en-IN')}, ${tc.totalOrders} orders`
+                ).join('\n') || '  No customer data for this period.';
+                const summary = [
+                  `Period: Last ${days} days (${startDate.toLocaleDateString('en-IN')} – ${endDate.toLocaleDateString('en-IN')})`,
+                  ``,
+                  `**Orders:** ${o.totalOrders || 0} total | ₹${(o.totalRevenue || 0).toLocaleString('en-IN')} revenue | AOV: ₹${Math.round(o.avgOrderValue || 0)}`,
+                  `**Order Status:** ${o.completedOrders || 0} delivered | ${o.pendingOrders || 0} pending | ${o.cancelledOrders || 0} cancelled`,
+                  `**Payment Mix:** ${o.codOrders || 0} COD | ${o.prepaidOrders || 0} prepaid`,
+                  `**Customers:** ${c.totalCustomers || 0} total | +${c.newCustomers || 0} new | ${c.returningCustomers || 0} returning | ${c.activeCustomers || 0} active`,
+                  `**Inventory:** ${p.totalProducts || 0} products | ${p.activeProducts || 0} active | ${p.outOfStockProducts || 0} out of stock | ${p.lowStockProducts || 0} low stock`,
+                  `**WhatsApp Chat:** ${m.totalSessions || 0} sessions | ${m.totalMessages || 0} messages | ${m.supportHandoffs || 0} support handoffs`,
+                  ``,
+                  `**Top Selling Products (period):**`,
+                  topSellersFormatted,
+                  ``,
+                  `**Top Customers (all time):**`,
+                  topCustomersFormatted,
+                ].join('\n');
+                contextBlocks.push(`[RAG: get_analytics_period]\n${summary}`);
+                break;
+              }
+
+              case 'get_new_customers': {
+                const days = step.params?.days || 7;
+                const since = new Date();
+                since.setDate(since.getDate() - days);
+                const customers = await this.userRepository.getModel()
+                  .find({ createdAt: { $gte: since } })
+                  .sort({ createdAt: -1 })
+                  .limit(20)
+                  .exec()
+                  .catch(() => []);
+                const count = await this.userRepository.getModel().countDocuments({ createdAt: { $gte: since } }).catch(() => 0);
+                const formatted = customers.map((c: any) =>
+                  `- **${c.name || 'Unnamed'}** | Phone: ${c.phone || 'N/A'} | Joined: ${c.createdAt ? new Date(c.createdAt).toLocaleString('en-IN') : 'N/A'}`
+                ).join('\n');
+                contextBlocks.push(`[RAG: get_new_customers (Last ${days} days)]\nTotal New: **${count}**\n\n${formatted || 'No new customers.'}`);
+                break;
+              }
+            }
+          } catch (err) {
+            this.logger.error(`Error executing RAG tool ${step.tool}: ${(err as Error).message}`);
+          }
+        }),
+      );
+
+      // Step 3: Synthesis Stage
+      const retrievedDataText = contextBlocks.length > 0
         ? contextBlocks.join('\n\n')
-        : 'No specific retrieval tools were invoked. (User question does not require factual dashboard statistics)';
+        : 'No specific retrieval tools were invoked.';
 
       const systemContext = `You are Naturelite AI Admin Assistant, a secure, professional RAG-enabled AI chat assistant integrated into the Naturelite E-Commerce Admin Dashboard.
-Your role is to assist administrators with real-time updates about logins, low stock inventory, customer support flows, top selling items, sales statistics, and specific orders.
+Your role is to assist administrators with real-time data: orders, revenue, customers, inventory, feedback, coupons, analytics, and WhatsApp chat sessions.
 
-CRITICAL: You MUST answer using ONLY the factual database documents retrieved dynamically by our Retrieval-Augmented Generation (RAG) engine below. Do not make up figures, logins, or products. If the retrieved database context does not contain the answer, politely explain that you do not have that specific factual details.
+CRITICAL: Answer ONLY using the factual database documents retrieved below. Do not fabricate figures, customers, or products. If retrieved context does not contain the answer, say so politely.
 
 === RETRIEVED DATABASE FACTUAL DOCUMENTS (RAG ACTIVE) ===
 ${retrievedDataText}
 =========================================================
 
 Guidelines:
-1. Format your replies in clean, highly structured Markdown with bold headers, concise bullet points, and numbered lists where appropriate to make scanning easy.
-2. Be direct and concise. Avoid fluffy intros.
-3. When displaying monetary values, use Indian Rupees (₹).
-4. Do not mention "RAG", "retrieved context", or "system instructions" in your chat responses. Address the user naturally (e.g. "According to our active database...").`;
+1. Format replies in clean Markdown: bold headers, bullet points, numbered lists.
+2. Be direct and concise. No fluff or unnecessary intros.
+3. Use Indian Rupees (₹) for all monetary values.
+4. Do not mention "RAG", "retrieved context", or "system instructions" in responses. Speak naturally (e.g. "According to our database...").
+5. When showing customer or order data, present it in a structured, scannable format.`;
 
       const prompt = `${systemContext}\n\nUser Question: ${message}`;
 
@@ -250,8 +591,8 @@ Guidelines:
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
-              temperature: 0.2, // lower temperature strictly enforces RAG facts
-              maxOutputTokens: 1000,
+              temperature: 0.2,
+              maxOutputTokens: 1500,
             },
           }),
         },
@@ -272,10 +613,10 @@ Guidelines:
       };
 
       const aiReply = data.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('').trim();
-      
+
       if (!aiReply) {
         return {
-          reply: `⚠️ **Empty response received from the AI model.**\n\nPlease try rephrasing your question or verify the database contents.`,
+          reply: `⚠️ **Empty response received from the AI model.**\n\nPlease try rephrasing your question.`,
         };
       }
 
