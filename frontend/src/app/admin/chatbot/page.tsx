@@ -296,7 +296,7 @@ export default function AdminChatbotPage() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-[15px] text-gray-900 dark:text-white leading-tight">Naturelite AI Assistant</h3>
-                  <span className="text-[10px] text-muted-foreground font-mono">powered by gemini-1.5-flash</span>
+                  <span className="text-[10px] text-muted-foreground font-mono">powered by gemini-2.0-flash</span>
                 </div>
               </div>
 
