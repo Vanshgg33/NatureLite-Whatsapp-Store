@@ -506,6 +506,8 @@ export interface HeroBanner {
   id: string;
   imageUrl: string;
   imagePublicId: string;
+  videoUrl?: string;
+  videoPublicId?: string;
   headline: string;
   subtitle: string;
   ctaText: string;

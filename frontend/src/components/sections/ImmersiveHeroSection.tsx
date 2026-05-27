@@ -2,18 +2,35 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useRef, useState } from 'react';
 import { useSiteSettings } from '@/lib/site-settings-context';
 import { Magnetic } from '@/components/ui/magnetic';
 
+const IMAGE_DURATION = 5000;
+
 export default function ImmersiveHeroSection() {
   const { banners } = useSiteSettings();
-  const activeBanner = banners?.heroBanners?.find(b => b.isActive) ?? null;
-  const ctaLink = activeBanner?.ctaLink || '/products';
-  const ctaText = activeBanner?.ctaText || 'Shop Now';
+  const activeBanners = banners?.heroBanners?.filter(b => b.isActive) ?? [];
+  const [index, setIndex] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const next = () => setIndex(i => (i + 1) % activeBanners.length);
+
+  // For image banners: advance after IMAGE_DURATION
+  useEffect(() => {
+    if (activeBanners.length <= 1) return;
+    const current = activeBanners[index];
+    if (!current?.videoUrl) {
+      timerRef.current = setTimeout(next, IMAGE_DURATION);
+    }
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [index, activeBanners.length]);
 
   /* ── No banner configured ── */
-  if (!activeBanner?.imageUrl) {
+  if (activeBanners.length === 0) {
+    const ctaLink = '/products';
+    const ctaText = 'Shop Now';
     return (
       <section
         className="relative flex items-center justify-center"
@@ -57,23 +74,54 @@ export default function ImmersiveHeroSection() {
     );
   }
 
-  /* ── Banner image: natural dimensions, no cropping ── */
+  const banner = activeBanners[index];
+
   return (
-    <motion.section
-      className="relative w-full overflow-hidden"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.6 }}
-    >
-      <Image
-        src={activeBanner.imageUrl}
-        alt={activeBanner.headline || 'Nature Lite Foods'}
-        width={1920}
-        height={680}
-        priority
-        sizes="100vw"
-        style={{ width: '100%', height: 'auto', display: 'block' }}
-      />
-    </motion.section>
+    <div className="relative w-full overflow-hidden" style={{ height: '70vh' }}>
+      <AnimatePresence mode="sync">
+        <motion.div
+          key={banner.id}
+          className="absolute inset-0"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.6 }}
+        >
+          {banner.videoUrl ? (
+            <video
+              src={banner.videoUrl}
+              autoPlay
+              muted
+              playsInline
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              onEnded={activeBanners.length > 1 ? next : undefined}
+            />
+          ) : (
+            <Image
+              src={banner.imageUrl}
+              alt={banner.headline || ''}
+              fill
+              priority={index === 0}
+              sizes="100vw"
+              style={{ objectFit: 'cover' }}
+            />
+          )}
+        </motion.div>
+      </AnimatePresence>
+
+      {/* Dot indicators — only when multiple banners */}
+      {activeBanners.length > 1 && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 z-10">
+          {activeBanners.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setIndex(i)}
+              className="w-2 h-2 rounded-full transition-all"
+              style={{ background: i === index ? '#fff' : 'rgba(255,255,255,0.45)' }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

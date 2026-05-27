@@ -48,6 +48,18 @@ export class MediaController {
     return this.mediaService.uploadMultiple(files, folder || 'products');
   }
 
+  @Post('upload/video')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadVideo(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('folder') folder?: string,
+  ): Promise<UploadResult> {
+    if (!file) {
+      throw new BadRequestException('No file provided');
+    }
+    return this.mediaService.uploadVideo(file, folder || 'banners');
+  }
+
   @Post('upload/url')
   async uploadFromUrl(
     @Body('url') url: string,

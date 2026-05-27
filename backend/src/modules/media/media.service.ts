@@ -1,5 +1,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as crypto from 'crypto';
+import * as FormDataNode from 'form-data';
 import axios from 'axios';
 import { v2 as cloudinary, UploadApiResponse, UploadApiErrorResponse } from 'cloudinary';
 import { CloudinaryConfig } from '../../config/configuration';
@@ -25,9 +27,15 @@ export interface TransformOptions {
 @Injectable()
 export class MediaService {
   private readonly logger = new Logger(MediaService.name);
+  private readonly cloudName: string;
+  private readonly apiKey: string;
+  private readonly apiSecret: string;
 
   constructor(configService: ConfigService) {
     const config = configService.get<CloudinaryConfig>('cloudinary')!;
+    this.cloudName = config.cloudName;
+    this.apiKey = config.apiKey;
+    this.apiSecret = config.apiSecret;
 
     cloudinary.config({
       cloud_name: config.cloudName,
@@ -157,6 +165,49 @@ export class MediaService {
         )
         .end(buffer);
     });
+  }
+
+  async uploadVideo(
+    file: Express.Multer.File,
+    folder: string = 'banners',
+  ): Promise<UploadResult> {
+    const timestamp = Math.round(Date.now() / 1000);
+    const paramsToSign = `folder=${folder}&timestamp=${timestamp}`;
+    const signature = crypto
+      .createHash('sha1')
+      .update(paramsToSign + this.apiSecret)
+      .digest('hex');
+
+    const form = new FormDataNode();
+    form.append('file', file.buffer, { filename: file.originalname, contentType: file.mimetype });
+    form.append('api_key', this.apiKey);
+    form.append('timestamp', String(timestamp));
+    form.append('signature', signature);
+    form.append('folder', folder);
+
+    try {
+      const response = await axios.post<{
+        public_id: string; url: string; secure_url: string;
+        format: string; width: number; height: number; bytes: number;
+      }>(
+        `https://api.cloudinary.com/v1_1/${this.cloudName}/raw/upload`,
+        form,
+        { headers: form.getHeaders(), maxBodyLength: Infinity, maxContentLength: Infinity },
+      );
+      return {
+        publicId: response.data.public_id,
+        url: response.data.url,
+        secureUrl: response.data.secure_url,
+        format: response.data.format,
+        width: response.data.width || 0,
+        height: response.data.height || 0,
+        bytes: response.data.bytes,
+      };
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
+      this.logger.error('Video upload failed', msg || err);
+      throw new BadRequestException(msg || 'Failed to upload video');
+    }
   }
 
   async uploadMultiple(

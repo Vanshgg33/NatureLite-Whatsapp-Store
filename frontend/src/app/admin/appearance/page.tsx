@@ -10,10 +10,10 @@ import {
   X,
   Megaphone,
   Image as ImageIcon,
+  Video,
   Plus,
   Trash2,
   GripVertical,
-  ExternalLink,
   Loader2,
 } from 'lucide-react';
 import { Header } from '@/components/layout/header';
@@ -98,7 +98,11 @@ export default function AppearancePage() {
     isActive: true,
   });
 
+  const [bannerMediaType, setBannerMediaType] = useState<'image' | 'video'>('image');
+  const [bannerVideoUploading, setBannerVideoUploading] = useState(false);
+
   const bannerFileRef = useRef<HTMLInputElement>(null);
+  const bannerVideoRef = useRef<HTMLInputElement>(null);
   const logoFileRef = useRef<HTMLInputElement>(null);
 
   // Sync local state from fetched settings
@@ -212,6 +216,26 @@ export default function AppearancePage() {
     }
   };
 
+  const handleBannerVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBannerVideoUploading(true);
+    try {
+      const result = await api.uploadVideo(file, 'banners');
+      setEditingBanner((prev) => ({
+        ...prev,
+        videoUrl: result.secureUrl,
+        videoPublicId: result.publicId,
+        imageUrl: '',
+        imagePublicId: '',
+      }));
+    } catch {
+      toast({ title: 'Failed to upload video', variant: 'destructive' });
+    } finally {
+      setBannerVideoUploading(false);
+    }
+  };
+
   const handleAddBanner = () => {
     if (!editingBanner.headline?.trim()) {
       toast({ title: 'Name is required', variant: 'destructive' });
@@ -221,10 +245,13 @@ export default function AppearancePage() {
     const updated = [...heroBanners, newBanner];
     setHeroBanners(updated);
     setShowBannerForm(false);
+    setBannerMediaType('image');
     setEditingBanner({
       id: '',
       imageUrl: '',
       imagePublicId: '',
+      videoUrl: '',
+      videoPublicId: '',
       headline: '',
       subtitle: '',
       ctaText: 'Shop Now',
@@ -586,7 +613,18 @@ export default function AppearancePage() {
                       }`}
                     >
                       <GripVertical className="h-4 w-4 text-gray-300 flex-shrink-0" />
-                      {banner.imageUrl ? (
+                      {banner.videoUrl ? (
+                        <div className="h-14 w-20 bg-gray-900 rounded-lg flex items-center justify-center flex-shrink-0 relative overflow-hidden">
+                          <video
+                            src={banner.videoUrl}
+                            className="h-full w-full object-cover"
+                            muted
+                          />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                            <Video className="h-5 w-5 text-white" />
+                          </div>
+                        </div>
+                      ) : banner.imageUrl ? (
                         <img
                           src={banner.imageUrl}
                           alt={banner.headline}
@@ -643,59 +681,138 @@ export default function AppearancePage() {
                     </button>
                   </div>
 
-                  {/* Image upload */}
+                  {/* Media type toggle */}
                   <div>
-                    <label className="text-sm font-medium mb-1.5 block">
-                      Banner Image
-                    </label>
-                    {editingBanner.imageUrl ? (
-                      <div className="relative inline-block group">
-                        <img
-                          src={editingBanner.imageUrl}
-                          alt="Banner preview"
-                          className="h-32 w-48 object-cover rounded-xl"
-                        />
-                        <button
-                          onClick={() =>
-                            setEditingBanner((prev) => ({
-                              ...prev,
-                              imageUrl: '',
-                              imagePublicId: '',
-                            }))
-                          }
-                          className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
+                    <label className="text-sm font-medium mb-2 block">Banner Media</label>
+                    <div className="flex gap-2 mb-3">
+                      <button
+                        onClick={() => {
+                          setBannerMediaType('image');
+                          setEditingBanner((prev) => ({ ...prev, videoUrl: '', videoPublicId: '' }));
+                        }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                          bannerMediaType === 'image'
+                            ? 'bg-primary text-white border-primary'
+                            : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <ImageIcon className="h-3.5 w-3.5" />
+                        Image
+                      </button>
+                      <button
+                        onClick={() => {
+                          setBannerMediaType('video');
+                          setEditingBanner((prev) => ({ ...prev, imageUrl: '', imagePublicId: '' }));
+                        }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                          bannerMediaType === 'video'
+                            ? 'bg-primary text-white border-primary'
+                            : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <Video className="h-3.5 w-3.5" />
+                        Video
+                      </button>
+                    </div>
+
+                    {bannerMediaType === 'image' ? (
+                      <>
+                        {editingBanner.imageUrl ? (
+                          <div className="relative inline-block group">
+                            <img
+                              src={editingBanner.imageUrl}
+                              alt="Banner preview"
+                              className="h-32 w-48 object-cover rounded-xl"
+                            />
+                            <button
+                              onClick={() =>
+                                setEditingBanner((prev) => ({ ...prev, imageUrl: '', imagePublicId: '' }))
+                              }
+                              className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <input
+                              ref={bannerFileRef}
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={handleBannerImageUpload}
+                            />
+                            <button
+                              onClick={() => bannerFileRef.current?.click()}
+                              disabled={bannerUploading}
+                              className="h-32 w-48 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center gap-2 hover:border-gray-400 hover:bg-gray-50 transition-colors"
+                            >
+                              {bannerUploading ? (
+                                <Loader2 className="h-6 w-6 text-gray-400 animate-spin" />
+                              ) : (
+                                <>
+                                  <Upload className="h-6 w-6 text-gray-400" />
+                                  <span className="text-xs text-gray-400">Upload image</span>
+                                </>
+                              )}
+                            </button>
+                          </>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-1.5">
+                          Displayed full (no blur). Recommended: 1200×600px or wider
+                        </p>
+                      </>
                     ) : (
                       <>
-                        <input
-                          ref={bannerFileRef}
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={handleBannerImageUpload}
-                        />
-                        <button
-                          onClick={() => bannerFileRef.current?.click()}
-                          disabled={bannerUploading}
-                          className="h-32 w-48 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center gap-2 hover:border-gray-400 hover:bg-gray-50 transition-colors"
-                        >
-                          {bannerUploading ? (
-                            <Loader2 className="h-6 w-6 text-gray-400 animate-spin" />
-                          ) : (
-                            <>
-                              <Upload className="h-6 w-6 text-gray-400" />
-                              <span className="text-xs text-gray-400">Upload image</span>
-                            </>
-                          )}
-                        </button>
+                        {editingBanner.videoUrl ? (
+                          <div className="relative inline-block group">
+                            <video
+                              src={editingBanner.videoUrl}
+                              className="h-32 w-48 object-cover rounded-xl bg-black"
+                              muted
+                              autoPlay
+                              loop
+                              playsInline
+                            />
+                            <button
+                              onClick={() =>
+                                setEditingBanner((prev) => ({ ...prev, videoUrl: '', videoPublicId: '' }))
+                              }
+                              className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <input
+                              ref={bannerVideoRef}
+                              type="file"
+                              accept="video/mp4,video/webm,video/mov,video/quicktime,video/avi"
+                              className="hidden"
+                              onChange={handleBannerVideoUpload}
+                            />
+                            <button
+                              onClick={() => bannerVideoRef.current?.click()}
+                              disabled={bannerVideoUploading}
+                              className="h-32 w-48 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center gap-2 hover:border-gray-400 hover:bg-gray-50 transition-colors"
+                            >
+                              {bannerVideoUploading ? (
+                                <Loader2 className="h-6 w-6 text-gray-400 animate-spin" />
+                              ) : (
+                                <>
+                                  <Video className="h-6 w-6 text-gray-400" />
+                                  <span className="text-xs text-gray-400">Upload video</span>
+                                </>
+                              )}
+                            </button>
+                          </>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-1.5">
+                          MP4, WebM, MOV. Plays autoplay, muted, looped on homepage.
+                        </p>
                       </>
                     )}
-                    <p className="text-xs text-muted-foreground mt-1.5">
-                      Displayed full (no blur). Recommended: 1200×600px or wider
-                    </p>
                   </div>
 
                   <div>
