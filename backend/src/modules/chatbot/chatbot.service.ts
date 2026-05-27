@@ -552,6 +552,48 @@ export class ChatbotService {
       });
     }
 
+    // Website quick-order: detect the pre-filled "confirm my order #XYZ" message
+    // sent when a customer places an order via the website WA button. Look up the
+    // order by number and show a confirmation so the customer isn't left with silence.
+    if (!buttonId) {
+      const orderNumMatch = inputText.match(/order\s+#([A-Z0-9-]+)/i);
+      if (orderNumMatch) {
+        const orderNumber = orderNumMatch[1];
+        try {
+          const order = await this.ordersService.findByOrderNumber(orderNumber);
+          if (order) {
+            const items = order.items as Array<{ name: string; quantity: number }>;
+            const itemLines = items.slice(0, 4).map((it) => `• ${it.name} ×${it.quantity}`).join('\n');
+            const more = items.length > 4 ? `\n_… and ${items.length - 4} more_` : '';
+            await this.whatsappService.sendInteractiveButtons({
+              phone: message.phone,
+              headerText: `Order #${order.orderNumber} received ✅`,
+              bodyText:
+                `*${order.shippingAddress?.name || 'Hi'}*, your order has been placed!\n\n` +
+                `${itemLines}${more}\n\n` +
+                `*Total: ${this.formatCurrency(order.total)}* · Cash on Delivery\n` +
+                `We’ll confirm shortly. Track anytime by replying *orders*.`,
+              buttons: [
+                { id: 'orders', title: '📦 Track order' },
+                { id: BTN.BROWSE, title: '🛍 Shop more' },
+              ],
+            });
+            // Link this phone to the order's user if not yet linked.
+            if (!session.user && order.user) {
+              const uid = typeof order.user === 'object' && '_id' in (order.user as object)
+                ? (order.user as unknown as { _id: Types.ObjectId })._id
+                : (order.user as unknown as Types.ObjectId);
+              session.user = uid;
+              await session.save();
+            }
+            return;
+          }
+        } catch {
+          // Order not found or lookup error — fall through to normal flow
+        }
+      }
+    }
+
     // Global transition keys that are valid from any state (rendered after add-to-cart, remove,
     // out-of-stock recovery, etc.). These always route to a known state so the user never gets stuck.
     const globalKeys = new Set([

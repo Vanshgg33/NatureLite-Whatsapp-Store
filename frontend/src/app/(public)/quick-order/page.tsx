@@ -5,11 +5,12 @@ import { useQuery } from '@tanstack/react-query';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, ShoppingCart, Check, Loader2, ArrowRight, Minus, Plus } from 'lucide-react';
+import { Search, ShoppingCart, Loader2, Minus, Plus } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCartStore } from '@/lib/cart-store';
 import { useToast } from '@/components/ui/use-toast';
 import { Product } from '@/types';
+import { WhatsAppOrderModal } from '@/components/ecommerce/whatsapp-order-modal';
 
 // WA Icon SVG
 function WaIcon({ size = 18 }: { size?: number }) {
@@ -38,6 +39,7 @@ export default function QuickOrderPage() {
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [addingToCart, setAddingToCart] = useState(false);
+  const [showWaModal, setShowWaModal] = useState(false);
 
   // 1. Fetch Products & Categories
   const { data: productsData, isLoading: productsLoading } = useQuery({
@@ -203,20 +205,7 @@ export default function QuickOrderPage() {
 
   const handleOrderWhatsApp = () => {
     if (selectedItems.length === 0) return;
-
-    let message = `Hi Nature Lite Foods! I'd like to place a Quick Order for:\n\n`;
-    selectedItems.forEach((item, index) => {
-      const itemTitle = item.variantName ? `${item.name} (${item.variantName})` : item.name;
-      const subtotal = item.price * item.quantity;
-      message += `${index + 1}. *${itemTitle}*\n   Qty: ${item.quantity} x ${formatPrice(item.price)} = *₹${subtotal}*\n\n`;
-    });
-
-    message += `*Grand Total: ${formatPrice(totalAmount)}*\n\n`;
-    message += `Please confirm my order and share details. Thank you!`;
-
-    const encoded = encodeURIComponent(message);
-    const waUrl = `https://wa.me/918817200740?text=${encoded}`;
-    window.open(waUrl, '_blank');
+    setShowWaModal(true);
   };
 
   return (
@@ -538,6 +527,21 @@ export default function QuickOrderPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {showWaModal && (
+        <WhatsAppOrderModal
+          items={selectedItems.map((it) => ({
+            productId: it.productId,
+            variantSku: it.variantSku,
+            variantName: it.variantName,
+            name: it.name,
+            quantity: it.quantity,
+            price: it.price,
+          }))}
+          total={totalAmount}
+          onClose={() => setShowWaModal(false)}
+        />
+      )}
     </div>
   );
 }
