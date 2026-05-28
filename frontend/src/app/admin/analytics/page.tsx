@@ -69,6 +69,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { api } from '@/lib/api';
 import { formatCurrency, getProductTotalStock } from '@/lib/utils';
 import { useAdminAuthStore } from '@/lib/admin-store';
+import { EmailReportButton } from '@/components/admin/email-report-button';
 import type { RevenueDataPoint, ProductAnalytics, OrderAnalytics, Product, CustomerAnalytics, StockSnapshotItem, RawMaterialDailyItem, Store, MonthOverMonthData, TopCustomer, DailyAnalyticsReportResponse, AnalyticsNarrativeResponse, RawMaterial } from '@/types';
 
 const TOOLTIP_STYLE = {
@@ -459,6 +460,58 @@ export default function AnalyticsPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function buildAnalyticsPdfBase64(): Promise<string> {
+    flushSync(() => { setShowPdfTemplate(true); });
+    try {
+      let narrative = pdfNarrative;
+      if (!narrative) {
+        try { narrative = await api.getAnalyticsNarrative(startDate, today); } catch {
+          narrative = {
+            headline: `${periodLabels[days] || `${days} Days`} Analytics Report`,
+            summary: `Performance overview for the selected ${periodLabels[days] || `${days}-day`} period.`,
+            highlights: [`Revenue: ${formatCurrency(totalRevenue)}`, `Orders: ${totalOrders}`],
+            watchouts: [`Low stock items: ${lowStockProducts?.length || 0}`],
+            actions: ['Review low stock inventory.'],
+            generatedBy: 'fallback',
+          };
+        }
+        flushSync(() => {
+          setPdfNarrative(narrative);
+          setPdfNarrativeMeta({ title: narrative!.headline, summary: narrative!.summary, highlights: narrative!.highlights, watchouts: narrative!.watchouts, actions: narrative!.actions });
+        });
+        await new Promise((r) => setTimeout(r, 150));
+      } else {
+        flushSync(() => {
+          setPdfNarrativeMeta({ title: narrative!.headline, summary: narrative!.summary, highlights: narrative!.highlights, watchouts: narrative!.watchouts, actions: narrative!.actions });
+        });
+        await new Promise((r) => setTimeout(r, 100));
+      }
+
+      if (!pdfReportRef.current) throw new Error('PDF template not ready');
+      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([import('jspdf'), import('html2canvas')]);
+      const canvas = await html2canvas(pdfReportRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pageWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let remainingHeight = imgHeight;
+      let position = 0;
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      remainingHeight -= pageHeight;
+      while (remainingHeight > 0) {
+        position = remainingHeight - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        remainingHeight -= pageHeight;
+      }
+      return pdf.output('datauristring');
+    } finally {
+      setShowPdfTemplate(false);
+    }
+  }
+
   async function downloadPdfReport() {
     setDownloadingPdf(true);
     try {
@@ -757,14 +810,22 @@ export default function AnalyticsPage() {
             ))}
           </div>
 
-          <Button
-            onClick={downloadPdfReport}
-            disabled={downloadingPdf}
-            className="bg-gradient-to-r from-[#173125] to-[#2F6B47] text-white hover:opacity-90 shadow-md border-0 rounded-full px-5 py-2 flex items-center gap-2 font-semibold text-sm transition-all duration-300"
-          >
-            <Download className="h-4 w-4" />
-            {downloadingPdf ? 'Generating PDF...' : 'Export Complete PDF Report'}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={downloadPdfReport}
+              disabled={downloadingPdf}
+              className="bg-gradient-to-r from-[#173125] to-[#2F6B47] text-white hover:opacity-90 shadow-md border-0 rounded-full px-5 py-2 flex items-center gap-2 font-semibold text-sm transition-all duration-300"
+            >
+              <Download className="h-4 w-4" />
+              {downloadingPdf ? 'Generating PDF...' : 'Export Complete PDF Report'}
+            </Button>
+            <EmailReportButton
+              generatePdfBase64={buildAnalyticsPdfBase64}
+              filename={`Analytics-Report-${periodLabels[days] || `${days}d`}.pdf`}
+              subject="Analytics Report"
+              disabled={downloadingPdf}
+            />
+          </div>
         </motion.div>
 
         {/* Daily Report */}
@@ -798,6 +859,12 @@ export default function AnalyticsPage() {
                     <Download className="h-4 w-4" />
                     {downloadingPdf ? 'Generating PDF…' : 'PDF'}
                   </Button>
+                  <EmailReportButton
+                    generatePdfBase64={buildAnalyticsPdfBase64}
+                    filename={`Analytics-Report-${dailyReport.report?.date || 'daily'}.pdf`}
+                    subject="Daily Analytics Report"
+                    disabled={downloadingPdf}
+                  />
                   <Button
                     variant="outline"
                     size="sm"

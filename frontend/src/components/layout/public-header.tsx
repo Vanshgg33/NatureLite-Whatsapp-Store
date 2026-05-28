@@ -86,23 +86,15 @@ function NavIconBtn({
 
 export function PublicHeader() {
   const pathname             = usePathname();
-  const [isScrolled, setIsScrolled]     = useState(false);
   const [mobileOpen, setMobileOpen]     = useState(false);
   const [hasMounted, setHasMounted]     = useState(false);
 
-  /* true when floating over the dark-green hero */
-  const isHeroMode = pathname === '/' && !isScrolled;
   const itemCount            = useCartStore((s) => s.getItemCount());
   const isAuthenticated      = useCustomerStore((s) => s.isAuthenticated);
   const wishlistCount        = useWishlistStore((s) => s.items.length);
+  const isHeroMode           = false;
 
   useEffect(() => { setHasMounted(true); }, []);
-
-  useEffect(() => {
-    const onScroll = () => setIsScrolled(window.scrollY > 24);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
 
   useEffect(() => { setMobileOpen(false); }, [pathname]);
 
@@ -112,9 +104,7 @@ export function PublicHeader() {
       <header
         className={cn(
           'w-full transition-all duration-500 ease-out',
-          isHeroMode
-            ? 'bg-transparent border-b border-white/[0.06]'
-            : 'glass-warm shadow-[0_1px_0_rgba(145,110,58,0.10),0_4px_24px_-8px_rgba(61,46,31,0.08)]'
+          'glass-warm shadow-[0_1px_0_rgba(145,110,58,0.10),0_4px_24px_-8px_rgba(61,46,31,0.08)]'
         )}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6">

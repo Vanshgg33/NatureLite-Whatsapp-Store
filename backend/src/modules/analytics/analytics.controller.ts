@@ -3,10 +3,14 @@ import {
   Delete,
   Get,
   Param,
+  Post,
+  Body,
   Query,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { AnalyticsService } from './analytics.service';
+import { EmailService } from '../email/email.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -16,7 +20,10 @@ import { SnapshotPeriod } from './schemas/analytics-snapshot.schema';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin', 'superadmin')
 export class AnalyticsController {
-  constructor(private readonly analyticsService: AnalyticsService) {}
+  constructor(
+    private readonly analyticsService: AnalyticsService,
+    private readonly emailService: EmailService,
+  ) {}
 
   @Get('dashboard')
   async getDashboardStats(): Promise<Record<string, unknown>> {
@@ -161,6 +168,18 @@ export class AnalyticsController {
   @Get('stores/top-customers')
   async getTopCustomersOverall() {
     return this.analyticsService.getTopCustomersOverall();
+  }
+
+  @Post('send-report-email')
+  async sendReportEmail(
+    @Body() body: { email: string; subject: string; filename: string; pdfBase64: string },
+  ): Promise<{ success: boolean }> {
+    const { email, subject, filename, pdfBase64 } = body;
+    if (!email || !pdfBase64) throw new BadRequestException('email and pdfBase64 are required');
+    const base64Data = pdfBase64.replace(/^data:application\/pdf;base64,/, '');
+    const pdfBuffer = Buffer.from(base64Data, 'base64');
+    await this.emailService.sendReportEmail(email, subject || filename, filename, pdfBuffer);
+    return { success: true };
   }
 
   @Delete('reset/dashboard')

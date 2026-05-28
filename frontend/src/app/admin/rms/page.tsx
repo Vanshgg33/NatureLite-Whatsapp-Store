@@ -15,7 +15,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
-import { downloadReportPdf } from '@/lib/report-pdf';
+import { downloadReportPdf, generateReportPdfBase64 } from '@/lib/report-pdf';
+import { EmailReportButton } from '@/components/admin/email-report-button';
 import type { Store, RawMaterial, RawMaterialDailyItem } from '@/types';
 
 function stockStatus(stock: number): { label: string; color: string; bg: string } {
@@ -69,49 +70,44 @@ export default function RMSPage() {
   const lowCount = materials.filter((m) => m.totalStock > 0 && m.totalStock < 20).length;
   const goodCount = materials.filter((m) => m.totalStock >= 20).length;
 
-  async function generateReport() {
+  async function buildRmsReportOptions() {
     if (reportDate) {
-      try {
-        const res = await api.getRawMaterialAnalytics(selectedStoreId, { date: reportDate });
-        const items = (res.items ?? []) as RawMaterialDailyItem[];
-        const formattedDate = new Date(reportDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-        await downloadReportPdf({
-          title: 'RMS - Raw Material Entry Report',
-          subtitle: 'Daily raw material stock movements',
-          meta: [
-            { label: 'Store', value: storeName },
-            { label: 'Date', value: formattedDate },
-            { label: 'Generated', value: 'Admin Panel' },
-          ],
-          summary: [
-            { label: 'Materials Logged', value: items.length },
-            { label: 'Total Entries', value: items.reduce((s, i) => s + (i.entryCount ?? i.entries?.length ?? 0), 0) },
-            { label: 'Stock In', value: items.reduce((s, i) => s + i.stockIn, 0) },
-            { label: 'Processed', value: items.reduce((s, i) => s + i.processed, 0) },
-          ],
-          table: {
-            columns: ['Material', 'Unit', 'Entries', 'Opening', 'Stock In', 'Processed', 'Closing'],
-            rows: items.map((i) => [
-              i.materialName ?? '-',
-              i.materialUnit ?? '-',
-              i.entryCount ?? i.entries?.length ?? 0,
-              i.openingStock,
-              i.stockIn,
-              i.processed,
-              i.closing,
-            ]),
-          },
-          filename: `RMS-Entry-Report-${storeName}-${reportDate}.pdf`,
-        });
-      } catch {
-        toast({ title: 'Failed to download raw material report', variant: 'destructive' });
-      }
-      return;
+      const res = await api.getRawMaterialAnalytics(selectedStoreId, { date: reportDate });
+      const items = (res.items ?? []) as RawMaterialDailyItem[];
+      const formattedDate = new Date(reportDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+      return {
+        title: 'RMS - Raw Material Entry Report',
+        subtitle: 'Daily raw material stock movements',
+        meta: [
+          { label: 'Store', value: storeName },
+          { label: 'Date', value: formattedDate },
+          { label: 'Generated', value: 'Admin Panel' },
+        ],
+        summary: [
+          { label: 'Materials Logged', value: items.length },
+          { label: 'Total Entries', value: items.reduce((s, i) => s + (i.entryCount ?? i.entries?.length ?? 0), 0) },
+          { label: 'Stock In', value: items.reduce((s, i) => s + i.stockIn, 0) },
+          { label: 'Processed', value: items.reduce((s, i) => s + i.processed, 0) },
+        ],
+        table: {
+          columns: ['Material', 'Unit', 'Entries', 'Opening', 'Stock In', 'Processed', 'Closing'],
+          rows: items.map((i) => [
+            i.materialName ?? '-',
+            i.materialUnit ?? '-',
+            i.entryCount ?? i.entries?.length ?? 0,
+            i.openingStock,
+            i.stockIn,
+            i.processed,
+            i.closing,
+          ]),
+        },
+        filename: `RMS-Entry-Report-${storeName}-${reportDate}.pdf`,
+      };
     }
 
     const now = new Date();
     const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-    await downloadReportPdf({
+    return {
       title: 'RMS - Raw Material Stock Report',
       subtitle: 'Current raw material stock levels',
       meta: [
@@ -128,12 +124,26 @@ export default function RMSPage() {
       table: {
         columns: ['Material', 'Unit', 'Stock', 'Status'],
         rows: materials.map((m) => {
-        const s = stockStatus(m.totalStock);
+          const s = stockStatus(m.totalStock);
           return [m.name, m.unit, m.totalStock, s.label];
-      }),
+        }),
       },
       filename: `RMS-Raw-Material-Report-${storeName}-${now.toISOString().split('T')[0]}.pdf`,
-    });
+    };
+  }
+
+  async function generateReport() {
+    try {
+      const opts = await buildRmsReportOptions();
+      await downloadReportPdf(opts);
+    } catch {
+      toast({ title: 'Failed to download raw material report', variant: 'destructive' });
+    }
+  }
+
+  async function generateRmsPdfBase64(): Promise<string> {
+    const opts = await buildRmsReportOptions();
+    return generateReportPdfBase64(opts);
   }
 
   const statCards = [
@@ -182,6 +192,13 @@ export default function RMSPage() {
           <Button onClick={generateReport} disabled={!selectedStoreId || materials.length === 0} variant="outline" className="gap-2 h-9">
             <FileText className="h-4 w-4" /> Generate Report
           </Button>
+          <EmailReportButton
+            generatePdfBase64={generateRmsPdfBase64}
+            filename={reportDate ? `RMS-Entry-Report-${storeName}-${reportDate}.pdf` : `RMS-Raw-Material-Report-${storeName}.pdf`}
+            subject="RMS Report"
+            className="h-9"
+            disabled={!selectedStoreId || materials.length === 0}
+          />
         </div>
       </div>
 

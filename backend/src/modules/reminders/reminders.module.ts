@@ -13,6 +13,6 @@ import { StoresModule } from '../stores/stores.module';
   ],
   controllers: [RemindersController],
   providers: [ReminderRepository, RemindersService],
-  exports: [RemindersService, MongooseModule],
+  exports: [RemindersService, ReminderRepository, MongooseModule],
 })
 export class RemindersModule {}

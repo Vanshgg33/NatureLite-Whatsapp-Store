@@ -1,22 +1,12 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Sparkles,
-  Send,
-  Bot,
-  User,
-  RefreshCw,
-  ShoppingCart,
-  KeyRound,
-  Users,
-  ChevronRight,
-  TrendingUp,
-  Star,
-  Tag,
-  BarChart2,
-  UserPlus,
+  Sparkles, Send, Bot, User, RefreshCw, ShoppingCart, KeyRound,
+  Users, ChevronRight, TrendingUp, Star, Tag, BarChart2, UserPlus,
+  Copy, Check, RotateCcw, Lightbulb, X, Zap, AlertTriangle,
+  CreditCard, Repeat, MessageCircle, Bell, Store,
 } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent } from '@/components/ui/card';
@@ -29,265 +19,387 @@ interface Message {
   sender: 'user' | 'assistant';
   text: string;
   timestamp: Date;
+  streaming?: boolean;
 }
+
+type HistoryItem = { role: 'user' | 'assistant'; text: string };
+
+const MAX_HISTORY_TURNS = 6;
+
+// ── Markdown renderer ──────────────────────────────────────────────────────────
+
+function parseInlineStyles(content: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = [];
+  let cur = content;
+  let k = 0;
+  while (cur.length > 0) {
+    const boldMatch = cur.match(/\*\*(.*?)\*\*/);
+    const codeMatch = cur.match(/`(.*?)`/);
+    const bi = boldMatch ? cur.indexOf(boldMatch[0]) : -1;
+    const ci = codeMatch ? cur.indexOf(codeMatch[0]) : -1;
+    if (bi === -1 && ci === -1) { parts.push(<span key={k++}>{cur}</span>); break; }
+    if (bi !== -1 && (ci === -1 || bi < ci)) {
+      if (bi > 0) parts.push(<span key={k++}>{cur.slice(0, bi)}</span>);
+      parts.push(<strong key={k++} className="font-extrabold text-brand-charcoal dark:text-white">{boldMatch![1]}</strong>);
+      cur = cur.slice(bi + boldMatch![0].length);
+    } else {
+      if (ci > 0) parts.push(<span key={k++}>{cur.slice(0, ci)}</span>);
+      parts.push(<code key={k++} className="bg-gray-100 dark:bg-gray-800 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded font-mono text-xs font-semibold">{codeMatch![1]}</code>);
+      cur = cur.slice(ci + codeMatch![0].length);
+    }
+  }
+  return parts;
+}
+
+function renderLine(line: string, key: string): React.ReactNode {
+  const t = line.trim();
+  if (t.startsWith('###')) return <h4 key={key} className="text-md font-bold text-[#1E3D2B] dark:text-[#E8A838] mt-3 mb-1 flex items-center gap-1.5"><ChevronRight className="h-4 w-4 text-[#E8A838]" />{parseInlineStyles(t.slice(3).trim())}</h4>;
+  if (t.startsWith('##')) return <h3 key={key} className="text-lg font-bold text-[#1E3D2B] dark:text-white mt-4 mb-2 border-b border-gray-100 pb-1">{parseInlineStyles(t.slice(2).trim())}</h3>;
+  if (t.startsWith('#')) return <h2 key={key} className="text-xl font-bold text-[#1E3D2B] dark:text-white mt-5 mb-2 pb-1">{parseInlineStyles(t.slice(1).trim())}</h2>;
+  if (t.startsWith('>')) return <div key={key} className="bg-amber-50 dark:bg-amber-950/20 border-l-4 border-amber-500 p-3 rounded-r-lg my-2 text-sm text-amber-900 dark:text-amber-300">{parseInlineStyles(t.slice(1).trim())}</div>;
+  if (t.startsWith('-') || t.startsWith('*')) {
+    const nested = line.startsWith('  ') || line.startsWith('\t');
+    return <ul key={key} className={cn('list-disc list-inside text-sm text-gray-700 dark:text-gray-300 my-0.5', nested ? 'pl-6 text-gray-500' : 'pl-3')}><li className="leading-relaxed">{parseInlineStyles(t.slice(1).trim())}</li></ul>;
+  }
+  const numMatch = t.match(/^(\d+)\.\s(.*)/);
+  if (numMatch) return <ol key={key} className="list-decimal list-inside text-sm text-gray-700 dark:text-gray-300 pl-3 my-0.5"><li className="leading-relaxed">{parseInlineStyles(numMatch[2].trim())}</li></ol>;
+  if (t === '') return <div key={key} className="h-2" />;
+  return <p key={key} className="text-sm leading-relaxed text-gray-800 dark:text-gray-200 my-1">{parseInlineStyles(t)}</p>;
+}
+
+function renderTable(tableText: string, key: string): React.ReactNode {
+  const rows = tableText.trim().split('\n').filter(r => r.trim().startsWith('|'));
+  if (rows.length < 2) return null;
+  const parseRow = (row: string) => row.split('|').filter((_, i, a) => i > 0 && i < a.length - 1).map(c => c.trim());
+  const headers = parseRow(rows[0]);
+  const body = rows.slice(2).map(parseRow); // skip separator row
+  return (
+    <div key={key} className="overflow-x-auto my-2 rounded-lg border border-gray-200 dark:border-white/10">
+      <table className="w-full text-xs">
+        <thead className="bg-brand-green/10">
+          <tr>{headers.map((h, i) => <th key={i} className="px-3 py-2 text-left font-bold text-[#1E3D2B] dark:text-[#E8A838] whitespace-nowrap">{parseInlineStyles(h)}</th>)}</tr>
+        </thead>
+        <tbody>
+          {body.map((row, ri) => (
+            <tr key={ri} className={cn('border-t border-gray-100 dark:border-white/5', ri % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-gray-50/50 dark:bg-white/[0.02]')}>
+              {row.map((cell, ci) => <td key={ci} className="px-3 py-2 text-gray-700 dark:text-gray-300">{parseInlineStyles(cell)}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function renderMarkdown(text: string): React.ReactNode[] {
+  const elements: React.ReactNode[] = [];
+
+  // Split on fenced code blocks and markdown tables
+  // Tables are consecutive lines starting with |
+  const lines = text.split('\n');
+  let i = 0;
+  let segIdx = 0;
+
+  while (i < lines.length) {
+    // Fenced code block
+    if (lines[i].trim().startsWith('```')) {
+      const lang = lines[i].trim().slice(3);
+      i++;
+      const codeLines: string[] = [];
+      while (i < lines.length && !lines[i].trim().startsWith('```')) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      i++; // skip closing ```
+      elements.push(
+        <pre key={`code-${segIdx++}`} className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 overflow-x-auto my-2">
+          <code className="text-xs text-gray-800 dark:text-gray-200 font-mono whitespace-pre">{codeLines.join('\n')}</code>
+        </pre>
+      );
+      continue;
+    }
+
+    // Markdown table (consecutive lines with |)
+    if (lines[i].trim().startsWith('|')) {
+      const tableLines: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      const table = renderTable(tableLines.join('\n'), `table-${segIdx++}`);
+      if (table) elements.push(table);
+      continue;
+    }
+
+    // Regular line
+    const node = renderLine(lines[i], `line-${segIdx++}`);
+    if (node) elements.push(node);
+    i++;
+  }
+
+  return elements;
+}
+
+// ── Briefing Card ──────────────────────────────────────────────────────────────
+
+function BriefingCard({ briefing, onAsk }: { briefing: Record<string, string | null>; onAsk: (q: string) => void }) {
+  const stats = briefing.dashboard ? parseKeyValues(briefing.dashboard) : null;
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-2xl mx-auto">
+      <div className="bg-brand-green/5 border border-brand-green/20 rounded-2xl p-5 mb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Zap className="h-4 w-4 text-brand-green" />
+          <h3 className="font-bold text-[13px] text-[#1E3D2B] dark:text-white">Today at a Glance</h3>
+        </div>
+        {stats && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            {stats.map(({ key, value }) => (
+              <div key={key} className="bg-white dark:bg-white/5 rounded-xl p-3 text-center">
+                <p className="text-[10px] text-muted-foreground mb-0.5">{key}</p>
+                <p className="font-bold text-[13px] text-[#1E3D2B] dark:text-white">{value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {briefing.lowStock && briefing.lowStock.trim() !== 'No low stock products found.' && (
+            <button onClick={() => onAsk('which products are low on stock')} className="flex items-center gap-1.5 text-[11px] bg-red-50 dark:bg-red-950/20 text-red-600 border border-red-200/60 px-2.5 py-1 rounded-full hover:bg-red-100 transition-colors">
+              <AlertTriangle className="h-3 w-3" /> Low Stock Alert
+            </button>
+          )}
+          <button onClick={() => onAsk('how many orders are in each status')} className="flex items-center gap-1.5 text-[11px] bg-blue-50 dark:bg-blue-950/20 text-blue-600 border border-blue-200/60 px-2.5 py-1 rounded-full hover:bg-blue-100 transition-colors">
+            <Tag className="h-3 w-3" /> Order Status
+          </button>
+          <button onClick={() => onAsk('show revenue trend for last 14 days')} className="flex items-center gap-1.5 text-[11px] bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 border border-emerald-200/60 px-2.5 py-1 rounded-full hover:bg-emerald-100 transition-colors">
+            <TrendingUp className="h-3 w-3" /> Revenue Trend
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function parseKeyValues(text: string): Array<{ key: string; value: string }> {
+  const pairs: Array<{ key: string; value: string }> = [];
+  const lines = text.split('\n');
+  for (const line of lines) {
+    const match = line.match(/\*\*([^*]+)\*\*:\s*(.+)/);
+    if (match) {
+      const key = match[1].trim();
+      const value = match[2].replace(/\*\*/g, '').split('|')[0].trim();
+      if (pairs.length < 4) pairs.push({ key, value });
+    }
+  }
+  return pairs;
+}
+
+// ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function AdminChatbotPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [briefing, setBriefing] = useState<Record<string, string | null> | null>(null);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastUserTextRef = useRef<string>('');
+  const abortRef = useRef<AbortController | null>(null);
 
-  // Auto-scroll to bottom of chats when a new message arrives
+  // Load DB history on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const history = await api.getAdminChatHistory();
+        if (history.length > 0) {
+          setMessages(history.map((m) => ({
+            ...m,
+            sender: m.sender,
+            timestamp: new Date(m.timestamp),
+          })));
+        }
+      } catch { /* not fatal */ }
+      setHistoryLoaded(true);
+    })();
+  }, []);
+
+  // Load briefing once history loaded and chat is empty
+  useEffect(() => {
+    if (!historyLoaded) return;
+    if (messages.length > 0) return;
+    (async () => {
+      try {
+        const data = await api.getAdminChatbotBriefing();
+        setBriefing(data);
+      } catch { /* not fatal */ }
+    })();
+  }, [historyLoaded, messages.length]);
+
+  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
+  const buildHistory = useCallback((currentMessages: Message[]): HistoryItem[] =>
+    currentMessages.slice(-MAX_HISTORY_TURNS).map((m) => ({
+      role: m.sender === 'user' ? 'user' : 'assistant',
+      text: m.text,
+    })), []);
+
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isLoading) return;
+    const trimmed = text.trim();
+    lastUserTextRef.current = trimmed;
 
-    const userMessage: Message = {
-      id: `msg-${Date.now()}-user`,
-      sender: 'user',
-      text: text.trim(),
-      timestamp: new Date(),
-    };
+    const userMsg: Message = { id: `msg-${Date.now()}-user`, sender: 'user', text: trimmed, timestamp: new Date() };
+    const historySnapshot = buildHistory(messages);
 
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((prev) => [...prev, userMsg]);
     setInputValue('');
     setIsLoading(true);
+    setShowSuggestions(false);
+    setBriefing(null);
+
+    // Create streaming assistant message placeholder
+    const assistantId = `msg-${Date.now()}-assistant`;
+    setMessages((prev) => [...prev, { id: assistantId, sender: 'assistant', text: '', timestamp: new Date(), streaming: true }]);
+
+    abortRef.current = new AbortController();
 
     try {
-      const response = await api.askAdminChatbot(text.trim());
-      const assistantMessage: Message = {
-        id: `msg-${Date.now()}-assistant`,
-        sender: 'assistant',
-        text: response.reply,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch (error: any) {
-      const errorMsg = error?.response?.data?.message || error?.message || 'Failed to connect to the backend server.';
-      const errorMessage: Message = {
-        id: `msg-${Date.now()}-error`,
-        sender: 'assistant',
-        text: `❌ **Failed to retrieve answer from AI Chatbot.**\n\n*Error details:* ${errorMsg}\n\nPlease check your server connection or verify that the \`GEMINI_API_KEY\` is configured in your server \`.env\` file.`,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      const token = api.getAdminAuthToken();
+      const url = api.getAdminChatStreamUrl();
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ message: trimmed, history: historySnapshot }),
+        signal: abortRef.current.signal,
+      });
+
+      if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fullText = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          const data = line.slice(5).trim();
+          if (data === '[DONE]') break;
+          try {
+            const { delta } = JSON.parse(data);
+            if (delta) {
+              fullText += delta;
+              setMessages((prev) =>
+                prev.map((m) => m.id === assistantId ? { ...m, text: fullText } : m)
+              );
+            }
+          } catch { /* skip */ }
+        }
+      }
+
+      // Mark streaming done
+      setMessages((prev) =>
+        prev.map((m) => m.id === assistantId ? { ...m, streaming: false } : m)
+      );
+
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, text: '⏹ Stopped.', streaming: false } : m));
+      } else {
+        const errMsg = err?.message || 'Connection failed.';
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? { ...m, text: `❌ **Failed to get a response.**\n\n*Error:* ${errMsg}\n\nPlease check server connection or \`GEMINI_API_KEY\` in your \`.env\`.`, streaming: false }
+              : m
+          )
+        );
+      }
     } finally {
       setIsLoading(false);
+      abortRef.current = null;
     }
   };
 
-  const handleResetChat = () => {
+  const handleResetChat = async () => {
     setMessages([]);
+    setShowSuggestions(false);
+    setBriefing(null);
+    try { await api.clearAdminChatHistory(); } catch { /* not fatal */ }
+    // Reload briefing for empty state
+    setTimeout(async () => {
+      try { const data = await api.getAdminChatbotBriefing(); setBriefing(data); } catch { /* */ }
+    }, 300);
   };
 
-  // Clickable suggestion cards
+  const handleStopStream = () => {
+    abortRef.current?.abort();
+  };
+
+  const handleCopy = async (msgId: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedMsgId(msgId);
+      setTimeout(() => setCopiedMsgId(null), 2000);
+    } catch { /* clipboard N/A */ }
+  };
+
+  const handleRetry = () => {
+    if (!lastUserTextRef.current) return;
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last?.sender === 'assistant' && last.text.startsWith('❌')) return prev.slice(0, -1);
+      return prev;
+    });
+    setTimeout(() => handleSendMessage(lastUserTextRef.current), 50);
+  };
+
   const dynamicPrompts = [
-    {
-      title: 'Dashboard Overview',
-      desc: "Today's orders, revenue, and pending fulfillments.",
-      query: "give me an overview of today's orders, revenue, and customer counts",
-      icon: TrendingUp,
-      color: 'from-purple-500/10 to-pink-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20',
-    },
-    {
-      title: 'Low Stock Alert',
-      desc: 'Which products are running low on stock?',
-      query: 'which products are low on stock',
-      icon: ShoppingCart,
-      color: 'from-orange-500/10 to-amber-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20',
-    },
-    {
-      title: 'Abandoned Carts',
-      desc: 'Customers who had items in cart but never ordered.',
-      query: 'which customers left without ordering, show their names and phone numbers',
-      icon: Users,
-      color: 'from-emerald-500/10 to-teal-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
-    },
-    {
-      title: 'Revenue Trend',
-      desc: 'Day-by-day revenue for the last 14 days.',
-      query: 'show revenue trend for last 14 days',
-      icon: BarChart2,
-      color: 'from-blue-500/10 to-indigo-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
-    },
-    {
-      title: 'Order Status Breakdown',
-      desc: 'Count of orders in each status bucket.',
-      query: 'how many orders are in each status',
-      icon: Tag,
-      color: 'from-rose-500/10 to-pink-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
-    },
-    {
-      title: 'Recent Feedback',
-      desc: 'Latest product reviews and customer feedback.',
-      query: 'show me recent customer reviews and feedback',
-      icon: Star,
-      color: 'from-yellow-500/10 to-amber-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20',
-    },
-    {
-      title: 'Active Coupons',
-      desc: 'All coupons, their usage, and expiry status.',
-      query: 'show me all coupons and their usage',
-      icon: KeyRound,
-      color: 'from-cyan-500/10 to-sky-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20',
-    },
-    {
-      title: 'New Customers',
-      desc: 'Customers who joined in the last 7 days.',
-      query: 'show new customers who joined this week',
-      icon: UserPlus,
-      color: 'from-violet-500/10 to-purple-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20',
-    },
+    { title: 'Dashboard Overview', desc: "Today's orders, revenue, and pending fulfillments.", query: "give me an overview of today's orders, revenue, and customer counts", icon: TrendingUp, color: 'from-purple-500/10 to-pink-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20' },
+    { title: 'Low Stock Alert', desc: 'Which products are running low?', query: 'which products are low on stock', icon: ShoppingCart, color: 'from-orange-500/10 to-amber-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20' },
+    { title: 'Abandoned Carts', desc: 'Customers who left without ordering.', query: 'which customers left without ordering', icon: Users, color: 'from-emerald-500/10 to-teal-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' },
+    { title: 'Revenue Trend', desc: 'Day-by-day revenue for 14 days.', query: 'show revenue trend for last 14 days', icon: BarChart2, color: 'from-blue-500/10 to-indigo-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20' },
+    { title: 'Week vs Last Week', desc: 'Compare this week to last week.', query: 'compare this week vs last week', icon: Zap, color: 'from-violet-500/10 to-purple-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20' },
+    { title: 'Store Sales', desc: 'Physical store performance today.', query: 'show store sales for today', icon: Store, color: 'from-teal-500/10 to-cyan-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20' },
+    { title: 'Failed Payments', desc: 'Failed and pending payment records.', query: 'show failed and pending payments', icon: CreditCard, color: 'from-red-500/10 to-rose-500/10 text-red-600 dark:text-red-400 border-red-500/20' },
+    { title: 'Active Subscriptions', desc: 'Recurring orders and upcoming deliveries.', query: 'show active subscriptions and upcoming deliveries', icon: Repeat, color: 'from-sky-500/10 to-blue-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20' },
+    { title: 'WhatsApp Queue', desc: 'Support sessions waiting for reply.', query: 'show whatsapp support queue', icon: MessageCircle, color: 'from-green-500/10 to-emerald-500/10 text-green-600 dark:text-green-400 border-green-500/20' },
+    { title: 'Wallet Balances', desc: 'Customers with unused wallet credits.', query: 'show customers with wallet balances', icon: Star, color: 'from-yellow-500/10 to-amber-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20' },
+    { title: 'Pending Reminders', desc: 'Overdue and upcoming store reminders.', query: 'show pending and overdue reminders', icon: Bell, color: 'from-pink-500/10 to-rose-500/10 text-pink-600 dark:text-pink-400 border-pink-500/20' },
+    { title: 'Active Coupons', desc: 'All coupons, usage, and expiry.', query: 'show me all coupons and their usage', icon: KeyRound, color: 'from-cyan-500/10 to-sky-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20' },
+    { title: 'Order Status', desc: 'Count of orders per status.', query: 'how many orders are in each status', icon: Tag, color: 'from-rose-500/10 to-pink-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' },
+    { title: 'Recent Feedback', desc: 'Latest reviews and customer feedback.', query: 'show me recent customer reviews and feedback', icon: Star, color: 'from-amber-500/10 to-yellow-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20' },
+    { title: 'New Customers', desc: 'Customers who joined this week.', query: 'show new customers who joined this week', icon: UserPlus, color: 'from-indigo-500/10 to-violet-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20' },
+    { title: 'Monthly Report', desc: 'Full 30-day analytics summary.', query: 'monthly analytics report', icon: TrendingUp, color: 'from-slate-500/10 to-gray-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20' },
   ];
 
-  // A custom lightweight high-fidelity React Markdown renderer
-  const renderMarkdown = (text: string) => {
-    const lines = text.split('\n');
-    return lines.map((line, lineIdx) => {
-      let trimmed = line.trim();
-
-      // Heading 3
-      if (trimmed.startsWith('###')) {
-        return (
-          <h4 key={lineIdx} className="text-md font-bold text-[#1E3D2B] dark:text-[#E8A838] mt-3 mb-1 first:mt-0 flex items-center gap-1.5">
-            <ChevronRight className="h-4 w-4 text-[#E8A838]" />
-            {parseInlineStyles(trimmed.slice(3).trim())}
-          </h4>
-        );
-      }
-      // Heading 2
-      if (trimmed.startsWith('##')) {
-        return (
-          <h3 key={lineIdx} className="text-lg font-bold text-[#1E3D2B] dark:text-white mt-4 mb-2 first:mt-0 border-b border-gray-100 pb-1">
-            {parseInlineStyles(trimmed.slice(2).trim())}
-          </h3>
-        );
-      }
-      // Heading 1
-      if (trimmed.startsWith('#')) {
-        return (
-          <h2 key={lineIdx} className="text-xl font-bold text-[#1E3D2B] dark:text-white mt-5 mb-2 first:mt-0 pb-1">
-            {parseInlineStyles(trimmed.slice(1).trim())}
-          </h2>
-        );
-      }
-
-      // Blockquote or Warn Card
-      if (trimmed.startsWith('>')) {
-        return (
-          <div key={lineIdx} className="bg-amber-50 dark:bg-amber-950/20 border-l-4 border-amber-500 p-3 rounded-r-lg my-2 text-sm text-amber-900 dark:text-amber-300">
-            {parseInlineStyles(trimmed.slice(1).trim())}
-          </div>
-        );
-      }
-
-      // Bullet points
-      if (trimmed.startsWith('-') || trimmed.startsWith('*')) {
-        // Nested bullet point detection
-        const isNested = line.startsWith('  ') || line.startsWith('\t');
-        return (
-          <ul key={lineIdx} className={cn("list-disc list-inside text-sm text-gray-700 dark:text-gray-300 my-0.5", isNested ? "pl-6 text-gray-500" : "pl-3")}>
-            <li className="leading-relaxed">
-              {parseInlineStyles(trimmed.slice(1).trim())}
-            </li>
-          </ul>
-        );
-      }
-
-      // Number lists
-      const numberMatch = trimmed.match(/^(\d+)\.\s(.*)/);
-      if (numberMatch) {
-        return (
-          <ol key={lineIdx} className="list-decimal list-inside text-sm text-gray-700 dark:text-gray-300 pl-3 my-0.5">
-            <li className="leading-relaxed">
-              {parseInlineStyles(numberMatch[2].trim())}
-            </li>
-          </ol>
-        );
-      }
-
-      // Code blocks
-      if (trimmed.startsWith('```')) {
-        return null; // Skip wrapper fences
-      }
-
-      // Empty line
-      if (trimmed === '') {
-        return <div key={lineIdx} className="h-2" />;
-      }
-
-      // Plain paragraph
-      return (
-        <p key={lineIdx} className="text-sm leading-relaxed text-gray-800 dark:text-gray-200 my-1">
-          {parseInlineStyles(trimmed)}
-        </p>
-      );
-    });
-  };
-
-  // Helper to parse inline bold **bold** and code `code`
-  const parseInlineStyles = (content: string): React.ReactNode[] => {
-    const parts: React.ReactNode[] = [];
-    let currentText = content;
-    let keyIdx = 0;
-
-    while (currentText.length > 0) {
-      const boldMatch = currentText.match(/\*\*(.*?)\*\*/);
-      const codeMatch = currentText.match(/`(.*?)`/);
-
-      const boldIndex = boldMatch ? currentText.indexOf(boldMatch[0]) : -1;
-      const codeIndex = codeMatch ? currentText.indexOf(codeMatch[0]) : -1;
-
-      // Neither found
-      if (boldIndex === -1 && codeIndex === -1) {
-        parts.push(<span key={keyIdx++}>{currentText}</span>);
-        break;
-      }
-
-      // Bold match occurs first
-      if (boldIndex !== -1 && (codeIndex === -1 || boldIndex < codeIndex)) {
-        if (boldIndex > 0) {
-          parts.push(<span key={keyIdx++}>{currentText.slice(0, boldIndex)}</span>);
-        }
-        parts.push(
-          <strong key={keyIdx++} className="font-extrabold text-brand-charcoal dark:text-white">
-            {boldMatch![1]}
-          </strong>
-        );
-        currentText = currentText.slice(boldIndex + boldMatch![0].length);
-      }
-      // Code match occurs first
-      else {
-        if (codeIndex > 0) {
-          parts.push(<span key={keyIdx++}>{currentText.slice(0, codeIndex)}</span>);
-        }
-        parts.push(
-          <code key={keyIdx++} className="bg-gray-100 dark:bg-gray-800 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded font-mono text-xs font-semibold">
-            {codeMatch![1]}
-          </code>
-        );
-        currentText = currentText.slice(codeIndex + codeMatch![0].length);
-      }
-    }
-
-    return parts;
-  };
+  const isEmpty = messages.length === 0 && historyLoaded;
 
   return (
     <div className="flex flex-col h-screen bg-[#F7F5F0] dark:bg-background">
       <Header title="AI - Aditya Intelligence" description="Talk to your dashboard data intelligently" />
 
-      {/* Main Container */}
       <div className="flex-1 flex flex-col min-h-0 p-6">
         <div className="flex-1 flex flex-col md:flex-row gap-6 min-h-0 max-w-7xl w-full mx-auto">
-          
-          {/* Chat Window Container */}
+
+          {/* Chat Window */}
           <div className="flex-1 flex flex-col bg-white/70 dark:bg-[#1E3D2B]/10 backdrop-blur-md border border-white/40 dark:border-white/10 rounded-2xl shadow-xl overflow-hidden min-h-0">
-            
-            {/* Window Header */}
+
+            {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-white/5 bg-white/40 dark:bg-black/20 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="relative h-10 w-10 rounded-xl bg-brand-green/10 flex items-center justify-center">
@@ -296,54 +408,34 @@ export default function AdminChatbotPage() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-[15px] text-gray-900 dark:text-white leading-tight">AI - Aditya Intelligence</h3>
-                  <span className="text-[10px] text-muted-foreground font-mono">powered by gemini-2.0-flash</span>
                 </div>
               </div>
-
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleResetChat}
-                  title="Clear Conversation"
-                  className="hover:bg-red-500/10 hover:text-red-500 text-gray-400 rounded-full h-8 w-8 transition-colors"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
-              </div>
+              <Button variant="ghost" size="icon" onClick={handleResetChat} title="Clear Conversation" className="hover:bg-red-500/10 hover:text-red-500 text-gray-400 rounded-full h-8 w-8 transition-colors">
+                <RefreshCw className="h-4 w-4" />
+              </Button>
             </div>
 
-            {/* Chat Messages Log */}
+            {/* Messages */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-thin">
               <AnimatePresence initial={false}>
-                {messages.length === 0 ? (
-                  <motion.div
-                    initial={{ opacity: 0, y: 15 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="h-full flex flex-col justify-center items-center text-center p-4 max-w-lg mx-auto"
-                  >
+                {isEmpty ? (
+                  <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="h-full flex flex-col justify-start items-center text-center p-4 max-w-2xl mx-auto pt-4">
                     <div className="h-16 w-16 rounded-full bg-brand-green/5 border border-brand-green/20 flex items-center justify-center mb-5 animate-bounce">
                       <Bot className="h-8 w-8 text-brand-green" />
                     </div>
                     <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Welcome to AI - Aditya Intelligence!</h2>
-                    <p className="text-sm text-muted-foreground mb-8">
-                      I have complete dynamic access to your admin logins count, low stock inventories, incomplete support chats, and order revenue. Feel free to click any suggestion below to test me instantly!
-                    </p>
+                    <p className="text-sm text-muted-foreground mb-6">Ask anything about your store — orders, customers, inventory, payments, subscriptions, and more.</p>
 
-                    {/* Quick Access Prompts */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full">
-                      {dynamicPrompts.map((p, idx) => (
-                        <motion.div
-                          key={idx}
-                          whileHover={{ y: -3, scale: 1.01 }}
-                          onClick={() => handleSendMessage(p.query)}
-                          className={cn(
-                            "cursor-pointer p-4 rounded-xl border bg-gradient-to-r flex flex-col text-left transition-all duration-200",
-                            p.color
-                          )}
-                        >
+                    {/* Proactive briefing */}
+                    {briefing && <BriefingCard briefing={briefing} onAsk={handleSendMessage} />}
+
+                    {/* Suggestion grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full">
+                      {dynamicPrompts.slice(0, 8).map((p, idx) => (
+                        <motion.div key={idx} whileHover={{ y: -3, scale: 1.01 }} onClick={() => handleSendMessage(p.query)}
+                          className={cn('cursor-pointer p-4 rounded-xl border bg-gradient-to-r flex flex-col text-left transition-all duration-200', p.color)}>
                           <div className="flex items-center gap-2 mb-1.5">
-                            <p.icon className="h-4.5 w-4.5" />
+                            <p.icon className="h-4 w-4" />
                             <h4 className="font-bold text-[13px] tracking-tight">{p.title}</h4>
                           </div>
                           <p className="text-[11px] leading-normal opacity-80">{p.desc}</p>
@@ -353,175 +445,161 @@ export default function AdminChatbotPage() {
                   </motion.div>
                 ) : (
                   messages.map((msg) => (
-                    <motion.div
-                      key={msg.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className={cn(
-                        "flex items-start gap-3.5 max-w-[85%] rounded-2xl p-4 shadow-sm",
-                        msg.sender === 'user'
-                          ? "ml-auto bg-brand-green text-white rounded-tr-none flex-row-reverse"
-                          : "bg-white dark:bg-[#1E3D2B]/30 border border-gray-100 dark:border-white/5 rounded-tl-none"
-                      )}
-                    >
-                      {/* Avatar */}
-                      <div className={cn(
-                        "h-8 w-8 rounded-lg shrink-0 flex items-center justify-center text-xs font-bold",
-                        msg.sender === 'user' ? "bg-white/10 text-white" : "bg-brand-green/10 text-brand-green"
-                      )}>
+                    <motion.div key={msg.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                      className={cn('flex items-start gap-3.5 max-w-[85%] rounded-2xl p-4 shadow-sm group',
+                        msg.sender === 'user' ? 'ml-auto bg-brand-green text-white rounded-tr-none flex-row-reverse' : 'bg-white dark:bg-[#1E3D2B]/30 border border-gray-100 dark:border-white/5 rounded-tl-none')}>
+                      <div className={cn('h-8 w-8 rounded-lg shrink-0 flex items-center justify-center', msg.sender === 'user' ? 'bg-white/10 text-white' : 'bg-brand-green/10 text-brand-green')}>
                         {msg.sender === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
                       </div>
-
-                      {/* Message Body */}
                       <div className="flex-1 overflow-hidden min-w-0">
                         {msg.sender === 'user' ? (
                           <p className="text-sm font-medium leading-relaxed break-words">{msg.text}</p>
+                        ) : msg.streaming && !msg.text ? (
+                          // Waiting for first token — bouncing dots
+                          <div className="flex flex-col gap-2 py-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="h-2 w-2 rounded-full bg-brand-green animate-bounce" style={{ animationDelay: '0ms' }} />
+                              <span className="h-2 w-2 rounded-full bg-brand-green animate-bounce" style={{ animationDelay: '150ms' }} />
+                              <span className="h-2 w-2 rounded-full bg-brand-green animate-bounce" style={{ animationDelay: '300ms' }} />
+                            </div>
+                            <span className="text-[10px] text-muted-foreground font-mono">Analyzing database feeds...</span>
+                          </div>
                         ) : (
+                          // Text streaming in
                           <div className="space-y-1.5 break-words">
                             {renderMarkdown(msg.text)}
+                            {msg.streaming && (
+                              <span className="inline-block h-[1.1em] w-[2px] bg-brand-green rounded-full animate-[pulse_0.8s_ease-in-out_infinite] ml-0.5 align-middle" />
+                            )}
                           </div>
                         )}
-                        <span className={cn(
-                          "block text-[9px] mt-1.5 font-mono",
-                          msg.sender === 'user' ? "text-white/40 text-right" : "text-muted-foreground"
-                        )}>
-                          {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
+                        <div className={cn('flex items-center mt-1.5 gap-2', msg.sender === 'user' ? 'justify-start flex-row-reverse' : 'justify-between')}>
+                          <span className={cn('text-[9px] font-mono', msg.sender === 'user' ? 'text-white/40' : 'text-muted-foreground')}>
+                            {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          {msg.sender === 'assistant' && !msg.streaming && (
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {msg.text.startsWith('❌') && (
+                                <button onClick={handleRetry} title="Retry" className="flex items-center gap-1 text-[10px] text-red-500 hover:text-red-600 bg-red-50 dark:bg-red-950/20 hover:bg-red-100 px-2 py-0.5 rounded-full transition-colors">
+                                  <RotateCcw className="h-3 w-3" /> Retry
+                                </button>
+                              )}
+                              <button onClick={() => handleCopy(msg.id, msg.text)} title="Copy" className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400 hover:text-gray-600 transition-colors">
+                                {copiedMsgId === msg.id ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </motion.div>
                   ))
-                )}
-
-                {/* Loading typing indicator */}
-                {isLoading && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex items-start gap-3.5 max-w-[50%] bg-white dark:bg-[#1E3D2B]/30 border border-gray-100 dark:border-white/5 rounded-2xl rounded-tl-none p-4 shadow-sm"
-                  >
-                    <div className="h-8 w-8 rounded-lg shrink-0 bg-brand-green/10 flex items-center justify-center text-brand-green">
-                      <Bot className="h-4 w-4" />
-                    </div>
-                    <div className="flex flex-col gap-1 mt-2.5">
-                      <div className="flex items-center gap-1">
-                        <span className="h-2 w-2 rounded-full bg-brand-green animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="h-2 w-2 rounded-full bg-brand-green animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="h-2 w-2 rounded-full bg-brand-green animate-bounce" style={{ animationDelay: '300ms' }} />
-                      </div>
-                      <span className="text-[9px] text-muted-foreground font-mono mt-1">Analyzing database feeds...</span>
-                    </div>
-                  </motion.div>
                 )}
               </AnimatePresence>
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Bar Footer */}
+            {/* Suggestions panel (post-first-message) */}
+            <AnimatePresence>
+              {messages.length > 0 && showSuggestions && (
+                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden border-t border-gray-100 dark:border-white/5">
+                  <div className="px-6 py-3 grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white/20 dark:bg-black/10 max-h-56 overflow-y-auto">
+                    {dynamicPrompts.map((p, idx) => (
+                      <motion.div key={idx} whileHover={{ scale: 1.02 }} onClick={() => handleSendMessage(p.query)}
+                        className={cn('cursor-pointer p-2.5 rounded-lg border bg-gradient-to-r flex items-center gap-2 text-left transition-all duration-200', p.color)}>
+                        <p.icon className="h-3.5 w-3.5 shrink-0" />
+                        <span className="font-semibold text-[11px] truncate">{p.title}</span>
+                      </motion.div>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Input bar */}
             <div className="px-6 py-4 border-t border-gray-100 dark:border-white/5 bg-white/40 dark:bg-black/10 shrink-0">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleSendMessage(inputValue);
-                }}
-                className="flex items-center gap-3 bg-white dark:bg-background border border-gray-200 dark:border-white/10 rounded-xl p-1.5 focus-within:ring-2 focus-within:ring-brand-green transition-all"
-              >
+              {messages.length > 0 && (
+                <div className="flex items-center justify-between mb-2">
+                  <button type="button" onClick={() => setShowSuggestions((p) => !p)}
+                    className={cn('flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full border transition-colors',
+                      showSuggestions ? 'bg-brand-green/10 text-brand-green border-brand-green/20' : 'text-gray-400 border-gray-200 dark:border-white/10 hover:text-brand-green hover:border-brand-green/20')}>
+                    {showSuggestions ? <X className="h-3 w-3" /> : <Lightbulb className="h-3 w-3" />}
+                    Suggestions
+                  </button>
+                </div>
+              )}
+              <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(inputValue); }}
+                className="flex items-center gap-3 bg-white dark:bg-background border border-gray-200 dark:border-white/10 rounded-xl p-1.5 focus-within:ring-2 focus-within:ring-brand-green transition-all">
                 <input
                   type="text"
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
-                  placeholder={isLoading ? "Thinking..." : "Ask me anything (e.g. 'how many logins we have' or 'which products are low on stock')" }
+                  placeholder={isLoading ? 'Thinking...' : "Ask anything (e.g. 'failed payments', 'store sales this week', 'compare this week vs last')"}
                   disabled={isLoading}
+                  maxLength={500}
                   className="flex-1 bg-transparent px-3 py-2 text-sm outline-none placeholder:text-gray-400 dark:text-white"
                 />
-                <Button
-                  type="submit"
-                  size="icon"
-                  disabled={!inputValue.trim() || isLoading}
-                  className="bg-brand-green hover:bg-[#153125] text-white rounded-lg h-9 w-9 flex items-center justify-center transition-colors disabled:opacity-50"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
+                {isLoading ? (
+                  <Button type="button" size="icon" onClick={handleStopStream} className="bg-red-500 hover:bg-red-600 text-white rounded-lg h-9 w-9 flex items-center justify-center transition-colors">
+                    <X className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button type="submit" size="icon" disabled={!inputValue.trim()} className="bg-brand-green hover:bg-[#153125] text-white rounded-lg h-9 w-9 flex items-center justify-center transition-colors disabled:opacity-50">
+                    <Send className="h-4 w-4" />
+                  </Button>
+                )}
               </form>
             </div>
-            
+
           </div>
 
-          {/* Sidebar Status Info Panel */}
-          <div className="w-full md:w-80 shrink-0 flex flex-col gap-6">
+          {/* Sidebar */}
+          <div className="w-full md:w-72 shrink-0 flex flex-col gap-5">
             <Card className="rounded-2xl border-white/40 bg-white/50 backdrop-blur-md shadow-lg overflow-hidden">
               <CardContent className="p-5 space-y-4">
                 <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
                   <Sparkles className="h-4 w-4 text-brand-green" />
-                  <h4 className="font-bold text-[14px] text-gray-900 dark:text-white">Dynamic AI Context Hub</h4>
+                  <h4 className="font-bold text-[14px] text-gray-900 dark:text-white">Data Coverage</h4>
                 </div>
-                
-                <p className="text-xs leading-normal text-muted-foreground">
-                  Our custom query pipeline hooks directly into your live databases. Hallucinations are actively disabled by supplying strict dynamic variables:
-                </p>
-
-                <div className="space-y-3 pt-2">
-                  <div className="flex items-start gap-2.5">
-                    <div className="h-7 w-7 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-600 shrink-0 mt-0.5">
-                      <TrendingUp className="h-3.5 w-3.5" />
+                <div className="space-y-2.5">
+                  {[
+                    { icon: TrendingUp, color: 'bg-purple-500/10 text-purple-600', label: 'Orders & Revenue' },
+                    { icon: Users, color: 'bg-emerald-500/10 text-emerald-600', label: 'Customers & History' },
+                    { icon: ShoppingCart, color: 'bg-orange-500/10 text-orange-600', label: 'Inventory & Products' },
+                    { icon: Store, color: 'bg-teal-500/10 text-teal-600', label: 'Store Sales (offline)' },
+                    { icon: CreditCard, color: 'bg-red-500/10 text-red-600', label: 'Payments & Failures' },
+                    { icon: Repeat, color: 'bg-sky-500/10 text-sky-600', label: 'Subscriptions' },
+                    { icon: MessageCircle, color: 'bg-green-500/10 text-green-600', label: 'WhatsApp Queue' },
+                    { icon: Star, color: 'bg-yellow-500/10 text-yellow-600', label: 'Wallet & Reviews' },
+                    { icon: Bell, color: 'bg-pink-500/10 text-pink-600', label: 'Reminders' },
+                    { icon: KeyRound, color: 'bg-cyan-500/10 text-cyan-600', label: 'Coupons' },
+                  ].map(({ icon: Icon, color, label }) => (
+                    <div key={label} className="flex items-center gap-2">
+                      <div className={cn('h-6 w-6 rounded-md flex items-center justify-center shrink-0', color)}>
+                        <Icon className="h-3 w-3" />
+                      </div>
+                      <span className="text-[11px] text-gray-700 dark:text-gray-300 font-medium">{label}</span>
                     </div>
-                    <div>
-                      <h5 className="text-[12px] font-bold text-gray-800 dark:text-gray-200">Orders & Revenue</h5>
-                      <p className="text-[10px] text-muted-foreground leading-normal">Dashboard stats, status breakdowns, revenue trends, and order history.</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-2.5">
-                    <div className="h-7 w-7 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-600 shrink-0 mt-0.5">
-                      <Users className="h-3.5 w-3.5" />
-                    </div>
-                    <div>
-                      <h5 className="text-[12px] font-bold text-gray-800 dark:text-gray-200">Full Customer Data</h5>
-                      <p className="text-[10px] text-muted-foreground leading-normal">Search customers, view order history, top spenders, and new signups.</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-2.5">
-                    <div className="h-7 w-7 rounded-lg bg-orange-500/10 flex items-center justify-center text-orange-600 shrink-0 mt-0.5">
-                      <ShoppingCart className="h-3.5 w-3.5" />
-                    </div>
-                    <div>
-                      <h5 className="text-[12px] font-bold text-gray-800 dark:text-gray-200">Inventory & Products</h5>
-                      <p className="text-[10px] text-muted-foreground leading-normal">Low stock alerts, product search, and top-selling item rankings.</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-2.5">
-                    <div className="h-7 w-7 rounded-lg bg-yellow-500/10 flex items-center justify-center text-yellow-600 shrink-0 mt-0.5">
-                      <Star className="h-3.5 w-3.5" />
-                    </div>
-                    <div>
-                      <h5 className="text-[12px] font-bold text-gray-800 dark:text-gray-200">Reviews & Coupons</h5>
-                      <p className="text-[10px] text-muted-foreground leading-normal">Customer feedback, product ratings, coupon usage, and expiry status.</p>
-                    </div>
+                  ))}
+                </div>
+                <div className="bg-brand-green/[0.04] border border-brand-green/10 rounded-xl p-3 flex items-center gap-2.5">
+                  <Bot className="h-4 w-4 text-brand-green shrink-0" />
+                  <div>
+                    <p className="text-[11px] font-bold text-brand-green">Streaming Active</p>
+                    <span className="text-[9px] text-muted-foreground">Responses appear token-by-token</span>
                   </div>
                 </div>
-
-                <div className="bg-brand-green/[0.04] border border-brand-green/10 rounded-xl p-3.5 mt-2 flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-full bg-brand-green/10 flex items-center justify-center">
-                    <Bot className="h-4.5 w-4.5 text-brand-green" />
-                  </div>
-                  <div className="leading-tight">
-                    <p className="text-[11px] font-bold text-brand-green">Pipeline Secured</p>
-                    <span className="text-[9px] text-muted-foreground">Encryption TLS 1.3 Active</span>
-                  </div>
-                </div>
-
               </CardContent>
             </Card>
 
             <Card className="rounded-2xl border-white/40 bg-white/50 backdrop-blur-md shadow-lg p-5">
               <h4 className="font-bold text-[13px] text-gray-900 dark:text-white mb-2">Prompting Tips</h4>
               <ul className="list-disc list-inside text-[11px] text-muted-foreground space-y-1.5 leading-relaxed pl-1">
-                <li>Ask: <em className="text-gray-700 font-medium">"show me customer Priya"</em> to pull up a specific customer.</li>
-                <li>Ask: <em className="text-gray-700 font-medium">"orders for 9876543210"</em> to see a customer's order history.</li>
-                <li>Ask: <em className="text-gray-700 font-medium">"monthly analytics"</em> for a full 30-day performance report.</li>
-                <li>Ask: <em className="text-gray-700 font-medium">"pending orders list"</em> to see all undelivered orders.</li>
-                <li>Ask: <em className="text-gray-700 font-medium">"show all coupons"</em> to review coupon usage and expiry.</li>
+                <li><em className="text-gray-700 font-medium">"orders in May 2025"</em> — date range queries</li>
+                <li><em className="text-gray-700 font-medium">"compare this week vs last week"</em> — period comparison</li>
+                <li><em className="text-gray-700 font-medium">"store sales last month"</em> — physical store data</li>
+                <li><em className="text-gray-700 font-medium">"failed payments"</em> — payment tracking</li>
+                <li><em className="text-gray-700 font-medium">"active subscriptions"</em> — recurring orders</li>
+                <li>Follow-up questions work — the AI remembers context.</li>
               </ul>
             </Card>
           </div>

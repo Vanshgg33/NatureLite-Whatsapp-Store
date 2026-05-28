@@ -20,7 +20,8 @@ import {
 } from '@/components/ui/dialog';
 import { getStoreItemTotalStock } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
-import { downloadReportPdf } from '@/lib/report-pdf';
+import { downloadReportPdf, generateReportPdfBase64 } from '@/lib/report-pdf';
+import { EmailReportButton } from '@/components/admin/email-report-button';
 import type { Store, StoreStockItem, StockSnapshotItem } from '@/types';
 
 export default function IMSPage() {
@@ -92,13 +93,13 @@ export default function IMSPage() {
     },
   });
 
-  async function generateReport() {
+  async function buildImsReportOptions() {
     if (reportDate) {
       const res = await api.getStockAnalytics(selectedStoreId, { date: reportDate });
       const items = (res.items ?? []) as StockSnapshotItem[];
       const formattedDate = new Date(reportDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
       const totalEntries = items.reduce((sum, item) => sum + (item.entryCount ?? item.entries?.length ?? 0), 0);
-      await downloadReportPdf({
+      return {
         title: 'IMS - Inventory Entry Report',
         subtitle: 'Daily product and variant entry activity',
         meta: [
@@ -126,8 +127,7 @@ export default function IMSPage() {
           ]),
         },
         filename: `IMS-Entry-Report-${storeName}-${reportDate}.pdf`,
-      });
-      return;
+      };
     }
 
     const items = (allStockData?.items ?? stockData?.items ?? []) as StoreStockItem[];
@@ -136,7 +136,7 @@ export default function IMSPage() {
     const inStock = items.filter((i) => getStoreItemTotalStock(i) > i.lowStockThreshold);
     const low = items.filter((i) => { const s = getStoreItemTotalStock(i); return s > 0 && s <= i.lowStockThreshold; });
     const out = items.filter((i) => getStoreItemTotalStock(i) <= 0);
-    await downloadReportPdf({
+    return {
       title: 'IMS - Inventory Management Report',
       subtitle: 'Packed goods stock available for sale',
       meta: [
@@ -159,7 +159,17 @@ export default function IMSPage() {
         }),
       },
       filename: `IMS-Inventory-Report-${storeName}-${now.toISOString().split('T')[0]}.pdf`,
-    });
+    };
+  }
+
+  async function generateReport() {
+    const opts = await buildImsReportOptions();
+    await downloadReportPdf(opts);
+  }
+
+  async function generateImsPdfBase64(): Promise<string> {
+    const opts = await buildImsReportOptions();
+    return generateReportPdfBase64(opts);
   }
 
   const statCards = [
@@ -243,6 +253,13 @@ export default function IMSPage() {
           >
             <FileText className="h-4 w-4" /> Generate Report
           </Button>
+          <EmailReportButton
+            generatePdfBase64={generateImsPdfBase64}
+            filename={reportDate ? `IMS-Entry-Report-${storeName}-${reportDate}.pdf` : `IMS-Inventory-Report-${storeName}.pdf`}
+            subject="IMS Inventory Report"
+            className="h-9"
+            disabled={!selectedStoreId}
+          />
         </div>
       </div>
 

@@ -18,7 +18,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
-import { downloadReportPdf } from '@/lib/report-pdf';
+import { downloadReportPdf, generateReportPdfBase64 } from '@/lib/report-pdf';
+import { EmailReportButton } from '@/components/admin/email-report-button';
 import type { Store, RawMaterial, RawMaterialPrefill, RawMaterialDailyItem } from '@/types';
 
 function closingBadge(val: number) {
@@ -151,48 +152,56 @@ export default function PMSPage() {
   const totalOutput = dayItems.reduce((s, i) => s + (i.outputLitres ?? 0), 0);
   const totalClosing = dayItems.reduce((s, i) => s + i.closing, 0);
 
-  async function generateReport() {
+  async function buildPmsReportOptions() {
     const dates = availableDates.length ? { dates: availableDates } : await api.getRawMaterialAnalytics(selectedStoreId);
     const d = analyticsDate || (dates.dates ?? [])[0];
-    if (!d) {
-      toast({ title: 'No production entries available for report', variant: 'destructive' });
-      return;
-    }
+    if (!d) throw new Error('No production entries available for report');
     const formattedDate = new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+    const res = await api.getRawMaterialAnalytics(selectedStoreId, { date: d });
+    const items = (res.items ?? []) as RawMaterialDailyItem[];
+    return {
+      title: 'PMS - Production Management Report',
+      subtitle: 'Daily raw material usage and oil output',
+      meta: [
+        { label: 'Store', value: storeName },
+        { label: 'Date', value: formattedDate },
+        { label: 'Generated', value: 'Admin Panel' },
+      ],
+      summary: [
+        { label: 'Stock In', value: `${items.reduce((s, i) => s + i.stockIn, 0)} kg` },
+        { label: 'Processed', value: `${items.reduce((s, i) => s + i.processed, 0)} kg` },
+        { label: 'Output', value: `${items.reduce((s, i) => s + (i.outputLitres ?? 0), 0)} L` },
+        { label: 'Entries', value: items.reduce((s, i) => s + (i.entryCount ?? i.entries?.length ?? 0), 0) },
+      ],
+      table: {
+        columns: ['Material', 'Entries', 'Opening', 'Stock In', 'Processed', 'Output L', 'Closing'],
+        rows: items.map((i) => [
+          i.materialName ?? '-',
+          i.entryCount ?? i.entries?.length ?? 0,
+          i.openingStock,
+          i.stockIn,
+          i.processed,
+          i.outputLitres ?? 0,
+          i.closing,
+        ]),
+      },
+      filename: `PMS-Production-Report-${storeName}-${d}.pdf`,
+    };
+  }
+
+  async function generateReport() {
     try {
-      const res = await api.getRawMaterialAnalytics(selectedStoreId, { date: d });
-      const items = (res.items ?? []) as RawMaterialDailyItem[];
-      await downloadReportPdf({
-        title: 'PMS - Production Management Report',
-        subtitle: 'Daily raw material usage and oil output',
-        meta: [
-          { label: 'Store', value: storeName },
-          { label: 'Date', value: formattedDate },
-          { label: 'Generated', value: 'Admin Panel' },
-        ],
-        summary: [
-          { label: 'Stock In', value: `${items.reduce((s, i) => s + i.stockIn, 0)} kg` },
-          { label: 'Processed', value: `${items.reduce((s, i) => s + i.processed, 0)} kg` },
-          { label: 'Output', value: `${items.reduce((s, i) => s + (i.outputLitres ?? 0), 0)} L` },
-          { label: 'Entries', value: items.reduce((s, i) => s + (i.entryCount ?? i.entries?.length ?? 0), 0) },
-        ],
-        table: {
-          columns: ['Material', 'Entries', 'Opening', 'Stock In', 'Processed', 'Output L', 'Closing'],
-          rows: items.map((i) => [
-            i.materialName ?? '-',
-            i.entryCount ?? i.entries?.length ?? 0,
-            i.openingStock,
-            i.stockIn,
-            i.processed,
-            i.outputLitres ?? 0,
-            i.closing,
-          ]),
-        },
-        filename: `PMS-Production-Report-${storeName}-${d}.pdf`,
-      });
-    } catch {
-      toast({ title: 'Failed to download production report', variant: 'destructive' });
+      const opts = await buildPmsReportOptions();
+      await downloadReportPdf(opts);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed to download production report';
+      toast({ title: msg, variant: 'destructive' });
     }
+  }
+
+  async function generatePmsPdfBase64(): Promise<string> {
+    const opts = await buildPmsReportOptions();
+    return generateReportPdfBase64(opts);
   }
 
   return (
@@ -234,6 +243,13 @@ export default function PMSPage() {
           <Button onClick={generateReport} disabled={!selectedStoreId} variant="outline" className="gap-2 h-9">
             <FileText className="h-4 w-4" /> Generate Report
           </Button>
+          <EmailReportButton
+            generatePdfBase64={generatePmsPdfBase64}
+            filename={`PMS-Production-Report-${storeName}.pdf`}
+            subject="PMS Production Report"
+            className="h-9"
+            disabled={!selectedStoreId}
+          />
         </div>
       </div>
 

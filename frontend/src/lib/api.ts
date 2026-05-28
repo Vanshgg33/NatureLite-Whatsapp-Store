@@ -484,9 +484,41 @@ class ApiClient {
   }
 
   // ==================== ADMIN CHATBOT ====================
-  async askAdminChatbot(message: string): Promise<{ reply: string }> {
-    const response = await this.client.post<ApiResponse<{ reply: string }>>('/admin/chatbot/chat', { message });
+  async askAdminChatbot(
+    message: string,
+    history: Array<{ role: 'user' | 'assistant'; text: string }> = [],
+  ): Promise<{ reply: string }> {
+    const response = await this.client.post<ApiResponse<{ reply: string }>>('/admin/chatbot/chat', { message, history });
     return response.data.data;
+  }
+
+  async getAdminChatbotBriefing(): Promise<Record<string, string | null>> {
+    const response = await this.client.get<ApiResponse<Record<string, string | null>>>('/admin/chatbot/briefing');
+    return response.data.data;
+  }
+
+  async getAdminChatHistory(): Promise<Array<{ id: string; sender: 'user' | 'assistant'; text: string; timestamp: string }>> {
+    const response = await this.client.get<ApiResponse<any[]>>('/admin/chatbot/history');
+    return response.data.data ?? [];
+  }
+
+  async clearAdminChatHistory(): Promise<void> {
+    await this.client.delete('/admin/chatbot/history');
+  }
+
+  getAdminChatStreamUrl(): string {
+    return `${this.client.defaults.baseURL ?? ''}/admin/chatbot/stream`;
+  }
+
+  getAdminAuthToken(): string | null {
+    try {
+      const raw = localStorage.getItem('admin-auth-storage');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return (parsed?.state?.accessToken as string) ?? null;
+      }
+    } catch {}
+    return null;
   }
 
   // ==================== PRODUCTS ====================
@@ -1473,6 +1505,10 @@ class ApiClient {
       { amount, note },
     );
     return response.data.data;
+  }
+
+  async sendReportEmail(email: string, subject: string, filename: string, pdfBase64: string): Promise<void> {
+    await this.client.post('/analytics/send-report-email', { email, subject, filename, pdfBase64 });
   }
 }
 

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD, APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 
 import configuration from './config/configuration';
@@ -56,6 +57,8 @@ import { HealthController } from './health.controller';
         uri: configService.get<string>('database.uri'),
       }),
     }),
+
+    ScheduleModule.forRoot(),
 
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
