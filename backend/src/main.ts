@@ -1,10 +1,13 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ExpressAdapter } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { WhatsAppConfig } from './config/configuration';
 
+const express = require('express');
+const bodyParser = require('body-parser');
 const cookieParser = require('cookie-parser');
 const mongoSanitize = require('express-mongo-sanitize');
 
@@ -66,8 +69,25 @@ function validateProductionConfig(configService: ConfigService): void {
 }
 
 async function createApp() {
-  const app = await NestFactory.create(AppModule, {
-    rawBody: true,
+  // Register body parsers on the raw Express instance BEFORE NestJS middleware
+  // so the 100 MB limit (matching the old rawBody:true default) is always applied.
+  const server = express();
+
+  server.use(
+    bodyParser.json({
+      limit: '100mb',
+      verify: (req: any, _res: any, buf: Buffer) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
+  server.use(bodyParser.urlencoded({ limit: '100mb', extended: true }));
+
+  // Pass our pre-configured Express instance to NestJS and disable its
+  // built-in body parser so it never re-registers one with the default limit.
+  const app = await NestFactory.create(AppModule, new ExpressAdapter(server), {
+    bodyParser: false,
+    rawBody: false,
   });
 
   const configService = app.get(ConfigService);
@@ -138,6 +158,5 @@ if (!process.env.VERCEL) {
     const { app, configService } = await createApp();
     const port = configService.get<number>('app.port');
     await app.listen(port);
-    
   })();
 }

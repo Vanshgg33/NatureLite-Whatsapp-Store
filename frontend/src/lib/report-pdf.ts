@@ -319,5 +319,11 @@ export async function downloadReportPdf(options: ReportPdfOptions): Promise<void
 
 export async function generateReportPdfBase64(options: ReportPdfOptions): Promise<string> {
   const pdf = await buildPdf(options);
-  return pdf.output('datauristring');
+  // pdf.output('datauristring') in jsPDF v4 embeds a filename param that breaks
+  // the backend regex. Use arraybuffer → btoa instead to get a stable format.
+  const buf = pdf.output('arraybuffer') as ArrayBuffer;
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return 'data:application/pdf;base64,' + btoa(binary);
 }

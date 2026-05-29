@@ -70,6 +70,7 @@ import { api } from '@/lib/api';
 import { formatCurrency, getProductTotalStock } from '@/lib/utils';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { EmailReportButton } from '@/components/admin/email-report-button';
+import { generateReportPdfBase64 } from '@/lib/report-pdf';
 import type { RevenueDataPoint, ProductAnalytics, OrderAnalytics, Product, CustomerAnalytics, StockSnapshotItem, RawMaterialDailyItem, Store, MonthOverMonthData, TopCustomer, DailyAnalyticsReportResponse, AnalyticsNarrativeResponse, RawMaterial } from '@/types';
 
 const TOOLTIP_STYLE = {
@@ -461,55 +462,45 @@ export default function AnalyticsPage() {
   }
 
   async function buildAnalyticsPdfBase64(): Promise<string> {
-    flushSync(() => { setShowPdfTemplate(true); });
-    try {
-      let narrative = pdfNarrative;
-      if (!narrative) {
-        try { narrative = await api.getAnalyticsNarrative(startDate, today); } catch {
-          narrative = {
-            headline: `${periodLabels[days] || `${days} Days`} Analytics Report`,
-            summary: `Performance overview for the selected ${periodLabels[days] || `${days}-day`} period.`,
-            highlights: [`Revenue: ${formatCurrency(totalRevenue)}`, `Orders: ${totalOrders}`],
-            watchouts: [`Low stock items: ${lowStockProducts?.length || 0}`],
-            actions: ['Review low stock inventory.'],
-            generatedBy: 'fallback',
-          };
-        }
-        flushSync(() => {
-          setPdfNarrative(narrative);
-          setPdfNarrativeMeta({ title: narrative!.headline, summary: narrative!.summary, highlights: narrative!.highlights, watchouts: narrative!.watchouts, actions: narrative!.actions });
-        });
-        await new Promise((r) => setTimeout(r, 150));
-      } else {
-        flushSync(() => {
-          setPdfNarrativeMeta({ title: narrative!.headline, summary: narrative!.summary, highlights: narrative!.highlights, watchouts: narrative!.watchouts, actions: narrative!.actions });
-        });
-        await new Promise((r) => setTimeout(r, 100));
-      }
+    const topSelling = (productAnalytics?.topSelling ?? []).slice(0, 12) as Array<{
+      product?: { name?: string }; name?: string;
+      sold?: number; totalSold?: number; count?: number; revenue?: number;
+    }>;
+    const hasProducts = topSelling.length > 0;
 
-      if (!pdfReportRef.current) throw new Error('PDF template not ready');
-      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([import('jspdf'), import('html2canvas')]);
-      const canvas = await html2canvas(pdfReportRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const imgWidth = pageWidth;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      let remainingHeight = imgHeight;
-      let position = 0;
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      remainingHeight -= pageHeight;
-      while (remainingHeight > 0) {
-        position = remainingHeight - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        remainingHeight -= pageHeight;
-      }
-      return pdf.output('datauristring');
-    } finally {
-      setShowPdfTemplate(false);
-    }
+    const tableRows: Array<Array<string | number>> = hasProducts
+      ? topSelling.map((p) => [
+          p.product?.name || p.name || 'Unknown',
+          p.sold ?? p.totalSold ?? p.count ?? 0,
+          formatCurrency(p.revenue || 0),
+        ])
+      : (revenueData ?? []).slice(-14).map((d: RevenueDataPoint) => [
+          d.date,
+          d.orders ?? 0,
+          formatCurrency(d.revenue || 0),
+        ]);
+
+    return generateReportPdfBase64({
+      title: pdfTitle || `${periodLabels[days] || `${days} Days`} Analytics Report`,
+      subtitle: `${formatDateLocal(startDate)} – ${formatDateLocal(today)}`,
+      meta: [
+        { label: 'Period', value: periodLabels[days] || `${days} Days` },
+        { label: 'From', value: startDate },
+        { label: 'To', value: today },
+        { label: 'Customers', value: stats?.totalCustomers ?? 0 },
+      ],
+      summary: [
+        { label: 'Revenue', value: formatCurrency(totalRevenue) },
+        { label: 'Orders', value: totalOrders },
+        { label: 'Avg Order', value: formatCurrency(avgOrderValue) },
+        { label: 'Low Stock', value: lowStockProducts?.length ?? 0 },
+      ],
+      table: {
+        columns: hasProducts ? ['Product', 'Units Sold', 'Revenue'] : ['Date', 'Orders', 'Revenue'],
+        rows: tableRows,
+      },
+      filename: `Analytics-Report-${today}.pdf`,
+    });
   }
 
   async function downloadPdfReport() {
@@ -577,13 +568,13 @@ export default function AnalyticsPage() {
       ]);
 
       const canvas = await html2canvas(pdfReportRef.current, {
-        scale: 2,
+        scale: 1.5,
         useCORS: true,
         backgroundColor: '#ffffff',
         logging: false,
       });
 
-      const imgData = canvas.toDataURL('image/png');
+      const imgData = canvas.toDataURL('image/jpeg', 0.88);
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
@@ -592,13 +583,13 @@ export default function AnalyticsPage() {
       let remainingHeight = imgHeight;
       let position = 0;
 
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
       remainingHeight -= pageHeight;
 
       while (remainingHeight > 0) {
         position = remainingHeight - imgHeight;
         pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
         remainingHeight -= pageHeight;
       }
 
@@ -824,6 +815,9 @@ export default function AnalyticsPage() {
               filename={`Analytics-Report-${periodLabels[days] || `${days}d`}.pdf`}
               subject="Analytics Report"
               disabled={downloadingPdf}
+              className="bg-gradient-to-r from-[#92400E] to-[#D97706] text-white hover:opacity-90 shadow-md border-0 rounded-full px-5 py-2 font-semibold text-sm transition-all duration-300 h-auto"
+              variant="default"
+              size="default"
             />
           </div>
         </motion.div>
@@ -864,6 +858,9 @@ export default function AnalyticsPage() {
                     filename={`Analytics-Report-${dailyReport.report?.date || 'daily'}.pdf`}
                     subject="Daily Analytics Report"
                     disabled={downloadingPdf}
+                    className="bg-gradient-to-r from-[#92400E] to-[#D97706] text-white hover:opacity-90 shadow-sm border-0 rounded-md px-3 py-2 font-semibold text-sm h-9"
+                    variant="default"
+                    size="sm"
                   />
                   <Button
                     variant="outline"
@@ -2704,50 +2701,76 @@ export default function AnalyticsPage() {
             pointerEvents: 'none',
           }}
         >
-          <div className="p-10 space-y-6">
-            <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-[#173125] via-[#1E3D2B] to-[#355d43] text-white shadow-[0_20px_50px_rgba(0,0,0,0.18)]">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.16),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(232,168,56,0.22),transparent_34%)]" />
-              <div className="relative flex items-start justify-between gap-6 px-8 py-7">
-                <div className="max-w-3xl">
-                  <p className="text-[10px] uppercase tracking-[0.38em] text-white/60">Store Analytics Report</p>
-                  <h1 className="mt-2 text-3xl font-black leading-tight">{pdfTitle}</h1>
-                  <p className="mt-3 text-sm leading-6 text-white/80">{pdfSummary}</p>
+          <div className="space-y-6" style={{ padding: '0', background: '#f8faf9' }}>
+            {/* ── PDF HEADER ── no overflow:hidden — html2canvas can't render inside clipped containers */}
+            <div style={{ background: '#0F2318' }}>
+              {/* Gold top accent bar */}
+              <div style={{ height: '5px', background: 'linear-gradient(90deg,#C8900A,#E8A838,#D4A017,#C8900A)', width: '100%' }} />
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '24px', padding: '36px 48px 44px' }}>
+                <div style={{ flex: 1 }}>
+                  {/* Brand pill */}
+                  <div style={{ display: 'inline-flex', alignItems: 'center', background: 'rgba(212,160,23,0.15)', border: '1px solid rgba(212,160,23,0.35)', borderRadius: '8px', padding: '5px 14px', marginBottom: '16px' }}>
+                    <span style={{ color: '#D4A017', fontSize: '11px', fontWeight: '700', letterSpacing: '2px', textTransform: 'uppercase' }}>Nature Lite</span>
+                    <span style={{ color: 'rgba(255,255,255,0.25)', margin: '0 8px', fontSize: '11px' }}>|</span>
+                    <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '10px', letterSpacing: '1.5px', textTransform: 'uppercase' }}>Admin Panel</span>
+                  </div>
+                  <div style={{ height: '1px', background: 'linear-gradient(90deg,rgba(212,160,23,0.5),rgba(212,160,23,0.1),transparent)', marginBottom: '14px', width: '300px' }} />
+                  <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '11px', letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '10px' }}>Analytics Report · Confidential</p>
+                  <h1 style={{ color: '#fff', fontSize: '34px', fontWeight: '900', lineHeight: '1.15', margin: '0 0 14px', letterSpacing: '-0.5px' }}>{pdfTitle}</h1>
+                  <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '13px', lineHeight: '1.7', maxWidth: '560px', margin: 0 }}>{pdfSummary}</p>
                 </div>
-                <div className="rounded-2xl border border-white/15 bg-white/10 px-5 py-4 text-right backdrop-blur-sm">
-                  <p className="text-[10px] uppercase tracking-[0.24em] text-white/60">Period</p>
-                  <p className="mt-1 text-lg font-semibold">{periodLabels[days] || `${days} Days`}</p>
-                  <p className="mt-1 text-xs text-white/70">
-                    {formatDateLocal(startDate)} - {formatDateLocal(today)}
-                  </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-end', flexShrink: 0 }}>
+                  <div style={{ background: 'rgba(212,160,23,0.12)', border: '1px solid rgba(212,160,23,0.28)', borderRadius: '14px', padding: '16px 20px', textAlign: 'right' }}>
+                    <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '9px', letterSpacing: '2px', textTransform: 'uppercase', margin: '0 0 6px' }}>Period</p>
+                    <p style={{ color: '#fff', fontSize: '18px', fontWeight: '700', margin: '0 0 4px' }}>{periodLabels[days] || `${days} Days`}</p>
+                    <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '12px', margin: 0 }}>{formatDateLocal(startDate)} – {formatDateLocal(today)}</p>
+                  </div>
+                  <div style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 16px', textAlign: 'right' }}>
+                    <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '9px', letterSpacing: '2px', textTransform: 'uppercase', margin: '0 0 4px' }}>Generated</p>
+                    <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '11px', margin: 0 }}>{new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                  </div>
                 </div>
               </div>
             </div>
 
+            <div style={{ padding: '0 40px' }} className="space-y-6">
+
+            {/* ── SECTION LABEL ── */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ height: '2px', flex: 1, background: 'linear-gradient(90deg,#2F6B47,transparent)' }} />
+              <span style={{ color: '#2F6B47', fontSize: '10px', fontWeight: '700', letterSpacing: '3px', textTransform: 'uppercase' }}>Sales Analytics</span>
+              <div style={{ height: '2px', flex: 1, background: 'linear-gradient(90deg,transparent,#2F6B47)' }} />
+            </div>
+
+            {/* KPI cards */}
             <div className="grid grid-cols-4 gap-4">
               {[
-                { label: 'Revenue', value: formatCurrency(totalRevenue), hint: `${days}-day total`, tone: 'text-brand-green', bg: 'bg-emerald-50' },
-                { label: 'Orders', value: String(totalOrders), hint: 'Completed + pending', tone: 'text-slate-900', bg: 'bg-slate-50' },
-                { label: 'Avg Order Value', value: formatCurrency(avgOrderValue), hint: 'Revenue / orders', tone: 'text-blue-700', bg: 'bg-blue-50' },
-                { label: 'Customers', value: String(stats?.totalCustomers || 0), hint: 'All active customer profiles', tone: 'text-orange-600', bg: 'bg-orange-50' },
+                { label: 'Revenue', value: formatCurrency(totalRevenue), hint: `${days}-day total`, numColor: '#1E5C38', accent: '#2F6B47', bg: '#EEF7F1' },
+                { label: 'Orders', value: String(totalOrders), hint: 'Completed + pending', numColor: '#1e293b', accent: '#475569', bg: '#F8FAFC' },
+                { label: 'Avg Order Value', value: formatCurrency(avgOrderValue), hint: 'Revenue / orders', numColor: '#1D4ED8', accent: '#3B82F6', bg: '#EFF6FF' },
+                { label: 'Customers', value: String(stats?.totalCustomers || 0), hint: 'All active profiles', numColor: '#C2410C', accent: '#F97316', bg: '#FFF7ED' },
               ].map((card) => (
-                <div key={card.label} className={`rounded-2xl border border-slate-200 ${card.bg} px-5 py-4 shadow-sm`}>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{card.label}</p>
-                  <p className={`mt-2 text-3xl font-black ${card.tone}`}>{card.value}</p>
-                  <p className="mt-1 text-xs text-slate-500">{card.hint}</p>
+                <div key={card.label} style={{ borderRadius: '16px', border: '1px solid #e2e8f0', background: card.bg, padding: '0', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                  <div style={{ height: '4px', background: card.accent, borderRadius: '16px 16px 0 0' }} />
+                  <div style={{ padding: '16px 18px' }}>
+                    <p style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '1.5px', textTransform: 'uppercase', color: '#64748b', margin: '0 0 8px' }}>{card.label}</p>
+                    <p style={{ fontSize: '26px', fontWeight: '900', color: card.numColor, margin: '0 0 6px', lineHeight: 1 }}>{card.value}</p>
+                    <p style={{ fontSize: '11px', color: '#94a3b8', margin: 0 }}>{card.hint}</p>
+                  </div>
                 </div>
               ))}
             </div>
 
             <div className="grid grid-cols-2 gap-5">
-              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="mb-4 flex items-center justify-between">
+              <div style={{ borderRadius: '20px', border: '1px solid #e2e8f0', background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                <div style={{ background: 'linear-gradient(135deg,#1a3a27,#2F6B47)', padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: '20px 20px 0 0' }}>
                   <div>
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Revenue and Orders</h2>
-                    <p className="text-xs text-slate-400">Trend over the selected period</p>
+                    <h2 style={{ color: '#fff', fontSize: '12px', fontWeight: '700', letterSpacing: '1.5px', textTransform: 'uppercase', margin: 0 }}>Revenue &amp; Orders</h2>
+                    <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '11px', margin: '3px 0 0' }}>Trend over the selected period</p>
                   </div>
-                  <BarChart3 className="h-5 w-5 text-brand-green" />
+                  <BarChart3 style={{ color: 'rgba(255,255,255,0.4)' }} className="h-5 w-5" />
                 </div>
-                <div className="h-72">
+                <div className="h-72" style={{ padding: '12px' }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={revenueData || []} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                       <defs>
@@ -2766,17 +2789,17 @@ export default function AnalyticsPage() {
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
-              </div>
+              </div>{/* end card div */}
 
-              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="mb-4 flex items-center justify-between">
+              <div style={{ borderRadius: '20px', border: '1px solid #e2e8f0', background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#2563EB)', padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: '20px 20px 0 0' }}>
                   <div>
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">AOV and Week Pattern</h2>
-                    <p className="text-xs text-slate-400">Average order value and weekday rhythm</p>
+                    <h2 style={{ color: '#fff', fontSize: '12px', fontWeight: '700', letterSpacing: '1.5px', textTransform: 'uppercase', margin: 0 }}>AOV &amp; Week Pattern</h2>
+                    <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '11px', margin: '3px 0 0' }}>Avg order value and weekday rhythm</p>
                   </div>
-                  <TrendingUp className="h-5 w-5 text-blue-600" />
+                  <TrendingUp style={{ color: 'rgba(255,255,255,0.4)' }} className="h-5 w-5" />
                 </div>
-                <div className="grid grid-rows-2 gap-4">
+                <div style={{ padding: '12px' }} className="grid grid-rows-2 gap-4">
                   <div className="h-36">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={avgOrderTrend} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
@@ -2805,20 +2828,20 @@ export default function AnalyticsPage() {
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
-                </div>
-              </div>
+                </div>{/* end grid-rows-2 + padding */}
+              </div>{/* end card */}
             </div>
 
             <div className="grid grid-cols-2 gap-5">
-              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="mb-4 flex items-center justify-between">
+              <div style={{ borderRadius: '20px', border: '1px solid #e2e8f0', background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                <div style={{ background: 'linear-gradient(135deg,#7c2d12,#D97706)', padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: '20px 20px 0 0' }}>
                   <div>
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Payment Mix</h2>
-                    <p className="text-xs text-slate-400">Distribution by payment method</p>
+                    <h2 style={{ color: '#fff', fontSize: '12px', fontWeight: '700', letterSpacing: '1.5px', textTransform: 'uppercase', margin: 0 }}>Payment Mix</h2>
+                    <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '11px', margin: '3px 0 0' }}>Distribution by payment method</p>
                   </div>
-                  <CreditCard className="h-5 w-5 text-amber-500" />
+                  <CreditCard style={{ color: 'rgba(255,255,255,0.4)' }} className="h-5 w-5" />
                 </div>
-                <div className="h-64">
+                <div className="h-64" style={{ padding: '12px' }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie data={paymentMethodData} cx="50%" cy="50%" innerRadius={52} outerRadius={85} paddingAngle={4} dataKey="value" stroke="none">
@@ -2833,15 +2856,15 @@ export default function AnalyticsPage() {
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="mb-4 flex items-center justify-between">
+              <div style={{ borderRadius: '20px', border: '1px solid #e2e8f0', background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                <div style={{ background: 'linear-gradient(135deg,#1a3a27,#2F6B47)', padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: '20px 20px 0 0' }}>
                   <div>
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Top Products</h2>
-                    <p className="text-xs text-slate-400">Best sellers in the selected window</p>
+                    <h2 style={{ color: '#fff', fontSize: '12px', fontWeight: '700', letterSpacing: '1.5px', textTransform: 'uppercase', margin: 0 }}>Top Products</h2>
+                    <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '11px', margin: '3px 0 0' }}>Best sellers in the selected window</p>
                   </div>
-                  <Package className="h-5 w-5 text-brand-green" />
+                  <Package style={{ color: 'rgba(255,255,255,0.4)' }} className="h-5 w-5" />
                 </div>
-                <div className="h-64">
+                <div className="h-64" style={{ padding: '12px' }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={topSellingBarData} layout="vertical" margin={{ top: 0, right: 20, left: 0, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" horizontal={false} />
@@ -2856,41 +2879,50 @@ export default function AnalyticsPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-5">
-              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Executive Narrative</h2>
-                <p className="mt-3 text-sm leading-6 text-slate-700">{pdfSummary}</p>
-                <div className="mt-4 space-y-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Highlights</p>
-                    <ul className="mt-2 space-y-2 text-sm text-slate-700">
-                      {pdfHighlights.map((item) => <li key={item} className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" />{item}</li>)}
-                    </ul>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Watchouts</p>
-                    <ul className="mt-2 space-y-2 text-sm text-slate-700">
-                      {pdfWatchouts.map((item) => <li key={item} className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-amber-500" />{item}</li>)}
-                    </ul>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Actions</p>
-                    <ul className="mt-2 space-y-2 text-sm text-slate-700">
-                      {pdfActions.map((item) => <li key={item} className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-blue-500" />{item}</li>)}
-                    </ul>
+              <div style={{ borderRadius: '20px', border: '1px solid #e2e8f0', background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                <div style={{ background: 'linear-gradient(135deg,#0F2318,#1E3D2B)', padding: '14px 20px', borderRadius: '20px 20px 0 0' }}>
+                  <h2 style={{ color: '#fff', fontSize: '12px', fontWeight: '700', letterSpacing: '1.5px', textTransform: 'uppercase', margin: 0 }}>Executive Narrative</h2>
+                  <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px', margin: '3px 0 0' }}>AI-generated performance summary</p>
+                </div>
+                <div style={{ padding: '18px 20px' }}>
+                  <p style={{ fontSize: '13px', lineHeight: '1.7', color: '#334155', margin: '0 0 16px', fontStyle: 'italic', borderLeft: '3px solid #2F6B47', paddingLeft: '12px' }}>{pdfSummary}</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ background: '#F0FDF4', borderRadius: '10px', padding: '10px 14px', border: '1px solid #BBF7D0' }}>
+                      <p style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '1.5px', textTransform: 'uppercase', color: '#166534', margin: '0 0 6px' }}>✦ Highlights</p>
+                      {pdfHighlights.map((item) => <p key={item} style={{ fontSize: '12px', color: '#166534', margin: '3px 0', display: 'flex', gap: '6px' }}>
+                        <span style={{ color: '#22C55E', flexShrink: 0 }}>▸</span>{item}
+                      </p>)}
+                    </div>
+                    <div style={{ background: '#FFFBEB', borderRadius: '10px', padding: '10px 14px', border: '1px solid #FDE68A' }}>
+                      <p style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '1.5px', textTransform: 'uppercase', color: '#92400E', margin: '0 0 6px' }}>⚠ Watchouts</p>
+                      {pdfWatchouts.map((item) => <p key={item} style={{ fontSize: '12px', color: '#78350F', margin: '3px 0', display: 'flex', gap: '6px' }}>
+                        <span style={{ color: '#F59E0B', flexShrink: 0 }}>▸</span>{item}
+                      </p>)}
+                    </div>
+                    <div style={{ background: '#EFF6FF', borderRadius: '10px', padding: '10px 14px', border: '1px solid #BFDBFE' }}>
+                      <p style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '1.5px', textTransform: 'uppercase', color: '#1E40AF', margin: '0 0 6px' }}>→ Actions</p>
+                      {pdfActions.map((item) => <p key={item} style={{ fontSize: '12px', color: '#1E3A8A', margin: '3px 0', display: 'flex', gap: '6px' }}>
+                        <span style={{ color: '#3B82F6', flexShrink: 0 }}>▸</span>{item}
+                      </p>)}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Customer Snapshot</h2>
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl bg-white p-4 border border-slate-200">
-                    <p className="text-xs text-slate-500">New Customers</p>
-                    <p className="mt-2 text-2xl font-black text-blue-600">{customerAnalytics?.newCustomers || 0}</p>
+              <div style={{ borderRadius: '20px', border: '1px solid #e2e8f0', background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#7C3AED)', padding: '14px 20px', borderRadius: '20px 20px 0 0' }}>
+                  <h2 style={{ color: '#fff', fontSize: '12px', fontWeight: '700', letterSpacing: '1.5px', textTransform: 'uppercase', margin: 0 }}>Customer Snapshot</h2>
+                  <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px', margin: '3px 0 0' }}>New vs returning breakdown</p>
+                </div>
+                <div style={{ padding: '18px 20px' }}>
+                  <div className="grid grid-cols-2 gap-3" style={{ marginBottom: '16px' }}>
+                  <div style={{ borderRadius: '12px', background: '#EFF6FF', padding: '14px 16px', border: '1px solid #BFDBFE' }}>
+                    <p style={{ fontSize: '10px', color: '#64748b', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '600' }}>New Customers</p>
+                    <p style={{ fontSize: '24px', fontWeight: '900', color: '#1D4ED8', margin: 0 }}>{customerAnalytics?.newCustomers || 0}</p>
                   </div>
-                  <div className="rounded-2xl bg-white p-4 border border-slate-200">
-                    <p className="text-xs text-slate-500">Returning</p>
-                    <p className="mt-2 text-2xl font-black text-brand-green">{customerAnalytics?.returningCustomers || 0}</p>
+                  <div style={{ borderRadius: '12px', background: '#EEF7F1', padding: '14px 16px', border: '1px solid #BBF7D0' }}>
+                    <p style={{ fontSize: '10px', color: '#64748b', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '600' }}>Returning</p>
+                    <p style={{ fontSize: '24px', fontWeight: '900', color: '#1E5C38', margin: 0 }}>{customerAnalytics?.returningCustomers || 0}</p>
                   </div>
                 </div>
                 <div className="mt-4 h-52">
@@ -2909,63 +2941,73 @@ export default function AnalyticsPage() {
                     <div className="flex h-full items-center justify-center text-sm text-slate-400">No customer mix data</div>
                   )}
                 </div>
-              </div>
-            </div>
+                </div>{/* end content div */}
+              </div>{/* end customer card */}
+            </div>{/* end narrative + customer grid */}
 
             {/* PAGE 2: IMS Report */}
-            <div className="pt-10 border-t border-slate-200 space-y-6">
-              <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-900 to-indigo-950 text-white p-6 shadow-md">
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider text-blue-200">Inventory Management System (IMS)</p>
-                  <h2 className="text-xl font-bold mt-1">IMS Analytics — Product Stock History</h2>
-                  <p className="text-xs text-blue-100/80 mt-2">
-                    Store: <span className="font-semibold">{imsStoreName}</span> · Date: <span className="font-semibold">{selectedStockDate ? formatDateLocalLong(selectedStockDate) : 'N/A'}</span>
-                  </p>
+            <div style={{ marginTop: '32px' }} className="space-y-5">
+              {/* IMS Section header */}
+              <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#1D4ED8)', borderRadius: '16px', padding: '0', boxShadow: '0 4px 16px rgba(29,78,216,0.2)' }}>
+                <div style={{ height: '4px', background: 'linear-gradient(90deg,#60A5FA,#2563EB,#60A5FA)', borderRadius: '16px 16px 0 0' }} />
+                <div style={{ padding: '20px 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <p style={{ color: 'rgba(147,197,253,0.8)', fontSize: '10px', letterSpacing: '3px', textTransform: 'uppercase', margin: '0 0 6px', fontWeight: '600' }}>Inventory Management System (IMS)</p>
+                    <h2 style={{ color: '#fff', fontSize: '20px', fontWeight: '800', margin: '0 0 6px' }}>IMS Analytics — Product Stock History</h2>
+                    <p style={{ color: 'rgba(147,197,253,0.7)', fontSize: '12px', margin: 0 }}>
+                      Store: <strong style={{ color: '#fff' }}>{imsStoreName}</strong> &nbsp;·&nbsp; Date: <strong style={{ color: '#fff' }}>{selectedStockDate ? formatDateLocalLong(selectedStockDate) : 'N/A'}</strong>
+                    </p>
+                  </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-4 gap-4">
                 {[
-                  { label: 'Products Logged', value: String(imsDayItems.length), tone: 'text-slate-900', bg: 'bg-slate-50' },
-                  { label: 'Total Stock In', value: `+${imsTotalStockIn}`, tone: 'text-emerald-700', bg: 'bg-emerald-50' },
-                  { label: 'Total Returned', value: `+${imsTotalReturned}`, tone: 'text-blue-700', bg: 'bg-blue-50' },
-                  { label: 'Total Damaged', value: `+${imsTotalDamaged}`, tone: 'text-amber-700', bg: 'bg-amber-50' },
+                  { label: 'Products Logged', value: String(imsDayItems.length), numColor: '#1e293b', accent: '#475569', bg: '#F8FAFC' },
+                  { label: 'Total Stock In', value: `+${imsTotalStockIn}`, numColor: '#1E5C38', accent: '#2F6B47', bg: '#EEF7F1' },
+                  { label: 'Total Returned', value: `+${imsTotalReturned}`, numColor: '#1D4ED8', accent: '#3B82F6', bg: '#EFF6FF' },
+                  { label: 'Total Damaged', value: `+${imsTotalDamaged}`, numColor: '#92400E', accent: '#D97706', bg: '#FFFBEB' },
                 ].map((card) => (
-                  <div key={card.label} className={`rounded-xl border border-slate-200 ${card.bg} px-4 py-3 shadow-sm`}>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{card.label}</p>
-                    <p className={`mt-1 text-2xl font-black ${card.tone}`}>{card.value}</p>
+                  <div key={card.label} style={{ borderRadius: '12px', border: '1px solid #e2e8f0', background: card.bg, boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+                    <div style={{ height: '3px', background: card.accent, borderRadius: '12px 12px 0 0' }} />
+                    <div style={{ padding: '12px 16px' }}>
+                      <p style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '1.5px', textTransform: 'uppercase', color: '#64748b', margin: '0 0 6px' }}>{card.label}</p>
+                      <p style={{ fontSize: '22px', fontWeight: '900', color: card.numColor, margin: 0 }}>{card.value}</p>
+                    </div>
                   </div>
                 ))}
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600 mb-3">Day-wise Product Stock Flow</h3>
+              <div style={{ borderRadius: '16px', border: '1px solid #e2e8f0', background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                <div style={{ background: '#1e3a5f', padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: '16px 16px 0 0' }}>
+                  <h3 style={{ color: '#fff', fontSize: '11px', fontWeight: '700', letterSpacing: '1.5px', textTransform: 'uppercase', margin: 0 }}>Day-wise Product Stock Flow</h3>
+                </div>
                 {imsDayItems.length === 0 ? (
                   <p className="text-sm text-slate-400 py-4 text-center">No inventory entries logged for this date.</p>
                 ) : (
-                  <div className="rounded-xl border overflow-hidden">
+                  <div>
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="bg-slate-50 border-b text-slate-500 font-semibold uppercase">
-                          <th className="text-left px-4 py-2.5">Product</th>
-                          <th className="text-left px-3 py-2.5">SKU</th>
-                          <th className="text-right px-3 py-2.5">Stock In</th>
-                          <th className="text-right px-3 py-2.5">Returned</th>
-                          <th className="text-right px-3 py-2.5">Damaged</th>
-                          <th className="text-right px-3 py-2.5">Sale Log</th>
-                          <th className="text-right px-4 py-2.5">Total Stock</th>
+                        <tr style={{ background: '#1D4ED8' }}>
+                          <th style={{ color: 'rgba(255,255,255,0.9)', textAlign: 'left', padding: '10px 16px', fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase' }}>Product</th>
+                          <th style={{ color: 'rgba(255,255,255,0.9)', textAlign: 'left', padding: '10px 12px', fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase' }}>SKU</th>
+                          <th style={{ color: 'rgba(255,255,255,0.9)', textAlign: 'right', padding: '10px 12px', fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase' }}>Stock In</th>
+                          <th style={{ color: 'rgba(255,255,255,0.9)', textAlign: 'right', padding: '10px 12px', fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase' }}>Returned</th>
+                          <th style={{ color: 'rgba(255,255,255,0.9)', textAlign: 'right', padding: '10px 12px', fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase' }}>Damaged</th>
+                          <th style={{ color: 'rgba(255,255,255,0.9)', textAlign: 'right', padding: '10px 12px', fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase' }}>Sale Log</th>
+                          <th style={{ color: 'rgba(255,255,255,0.9)', textAlign: 'right', padding: '10px 16px', fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase' }}>Total Stock</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {imsDayItems.map((item) => (
-                          <tr key={item._id} className="text-slate-700">
-                            <td className="px-4 py-2.5 font-semibold text-slate-900">{item.productName || '—'}</td>
-                            <td className="px-3 py-2.5 font-mono text-slate-400">{item.productSku || '—'}</td>
-                            <td className="px-3 py-2.5 text-right font-semibold text-emerald-600">+{item.stockInDelta}</td>
-                            <td className="px-3 py-2.5 text-right font-semibold text-blue-600">+{item.returnedDelta}</td>
-                            <td className="px-3 py-2.5 text-right font-semibold text-amber-600">+{item.damagedDelta}</td>
-                            <td className="px-3 py-2.5 text-right font-semibold text-red-600">−{item.saleLogDelta}</td>
-                            <td className="px-4 py-2.5 text-right font-bold text-slate-900">{item.totalStock}</td>
+                      <tbody>
+                        {imsDayItems.map((item, ri) => (
+                          <tr key={item._id} style={{ background: ri % 2 === 0 ? '#fff' : '#F8FAFC', borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '10px 16px', fontWeight: '600', color: '#0f172a' }}>{item.productName || '—'}</td>
+                            <td style={{ padding: '10px 12px', fontFamily: 'monospace', color: '#94a3b8' }}>{item.productSku || '—'}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '600', color: '#16a34a' }}>+{item.stockInDelta}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '600', color: '#2563EB' }}>+{item.returnedDelta}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '600', color: '#D97706' }}>+{item.damagedDelta}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '600', color: '#DC2626' }}>−{item.saleLogDelta}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', color: '#0f172a' }}>{item.totalStock}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -2976,59 +3018,65 @@ export default function AnalyticsPage() {
             </div>
 
             {/* PAGE 3: PMS Report */}
-            <div className="pt-10 border-t border-slate-200 space-y-6">
-              <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-amber-800 to-amber-950 text-white p-6 shadow-md">
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider text-amber-200">Production Management System (PMS)</p>
-                  <h2 className="text-xl font-bold mt-1">PMS Analytics — Production History</h2>
-                  <p className="text-xs text-amber-100/80 mt-2">
-                    Store/Factory: <span className="font-semibold">{pmsStoreName}</span> · Date: <span className="font-semibold">{selectedRawDate ? formatDateLocalLong(selectedRawDate) : 'N/A'}</span>
+            <div style={{ marginTop: '32px' }} className="space-y-5">
+              <div style={{ background: 'linear-gradient(135deg,#7c2d12,#B45309)', borderRadius: '16px', padding: '0', boxShadow: '0 4px 16px rgba(180,83,9,0.2)' }}>
+                <div style={{ height: '4px', background: 'linear-gradient(90deg,#FCD34D,#D97706,#FCD34D)', borderRadius: '16px 16px 0 0' }} />
+                <div style={{ padding: '20px 28px' }}>
+                  <p style={{ color: 'rgba(253,230,138,0.8)', fontSize: '10px', letterSpacing: '3px', textTransform: 'uppercase', margin: '0 0 6px', fontWeight: '600' }}>Production Management System (PMS)</p>
+                  <h2 style={{ color: '#fff', fontSize: '20px', fontWeight: '800', margin: '0 0 6px' }}>PMS Analytics — Production History</h2>
+                  <p style={{ color: 'rgba(253,230,138,0.7)', fontSize: '12px', margin: 0 }}>
+                    Store/Factory: <strong style={{ color: '#fff' }}>{pmsStoreName}</strong> &nbsp;·&nbsp; Date: <strong style={{ color: '#fff' }}>{selectedRawDate ? formatDateLocalLong(selectedRawDate) : 'N/A'}</strong>
                   </p>
                 </div>
               </div>
 
               <div className="grid grid-cols-4 gap-4">
                 {[
-                  { label: 'Materials Logged', value: String(pmsDayItems.length), tone: 'text-slate-900', bg: 'bg-slate-50' },
-                  { label: 'Total Stock In', value: `+${pmsTotalStockIn} kg`, tone: 'text-emerald-700', bg: 'bg-emerald-50' },
-                  { label: 'Total Processed', value: `−${pmsTotalProcessed} kg`, tone: 'text-orange-600', bg: 'bg-orange-50' },
-                  { label: 'Total Oil Output', value: `${pmsTotalOutput} Litres`, tone: 'text-blue-700', bg: 'bg-blue-50' },
+                  { label: 'Materials Logged', value: String(pmsDayItems.length), numColor: '#1e293b', accent: '#475569', bg: '#F8FAFC' },
+                  { label: 'Total Stock In', value: `+${pmsTotalStockIn} kg`, numColor: '#1E5C38', accent: '#2F6B47', bg: '#EEF7F1' },
+                  { label: 'Total Processed', value: `-${pmsTotalProcessed} kg`, numColor: '#C2410C', accent: '#F97316', bg: '#FFF7ED' },
+                  { label: 'Total Oil Output', value: `${pmsTotalOutput} L`, numColor: '#1D4ED8', accent: '#3B82F6', bg: '#EFF6FF' },
                 ].map((card) => (
-                  <div key={card.label} className={`rounded-xl border border-slate-200 ${card.bg} px-4 py-3 shadow-sm`}>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{card.label}</p>
-                    <p className={`mt-1 text-2xl font-black ${card.tone}`}>{card.value}</p>
+                  <div key={card.label} style={{ borderRadius: '12px', border: '1px solid #e2e8f0', background: card.bg, boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+                    <div style={{ height: '3px', background: card.accent, borderRadius: '12px 12px 0 0' }} />
+                    <div style={{ padding: '12px 16px' }}>
+                      <p style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '1.5px', textTransform: 'uppercase', color: '#64748b', margin: '0 0 6px' }}>{card.label}</p>
+                      <p style={{ fontSize: '22px', fontWeight: '900', color: card.numColor, margin: 0 }}>{card.value}</p>
+                    </div>
                   </div>
                 ))}
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600 mb-3">Production Daily Entries</h3>
+              <div style={{ borderRadius: '16px', border: '1px solid #e2e8f0', background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                <div style={{ background: '#7c2d12', padding: '12px 20px', borderRadius: '16px 16px 0 0' }}>
+                  <h3 style={{ color: '#fff', fontSize: '11px', fontWeight: '700', letterSpacing: '1.5px', textTransform: 'uppercase', margin: 0 }}>Production Daily Entries</h3>
+                </div>
                 {pmsDayItems.length === 0 ? (
                   <p className="text-sm text-slate-400 py-4 text-center">No production entries logged for this date.</p>
                 ) : (
-                  <div className="rounded-xl border overflow-hidden">
+                  <div>
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="bg-slate-50 border-b text-slate-500 font-semibold uppercase">
-                          <th className="text-left px-4 py-2.5">Material</th>
-                          <th className="text-center px-3 py-2.5">Unit</th>
-                          <th className="text-right px-3 py-2.5">Opening Stock</th>
-                          <th className="text-right px-3 py-2.5">Stock In</th>
-                          <th className="text-right px-3 py-2.5">Processed</th>
-                          <th className="text-right px-3 py-2.5">Output (L)</th>
-                          <th className="text-right px-4 py-2.5">Closing Stock</th>
+                        <tr style={{ background: '#B45309' }}>
+                          <th style={{ color: 'rgba(255,255,255,0.9)', textAlign: 'left', padding: '10px 16px', fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase' }}>Material</th>
+                          <th style={{ color: 'rgba(255,255,255,0.9)', textAlign: 'center', padding: '10px 12px', fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase' }}>Unit</th>
+                          <th style={{ color: 'rgba(255,255,255,0.9)', textAlign: 'right', padding: '10px 12px', fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase' }}>Opening</th>
+                          <th style={{ color: 'rgba(255,255,255,0.9)', textAlign: 'right', padding: '10px 12px', fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase' }}>Stock In</th>
+                          <th style={{ color: 'rgba(255,255,255,0.9)', textAlign: 'right', padding: '10px 12px', fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase' }}>Processed</th>
+                          <th style={{ color: 'rgba(255,255,255,0.9)', textAlign: 'right', padding: '10px 12px', fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase' }}>Output (L)</th>
+                          <th style={{ color: 'rgba(255,255,255,0.9)', textAlign: 'right', padding: '10px 16px', fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase' }}>Closing</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {pmsDayItems.map((item) => (
-                          <tr key={item._id} className="text-slate-700">
-                            <td className="px-4 py-2.5 font-semibold text-slate-900">{item.materialName || '—'}</td>
-                            <td className="px-3 py-2.5 text-center text-slate-400 font-mono">{item.materialUnit || 'kg'}</td>
-                            <td className="px-3 py-2.5 text-right">{item.openingStock}</td>
-                            <td className="px-3 py-2.5 text-right font-semibold text-emerald-600">+{item.stockIn}</td>
-                            <td className="px-3 py-2.5 text-right font-semibold text-orange-500">−{item.processed}</td>
-                            <td className="px-3 py-2.5 text-right font-bold text-blue-600">{item.outputLitres || 0} L</td>
-                            <td className="px-4 py-2.5 text-right font-bold text-slate-900">{item.closing}</td>
+                      <tbody>
+                        {pmsDayItems.map((item, ri) => (
+                          <tr key={item._id} style={{ background: ri % 2 === 0 ? '#fff' : '#FFFBF5', borderBottom: '1px solid #fef3c7' }}>
+                            <td style={{ padding: '10px 16px', fontWeight: '600', color: '#0f172a' }}>{item.materialName || '—'}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#94a3b8' }}>{item.materialUnit || 'kg'}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', color: '#475569' }}>{item.openingStock}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '600', color: '#16a34a' }}>+{item.stockIn}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '600', color: '#EA580C' }}>−{item.processed}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '700', color: '#2563EB' }}>{item.outputLitres || 0} L</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', color: '#0f172a' }}>{item.closing}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -3039,62 +3087,70 @@ export default function AnalyticsPage() {
             </div>
 
             {/* PAGE 4: RMS Report */}
-            <div className="pt-10 border-t border-slate-200 space-y-6">
-              <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-800 to-emerald-950 text-white p-6 shadow-md">
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider text-emerald-200">Raw Material Stock (RMS)</p>
-                  <h2 className="text-xl font-bold mt-1">RMS Analytics — Current Inventory Stock</h2>
-                  <p className="text-xs text-emerald-100/80 mt-2">
-                    Store/Factory: <span className="font-semibold">{pmsStoreName}</span>
+            <div style={{ marginTop: '32px' }} className="space-y-5">
+              <div style={{ background: 'linear-gradient(135deg,#064e3b,#059669)', borderRadius: '16px', padding: '0', boxShadow: '0 4px 16px rgba(5,150,105,0.2)' }}>
+                <div style={{ height: '4px', background: 'linear-gradient(90deg,#6EE7B7,#10B981,#6EE7B7)', borderRadius: '16px 16px 0 0' }} />
+                <div style={{ padding: '20px 28px' }}>
+                  <p style={{ color: 'rgba(167,243,208,0.8)', fontSize: '10px', letterSpacing: '3px', textTransform: 'uppercase', margin: '0 0 6px', fontWeight: '600' }}>Raw Material Stock (RMS)</p>
+                  <h2 style={{ color: '#fff', fontSize: '20px', fontWeight: '800', margin: '0 0 6px' }}>RMS Analytics — Current Inventory Stock</h2>
+                  <p style={{ color: 'rgba(167,243,208,0.7)', fontSize: '12px', margin: 0 }}>
+                    Store/Factory: <strong style={{ color: '#fff' }}>{pmsStoreName}</strong>
                   </p>
                 </div>
               </div>
 
               <div className="grid grid-cols-4 gap-4">
                 {[
-                  { label: 'Total Materials', value: String(rawMaterials.length), tone: 'text-slate-900', bg: 'bg-slate-50' },
-                  { label: 'Good Stock', value: String(rmsGoodCount), tone: 'text-emerald-700', bg: 'bg-emerald-50' },
-                  { label: 'Low Stock', value: String(rmsLowCount), tone: 'text-amber-700', bg: 'bg-amber-50' },
-                  { label: 'Critical / Zero', value: String(rmsCriticalCount), tone: 'text-red-700', bg: 'bg-red-50' },
+                  { label: 'Total Materials', value: String(rawMaterials.length), numColor: '#1e293b', accent: '#475569', bg: '#F8FAFC' },
+                  { label: 'Good Stock', value: String(rmsGoodCount), numColor: '#1E5C38', accent: '#2F6B47', bg: '#EEF7F1' },
+                  { label: 'Low Stock', value: String(rmsLowCount), numColor: '#92400E', accent: '#D97706', bg: '#FFFBEB' },
+                  { label: 'Critical / Zero', value: String(rmsCriticalCount), numColor: '#B91C1C', accent: '#EF4444', bg: '#FEF2F2' },
                 ].map((card) => (
-                  <div key={card.label} className={`rounded-xl border border-slate-200 ${card.bg} px-4 py-3 shadow-sm`}>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{card.label}</p>
-                    <p className={`mt-1 text-2xl font-black ${card.tone}`}>{card.value}</p>
+                  <div key={card.label} style={{ borderRadius: '12px', border: '1px solid #e2e8f0', background: card.bg, boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+                    <div style={{ height: '3px', background: card.accent, borderRadius: '12px 12px 0 0' }} />
+                    <div style={{ padding: '12px 16px' }}>
+                      <p style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '1.5px', textTransform: 'uppercase', color: '#64748b', margin: '0 0 6px' }}>{card.label}</p>
+                      <p style={{ fontSize: '22px', fontWeight: '900', color: card.numColor, margin: 0 }}>{card.value}</p>
+                    </div>
                   </div>
                 ))}
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600 mb-3">Current Raw Material Inventory</h3>
+              <div style={{ borderRadius: '16px', border: '1px solid #e2e8f0', background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                <div style={{ background: '#064e3b', padding: '12px 20px', borderRadius: '16px 16px 0 0' }}>
+                  <h3 style={{ color: '#fff', fontSize: '11px', fontWeight: '700', letterSpacing: '1.5px', textTransform: 'uppercase', margin: 0 }}>Current Raw Material Inventory</h3>
+                </div>
                 {rawMaterials.length === 0 ? (
                   <p className="text-sm text-slate-400 py-4 text-center">No raw materials tracked.</p>
                 ) : (
-                  <div className="rounded-xl border overflow-hidden">
+                  <div>
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="bg-slate-50 border-b text-slate-500 font-semibold uppercase">
-                          <th className="text-left px-4 py-2.5">Material</th>
-                          <th className="text-center px-3 py-2.5">Unit</th>
-                          <th className="text-center px-4 py-2.5">Current Stock</th>
-                          <th className="text-right px-4 py-2.5">Status</th>
+                        <tr style={{ background: '#059669' }}>
+                          <th style={{ color: 'rgba(255,255,255,0.9)', textAlign: 'left', padding: '10px 16px', fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase' }}>Material</th>
+                          <th style={{ color: 'rgba(255,255,255,0.9)', textAlign: 'center', padding: '10px 12px', fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase' }}>Unit</th>
+                          <th style={{ color: 'rgba(255,255,255,0.9)', textAlign: 'center', padding: '10px 16px', fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase' }}>Current Stock</th>
+                          <th style={{ color: 'rgba(255,255,255,0.9)', textAlign: 'right', padding: '10px 16px', fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase' }}>Status</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {rawMaterials.map((m) => {
+                      <tbody>
+                        {rawMaterials.map((m, ri) => {
                           const totalStock = m.totalStock ?? 0;
                           const isCritical = totalStock <= 0;
                           const isLow = totalStock > 0 && totalStock < 20;
                           const statusLabel = isCritical ? 'Critical' : isLow ? 'Low Stock' : 'Good';
-                          const statusColor = isCritical ? 'text-red-600 bg-red-50' : isLow ? 'text-amber-600 bg-amber-50' : 'text-emerald-600 bg-emerald-50';
+                          const statusStyle = isCritical
+                            ? { color: '#B91C1C', background: '#FEF2F2', padding: '2px 8px', borderRadius: '20px', fontWeight: '700', fontSize: '10px' }
+                            : isLow
+                            ? { color: '#92400E', background: '#FFFBEB', padding: '2px 8px', borderRadius: '20px', fontWeight: '700', fontSize: '10px' }
+                            : { color: '#1E5C38', background: '#EEF7F1', padding: '2px 8px', borderRadius: '20px', fontWeight: '700', fontSize: '10px' };
                           return (
-                            <tr key={m._id} className="text-slate-700">
-                              <td className="px-4 py-2.5 font-semibold text-slate-900">{m.name}</td>
-                              <td className="px-3 py-2.5 text-center text-slate-400 font-mono">{m.unit || 'kg'}</td>
-                              <td className="px-4 py-2.5 text-center font-bold">{totalStock}</td>
-                              <td className="px-4 py-2.5 text-right">
-                                <span className={`inline-flex px-2 py-0.5 rounded-full font-semibold text-[10px] ${statusColor}`}>
-                                  {statusLabel}
-                                </span>
+                            <tr key={m._id} style={{ background: ri % 2 === 0 ? '#fff' : '#F8FAFC', borderBottom: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: '10px 16px', fontWeight: '600', color: '#0f172a' }}>{m.name}</td>
+                              <td style={{ padding: '10px 12px', textAlign: 'center', color: '#94a3b8', fontFamily: 'monospace' }}>{m.unit || 'kg'}</td>
+                              <td style={{ padding: '10px 16px', textAlign: 'center', fontWeight: '700', color: '#334155' }}>{totalStock}</td>
+                              <td style={{ padding: '10px 16px', textAlign: 'right' }}>
+                                <span style={statusStyle}>{statusLabel}</span>
                               </td>
                             </tr>
                           );
@@ -3105,7 +3161,21 @@ export default function AnalyticsPage() {
                 )}
               </div>
             </div>
-          </div>
+
+            {/* PDF Footer */}
+            <div style={{ background: '#0F2318', margin: '32px 0 0', padding: '16px 40px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ background: 'rgba(212,160,23,0.15)', border: '1px solid rgba(212,160,23,0.3)', borderRadius: '6px', padding: '4px 10px' }}>
+                  <span style={{ color: '#D4A017', fontSize: '10px', fontWeight: '700', letterSpacing: '1.5px', textTransform: 'uppercase' }}>Nature Lite</span>
+                </div>
+                <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '10px' }}>|</span>
+                <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '10px' }}>Admin Panel — Confidential Report</span>
+              </div>
+              <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '10px' }}>Generated {new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+            </div>
+
+          </div>{/* end inner padding div */}
+          </div>{/* end outer bg div */}
         </div>
         )}
       </div>

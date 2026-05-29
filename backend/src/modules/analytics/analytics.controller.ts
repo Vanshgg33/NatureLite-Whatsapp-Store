@@ -176,7 +176,11 @@ export class AnalyticsController {
   ): Promise<{ success: boolean }> {
     const { email, subject, filename, pdfBase64 } = body;
     if (!email || !pdfBase64) throw new BadRequestException('email and pdfBase64 are required');
-    const base64Data = pdfBase64.replace(/^data:application\/pdf;base64,/, '');
+    // jsPDF v4 emits: data:application/pdf;filename=...;base64,<data>
+    // Older format:   data:application/pdf;base64,<data>
+    const base64Data = pdfBase64.includes(';base64,')
+      ? pdfBase64.split(';base64,').pop()!
+      : pdfBase64;
     const pdfBuffer = Buffer.from(base64Data, 'base64');
     await this.emailService.sendReportEmail(email, subject || filename, filename, pdfBuffer);
     return { success: true };
