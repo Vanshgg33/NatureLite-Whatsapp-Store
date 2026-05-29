@@ -216,16 +216,13 @@ export default function InvoicePage() {
               <div style={{ fontSize: 11, color: S.muted }}>{SELLER.state} (State Code: {SELLER.stateCode})</div>
             </div>
 
-            {/* Circular logo */}
-            <div style={{ flexShrink: 0, width: 78, height: 78, borderRadius: '50%', border: `3px solid ${S.green}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: S.lightGreen }}>
-              <div style={{ fontWeight: 900, fontSize: 13, color: S.green, lineHeight: 1.1, textAlign: 'center' }}>
-                Nature
-              </div>
-              <div style={{ fontWeight: 900, fontSize: 13, color: '#d97706', fontStyle: 'italic', lineHeight: 1.1 }}>
-                Lite
-              </div>
-              <div style={{ fontSize: 7.5, color: S.green, letterSpacing: 1.5, marginTop: 2, opacity: 0.8 }}>FOODS</div>
-            </div>
+            {/* Logo */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/images/logo.png"
+              alt="Nature Lite Foods"
+              style={{ flexShrink: 0, width: 78, height: 78, objectFit: 'contain' }}
+            />
           </div>
 
           <div style={{ height: 1, background: S.border, margin: '0 28px' }} />

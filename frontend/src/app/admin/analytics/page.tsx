@@ -70,7 +70,7 @@ import { api } from '@/lib/api';
 import { formatCurrency, getProductTotalStock } from '@/lib/utils';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { EmailReportButton } from '@/components/admin/email-report-button';
-import { generateReportPdfBase64 } from '@/lib/report-pdf';
+import { generateAnalyticsPdfBase64 } from '@/lib/analytics-pdf';
 import type { RevenueDataPoint, ProductAnalytics, OrderAnalytics, Product, CustomerAnalytics, StockSnapshotItem, RawMaterialDailyItem, Store, MonthOverMonthData, TopCustomer, DailyAnalyticsReportResponse, AnalyticsNarrativeResponse, RawMaterial } from '@/types';
 
 const TOOLTIP_STYLE = {
@@ -466,40 +466,61 @@ export default function AnalyticsPage() {
       product?: { name?: string }; name?: string;
       sold?: number; totalSold?: number; count?: number; revenue?: number;
     }>;
-    const hasProducts = topSelling.length > 0;
 
-    const tableRows: Array<Array<string | number>> = hasProducts
-      ? topSelling.map((p) => [
-          p.product?.name || p.name || 'Unknown',
-          p.sold ?? p.totalSold ?? p.count ?? 0,
-          formatCurrency(p.revenue || 0),
-        ])
-      : (revenueData ?? []).slice(-14).map((d: RevenueDataPoint) => [
-          d.date,
-          d.orders ?? 0,
-          formatCurrency(d.revenue || 0),
-        ]);
-
-    return generateReportPdfBase64({
-      title: pdfTitle || `${periodLabels[days] || `${days} Days`} Analytics Report`,
-      subtitle: `${formatDateLocal(startDate)} – ${formatDateLocal(today)}`,
-      meta: [
-        { label: 'Period', value: periodLabels[days] || `${days} Days` },
-        { label: 'From', value: startDate },
-        { label: 'To', value: today },
-        { label: 'Customers', value: stats?.totalCustomers ?? 0 },
-      ],
-      summary: [
-        { label: 'Revenue', value: formatCurrency(totalRevenue) },
-        { label: 'Orders', value: totalOrders },
-        { label: 'Avg Order', value: formatCurrency(avgOrderValue) },
-        { label: 'Low Stock', value: lowStockProducts?.length ?? 0 },
-      ],
-      table: {
-        columns: hasProducts ? ['Product', 'Units Sold', 'Revenue'] : ['Date', 'Orders', 'Revenue'],
-        rows: tableRows,
-      },
-      filename: `Analytics-Report-${today}.pdf`,
+    return generateAnalyticsPdfBase64({
+      title:        pdfTitle || `${periodLabels[days] || `${days} Days`} Analytics Report`,
+      period:       periodLabels[days] || `${days} Days`,
+      fromDate:     formatDateLocal(startDate),
+      toDate:       formatDateLocal(today),
+      totalRevenue,
+      totalOrders,
+      avgOrderValue,
+      totalCustomers: stats?.totalCustomers ?? 0,
+      periodComparison: periodComparison ?? null,
+      revenueChartData: (revenueData ?? []).map((d: RevenueDataPoint) => ({
+        date:    d.date,
+        revenue: d.revenue,
+        orders:  d.orders ?? 0,
+      })),
+      dayOfWeekData: dayOfWeekData.map(d => ({
+        day:        d.day,
+        avgRevenue: d.avgRevenue,
+        avgOrders:  d.avgOrders,
+      })),
+      topProducts: topSelling.map(p => ({
+        name:    p.product?.name || p.name || 'Unknown',
+        sold:    p.sold ?? p.totalSold ?? p.count ?? 0,
+        revenue: p.revenue ?? 0,
+      })),
+      newCustomers:       customerAnalytics?.newCustomers ?? 0,
+      returningCustomers: customerAnalytics?.returningCustomers ?? 0,
+      paymentMethods: (orderAnalytics?.ordersByPaymentMethod ?? []).map(
+        (pm: { method?: string; _id?: string; count?: number }) => ({
+          name: (pm.method || pm._id || 'Unknown')
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, (l: string) => l.toUpperCase()),
+          value: pm.count ?? 0,
+        }),
+      ),
+      topCustomers: (topCustomersOverall ?? []).slice(0, 8).map(
+        (c: { customerName?: string; _id?: string; totalOrders?: number; totalSpent?: number }) => ({
+          name:        c.customerName || c._id || 'Unknown',
+          totalOrders: c.totalOrders ?? 0,
+          totalSpent:  c.totalSpent  ?? 0,
+        }),
+      ),
+      lowStockItems: (lowStockProducts ?? []).map((p: { name?: string; totalStock?: number }) => ({
+        name:  p.name  ?? 'Unknown',
+        stock: p.totalStock ?? 0,
+      })),
+      narrative: pdfNarrativeMeta
+        ? {
+            summary:    pdfNarrativeMeta.summary,
+            highlights: pdfNarrativeMeta.highlights,
+            watchouts:  pdfNarrativeMeta.watchouts,
+            actions:    pdfNarrativeMeta.actions,
+          }
+        : undefined,
     });
   }
 

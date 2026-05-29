@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingBag, User, Menu, X, Search, Heart } from 'lucide-react';
@@ -18,26 +19,6 @@ const navigation = [
   { name: 'About',        href: '/about'                   },
   { name: 'Contact',      href: '/contact'                 },
 ];
-
-// ─── Brand oil-drop logo ──────────────────────────────────────────────────────
-
-function OilDropMark({ className }: { className?: string }) {
-  return (
-    <svg
-      width="34" height="34" viewBox="0 0 34 34"
-      fill="none" xmlns="http://www.w3.org/2000/svg"
-      className={className}
-      aria-hidden
-    >
-      <circle cx="17" cy="17" r="15.5" stroke="currentColor" strokeWidth="1.1" />
-      <path
-        d="M17 7.5C17 7.5,23 15,23 20.2C23 23.9,20.3 26.5,17 26.5C13.7 26.5,11 23.9,11 20.2C11 15,17 7.5,17 7.5Z"
-        fill="currentColor"
-        opacity="0.82"
-      />
-    </svg>
-  );
-}
 
 // ─── Icon button ─────────────────────────────────────────────────────────────
 
@@ -111,24 +92,15 @@ export function PublicHeader() {
           <nav className="flex items-center justify-between h-[72px]">
 
             {/* Logo */}
-            <Link href="/" className="flex items-center gap-2.5 group" aria-label="Nature Lite Foods Home">
-              <OilDropMark className={cn(
-                'transition-colors duration-300',
-                isHeroMode ? 'text-white/80 group-hover:text-white' : 'text-brand-charcoal group-hover:text-brand-brown'
-              )} />
-              <div className="flex flex-col gap-0">
-                <span className={cn(
-                  'font-display text-[1.05rem] font-semibold tracking-[-0.01em] leading-none transition-colors duration-300',
-                  isHeroMode ? 'text-white' : 'text-brand-charcoal'
-                )}>
-                  Nature Lite Foods
-                </span>
-                {isHeroMode && (
-                  <span style={{ fontSize: 9, letterSpacing: '0.12em', color: 'rgba(184,138,20,0.65)', textTransform: 'uppercase', lineHeight: 1.3 }}>
-                    Pure · Fresh · Naturally Processed
-                  </span>
-                )}
-              </div>
+            <Link href="/" className="flex items-center group" aria-label="Nature Lite Foods Home">
+              <Image
+                src="/images/logo.png"
+                alt="Nature Lite Foods"
+                width={52}
+                height={52}
+                className="object-contain transition-opacity duration-200 group-hover:opacity-85"
+                priority
+              />
             </Link>
 
             {/* Desktop nav */}
@@ -244,9 +216,14 @@ export function PublicHeader() {
 
             {/* Header row */}
             <div className="flex items-center justify-between px-6 py-5">
-              <Link href="/" className="flex items-center gap-2.5" onClick={() => setMobileOpen(false)}>
-                <OilDropMark className="text-brand-charcoal" />
-                <span className="font-display text-base font-semibold text-brand-charcoal">Nature Lite Foods</span>
+              <Link href="/" className="flex items-center" onClick={() => setMobileOpen(false)}>
+                <Image
+                  src="/images/logo.png"
+                  alt="Nature Lite Foods"
+                  width={48}
+                  height={48}
+                  className="object-contain"
+                />
               </Link>
               <button
                 onClick={() => setMobileOpen(false)}

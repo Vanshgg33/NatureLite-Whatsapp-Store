@@ -73,6 +73,8 @@ export default function EditProductPage() {
   const [relatedProducts, setRelatedProducts] = useState<{ id: string; name: string }[]>([]);
   const [upsellSearch, setUpsellSearch] = useState('');
   const [upsellProducts, setUpsellProducts] = useState<{ id: string; name: string }[]>([]);
+  const [productVideos, setProductVideos] = useState<string[]>([]);
+  const [newVideoUrl, setNewVideoUrl] = useState('');
   const [uploading, setUploading] = useState(false);
   const [skuError, setSkuError] = useState('');
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -130,6 +132,7 @@ export default function EditProductPage() {
     });
     setImages(product.images || []);
     setImageAlts(product.imageAlts || (product.images || []).map(() => ''));
+    setProductVideos(product.videos || []);
     setVariants((product.variants || []).map((v) => ({
       name: v.name, sku: v.sku,
       price: v.price.toString(),
@@ -264,6 +267,7 @@ export default function EditProductPage() {
       images,
       imageAlts,
       videoUrl: formData.videoUrl || undefined,
+      videos: productVideos.filter(Boolean),
       tags: formData.tags.split(',').map((t) => t.trim()).filter(Boolean),
       seo: (formData.seoTitle || formData.seoDescription || formData.seoKeywords || formData.canonicalUrl) ? {
         title: formData.seoTitle || undefined,
@@ -374,9 +378,66 @@ export default function EditProductPage() {
                     <input type="file" accept="image/*" multiple onChange={handleImageUpload} className="hidden" disabled={uploading} />
                   </label>
                 </div>
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-1.5"><Video className="h-3.5 w-3.5" /> Video URL</Label>
-                  <Input placeholder="YouTube / Vimeo embed URL" value={formData.videoUrl} onChange={(e) => set('videoUrl', e.target.value)} />
+                {/* ── Product Videos ── */}
+                <div className="space-y-3">
+                  <Label className="flex items-center gap-1.5"><Video className="h-3.5 w-3.5" /> Product Videos</Label>
+                  <p className="text-xs text-muted-foreground -mt-1">Paste YouTube, YouTube Shorts, Instagram Reels, or Vimeo URLs. These appear in the &quot;Watch in Action&quot; section on the product page.</p>
+
+                  {/* Existing URLs */}
+                  {productVideos.length > 0 && (
+                    <div className="space-y-2">
+                      {productVideos.map((url, idx) => (
+                        <div key={idx} className="flex items-center gap-2 p-2.5 rounded-xl bg-muted/30 border">
+                          <Video className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <span className="text-xs text-muted-foreground flex-1 truncate font-mono">{url}</span>
+                          <button
+                            type="button"
+                            onClick={() => setProductVideos(productVideos.filter((_, i) => i !== idx))}
+                            className="p-1 rounded hover:bg-destructive/10 text-destructive shrink-0"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Add new URL */}
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="https://youtube.com/watch?v=... or instagram.com/reel/..."
+                      value={newVideoUrl}
+                      onChange={(e) => setNewVideoUrl(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const trimmed = newVideoUrl.trim();
+                          if (trimmed && !productVideos.includes(trimmed)) {
+                            setProductVideos([...productVideos, trimmed]);
+                            setNewVideoUrl('');
+                          }
+                        }
+                      }}
+                      className="text-sm"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const trimmed = newVideoUrl.trim();
+                        if (trimmed && !productVideos.includes(trimmed)) {
+                          setProductVideos([...productVideos, trimmed]);
+                          setNewVideoUrl('');
+                        }
+                      }}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {productVideos.length === 0 && (
+                    <p className="text-xs text-muted-foreground/60 italic">No videos added yet.</p>
+                  )}
                 </div>
               </CardContent>
             </Card>

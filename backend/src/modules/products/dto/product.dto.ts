@@ -178,6 +178,11 @@ export class CreateProductDto {
   @IsOptional()
   videoUrl?: string;
 
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  videos?: string[];
+
   @IsNumber()
   @Min(0)
   price: number;
@@ -326,6 +331,11 @@ export class UpdateProductDto {
   @IsString()
   @IsOptional()
   videoUrl?: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  videos?: string[];
 
   @IsNumber()
   @IsOptional()

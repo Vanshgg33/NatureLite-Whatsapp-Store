@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
@@ -148,14 +149,15 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
           </button>
         )}
         <Link href="/admin/dashboard" className="flex items-center gap-3" onClick={handleNavClick}>
-          <div className="h-8 w-8 rounded-lg bg-[#E8A838] flex items-center justify-center flex-shrink-0">
-            <svg viewBox="0 0 18 18" fill="none" className="h-[18px] w-[18px]">
-              <path d="M9 2C4 5 4 10 4 10C4 12.761 6.239 15 9 15C11.761 15 14 12.761 14 10C14 10 14 5 9 2Z" fill="#1E3D2B"/>
-              <path d="M9 6C6.5 8 6.5 10.5 6.5 10.5C6.5 11.881 7.619 13 9 13C10.381 13 11.5 11.881 11.5 10.5C11.5 10.5 11.5 8 9 6Z" fill="rgba(255,255,255,0.9)"/>
-            </svg>
-          </div>
+          <Image
+            src="/images/logo.png"
+            alt="Nature Lite Foods"
+            width={36}
+            height={36}
+            className="object-contain rounded-full flex-shrink-0"
+          />
           <div className="flex flex-col leading-none">
-            <span className="text-white font-semibold text-[14px] tracking-tight">Naturelite</span>
+            <span className="text-white font-semibold text-[13px] tracking-tight">Nature Lite Foods</span>
             <span className="text-white/35 text-[9px] tracking-[0.1em] uppercase font-mono mt-0.5">
               Admin Panel
             </span>

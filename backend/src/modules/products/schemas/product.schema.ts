@@ -60,6 +60,9 @@ export class Product {
   @Prop()
   videoUrl?: string;
 
+  @Prop({ type: [String], default: [] })
+  videos: string[];
+
   @Prop({ required: true })
   price: number;
 

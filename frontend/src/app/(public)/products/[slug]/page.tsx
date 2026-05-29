@@ -22,6 +22,7 @@ import { useWishlistStore } from '@/lib/wishlist-store';
 import { PremiumProductCard } from '@/components/ecommerce/premium-product-card';
 import BilonaProcessSection, { isBilonaGheeProduct } from '@/components/ecommerce/BilonaProcessSection';
 import { BatchStoryCard, PurityMeter, StockContextBanner } from '@/components/ecommerce/product-batch-panel';
+import { ProductVideoSection } from '@/components/ecommerce/product-video-section';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -760,6 +761,11 @@ export default function ProductDetailPage() {
         >
           <BilonaProcessSection />
         </motion.div>
+      )}
+
+      {/* ── Product Videos ─────────────────────────────────────── */}
+      {product.videos && product.videos.length > 0 && (
+        <ProductVideoSection videos={product.videos} />
       )}
 
       {/* ── Reviews ────────────────────────────────────────────── */}

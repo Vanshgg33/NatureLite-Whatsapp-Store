@@ -97,6 +97,7 @@ export interface Product {
   images: string[];
   imageAlts?: string[];
   videoUrl?: string;
+  videos?: string[];
   price: number;
   compareAtPrice?: number;
   specialOfferPrice?: number;

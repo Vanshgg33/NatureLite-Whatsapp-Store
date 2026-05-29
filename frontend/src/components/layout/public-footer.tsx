@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Instagram, Facebook, Youtube, ShieldCheck, Leaf, CreditCard, ArrowRight, Mail } from 'lucide-react';
 
 const FOOTER_BG = '#061703';
@@ -26,19 +27,6 @@ const links = {
     { name: 'Track Order',    href: '/account/orders'         },
   ],
 };
-
-function OilDropMark({ size = 38 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 34 34" fill="none" aria-hidden>
-      <circle cx="17" cy="17" r="15.5" stroke="currentColor" strokeWidth="1.1" />
-      <path
-        d="M17 7.5C17 7.5,23 15,23 20.2C23 23.9,20.3 26.5,17 26.5C13.7 26.5,11 23.9,11 20.2C11 15,17 7.5,17 7.5Z"
-        fill="currentColor"
-        opacity="0.85"
-      />
-    </svg>
-  );
-}
 
 function FooterLinkGroup({ title, items }: { title: string; items: { name: string; href: string }[] }) {
   return (
@@ -188,11 +176,14 @@ export function PublicFooter() {
         <div className="max-w-7xl mx-auto px-6 py-14 sm:py-20 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-10 lg:gap-8">
           {/* Brand column */}
           <div className="col-span-2 md:col-span-3 lg:col-span-2">
-            <Link href="/" className="flex items-center gap-2.5 mb-5" style={{ color: '#a07010' }}>
-              <OilDropMark />
-              <span className="font-display text-xl font-semibold" style={{ color: '#fff8f0' }}>
-                Nature Lite Foods
-              </span>
+            <Link href="/" className="inline-flex mb-5">
+              <Image
+                src="/images/logo.png"
+                alt="Nature Lite Foods"
+                width={64}
+                height={64}
+                className="object-contain"
+              />
             </Link>
             <p className="text-sm leading-relaxed max-w-xs mb-3" style={{ color: 'rgba(255,245,225,0.40)' }}>
               Bringing you the purest traditional foods — wood-pressed oils and Bilona ghee crafted with age-old methods. From farm to your kitchen.
