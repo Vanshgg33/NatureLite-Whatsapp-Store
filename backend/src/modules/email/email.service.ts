@@ -154,6 +154,10 @@ export class EmailService {
     await this.send(customerEmail, `Order Delivered - #${order.orderNumber}`, html);
   }
 
+  async sendAdminReport(to: string, subject: string, html: string): Promise<void> {
+    await this.send(to, subject, html);
+  }
+
   async sendReportEmail(to: string, subject: string, filename: string, pdfBuffer: Buffer): Promise<void> {
     const now = new Date().toLocaleString('en-IN', {
       day: '2-digit', month: 'long', year: 'numeric',

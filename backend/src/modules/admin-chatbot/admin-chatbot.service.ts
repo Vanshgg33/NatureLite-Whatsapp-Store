@@ -111,13 +111,36 @@ export class AdminChatbotService {
     });
   }
 
+  // ─── Email confirmation: extract params from prior preview in history ─────────
+
+  private enrichEmailConfirmation(plan: RagStep[], history: HistoryItem[]): RagStep[] {
+    return plan.map((step) => {
+      if (step.tool !== 'send_email_report') return step;
+      // Already has valid params
+      if (step.params?.to && step.params?.reportType) return step;
+      // Scan history (most recent assistant messages first) for a READY_TO_SEND preview
+      for (let i = history.length - 1; i >= 0; i--) {
+        const msg = history[i];
+        if (msg.role !== 'assistant') continue;
+        const toMatch = msg.text.match(/\bto:\s*([^\s\n]+)/);
+        const typeMatch = msg.text.match(/\breportType:\s*([^\s\n]+)/);
+        if (toMatch && typeMatch && msg.text.includes('READY_TO_SEND')) {
+          return { ...step, params: { to: toMatch[1], reportType: typeMatch[1] } };
+        }
+      }
+      return step; // no preview found — will fail validation gracefully
+    });
+  }
+
   // ─── Date range helper ────────────────────────────────────────────────────────
 
   private resolveRange(params: Record<string, unknown> | undefined): { from: Date; to: Date } {
     if (params?.from && params?.to) {
-      return { from: new Date(params.from as string), to: new Date(params.to as string) };
+      const from = new Date(params.from as string);
+      const to = new Date(params.to as string);
+      if (!isNaN(from.getTime()) && !isNaN(to.getTime())) return { from, to };
     }
-    const days = Number(params?.days ?? 14);
+    const days = Math.max(1, Number(params?.days ?? 14));
     const to = new Date();
     const from = new Date(Date.now() - days * 86_400_000);
     return { from, to };
@@ -255,6 +278,42 @@ export class AdminChatbotService {
     if (productMatch && !plan.some((s) => s.tool === 'search_products'))
       plan.push({ tool: 'search_products', params: { searchTerm: productMatch[1].trim() } });
 
+    // Email action intent
+    const emailMatch = m.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+    const sendIntent = /\b(send|email|forward|mail|share)\b/.test(m);
+    if (emailMatch && sendIntent) {
+      const to = emailMatch[0];
+      // Detect report type from message
+      let reportType = 'dashboard';
+      if (/\bims\b/.test(m)) reportType = 'ims';
+      else if (/low[\s-]stock|inventory/.test(m)) reportType = 'low_stock';
+      else if (/\banalytics\b/.test(m)) reportType = 'analytics';
+      else if (/\bmonthly\b/.test(m)) reportType = 'monthly';
+      else if (/\bweekly\b/.test(m)) reportType = 'weekly';
+      else if (/\borders?\b/.test(m)) reportType = 'orders';
+      else if (/\brevenue\b/.test(m)) reportType = 'revenue';
+      else if (/\bcustomer\b/.test(m)) reportType = 'customers';
+      else if (/\bfeedback\b|\breview\b/.test(m)) reportType = 'feedback';
+      else if (/\bcoupon\b/.test(m)) reportType = 'coupons';
+      else if (/store[\s-]sale/.test(m)) reportType = 'store_sales';
+      else if (/abandon/.test(m)) reportType = 'abandoned';
+      else if (/payment/.test(m)) reportType = 'payments';
+
+      // Check if this is a confirmation ("yes send it") — look at prior context
+      const isConfirmation = /^\s*(yes|yep|yeah|confirm|send it|go ahead|do it|proceed)\s*$/i.test(m);
+      plan.push({
+        tool: isConfirmation ? 'send_email_report' : 'preview_email_report',
+        params: { to, reportType },
+      });
+      return plan;
+    }
+
+    // Confirmation of a pending email action (no email in message, just "yes")
+    if (/^\s*(yes|yep|yeah|confirm|send it|go ahead|do it|proceed)\s*$/i.test(m)) {
+      plan.push({ tool: 'send_email_report', params: {} }); // planner will fill from history
+      return plan;
+    }
+
     if (plan.length === 0) {
       plan.push(
         { tool: 'get_dashboard_summary', params: {} },
@@ -330,7 +389,10 @@ export class AdminChatbotService {
         { tool: 'get_orders_by_status', params: {} },
         { tool: 'search_low_stock_products', params: {} },
       ];
-      const finalPlan = this.deduplicatePlan(rawPlan.length > 0 ? rawPlan : defaultPlan);
+      const finalPlan = this.enrichEmailConfirmation(
+        this.deduplicatePlan(rawPlan.length > 0 ? rawPlan : defaultPlan),
+        history,
+      );
       this.logger.log(`Plan (${plannerUsed}): ${finalPlan.map((s) => s.tool).join(', ')}`);
 
       // ── Retrieve ──────────────────────────────────────────────────────────────
@@ -430,11 +492,14 @@ export class AdminChatbotService {
       }
       if (!rawPlan.length) rawPlan = this.keywordFallbackPlan(safeMessage);
 
-      const finalPlan = this.deduplicatePlan(rawPlan.length > 0 ? rawPlan : [
-        { tool: 'get_dashboard_summary', params: {} },
-        { tool: 'get_orders_by_status', params: {} },
-        { tool: 'search_low_stock_products', params: {} },
-      ]);
+      const finalPlan = this.enrichEmailConfirmation(
+        this.deduplicatePlan(rawPlan.length > 0 ? rawPlan : [
+          { tool: 'get_dashboard_summary', params: {} },
+          { tool: 'get_orders_by_status', params: {} },
+          { tool: 'search_low_stock_products', params: {} },
+        ]),
+        history,
+      );
 
       const toolResults = await Promise.all(
         finalPlan.map(async (step, index) => {
@@ -646,11 +711,14 @@ export class AdminChatbotService {
             const hrs = Math.round((Date.now() - new Date(cart.updatedAt).getTime()) / 3_600_000);
             return `- 📱 **${name}** | ${phone} | ₹${(cart.total || 0).toLocaleString('en-IN')} | [${items}] | ~${hrs}h ago`;
           });
-        const sessionLines = stuckSessions.filter((s: any) => !coveredPhones.has((s.user as any)?.phone ?? s.phone)).map((s: any) => {
-          const name = (s.user as any)?.name || s.metadata?.contactName || s.phone || 'Unknown';
-          const mins = Math.round((Date.now() - new Date(s.lastMessageAt ?? s.updatedAt).getTime()) / 60_000);
-          return `- 📱 **${name}** | ${s.phone} | Stuck at \`${s.currentState}\` | ~${mins} min`;
-        });
+        // Sessions don't carry product data — skip them when productSearch is active
+        const sessionLines = productSearch ? [] : stuckSessions
+          .filter((s: any) => !coveredPhones.has((s.user as any)?.phone ?? s.phone))
+          .map((s: any) => {
+            const name = (s.user as any)?.name || s.metadata?.contactName || s.phone || 'Unknown';
+            const mins = Math.round((Date.now() - new Date(s.lastMessageAt ?? s.updatedAt).getTime()) / 60_000);
+            return `- 📱 **${name}** | ${s.phone} | Stuck at \`${s.currentState}\` | ~${mins} min`;
+          });
         const all = [...cartLines, ...sessionLines];
         return `[RAG: search_abandoned_carts]\n**${all.length}** customers with items who did not order (60+ min inactive)\n\n${all.join('\n') || 'None found.'}`;
       }
@@ -688,7 +756,12 @@ export class AdminChatbotService {
 
         const filter: Record<string, unknown> = {};
         if (status) filter.status = status;
-        if (step.params?.from) filter.createdAt = { $gte: new Date(step.params.from as string), $lte: new Date(step.params.to as string) };
+        if (step.params?.from && step.params?.to) {
+          const fromD = new Date(step.params.from as string);
+          const toD = new Date(step.params.to as string);
+          if (!isNaN(fromD.getTime()) && !isNaN(toD.getTime()))
+            filter.createdAt = { $gte: fromD, $lte: toD };
+        }
         if (paymentMethod) filter.paymentMethod = { $regex: paymentMethod, $options: 'i' };
 
         // If customer name/phone given, look up user first
@@ -1003,13 +1076,11 @@ export class AdminChatbotService {
         const periodBEnd = new Date(periodAStart.getTime());
         const periodBStart = new Date(periodBEnd.getTime() - days * 86_400_000);
 
-        const [metricsA, metricsB, customersA, customersB, revenueA, revenueB] = await Promise.all([
+        const [metricsA, metricsB, customersA, customersB] = await Promise.all([
           this.analyticsService.getOrderMetrics(periodAStart, periodAEnd),
           this.analyticsService.getOrderMetrics(periodBStart, periodBEnd),
           this.analyticsService.getCustomerMetrics(periodAStart, periodAEnd),
           this.analyticsService.getCustomerMetrics(periodBStart, periodBEnd),
-          this.analyticsService.getRevenueByDay(days),
-          this.analyticsService.getRevenueByDay(days * 2),
         ]);
 
         const a = metricsA as any; const b = metricsB as any;
@@ -1021,9 +1092,9 @@ export class AdminChatbotService {
           return `${pct > 0 ? '▲' : '▼'} ${Math.abs(pct)}%`;
         };
 
-        const revA = revenueA.reduce((s: number, d: any) => s + (d.revenue || 0), 0);
-        const revBAll = revenueB.reduce((s: number, d: any) => s + (d.revenue || 0), 0);
-        const revB = revBAll - revA;
+        // Use order metrics revenue (already scoped to correct date ranges)
+        const revA = a.totalRevenue || 0;
+        const revB = b.totalRevenue || 0;
 
         const lines = [
           `**Period A (current):** ${periodAStart.toLocaleDateString('en-IN')} – ${periodAEnd.toLocaleDateString('en-IN')}`,
@@ -1041,10 +1112,127 @@ export class AdminChatbotService {
         return `[RAG: compare_periods (${days}d vs ${days}d)]\n${lines.join('\n')}`;
       }
 
+      // ── ACTION TOOLS ──────────────────────────────────────────────────────────
+
+      case 'preview_email_report': {
+        const to = String(step.params?.to ?? '').trim();
+        const reportType = String(step.params?.reportType ?? 'dashboard').trim().toLowerCase();
+        if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to))
+          return `[ACTION: preview_email_report]\nINVALID_EMAIL: "${to}" is not a valid email address.`;
+        try {
+          const preview = await this.buildReportPreview(reportType);
+          return `[ACTION: preview_email_report]\nREADY_TO_SEND\nto: ${to}\nreportType: ${reportType}\nsubject: ${preview.subject}\npreview: ${preview.summary}`;
+        } catch (err) {
+          return `[ACTION: preview_email_report]\nERROR: Could not build report preview — ${(err as Error).message}`;
+        }
+      }
+
+      case 'send_email_report': {
+        const to = String(step.params?.to ?? '').trim();
+        const reportType = String(step.params?.reportType ?? 'dashboard').trim().toLowerCase();
+        if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to))
+          return `[ACTION: send_email_report]\nERROR: Invalid email address "${to}".`;
+
+        try {
+          const report = await this.buildReportPreview(reportType);
+          await this.emailService.sendAdminReport(to, report.subject, report.html);
+          this.logger.log(`Admin report "${reportType}" sent to ${to}`);
+          return `[ACTION: send_email_report]\nSUCCESS\nto: ${to}\nsubject: ${report.subject}`;
+        } catch (err) {
+          this.logger.error(`Failed to send report email: ${(err as Error).message}`);
+          return `[ACTION: send_email_report]\nERROR: Failed to send email — ${(err as Error).message}`;
+        }
+      }
+
       default:
         this.logger.warn(`Unknown tool: "${step.tool}"`);
         return null;
     }
+  }
+
+  // ─── Email report builder ─────────────────────────────────────────────────────
+
+  private async buildReportPreview(reportType: string): Promise<{ subject: string; summary: string; html: string }> {
+    const REPORT_MAP: Record<string, { label: string; tools: RagStep[] }> = {
+      ims:            { label: 'IMS Analytics',        tools: [{ tool: 'search_low_stock_products', params: {} }, { tool: 'get_analytics_period', params: { days: 30 } }] },
+      inventory:      { label: 'Inventory Report',     tools: [{ tool: 'search_low_stock_products', params: {} }] },
+      'low-stock':    { label: 'Low Stock Alert',      tools: [{ tool: 'search_low_stock_products', params: {} }] },
+      low_stock:      { label: 'Low Stock Alert',      tools: [{ tool: 'search_low_stock_products', params: {} }] },
+      analytics:      { label: 'Analytics Report',     tools: [{ tool: 'get_analytics_period', params: { days: 30 } }] },
+      monthly:        { label: 'Monthly Analytics',    tools: [{ tool: 'get_analytics_period', params: { days: 30 } }] },
+      weekly:         { label: 'Weekly Analytics',     tools: [{ tool: 'get_analytics_period', params: { days: 7 } }] },
+      orders:         { label: 'Orders Summary',       tools: [{ tool: 'search_recent_orders', params: { limit: 20 } }, { tool: 'get_orders_by_status', params: {} }] },
+      revenue:        { label: 'Revenue Report',       tools: [{ tool: 'get_revenue_trend', params: { days: 14 } }] },
+      dashboard:      { label: 'Dashboard Summary',    tools: [{ tool: 'get_dashboard_summary', params: {} }, { tool: 'get_orders_by_status', params: {} }, { tool: 'search_low_stock_products', params: {} }] },
+      customers:      { label: 'Customer Report',      tools: [{ tool: 'get_new_customers', params: { days: 7 } }, { tool: 'get_top_customers_online', params: { limit: 10 } }] },
+      feedback:       { label: 'Feedback Report',      tools: [{ tool: 'get_feedback_list', params: { limit: 20 } }] },
+      coupons:        { label: 'Coupon Report',        tools: [{ tool: 'get_coupon_list', params: {} }] },
+      'store-sales':  { label: 'Store Sales Report',   tools: [{ tool: 'get_store_sales', params: { days: 30 } }] },
+      store_sales:    { label: 'Store Sales Report',   tools: [{ tool: 'get_store_sales', params: { days: 30 } }] },
+      abandoned:      { label: 'Abandoned Carts',      tools: [{ tool: 'search_abandoned_carts', params: { limit: 30 } }] },
+      payments:       { label: 'Payment Failures',     tools: [{ tool: 'get_payment_failures', params: { limit: 20 } }] },
+    };
+
+    const config = REPORT_MAP[reportType] ?? REPORT_MAP['dashboard'];
+    const date = new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const subject = `📊 Naturelite — ${config.label} | ${date}`;
+
+    // Run all tools for this report
+    const blocks = await Promise.all(
+      config.tools.map(async (t) => {
+        try { return await this.executeTool(t); } catch { return null; }
+      })
+    );
+    const dataBlocks = blocks.filter(Boolean) as string[];
+
+    // Build plain-text summary (first 300 chars of first block)
+    const firstBlock = dataBlocks[0]?.replace(/^\[RAG:[^\]]+\]\n?/, '').trim() ?? 'No data available.';
+    const summary = firstBlock.slice(0, 280) + (firstBlock.length > 280 ? '...' : '');
+
+    // Build HTML email
+    const sectionsHtml = dataBlocks.map((block) => {
+      const titleMatch = block.match(/^\[(?:RAG|ACTION):\s*([^\]]+)\]/);
+      const title = titleMatch ? titleMatch[1].trim().replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Data';
+      const body = block.replace(/^\[(?:RAG|ACTION):[^\]]+\]\n?/, '').trim();
+
+      // Convert markdown to simple HTML
+      const bodyHtml = body
+        .split('\n')
+        .map(line => {
+          if (line.startsWith('- ')) return `<li style="margin:4px 0;font-size:13px;color:#333">${line.slice(2).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/`(.*?)`/g, '<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:12px">$1</code>')}</li>`;
+          if (line.startsWith('**') && line.endsWith('**')) return `<p style="margin:6px 0;font-weight:bold;font-size:13px;color:#1E3D2B">${line.replace(/\*\*/g, '')}</p>`;
+          if (line.trim() === '') return '<br/>';
+          return `<p style="margin:4px 0;font-size:13px;color:#444">${line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/`(.*?)`/g, '<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:12px">$1</code>')}</p>`;
+        })
+        .join('');
+      const listWrapped = bodyHtml.includes('<li') ? `<ul style="margin:8px 0;padding-left:18px">${bodyHtml}</ul>` : bodyHtml;
+
+      return `
+        <div style="margin-bottom:24px">
+          <h3 style="margin:0 0 10px;padding-bottom:6px;border-bottom:2px solid #E8A838;color:#1E3D2B;font-size:15px">${title}</h3>
+          ${listWrapped}
+        </div>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f5f5f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+  <div style="max-width:620px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 16px rgba(0,0,0,0.08)">
+    <div style="background:#1E3D2B;padding:28px 32px;text-align:center">
+      <h1 style="margin:0;color:#E8A838;font-size:22px;letter-spacing:-0.5px">🌿 Naturelite</h1>
+      <p style="margin:6px 0 0;color:rgba(255,255,255,0.7);font-size:13px">${config.label}</p>
+      <p style="margin:4px 0 0;color:rgba(255,255,255,0.45);font-size:11px">${date}</p>
+    </div>
+    <div style="padding:28px 32px">
+      ${sectionsHtml}
+    </div>
+    <div style="background:#f0f0ea;padding:16px 32px;text-align:center;border-top:1px solid #e8e8e0">
+      <p style="margin:0;font-size:11px;color:#888">Sent via AI — Aditya Intelligence · Naturelite Admin</p>
+    </div>
+  </div>
+</body></html>`;
+
+    return { subject, summary, html };
   }
 
   // ─── Prompt builders ──────────────────────────────────────────────────────────
@@ -1084,6 +1272,13 @@ Tools:
 22. {"tool":"get_whatsapp_queue","params":{}}
 23. {"tool":"get_reminders","params":{}}
 24. {"tool":"compare_periods","params":{"days":7}}
+25. {"tool":"preview_email_report","params":{"to":"email@example.com","reportType":"string"}} — FIRST STEP: preview what will be sent and ask user to confirm. reportType: ims | inventory | low_stock | analytics | monthly | weekly | orders | revenue | dashboard | customers | feedback | coupons | store_sales | abandoned | payments
+26. {"tool":"send_email_report","params":{"to":"email@example.com","reportType":"string"}} — SECOND STEP: only call after user confirms (said "yes", "send it", "confirm", "go ahead"). Never call without prior preview confirmation in history.
+
+ACTION RULES:
+- For any "send to email" or "email this to" request: ALWAYS call preview_email_report first, never send_email_report directly.
+- Only call send_email_report when the conversation history shows the user confirmed a pending preview (said yes/confirm/go ahead/send it).
+- Extract the email address exactly as written. Extract the report type from keywords: "IMS" → ims, "low stock" → low_stock, "analytics/monthly/weekly" → analytics/monthly/weekly, "orders" → orders, "revenue" → revenue, "dashboard/overview" → dashboard.
 
 IMPORTANT: Always pass the most specific params possible. If the user mentions a product type, customer name, rating, coupon status, etc. — include it as a filter param. Never call a tool with empty params when the user has provided context that could narrow results.
 
@@ -1114,6 +1309,12 @@ Examples:
 "monthly report" → [{"tool":"get_analytics_period","params":{"days":30}}]
 "abandoned carts" → [{"tool":"search_abandoned_carts","params":{"limit":30}}]
 "overview" → [{"tool":"get_dashboard_summary","params":{}},{"tool":"get_orders_by_status","params":{}},{"tool":"search_low_stock_products","params":{}}]
+"send IMS analytics to admin@example.com" → [{"tool":"preview_email_report","params":{"to":"admin@example.com","reportType":"ims"}}]
+"email the low stock report to manager@store.com" → [{"tool":"preview_email_report","params":{"to":"manager@store.com","reportType":"low_stock"}}]
+"send monthly analytics to owner@naturelite.com" → [{"tool":"preview_email_report","params":{"to":"owner@naturelite.com","reportType":"monthly"}}]
+"email orders summary to ops@company.com" → [{"tool":"preview_email_report","params":{"to":"ops@company.com","reportType":"orders"}}]
+"yes" (after a preview was shown) → [{"tool":"send_email_report","params":{"to":"<email from history>","reportType":"<type from history>"}}]
+"yes send it" (after a preview was shown) → [{"tool":"send_email_report","params":{"to":"<email from history>","reportType":"<type from history>"}}]
 
 User question: """${message}"""`;
   }
@@ -1139,6 +1340,12 @@ Rules:
 7. Use conversation history to resolve follow-up questions (e.g. "what about last week?" or "show her orders").
 8. If the data contains no items matching the user's specific filter (e.g. no oil products in low-stock list), say so explicitly: "No oil products are currently low on stock."
 9. If data doesn't contain the answer at all, say "I don't have that information" — never guess or make up numbers.
+10. **Email action flow** — when data contains [ACTION: preview_email_report] with READY_TO_SEND, present a confirmation card like:
+    > 📧 Ready to send **{report label}** to **{email}**
+    > Preview: {first few lines of summary}
+    > Reply **yes** to send, or **cancel** to abort.
+11. When data contains [ACTION: send_email_report] with SUCCESS, confirm with: "✅ **{report} sent** to {email}."
+12. When data contains [ACTION: send_email_report] with ERROR, show: "❌ Could not send email — {error reason}."
 
 Question: """${message}"""`;
   }

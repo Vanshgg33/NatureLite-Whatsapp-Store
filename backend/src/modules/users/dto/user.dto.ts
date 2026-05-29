@@ -8,7 +8,7 @@ import {
   ValidateNested,
   IsNumber,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 
 export class AddressDto {
   @IsString()
@@ -140,12 +140,12 @@ export class UserQueryDto {
 
   @IsBoolean()
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => value === 'true' || value === true)
   isActive?: boolean;
 
   @IsBoolean()
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => value === 'true' || value === true)
   isBlocked?: boolean;
 
   @IsString()
