@@ -29,6 +29,44 @@ export type HistoryItem = { role: 'user' | 'assistant'; text: string };
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash';
 const MAX_CONTEXT_CHARS = 12_000;
 
+/** Structured understanding of what the admin asked — produced by Gemini or
+ *  the text fallback before any DB calls are made. */
+interface ChatbotIntent {
+  topic:
+    | 'orders' | 'revenue' | 'customers' | 'inventory' | 'feedback'
+    | 'coupons' | 'payments' | 'subscriptions' | 'store_sales'
+    | 'wallet' | 'reminders' | 'whatsapp' | 'overview'
+    | 'email' | 'login' | 'abandoned_carts' | 'top_products';
+  timePreset?: 'today' | 'yesterday' | 'this_week' | 'last_week' | 'this_month' | 'last_30_days';
+  from?: string;
+  to?: string;
+  filters?: {
+    status?: string;
+    paymentMethod?: 'cod' | 'prepaid';
+    customerName?: string;
+    customerPhone?: string;
+    productName?: string;
+    minRating?: number;
+    maxRating?: number;
+    feedbackType?: 'review' | 'complaint' | 'suggestion';
+    couponStatus?: 'active' | 'expired' | 'upcoming' | 'inactive';
+    minSpent?: number;
+    outOfStock?: boolean;
+    inStock?: boolean;
+  };
+  action?: 'list' | 'count' | 'summary' | 'trend' | 'compare' | 'search';
+  emailTo?: string;
+  emailReportType?: string;
+  emailConfirm?: boolean;
+}
+
+class GeminiRateLimitError extends Error {
+  constructor() {
+    super('Gemini API rate limit reached');
+    this.name = 'GeminiRateLimitError';
+  }
+}
+
 @Injectable()
 export class AdminChatbotService {
   private readonly logger = new Logger(AdminChatbotService.name);
@@ -59,6 +97,7 @@ export class AdminChatbotService {
     apiKey: string,
     body: object,
     label: string,
+    throwOnRateLimit = false,
   ): Promise<GeminiResponse | null> {
     const url = `${GEMINI_BASE}:generateContent?key=${encodeURIComponent(apiKey)}`;
     for (let attempt = 1; attempt <= 2; attempt++) {
@@ -83,6 +122,9 @@ export class AdminChatbotService {
         await this.sleep(status === 429 ? 3000 : 1500);
         continue;
       }
+      // Rate limit persisted after retry — surface it as a typed error so callers
+      // can show a specific message instead of the generic raw-data fallback.
+      if (status === 429 && throwOnRateLimit) throw new GeminiRateLimitError();
       return null;
     }
     return null;
@@ -159,12 +201,20 @@ export class AdminChatbotService {
       : {};
 
     if (/stock|inventory|low[\s-]stock|out[\s-]of[\s-]stock|running[\s-]out|restock/.test(m)) {
-      // Extract product-type qualifier: "oil items low on stock" → searchTerm = "oil"
+      const isOutOfStock = /out[\s-]of[\s-]stock|zero[\s-]stock|no[\s-]stock|completely[\s-]out/.test(m);
+      // Extract product-type qualifier — strip all navigation/stop words before using as filter
+      const STOP_WORDS = /\b(now|tell|which|show|me|are|is|the|all|items?|products?|skus?|stock|low|out|of|in|for|running|restock|inventory|give|list|check|find|get|what|how|many|currently|there|any)\b/gi;
       const typeMatch = m.match(/(?:which\s+)?([a-z]+(?:\s+[a-z]+)?)\s+(?:item|product|sku)s?\s+(?:(?:is|are)\s+)?(?:low|out|running)/i)
         ?? m.match(/low[\s-]+(?:stock|inventory)\s+(?:in|of|for)?\s*([a-z]+(?:\s+[a-z]+)?)/i)
         ?? m.match(/(?:check|show|list)\s+(?:low[\s-]+stock\s+)?([a-z]+(?:\s+[a-z]+)?)\s+(?:items?|products?)/i);
-      const searchTerm = typeMatch ? typeMatch[1].replace(/\b(item|product|stock|low|in|of|for|the|all)\b/gi, '').trim() : '';
-      plan.push({ tool: 'search_low_stock_products', params: searchTerm ? { searchTerm } : {} });
+      const rawTerm = typeMatch ? typeMatch[1].replace(STOP_WORDS, '').replace(/\s+/g, ' ').trim() : '';
+      // Only use as a filter if something meaningful (≥3 chars, looks like a product word) remains
+      const searchTerm = rawTerm.length >= 3 ? rawTerm : '';
+      if (isOutOfStock) {
+        plan.push({ tool: 'search_out_of_stock_products', params: searchTerm ? { searchTerm } : {} });
+      } else {
+        plan.push({ tool: 'search_low_stock_products', params: searchTerm ? { searchTerm } : {} });
+      }
     }
 
     if (/login|logged[\s-]in|audit|security|who[\s-]logged|access[\s-]log/.test(m))
@@ -329,16 +379,29 @@ export class AdminChatbotService {
 
   private formatRawDataFallback(contextBlocks: string[], failedTools: string[], message: string): string {
     if (contextBlocks.length === 0)
-      return `⚠️ **No data could be retrieved right now.**\n\nQuery: *"${message}"*\n\nPlease check server connectivity or try a different question.`;
+      return `⚠️ **No data could be retrieved right now.**\n\nPlease check server connectivity or try again.`;
 
+    // When there's a single focused result, present it cleanly without the "synthesis unavailable" noise.
+    if (contextBlocks.length === 1) {
+      const body = contextBlocks[0].replace(/^\[RAG:[^\]]+\]\n?/, '').trim();
+      const notice = failedTools.length > 0
+        ? `\n\n> ⚠️ *Could not load: ${failedTools.join(', ')}*`
+        : '';
+      return `${body}${notice}`;
+    }
+
+    // Multiple blocks — show each section with a clean header (no underscores, no tool jargon).
     const sections = contextBlocks.map((block) => {
-      const header = block.match(/^\[RAG:\s*([^\]]+)\]/)?.[1]?.trim() ?? 'Data';
+      const rawHeader = block.match(/^\[RAG:\s*([^\]]+)\]/)?.[1]?.trim() ?? 'Data';
+      // Convert snake_case tool names to readable labels
+      const header = rawHeader.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()).replace(/^Search |^Get /, '');
       const body = block.replace(/^\[RAG:[^\]]+\]\n?/, '').trim();
-      return `### ${header}\n${body}`;
+      return `## ${header}\n${body}`;
     });
-    let reply = `> ⚡ *AI synthesis unavailable — raw database results for: "${message}"*\n\n${sections.join('\n\n---\n\n')}`;
+
+    let reply = sections.join('\n\n---\n\n');
     if (failedTools.length > 0)
-      reply += `\n\n---\n> ⚠️ *Could not load: ${failedTools.join(', ')}*`;
+      reply += `\n\n> ⚠️ *Could not load: ${failedTools.join(', ')}*`;
     return reply;
   }
 
@@ -355,45 +418,40 @@ export class AdminChatbotService {
     const failedTools: string[] = [];
 
     try {
-      // ── Plan ─────────────────────────────────────────────────────────────────
-      let rawPlan: RagStep[] = [];
-      let plannerUsed: 'gemini' | 'keyword' = 'gemini';
+      // ── Understand intent (Gemini first, text fallback if unavailable) ────────
+      let intent: ChatbotIntent | null = null;
+      let intentSource = 'gemini';
 
-      const plannerData = await this.geminiRequest(
+      const intentData = await this.geminiRequest(
         apiKey,
         {
-          contents: [{ parts: [{ text: this.buildPlannerPrompt(safeMessage, history) }] }],
-          generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
+          contents: [{ parts: [{ text: this.buildIntentPrompt(safeMessage, history) }] }],
+          generationConfig: { temperature: 0.0, responseMimeType: 'application/json', maxOutputTokens: 300 },
         },
-        'planner',
+        'intent',
       );
 
-      if (plannerData) {
+      if (intentData) {
         try {
-          let raw = this.extractText(plannerData).trim();
+          let raw = this.extractText(intentData).trim();
           if (raw.startsWith('```')) raw = raw.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '');
           const parsed = JSON.parse(raw.trim());
-          if (Array.isArray(parsed)) rawPlan = parsed;
+          if (parsed?.topic) intent = parsed as ChatbotIntent;
         } catch {
-          this.logger.warn('Planner JSON parse failed — keyword fallback');
+          this.logger.warn('Intent JSON parse failed — text fallback');
         }
       }
 
-      if (!rawPlan.length) {
-        plannerUsed = 'keyword';
-        rawPlan = this.keywordFallbackPlan(safeMessage);
+      if (!intent) {
+        intentSource = 'text-fallback';
+        intent = this.textToIntent(safeMessage);
       }
 
-      const defaultPlan: RagStep[] = [
-        { tool: 'get_dashboard_summary', params: {} },
-        { tool: 'get_orders_by_status', params: {} },
-        { tool: 'search_low_stock_products', params: {} },
-      ];
-      const finalPlan = this.enrichEmailConfirmation(
-        this.deduplicatePlan(rawPlan.length > 0 ? rawPlan : defaultPlan),
-        history,
-      );
-      this.logger.log(`Plan (${plannerUsed}): ${finalPlan.map((s) => s.tool).join(', ')}`);
+      this.logger.log(`Intent (${intentSource}): ${intent.topic}${intent.timePreset ? '/' + intent.timePreset : ''}${intent.filters ? ' filters:' + JSON.stringify(intent.filters) : ''}`);
+
+      // ── Map intent → DB tools ──────────────────────────────────────────────────
+      const finalPlan = this.deduplicatePlan(this.intentToTools(intent, new Date(), history));
+      this.logger.log(`Tools: ${finalPlan.map((s) => s.tool).join(', ')}`);
 
       // ── Retrieve ──────────────────────────────────────────────────────────────
       const toolResults = await Promise.all(
@@ -427,6 +485,7 @@ export class AdminChatbotService {
           generationConfig: { temperature: 0.2, maxOutputTokens: 1500 },
         },
         'synthesis',
+        true, // throw GeminiRateLimitError if 429 persists
       );
       const aiReply = this.extractText(synthesisData);
 
@@ -448,6 +507,14 @@ export class AdminChatbotService {
       return { reply: finalReply };
 
     } catch (err) {
+      if (err instanceof GeminiRateLimitError) {
+        return {
+          reply:
+            `> ⚠️ **Gemini API rate limit reached.**\n\n` +
+            `The AI is temporarily unavailable due to too many requests. Please wait a minute and try again.\n\n` +
+            `_Your data was retrieved from the database — only the AI summary step failed._`,
+        };
+      }
       this.logger.error(`Unexpected error: ${(err as Error).message}`, (err as Error).stack);
       return { reply: `⚠️ **Something went wrong on the server.**\n\nPlease try again.` };
     }
@@ -472,34 +539,28 @@ export class AdminChatbotService {
     const failedTools: string[] = [];
 
     try {
-      // Plan + Retrieve (same as non-streaming chat)
-      let rawPlan: RagStep[] = [];
-      const plannerData = await this.geminiRequest(
+      // Understand intent, then map to tools (same flow as non-streaming chat)
+      let intent: ChatbotIntent | null = null;
+      const intentData = await this.geminiRequest(
         apiKey,
         {
-          contents: [{ parts: [{ text: this.buildPlannerPrompt(safeMessage, history) }] }],
-          generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
+          contents: [{ parts: [{ text: this.buildIntentPrompt(safeMessage, history) }] }],
+          generationConfig: { temperature: 0.0, responseMimeType: 'application/json', maxOutputTokens: 300 },
         },
-        'planner-stream',
+        'intent-stream',
       );
-      if (plannerData) {
+      if (intentData) {
         try {
-          let raw = this.extractText(plannerData).trim();
+          let raw = this.extractText(intentData).trim();
           if (raw.startsWith('```')) raw = raw.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '');
           const parsed = JSON.parse(raw.trim());
-          if (Array.isArray(parsed)) rawPlan = parsed;
-        } catch { /* keyword fallback */ }
+          if (parsed?.topic) intent = parsed as ChatbotIntent;
+        } catch { /* text fallback */ }
       }
-      if (!rawPlan.length) rawPlan = this.keywordFallbackPlan(safeMessage);
+      if (!intent) intent = this.textToIntent(safeMessage);
 
-      const finalPlan = this.enrichEmailConfirmation(
-        this.deduplicatePlan(rawPlan.length > 0 ? rawPlan : [
-          { tool: 'get_dashboard_summary', params: {} },
-          { tool: 'get_orders_by_status', params: {} },
-          { tool: 'search_low_stock_products', params: {} },
-        ]),
-        history,
-      );
+      const finalPlan = this.deduplicatePlan(this.intentToTools(intent, new Date(), history));
+      this.logger.log(`Intent-stream: ${intent.topic} → ${finalPlan.map((s) => s.tool).join(', ')}`);
 
       const toolResults = await Promise.all(
         finalPlan.map(async (step, index) => {
@@ -525,6 +586,7 @@ export class AdminChatbotService {
           generationConfig: { temperature: 0.2, maxOutputTokens: 1500 },
         },
         'synthesis-stream',
+        true, // throw GeminiRateLimitError if 429 persists
       );
 
       let fullReply = this.extractText(synthesisData);
@@ -553,8 +615,18 @@ export class AdminChatbotService {
       }
 
     } catch (err) {
-      this.logger.error(`streamChat error: ${(err as Error).message}`);
-      res.write(`data: ${JSON.stringify({ delta: '⚠️ Something went wrong. Please try again.' })}\n\n`);
+      if (err instanceof GeminiRateLimitError) {
+        const msg =
+          '> ⚠️ **Gemini API rate limit reached.**\n\n' +
+          'The AI is temporarily unavailable due to too many requests. Please wait a minute and try again.\n\n' +
+          '_Your data was retrieved from the database — only the AI summary step failed._';
+        for (const token of msg.split(/(\s+)/)) {
+          if (token) res.write(`data: ${JSON.stringify({ delta: token })}\n\n`);
+        }
+      } else {
+        this.logger.error(`streamChat error: ${(err as Error).message}`);
+        res.write(`data: ${JSON.stringify({ delta: '⚠️ Something went wrong. Please try again.' })}\n\n`);
+      }
       res.write('data: [DONE]\n\n');
     }
   }
@@ -640,6 +712,46 @@ export class AdminChatbotService {
           recentLines ? `\n**Recent Orders:**\n${recentLines}` : '',
         ].filter(Boolean).join('\n');
         return `[RAG: get_dashboard_summary]\n${formatted}`;
+      }
+
+      case 'search_out_of_stock_products': {
+        const searchTerm = String(step.params?.searchTerm ?? '').trim();
+        const nameFilter = searchTerm
+          ? { name: { $regex: searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }
+          : {};
+        const items = await this.productRepository.getModel().aggregate([
+          { $match: { isActive: true, trackStock: { $ne: false }, ...nameFilter } },
+          { $addFields: {
+            totalStock: { $add: ['$stock', { $ifNull: [{ $sum: '$variants.stock' }, 0] }] },
+          }},
+          { $match: { totalStock: { $lte: 0 } } },
+          { $sort: { name: 1 } }, { $limit: 50 },
+        ]).exec();
+        const label = searchTerm ? `search_out_of_stock_products ("${searchTerm}")` : 'search_out_of_stock_products';
+        const formatted = items.length > 0
+          ? items.map((p: any) => `- **${p.name}** (SKU: ${p.sku || 'N/A'}) | Stock: **0** | Price: ₹${p.price || 0}`).join('\n')
+          : `No out-of-stock products found${searchTerm ? ` matching "${searchTerm}"` : ''}.`;
+        return `[RAG: ${label}]\n**${items.length}** products currently out of stock\n\n${formatted}`;
+      }
+
+      case 'search_in_stock_products': {
+        const searchTerm = String(step.params?.searchTerm ?? '').trim();
+        const nameFilter = searchTerm
+          ? { name: { $regex: searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }
+          : {};
+        const items = await this.productRepository.getModel().aggregate([
+          { $match: { isActive: true, ...nameFilter } },
+          { $addFields: {
+            totalStock: { $add: ['$stock', { $ifNull: [{ $sum: '$variants.stock' }, 0] }] },
+          }},
+          { $match: { $or: [{ trackStock: false }, { totalStock: { $gt: 0 } }] } },
+          { $sort: { name: 1 } }, { $limit: 30 },
+        ]).exec();
+        const label = searchTerm ? `search_in_stock_products ("${searchTerm}")` : 'search_in_stock_products';
+        const formatted = items.length > 0
+          ? items.map((p: any) => `- **${p.name}** (SKU: ${p.sku || 'N/A'}) | Stock: **${p.trackStock === false ? 'Available' : p.totalStock}** | Price: ₹${p.price || 0}`).join('\n')
+          : `No in-stock products found${searchTerm ? ` matching "${searchTerm}"` : ''}.`;
+        return `[RAG: ${label}]\n**${items.length}** products in stock${searchTerm ? ` matching "${searchTerm}"` : ''}\n\n${formatted}`;
       }
 
       case 'search_low_stock_products': {
@@ -1237,86 +1349,410 @@ export class AdminChatbotService {
 
   // ─── Prompt builders ──────────────────────────────────────────────────────────
 
-  private buildPlannerPrompt(message: string, history: HistoryItem[]): string {
+  // ─── Intent extraction (new primary path) ────────────────────────────────────
+
+  /** Lightweight Gemini prompt that extracts structured intent from a free-form
+   *  admin query. Returns a small JSON object — not tool names — so understanding
+   *  is always separated from tool selection. */
+  private buildIntentPrompt(message: string, history: HistoryItem[]): string {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const yesterdayStr = new Date(now.getTime() - 86_400_000).toISOString().split('T')[0];
+
     const historySection = history.length > 0
-      ? `\nRecent conversation:\n${history.slice(-4).map((h) => `${h.role === 'user' ? 'User' : 'AI'}: ${h.text.slice(0, 200)}`).join('\n')}\n`
+      ? `\nConversation so far:\n${history.slice(-3).map((h) => `${h.role === 'user' ? 'User' : 'AI'}: ${h.text.slice(0, 120)}`).join('\n')}\n`
       : '';
 
-    return `You are the RAG Data Planner for the Naturelite E-Commerce Admin Dashboard.
-Pick the minimum set of tools to answer accurately. Return ONLY a raw JSON array.
+    return `Extract the intent of this e-commerce admin query. Return ONLY valid JSON.
+
+TODAY: ${todayStr}  YESTERDAY: ${yesterdayStr}
 ${historySection}
-When the user mentions a date or date range (e.g. "last week", "May 2025", "Q1", "yesterday"), resolve it to ISO dates and set "from"/"to" params instead of "days".
-
-Tools:
-1. {"tool":"get_dashboard_summary","params":{}}
-2. {"tool":"search_low_stock_products","params":{"searchTerm":"string"}} — pass searchTerm to filter by product type (e.g. "oil", "ghee", "seeds"); omit for all low-stock items
-3. {"tool":"search_products","params":{"searchTerm":"string"}}
-4. {"tool":"get_login_audit_logs","params":{"limit":20}}
-5. {"tool":"search_abandoned_carts","params":{"limit":30,"productSearch":"string"}} — productSearch filters by product name in cart (e.g. "ghee", "oil")
-6. {"tool":"get_top_selling_products","params":{"limit":8,"from":"ISO","to":"ISO","searchTerm":"string"}} — searchTerm filters by product name (e.g. "oil", "ghee")
-7. {"tool":"search_recent_orders","params":{"limit":10,"status":"string","from":"ISO","to":"ISO","customerSearch":"string","paymentMethod":"string"}} — customerSearch filters by customer name or phone; paymentMethod filters by "cod" or "online"
-8. {"tool":"search_orders_by_date_range","params":{"from":"ISO","to":"ISO","limit":20}}
-9. {"tool":"search_customers","params":{"searchTerm":"string","limit":10}}
-10. {"tool":"get_top_customers_online","params":{"limit":10,"minSpent":0}} — minSpent filters by minimum total spend in paise (₹1000 = 1000)
-11. {"tool":"get_customer_orders","params":{"phone":"string","name":"string","limit":10}}
-12. {"tool":"get_revenue_trend","params":{"from":"ISO","to":"ISO"}}
-13. {"tool":"get_orders_by_status","params":{}}
-14. {"tool":"get_feedback_list","params":{"limit":15,"minRating":1,"maxRating":5,"type":"review|complaint|suggestion","productName":"string"}} — filter reviews by rating range, type, or product name
-15. {"tool":"get_coupon_list","params":{"status":"active|expired|upcoming|inactive"}} — omit status for all
-16. {"tool":"get_analytics_period","params":{"from":"ISO","to":"ISO","days":30}}
-17. {"tool":"get_new_customers","params":{"from":"ISO","to":"ISO","days":7}}
-18. {"tool":"get_store_sales","params":{"from":"ISO","to":"ISO"}}
-19. {"tool":"get_wallet_balances","params":{"limit":20}}
-20. {"tool":"get_payment_failures","params":{"limit":20}}
-21. {"tool":"get_subscription_data","params":{}}
-22. {"tool":"get_whatsapp_queue","params":{}}
-23. {"tool":"get_reminders","params":{}}
-24. {"tool":"compare_periods","params":{"days":7}}
-25. {"tool":"preview_email_report","params":{"to":"email@example.com","reportType":"string"}} — FIRST STEP: preview what will be sent and ask user to confirm. reportType: ims | inventory | low_stock | analytics | monthly | weekly | orders | revenue | dashboard | customers | feedback | coupons | store_sales | abandoned | payments
-26. {"tool":"send_email_report","params":{"to":"email@example.com","reportType":"string"}} — SECOND STEP: only call after user confirms (said "yes", "send it", "confirm", "go ahead"). Never call without prior preview confirmation in history.
-
-ACTION RULES:
-- For any "send to email" or "email this to" request: ALWAYS call preview_email_report first, never send_email_report directly.
-- Only call send_email_report when the conversation history shows the user confirmed a pending preview (said yes/confirm/go ahead/send it).
-- Extract the email address exactly as written. Extract the report type from keywords: "IMS" → ims, "low stock" → low_stock, "analytics/monthly/weekly" → analytics/monthly/weekly, "orders" → orders, "revenue" → revenue, "dashboard/overview" → dashboard.
-
-IMPORTANT: Always pass the most specific params possible. If the user mentions a product type, customer name, rating, coupon status, etc. — include it as a filter param. Never call a tool with empty params when the user has provided context that could narrow results.
+JSON schema (omit null fields):
+{
+  "topic": "orders|revenue|customers|inventory|feedback|coupons|payments|subscriptions|store_sales|wallet|reminders|whatsapp|overview|email|login|abandoned_carts|top_products",
+  "timePreset": "today|yesterday|this_week|last_week|this_month|last_30_days",
+  "from": "ISO date string",
+  "to": "ISO date string",
+  "filters": {
+    "status": "placed|confirmed|preparing|out_for_delivery|delivered|cancelled",
+    "paymentMethod": "cod|prepaid",
+    "customerName": "name string",
+    "customerPhone": "phone string",
+    "productName": "product name string",
+    "minRating": 1-5,
+    "maxRating": 1-5,
+    "feedbackType": "complaint|suggestion|review",
+    "couponStatus": "active|expired|upcoming|inactive",
+    "minSpent": number,
+    "outOfStock": true
+  },
+  "action": "list|count|summary|trend|compare|search",
+  "emailTo": "email address",
+  "emailReportType": "dashboard|orders|revenue|analytics|monthly|weekly|customers|feedback|coupons|store_sales|abandoned|payments|low_stock|ims",
+  "emailConfirm": true
+}
 
 Examples:
-"low stock" → [{"tool":"search_low_stock_products","params":{}}]
-"which oil items are low on stock" → [{"tool":"search_low_stock_products","params":{"searchTerm":"oil"}}]
-"ghee low stock" → [{"tool":"search_low_stock_products","params":{"searchTerm":"ghee"}}]
-"best selling oil products" → [{"tool":"get_top_selling_products","params":{"searchTerm":"oil","limit":8}}]
-"which ghee products sell the most" → [{"tool":"get_top_selling_products","params":{"searchTerm":"ghee","limit":8}}]
-"show 1 star reviews" → [{"tool":"get_feedback_list","params":{"maxRating":1,"limit":15}}]
-"negative reviews" → [{"tool":"get_feedback_list","params":{"maxRating":2,"limit":15}}]
-"complaints only" → [{"tool":"get_feedback_list","params":{"type":"complaint","limit":15}}]
-"reviews for ghee" → [{"tool":"get_feedback_list","params":{"productName":"ghee","limit":15}}]
-"active coupons" → [{"tool":"get_coupon_list","params":{"status":"active"}}]
-"expired coupons" → [{"tool":"get_coupon_list","params":{"status":"expired"}}]
-"orders for Priya" → [{"tool":"get_customer_orders","params":{"name":"Priya","limit":10}}]
-"COD orders" → [{"tool":"search_recent_orders","params":{"paymentMethod":"cod","limit":10}}]
-"Rahul's orders" → [{"tool":"get_customer_orders","params":{"name":"Rahul","limit":10}}]
-"customers who spent more than 5000" → [{"tool":"get_top_customers_online","params":{"minSpent":5000,"limit":20}}]
-"who has ghee in abandoned cart" → [{"tool":"search_abandoned_carts","params":{"productSearch":"ghee","limit":30}}]
+"which orders came today" → {"topic":"orders","timePreset":"today","action":"list"}
+"yesterday revenue" → {"topic":"revenue","timePreset":"yesterday","action":"trend"}
+"cancelled orders this week" → {"topic":"orders","timePreset":"this_week","filters":{"status":"cancelled"},"action":"list"}
+"Rahul ki orders" → {"topic":"orders","filters":{"customerName":"Rahul"},"action":"list"}
+"1 star reviews" → {"topic":"feedback","filters":{"maxRating":1},"action":"list"}
+"complaints about ghee" → {"topic":"feedback","filters":{"feedbackType":"complaint","productName":"ghee"},"action":"list"}
+"active coupons" → {"topic":"coupons","filters":{"couponStatus":"active"},"action":"list"}
+"out of stock items" → {"topic":"inventory","filters":{"outOfStock":true},"action":"list"}
+"which ghee items are in stock" → {"topic":"inventory","filters":{"inStock":true,"productName":"ghee"},"action":"list"}
+"what ghee is available" → {"topic":"inventory","filters":{"inStock":true,"productName":"ghee"},"action":"list"}
+"show available oil products" → {"topic":"inventory","filters":{"inStock":true,"productName":"oil"},"action":"list"}
+"compare this week vs last" → {"topic":"revenue","action":"compare"}
+"customers who spent over 5000" → {"topic":"customers","filters":{"minSpent":5000},"action":"list"}
+"abandoned carts with ghee" → {"topic":"abandoned_carts","filters":{"productName":"ghee"},"action":"list"}
+"best selling oil" → {"topic":"top_products","filters":{"productName":"oil"},"action":"list"}
+"send analytics to admin@store.com" → {"topic":"email","emailTo":"admin@store.com","emailReportType":"analytics"}
+"yes" (after email preview) → {"topic":"email","emailConfirm":true}
+"overview" → {"topic":"overview","action":"summary"}
+
+Query: """${message}"""`;
+  }
+
+  /** Resolve timePreset or explicit from/to into ISO date strings. */
+  private resolveIntentDates(intent: ChatbotIntent, now: Date): { from?: string; to?: string } {
+    if (intent.from && intent.to) return { from: intent.from, to: intent.to };
+    const t = now.toISOString().split('T')[0];
+    switch (intent.timePreset) {
+      case 'today':
+        return { from: `${t}T00:00:00.000Z`, to: `${t}T23:59:59.000Z` };
+      case 'yesterday': {
+        const y = new Date(now.getTime() - 86_400_000).toISOString().split('T')[0];
+        return { from: `${y}T00:00:00.000Z`, to: `${y}T23:59:59.000Z` };
+      }
+      case 'this_week': {
+        const w = new Date(now.getTime() - 7 * 86_400_000).toISOString().split('T')[0];
+        return { from: `${w}T00:00:00.000Z`, to: `${t}T23:59:59.000Z` };
+      }
+      case 'last_week': {
+        const ws = new Date(now.getTime() - 14 * 86_400_000).toISOString().split('T')[0];
+        const we = new Date(now.getTime() - 7 * 86_400_000).toISOString().split('T')[0];
+        return { from: `${ws}T00:00:00.000Z`, to: `${we}T23:59:59.000Z` };
+      }
+      case 'this_month': {
+        const ms = `${t.slice(0, 7)}-01T00:00:00.000Z`;
+        return { from: ms, to: `${t}T23:59:59.000Z` };
+      }
+      case 'last_30_days': {
+        const m = new Date(now.getTime() - 30 * 86_400_000).toISOString().split('T')[0];
+        return { from: `${m}T00:00:00.000Z`, to: `${t}T23:59:59.000Z` };
+      }
+      default:
+        return {};
+    }
+  }
+
+  /** Maps a structured ChatbotIntent to the minimum set of DB tool calls.
+   *  No regex on raw user text — all decisions are based on the AI-extracted intent. */
+  private intentToTools(intent: ChatbotIntent, now: Date, history: HistoryItem[]): RagStep[] {
+    const { from, to } = this.resolveIntentDates(intent, now);
+    const f = intent.filters ?? {};
+
+    switch (intent.topic) {
+      case 'orders': {
+        if (f.customerName) return [{ tool: 'get_customer_orders', params: { name: f.customerName, limit: 10 } }];
+        if (f.customerPhone) return [{ tool: 'get_customer_orders', params: { phone: f.customerPhone, limit: 10 } }];
+        const params: Record<string, unknown> = { limit: 20 };
+        if (from) params.from = from;
+        if (to) params.to = to;
+        if (f.status) params.status = f.status;
+        if (f.paymentMethod) params.paymentMethod = f.paymentMethod;
+        return [{ tool: 'search_recent_orders', params }];
+      }
+      case 'revenue':
+        if (intent.action === 'compare') return [{ tool: 'compare_periods', params: { days: 7 } }];
+        return [{ tool: 'get_revenue_trend', params: from ? { from, to } : {} }];
+      case 'customers':
+        if (f.customerName) return [{ tool: 'search_customers', params: { searchTerm: f.customerName, limit: 10 } }];
+        if (f.minSpent) return [{ tool: 'get_top_customers_online', params: { minSpent: f.minSpent, limit: 20 } }];
+        if (intent.action === 'list') return [{ tool: 'get_top_customers_online', params: { limit: 10 } }];
+        return [{ tool: 'get_new_customers', params: from ? { from, to } : { days: 7 } }];
+      case 'inventory':
+        if (f.outOfStock) return [{ tool: 'search_out_of_stock_products', params: f.productName ? { searchTerm: f.productName } : {} }];
+        if (f.inStock) return [{ tool: 'search_in_stock_products', params: f.productName ? { searchTerm: f.productName } : {} }];
+        return [{ tool: 'search_low_stock_products', params: f.productName ? { searchTerm: f.productName } : {} }];
+      case 'feedback': {
+        const fp: Record<string, unknown> = { limit: 15 };
+        if (f.minRating) fp.minRating = f.minRating;
+        if (f.maxRating) fp.maxRating = f.maxRating;
+        if (f.feedbackType) fp.type = f.feedbackType;
+        if (f.productName) fp.productName = f.productName;
+        return [{ tool: 'get_feedback_list', params: fp }];
+      }
+      case 'coupons':
+        return [{ tool: 'get_coupon_list', params: f.couponStatus ? { status: f.couponStatus } : {} }];
+      case 'payments':
+        return [{ tool: 'get_payment_failures', params: { limit: 20 } }];
+      case 'subscriptions':
+        return [{ tool: 'get_subscription_data', params: {} }];
+      case 'store_sales':
+        return [{ tool: 'get_store_sales', params: from ? { from, to } : {} }];
+      case 'wallet':
+        return [{ tool: 'get_wallet_balances', params: { limit: 20 } }];
+      case 'reminders':
+        return [{ tool: 'get_reminders', params: {} }];
+      case 'whatsapp':
+        return [{ tool: 'get_whatsapp_queue', params: {} }];
+      case 'login':
+        return [{ tool: 'get_login_audit_logs', params: { limit: 20 } }];
+      case 'abandoned_carts':
+        return [{ tool: 'search_abandoned_carts', params: { limit: 30, ...(f.productName ? { productSearch: f.productName } : {}) } }];
+      case 'top_products': {
+        const tp: Record<string, unknown> = { limit: 8 };
+        if (from) tp.from = from;
+        if (to) tp.to = to;
+        if (f.productName) tp.searchTerm = f.productName;
+        return [{ tool: 'get_top_selling_products', params: tp }];
+      }
+      case 'email': {
+        if (intent.emailConfirm) {
+          const emailTo = this.extractEmailFromHistory(history);
+          const reportType = this.extractReportTypeFromHistory(history);
+          return [{ tool: 'send_email_report', params: { to: emailTo, reportType } }];
+        }
+        if (intent.emailTo)
+          return [{ tool: 'preview_email_report', params: { to: intent.emailTo, reportType: intent.emailReportType || 'dashboard' } }];
+        return [{ tool: 'get_dashboard_summary', params: {} }];
+      }
+      case 'overview':
+      default:
+        return [
+          { tool: 'get_dashboard_summary', params: {} },
+          { tool: 'get_orders_by_status', params: {} },
+          { tool: 'search_low_stock_products', params: {} },
+        ];
+    }
+  }
+
+  /** Simple text-based intent extraction used only when Gemini is unavailable.
+   *  Matches clean topic keywords — never runs regex directly on raw user text
+   *  to decide DB params. */
+  private textToIntent(message: string): ChatbotIntent {
+    const m = message.toLowerCase();
+
+    // Time preset
+    let timePreset: ChatbotIntent['timePreset'];
+    if (/\btoday\b/.test(m)) timePreset = 'today';
+    else if (/\byesterday\b/.test(m)) timePreset = 'yesterday';
+    else if (/this\s+week/.test(m)) timePreset = 'this_week';
+    else if (/last\s+week/.test(m)) timePreset = 'last_week';
+    else if (/this\s+month/.test(m)) timePreset = 'this_month';
+    else if (/last\s+30|last\s+month/.test(m)) timePreset = 'last_30_days';
+
+    // Topic + filters
+    if (/\border(s|ing|ed)?\b/.test(m) && !/coupon|feedback|subscription|revenue/.test(m)) {
+      const filters: ChatbotIntent['filters'] = {};
+      const statusM = m.match(/\b(placed|confirmed|preparing|delivered|cancelled|out.for.delivery)\b/);
+      if (statusM) filters.status = statusM[1];
+      if (/\bcod\b/.test(m)) filters.paymentMethod = 'cod';
+      else if (/prepaid|online|upi/.test(m)) filters.paymentMethod = 'prepaid';
+      return { topic: 'orders', timePreset, filters, action: 'list' };
+    }
+    if (/\brevenue|earning/.test(m)) {
+      if (/compare|vs|versus/.test(m)) return { topic: 'revenue', action: 'compare' };
+      return { topic: 'revenue', timePreset, action: 'trend' };
+    }
+    if (/out[\s-]of[\s-]stock|zero.stock/.test(m)) return { topic: 'inventory', filters: { outOfStock: true } };
+    if (/in.stock|available|in.availability|has.stock|stocked/.test(m)) {
+      const prodM = m.match(/\b(ghee|oil|seeds?|spice|flour|atta|nuts?|dry.fruit)\b/i);
+      return { topic: 'inventory', filters: { inStock: true, ...(prodM ? { productName: prodM[1] } : {}) } };
+    }
+    if (/stock|inventory|low.stock/.test(m)) return { topic: 'inventory' };
+    if (/feedback|review|rating|complaint/.test(m)) {
+      const filters: ChatbotIntent['filters'] = {};
+      if (/1.star|terrible|worst/.test(m)) filters.maxRating = 1;
+      else if (/2.star|bad|poor/.test(m)) filters.maxRating = 2;
+      else if (/5.star|excellent/.test(m)) filters.minRating = 5;
+      else if (/negative/.test(m)) filters.maxRating = 2;
+      else if (/positive/.test(m)) filters.minRating = 4;
+      if (/complaint/.test(m)) filters.feedbackType = 'complaint';
+      else if (/suggestion/.test(m)) filters.feedbackType = 'suggestion';
+      return { topic: 'feedback', filters, action: 'list' };
+    }
+    if (/coupon|promo.code/.test(m)) {
+      const filters: ChatbotIntent['filters'] = {};
+      const statusM = m.match(/\b(active|expired|upcoming|inactive)\b/);
+      if (statusM) filters.couponStatus = statusM[1] as ChatbotIntent['filters']['couponStatus'];
+      return { topic: 'coupons', filters, action: 'list' };
+    }
+    if (/payment.fail|failed.payment/.test(m)) return { topic: 'payments', action: 'list' };
+    if (/subscription|recurring/.test(m)) return { topic: 'subscriptions', action: 'list' };
+    if (/store.sale|walk.in|offline/.test(m)) return { topic: 'store_sales', timePreset, action: 'list' };
+    if (/wallet|credit.balance/.test(m)) return { topic: 'wallet', action: 'list' };
+    if (/reminder/.test(m)) return { topic: 'reminders', action: 'list' };
+    if (/whatsapp.queue|support.queue/.test(m)) return { topic: 'whatsapp', action: 'list' };
+    if (/abandon|left.without/.test(m)) return { topic: 'abandoned_carts', action: 'list' };
+    if (/best.sell|top.sell|popular|most.sold/.test(m)) return { topic: 'top_products', timePreset, action: 'list' };
+    if (/login|audit/.test(m)) return { topic: 'login', action: 'list' };
+    if (/customer/.test(m)) return { topic: 'customers', action: 'list' };
+    return { topic: 'overview', action: 'summary' };
+  }
+
+  private extractEmailFromHistory(history: HistoryItem[]): string {
+    for (let i = history.length - 1; i >= 0; i--) {
+      const m = history[i].text.match(/\bto:\s*([^\s\n]+)/);
+      if (m) return m[1];
+    }
+    return '';
+  }
+
+  private extractReportTypeFromHistory(history: HistoryItem[]): string {
+    for (let i = history.length - 1; i >= 0; i--) {
+      const m = history[i].text.match(/\breportType:\s*([^\s\n]+)/);
+      if (m) return m[1];
+    }
+    return 'dashboard';
+  }
+
+  /** Secondary AI planner: called when the primary planner returns an empty result.
+   *  Uses a compact prompt so the AI understands the question and picks tools
+   *  without needing all the detailed examples. Falls back to keyword regex only
+   *  if Gemini itself fails (network error, rate-limit, etc.). */
+  private async aiFallbackPlan(message: string): Promise<RagStep[]> {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return this.keywordFallbackPlan(message);
+
+    const today = new Date().toISOString().split('T')[0];
+
+    const prompt = `You select database tools for NatureLite's e-commerce admin dashboard.
+
+Today: ${today}
+Question: "${message.slice(0, 300)}"
+
+Read the question, understand what the admin wants, then pick 1-3 tools from this list. Return ONLY a JSON array.
+
+Tools (use exact names, include relevant params):
+get_dashboard_summary | search_out_of_stock_products(searchTerm?) | search_low_stock_products(searchTerm?) | search_products(searchTerm) |
+get_login_audit_logs | search_abandoned_carts(limit,productSearch?) | get_top_selling_products(limit,from?,to?,searchTerm?) |
+search_recent_orders(limit,status?,from?,to?,customerSearch?,paymentMethod?) | search_orders_by_date_range(from,to,limit) |
+search_customers(searchTerm,limit) | get_top_customers_online(limit,minSpent?) | get_customer_orders(phone?,name?,limit) |
+get_revenue_trend(from?,to?) | get_orders_by_status | get_feedback_list(limit,minRating?,maxRating?,type?,productName?) |
+get_coupon_list(status?) | get_analytics_period(from?,to?,days?) | get_new_customers(from?,to?,days?) |
+get_store_sales(from?,to?) | get_wallet_balances(limit) | get_payment_failures(limit) |
+get_subscription_data | get_whatsapp_queue | get_reminders | compare_periods(days) |
+preview_email_report(to,reportType) | send_email_report(to,reportType)
+
+Example: [{"tool":"search_recent_orders","params":{"limit":10,"status":"placed"}}]
+JSON array only:`;
+
+    const data = await this.geminiRequest(
+      apiKey,
+      {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.0, maxOutputTokens: 250, responseMimeType: 'application/json' },
+      },
+      'ai-fallback-planner',
+    );
+
+    if (data) {
+      try {
+        let raw = this.extractText(data).trim();
+        if (raw.startsWith('```')) raw = raw.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '');
+        const parsed = JSON.parse(raw.trim());
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          this.logger.log(`AI fallback plan: ${parsed.map((s: RagStep) => s.tool).join(', ')}`);
+          return parsed;
+        }
+      } catch {
+        this.logger.warn('AI fallback plan JSON parse failed — keyword fallback');
+      }
+    }
+
+    return this.keywordFallbackPlan(message);
+  }
+
+  private buildPlannerPrompt(message: string, history: HistoryItem[]): string {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const todayStart = `${todayStr}T00:00:00.000Z`;
+    const todayEnd = `${todayStr}T23:59:59.000Z`;
+    const yesterdayStr = new Date(now.getTime() - 86_400_000).toISOString().split('T')[0];
+    const weekAgoStr = new Date(now.getTime() - 7 * 86_400_000).toISOString().split('T')[0];
+    const monthAgoStr = new Date(now.getTime() - 30 * 86_400_000).toISOString().split('T')[0];
+
+    const historySection = history.length > 0
+      ? `\n=== CONVERSATION HISTORY ===\n${history.slice(-4).map((h) => `${h.role === 'user' ? 'User' : 'AI'}: ${h.text.slice(0, 200)}`).join('\n')}\n===========================\n`
+      : '';
+
+    return `You are the data planner for NatureLite's e-commerce admin dashboard.
+
+TODAY: ${todayStr}  |  YESTERDAY: ${yesterdayStr}  |  7 DAYS AGO: ${weekAgoStr}  |  30 DAYS AGO: ${monthAgoStr}
+
+── STEP 1: UNDERSTAND THE QUESTION ──────────────────────────────────────────────
+Before selecting tools, identify:
+• Data topic: orders / revenue / customers / inventory / coupons / feedback / payments / subscriptions / store-sales / wallet / reminders / whatsapp
+• Time period: convert ALL relative dates to ISO ("today" → ${todayStart}–${todayEnd}, "yesterday" → ${yesterdayStr}T00:00:00.000Z–${yesterdayStr}T23:59:59.000Z, "this week" → ${weekAgoStr}T00:00:00.000Z–${todayEnd}, "last month" → ${monthAgoStr}T00:00:00.000Z–${todayEnd})
+• Filters: customer name/phone, product name, status, payment method, rating range, coupon status
+• Follow-up: use conversation history to resolve "that customer", "same period", "those orders"
+
+── STEP 2: SELECT MINIMUM TOOLS ────────────────────────────────────────────────
+Return ONLY a raw JSON array. Pick the fewest tools that directly answer the question. Never include tools for data the admin didn't ask about.
+${historySection}
+TOOLS:
+1. {"tool":"get_dashboard_summary","params":{}}
+2. {"tool":"search_out_of_stock_products","params":{"searchTerm":"string"}} — finds products with stock = 0 (completely out); use for "out of stock" queries
+3. {"tool":"search_low_stock_products","params":{"searchTerm":"string"}} — finds products with stock ≤ threshold (running low); searchTerm narrows by product type ("oil", "ghee")
+4. {"tool":"search_products","params":{"searchTerm":"string"}}
+5. {"tool":"get_login_audit_logs","params":{"limit":20}}
+6. {"tool":"search_abandoned_carts","params":{"limit":30,"productSearch":"string"}}
+7. {"tool":"get_top_selling_products","params":{"limit":8,"from":"ISO","to":"ISO","searchTerm":"string"}}
+8. {"tool":"search_recent_orders","params":{"limit":10,"status":"string","from":"ISO","to":"ISO","customerSearch":"string","paymentMethod":"string"}}
+9. {"tool":"search_orders_by_date_range","params":{"from":"ISO","to":"ISO","limit":20}}
+10. {"tool":"search_customers","params":{"searchTerm":"string","limit":10}}
+11. {"tool":"get_top_customers_online","params":{"limit":10,"minSpent":0}}
+12. {"tool":"get_customer_orders","params":{"phone":"string","name":"string","limit":10}}
+13. {"tool":"get_revenue_trend","params":{"from":"ISO","to":"ISO"}}
+14. {"tool":"get_orders_by_status","params":{}}
+15. {"tool":"get_feedback_list","params":{"limit":15,"minRating":1,"maxRating":5,"type":"review|complaint|suggestion","productName":"string"}}
+16. {"tool":"get_coupon_list","params":{"status":"active|expired|upcoming|inactive"}}
+17. {"tool":"get_analytics_period","params":{"from":"ISO","to":"ISO","days":30}}
+18. {"tool":"get_new_customers","params":{"from":"ISO","to":"ISO","days":7}}
+19. {"tool":"get_store_sales","params":{"from":"ISO","to":"ISO"}}
+20. {"tool":"get_wallet_balances","params":{"limit":20}}
+21. {"tool":"get_payment_failures","params":{"limit":20}}
+22. {"tool":"get_subscription_data","params":{}}
+23. {"tool":"get_whatsapp_queue","params":{}}
+24. {"tool":"get_reminders","params":{}}
+25. {"tool":"compare_periods","params":{"days":7}}
+26. {"tool":"preview_email_report","params":{"to":"email","reportType":"ims|low_stock|analytics|monthly|weekly|orders|revenue|dashboard|customers|feedback|coupons|store_sales|abandoned|payments"}} — ALWAYS preview first
+27. {"tool":"send_email_report","params":{"to":"email","reportType":"string"}} — ONLY after user confirms in history
+
+EMAIL RULE: preview_email_report first, send_email_report only when history shows user said yes/confirm/send it/go ahead.
+
+EXAMPLES (these show the date-resolution pattern):
+"today's orders" → [{"tool":"search_recent_orders","params":{"from":"${todayStart}","to":"${todayEnd}","limit":20}}]
+"yesterday revenue" → [{"tool":"get_revenue_trend","params":{"from":"${yesterdayStr}T00:00:00.000Z","to":"${yesterdayStr}T23:59:59.000Z"}}]
+"this week's sales" → [{"tool":"get_revenue_trend","params":{"from":"${weekAgoStr}T00:00:00.000Z","to":"${todayEnd}"}}]
+"last 30 days" → [{"tool":"get_analytics_period","params":{"from":"${monthAgoStr}T00:00:00.000Z","to":"${todayEnd}","days":30}}]
 "orders in May 2025" → [{"tool":"search_orders_by_date_range","params":{"from":"2025-05-01T00:00:00.000Z","to":"2025-05-31T23:59:59.000Z","limit":20}}]
 "this week vs last week" → [{"tool":"compare_periods","params":{"days":7}}]
-"wallet balances" → [{"tool":"get_wallet_balances","params":{"limit":20}}]
+"out of stock" → [{"tool":"search_out_of_stock_products","params":{}}]
+"which items are out of stock" → [{"tool":"search_out_of_stock_products","params":{}}]
+"out of stock ghee" → [{"tool":"search_out_of_stock_products","params":{"searchTerm":"ghee"}}]
+"low stock" → [{"tool":"search_low_stock_products","params":{}}]
+"ghee low stock" → [{"tool":"search_low_stock_products","params":{"searchTerm":"ghee"}}]
+"best selling oil" → [{"tool":"get_top_selling_products","params":{"searchTerm":"oil","limit":8}}]
+"Rahul's orders" → [{"tool":"get_customer_orders","params":{"name":"Rahul","limit":10}}]
+"COD orders today" → [{"tool":"search_recent_orders","params":{"paymentMethod":"cod","from":"${todayStart}","to":"${todayEnd}","limit":20}}]
+"1 star reviews" → [{"tool":"get_feedback_list","params":{"maxRating":1,"limit":15}}]
+"complaints about ghee" → [{"tool":"get_feedback_list","params":{"type":"complaint","productName":"ghee","limit":15}}]
+"active coupons" → [{"tool":"get_coupon_list","params":{"status":"active"}}]
+"who has ghee in abandoned cart" → [{"tool":"search_abandoned_carts","params":{"productSearch":"ghee","limit":30}}]
+"customers who spent over 5000" → [{"tool":"get_top_customers_online","params":{"minSpent":5000,"limit":20}}]
 "failed payments" → [{"tool":"get_payment_failures","params":{"limit":20}}]
 "active subscriptions" → [{"tool":"get_subscription_data","params":{}}]
 "whatsapp support queue" → [{"tool":"get_whatsapp_queue","params":{}}]
-"pending reminders" → [{"tool":"get_reminders","params":{}}]
-"monthly report" → [{"tool":"get_analytics_period","params":{"days":30}}]
-"abandoned carts" → [{"tool":"search_abandoned_carts","params":{"limit":30}}]
+"send analytics to admin@store.com" → [{"tool":"preview_email_report","params":{"to":"admin@store.com","reportType":"analytics"}}]
+"yes" (after preview) → [{"tool":"send_email_report","params":{"to":"<email from history>","reportType":"<type from history>"}}]
 "overview" → [{"tool":"get_dashboard_summary","params":{}},{"tool":"get_orders_by_status","params":{}},{"tool":"search_low_stock_products","params":{}}]
-"send IMS analytics to admin@example.com" → [{"tool":"preview_email_report","params":{"to":"admin@example.com","reportType":"ims"}}]
-"email the low stock report to manager@store.com" → [{"tool":"preview_email_report","params":{"to":"manager@store.com","reportType":"low_stock"}}]
-"send monthly analytics to owner@naturelite.com" → [{"tool":"preview_email_report","params":{"to":"owner@naturelite.com","reportType":"monthly"}}]
-"email orders summary to ops@company.com" → [{"tool":"preview_email_report","params":{"to":"ops@company.com","reportType":"orders"}}]
-"yes" (after a preview was shown) → [{"tool":"send_email_report","params":{"to":"<email from history>","reportType":"<type from history>"}}]
-"yes send it" (after a preview was shown) → [{"tool":"send_email_report","params":{"to":"<email from history>","reportType":"<type from history>"}}]
 
-User question: """${message}"""`;
+Question: """${message}"""`;
   }
 
   private buildSynthesisPrompt(message: string, retrievedData: string, history: HistoryItem[]): string {

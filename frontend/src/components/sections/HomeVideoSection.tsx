@@ -32,15 +32,15 @@ function parseVideo(url: string): ParsedVideo {
   const ytWatch = url.match(/(?:youtube\.com\/(?:watch\?(?:[^&]*&)*v=|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
   if (ytWatch) {
     const id = ytWatch[1];
-    return { url, embedUrl: `https://www.youtube.com/embed/${id}?autoplay=1&rel=0&modestbranding=1`, thumbnail: `https://img.youtube.com/vi/${id}/hqdefault.jpg`, type: 'youtube' };
+    return { url, embedUrl: `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&rel=0&modestbranding=1`, thumbnail: `https://img.youtube.com/vi/${id}/hqdefault.jpg`, type: 'youtube' };
   }
   const ytShorts = url.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{11})/);
   if (ytShorts) {
     const id = ytShorts[1];
-    return { url, embedUrl: `https://www.youtube.com/embed/${id}?autoplay=1&rel=0`, thumbnail: `https://img.youtube.com/vi/${id}/hqdefault.jpg`, type: 'youtube' };
+    return { url, embedUrl: `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&rel=0`, thumbnail: `https://img.youtube.com/vi/${id}/hqdefault.jpg`, type: 'youtube' };
   }
   const vimeo = url.match(/vimeo\.com\/(\d+)/);
-  if (vimeo) return { url, embedUrl: `https://player.vimeo.com/video/${vimeo[1]}?autoplay=1`, thumbnail: '', type: 'vimeo' };
+  if (vimeo) return { url, embedUrl: `https://player.vimeo.com/video/${vimeo[1]}?autoplay=1&muted=1`, thumbnail: '', type: 'vimeo' };
   const ig = url.match(/instagram\.com\/(?:reel|p|tv)\/([A-Za-z0-9_-]+)/);
   if (ig) return { url, embedUrl: `https://www.instagram.com/reel/${ig[1]}/embed/`, thumbnail: '', type: 'instagram' };
   return { url, embedUrl: url, thumbnail: '', type: 'other' };
@@ -380,8 +380,9 @@ export default function HomeVideoSection() {
 
   return (
     <>
+      <div style={{ background: 'linear-gradient(180deg, #f0e8d8 0%, #ede5d5 100%)', borderTop: '1px solid rgba(160,112,16,0.12)', borderBottom: '1px solid rgba(160,112,16,0.12)' }}>
       <section
-        style={{ background: '#f7f1e8', paddingTop: 64, paddingBottom: 64 }}
+        style={{ paddingTop: 64, paddingBottom: 64 }}
         className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8"
       >
         {/* Header */}
@@ -424,6 +425,7 @@ export default function HomeVideoSection() {
           Scroll to explore · Tap to play
         </p>
       </section>
+      </div>
 
       <AnimatePresence>
         {lightboxIndex !== null && (

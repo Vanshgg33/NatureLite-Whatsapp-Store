@@ -23,7 +23,7 @@ function parseVideo(url: string): ParsedVideo {
     const id = ytWatch[1];
     return {
       url,
-      embedUrl: `https://www.youtube.com/embed/${id}?autoplay=1&rel=0&modestbranding=1`,
+      embedUrl: `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&rel=0&modestbranding=1`,
       thumbnail: `https://img.youtube.com/vi/${id}/hqdefault.jpg`,
       type: 'youtube',
     };
@@ -33,7 +33,7 @@ function parseVideo(url: string): ParsedVideo {
     const id = ytShorts[1];
     return {
       url,
-      embedUrl: `https://www.youtube.com/embed/${id}?autoplay=1&rel=0`,
+      embedUrl: `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&rel=0`,
       thumbnail: `https://img.youtube.com/vi/${id}/hqdefault.jpg`,
       type: 'youtube',
     };

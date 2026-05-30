@@ -520,7 +520,7 @@ export default function HomePage() {
           { icon: '🧪', text: 'Zero Chemicals' },
           { icon: '🚚', text: 'Free Delivery Over ₹499' },
           { icon: '🏆', text: 'Traditional Ghani Method' },
-          { icon: '🌾', text: 'Cold-Pressed · Unrefined' },
+          { icon: '🌾', text: 'Wood Pressed · Unrefined' },
           { icon: '✅', text: 'FSSAI Certified' },
           { icon: '🫙', text: 'No Preservatives' },
           { icon: '💚', text: 'Farmer Sourced' },

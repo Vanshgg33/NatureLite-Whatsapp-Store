@@ -766,9 +766,9 @@ export default function ProductDetailPage() {
       {/* ── Product Videos ─────────────────────────────────────── */}
       {(() => {
         const isVideoUrl = (u: string) => /youtube\.com|youtu\.be|vimeo\.com|instagram\.com\/(reel|p|tv)/i.test(u);
-        const allVideos = [...new Set(
-          [product.videoUrl, ...(product.videos || [])].filter((u): u is string => !!u && isVideoUrl(u))
-        )];
+        const seen = new Set<string>();
+        const allVideos = [product.videoUrl, ...(product.videos || [])]
+          .filter((u): u is string => !!u && isVideoUrl(u) && !seen.has(u) && (seen.add(u), true));
         return allVideos.length > 0 ? <ProductVideoSection videos={allVideos} product={product} /> : null;
       })()}
 
