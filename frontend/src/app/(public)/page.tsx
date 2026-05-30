@@ -12,6 +12,7 @@ import HomeShopSection from '@/components/sections/HomeShopSection';
 import FeaturedProductsSection from '@/components/sections/FeaturedProductsSection';
 import SocialProofSection from '@/components/sections/SocialProofSection';
 import RecencyBlock from '@/components/sections/RecencyBlock';
+import HomeVideoSection from '@/components/sections/HomeVideoSection';
 import { NewsletterSection } from '@/components/ecommerce/newsletter-section';
 import { MarqueeTicker } from '@/components/ui/marquee-ticker';
 import WhatsAppStrip from '@/components/ecommerce/whatsapp-strip';
@@ -540,17 +541,22 @@ export default function HomePage() {
         </motion.div>
       )}
 
-      {/* 4. Social proof */}
+      {/* 4. Video shorts from all products */}
+      <motion.div variants={sectionVariants}>
+        <HomeVideoSection />
+      </motion.div>
+
+      {/* 5. Social proof */}
       <motion.div variants={sectionVariants}>
         <SocialProofSection />
       </motion.div>
 
-      {/* 5. Recency CTA block */}
+      {/* 6. Recency CTA block */}
       <motion.div variants={sectionVariants}>
         <RecencyBlock />
       </motion.div>
 
-      {/* 6. Newsletter */}
+      {/* 7. Newsletter */}
       <motion.div variants={sectionVariants}>
         <NewsletterSection variant="full-width" />
       </motion.div>

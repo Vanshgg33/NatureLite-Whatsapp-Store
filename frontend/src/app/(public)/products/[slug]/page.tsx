@@ -764,9 +764,13 @@ export default function ProductDetailPage() {
       )}
 
       {/* ── Product Videos ─────────────────────────────────────── */}
-      {product.videos && product.videos.length > 0 && (
-        <ProductVideoSection videos={product.videos} />
-      )}
+      {(() => {
+        const isVideoUrl = (u: string) => /youtube\.com|youtu\.be|vimeo\.com|instagram\.com\/(reel|p|tv)/i.test(u);
+        const allVideos = [...new Set(
+          [product.videoUrl, ...(product.videos || [])].filter((u): u is string => !!u && isVideoUrl(u))
+        )];
+        return allVideos.length > 0 ? <ProductVideoSection videos={allVideos} product={product} /> : null;
+      })()}
 
       {/* ── Reviews ────────────────────────────────────────────── */}
       <div className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-16">

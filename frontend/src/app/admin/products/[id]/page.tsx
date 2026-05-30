@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
@@ -79,7 +79,13 @@ export default function EditProductPage() {
   const [skuError, setSkuError] = useState('');
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const { data: product, isLoading } = useQuery({ queryKey: ['product', productId], queryFn: () => api.getProduct(productId) });
+  const initialized = useRef(false);
+
+  const { data: product, isLoading } = useQuery({
+    queryKey: ['product', productId],
+    queryFn: () => api.getProduct(productId),
+    refetchOnWindowFocus: false,
+  });
   const { data: categories } = useQuery({ queryKey: ['categories'], queryFn: () => api.getCategories({ limit: 100 }) });
   const { data: searchResults } = useQuery({
     queryKey: ['product-search', relatedSearch],
@@ -93,7 +99,8 @@ export default function EditProductPage() {
   });
 
   useEffect(() => {
-    if (!product) return;
+    if (!product || initialized.current) return;
+    initialized.current = true;
     const categoryValue = product.category && typeof product.category === 'object'
       ? (product.category as { _id: string })._id
       : (typeof product.category === 'string' ? product.category : '');
@@ -747,8 +754,8 @@ export default function EditProductPage() {
               </CardContent>
             </Card>
 
-            <Button type="submit" className="w-full" disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? 'Saving…' : 'Save Changes'}
+            <Button type="submit" className="w-full" disabled={updateMutation.isPending || uploading}>
+              {updateMutation.isPending ? 'Saving…' : uploading ? 'Uploading…' : 'Save Changes'}
             </Button>
           </div>
         </div>
