@@ -85,22 +85,31 @@ export function PublicHeader() {
       <header
         className={cn(
           'w-full transition-all duration-500 ease-out',
-          'glass-warm shadow-[0_1px_0_rgba(145,110,58,0.10),0_4px_24px_-8px_rgba(61,46,31,0.08)]'
+          'glass-warm brand-light shadow-[0_1px_0_rgba(145,110,58,0.10),0_4px_24px_-8px_rgba(61,46,31,0.08)]'
         )}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <nav className="flex items-center justify-between h-[72px]">
 
             {/* Logo */}
-            <Link href="/" className="flex items-center group" aria-label="Nature Lite Foods Home">
+            <Link href="/" className="flex items-center gap-2.5 group" aria-label="Nature Lite Foods Home">
               <Image
                 src="/images/logo.png"
                 alt="Nature Lite Foods"
-                width={52}
-                height={52}
-                className="object-contain transition-opacity duration-200 group-hover:opacity-85"
+                width={48}
+                height={48}
+                className="object-contain transition-opacity duration-200 group-hover:opacity-85 flex-shrink-0"
+                style={{ filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.14))' }}
                 priority
               />
+              <div className="hidden sm:flex flex-col gap-0">
+                <span className="font-display text-[1.05rem] font-semibold tracking-[-0.01em] leading-none text-brand-charcoal group-hover:text-brand-brown transition-colors duration-200">
+                  Nature Lite Foods
+                </span>
+                <span className="text-[8.5px] tracking-[0.14em] text-brand-muted uppercase leading-none mt-0.5">
+                  Pure · Fresh · Naturally Processed
+                </span>
+              </div>
             </Link>
 
             {/* Desktop nav */}
@@ -216,14 +225,18 @@ export function PublicHeader() {
 
             {/* Header row */}
             <div className="flex items-center justify-between px-6 py-5">
-              <Link href="/" className="flex items-center" onClick={() => setMobileOpen(false)}>
+              <Link href="/" className="flex items-center gap-2" onClick={() => setMobileOpen(false)}>
                 <Image
                   src="/images/logo.png"
                   alt="Nature Lite Foods"
-                  width={48}
-                  height={48}
+                  width={44}
+                  height={44}
                   className="object-contain"
+                  style={{ filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.14))' }}
                 />
+                <span className="font-display text-base font-semibold text-brand-charcoal leading-none">
+                  Nature Lite Foods
+                </span>
               </Link>
               <button
                 onClick={() => setMobileOpen(false)}

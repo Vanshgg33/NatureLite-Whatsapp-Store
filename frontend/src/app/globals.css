@@ -922,6 +922,20 @@ html {
   border: 1px solid rgba(145, 110, 58, 0.13);
 }
 
+/* Force light-mode brand variables — use on headers/surfaces that are always light */
+.brand-light {
+  --brand-charcoal: 28 8% 12%;
+  --brand-charcoal-dark: 24 10% 7%;
+  --brand-cream: 40 36% 94%;
+  --brand-cream-dark: 38 28% 90%;
+  --brand-brown: 30 54% 19%;
+  --brand-brown-light: 30 44% 28%;
+  --brand-muted: 28 6% 46%;
+  --brand-muted-light: 28 5% 60%;
+  --brand-mustard: 42 80% 50%;
+  --brand-green: 145 40% 28%;
+}
+
 /* Amber glow shadow */
 .amber-glow {
   box-shadow:

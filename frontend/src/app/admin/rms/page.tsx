@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect, useRef } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   FlaskConical, Search, FileText, TrendingDown, AlertTriangle, CheckCircle2,
-  Calendar,
+  Calendar, ClipboardList, Droplets,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
@@ -14,10 +14,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { downloadReportPdf, generateReportPdfBase64 } from '@/lib/report-pdf';
 import { EmailReportButton } from '@/components/admin/email-report-button';
-import type { Store, RawMaterial, RawMaterialDailyItem } from '@/types';
+import type { Store, RawMaterial, RawMaterialPrefill, RawMaterialDailyItem } from '@/types';
 
 function stockStatus(stock: number): { label: string; color: string; bg: string } {
   if (stock <= 0) return { label: 'Critical', color: 'text-red-700', bg: 'bg-red-100' };
@@ -25,12 +28,28 @@ function stockStatus(stock: number): { label: string; color: string; bg: string 
   return { label: 'Good', color: 'text-emerald-700', bg: 'bg-emerald-100' };
 }
 
+function closingBadgeClass(val: number) {
+  if (val <= 0) return 'bg-red-100 text-red-700';
+  if (val < 10) return 'bg-amber-100 text-amber-700';
+  return 'bg-emerald-100 text-emerald-700';
+}
+
 export default function RMSPage() {
   const { user } = useAdminAuthStore();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [selectedStoreId, setSelectedStoreId] = useState<string>(user?.storeId || '');
   const [search, setSearch] = useState('');
   const [reportDate, setReportDate] = useState('');
+
+  const [editMaterial, setEditMaterial] = useState<RawMaterial | null>(null);
+  const [prefill, setPrefill] = useState<RawMaterialPrefill | null>(null);
+  const [prefillLoading, setPrefillLoading] = useState(false);
+  const [entryOpening, setEntryOpening] = useState('');
+  const [entryStockIn, setEntryStockIn] = useState('');
+  const [entryProcessed, setEntryProcessed] = useState('');
+  const [entryOutput, setEntryOutput] = useState('');
+  const prefillRequestRef = useRef(0);
 
   const isSuperadmin = user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
 
@@ -65,6 +84,47 @@ export default function RMSPage() {
   useEffect(() => {
     if (!reportDate && availableDates.length > 0) setReportDate(availableDates[0]);
   }, [availableDates, reportDate]);
+
+  const entryMutation = useMutation({
+    mutationFn: (d: { id: string; openingStock: number; stockIn: number; processed: number; outputLitres: number }) =>
+      api.upsertRawMaterialEntry(d.id, { openingStock: d.openingStock, stockIn: d.stockIn, processed: d.processed, outputLitres: d.outputLitres }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['raw-materials'] });
+      queryClient.invalidateQueries({ queryKey: ['raw-analytics-dates'] });
+      setEditMaterial(null); setPrefill(null);
+      toast({ title: 'Entry saved' });
+    },
+    onError: () => toast({ title: 'Failed to save entry', variant: 'destructive' }),
+  });
+
+  async function openEntryDialog(m: RawMaterial) {
+    const rid = ++prefillRequestRef.current;
+    setEditMaterial(m); setPrefill(null);
+    setEntryOpening(''); setEntryStockIn(''); setEntryProcessed(''); setEntryOutput('');
+    setPrefillLoading(true);
+    try {
+      const p = await api.getRawMaterialPrefill(m._id);
+      if (rid !== prefillRequestRef.current) return;
+      setPrefill(p);
+      setEntryOpening(p.openingStock.toString());
+      setEntryStockIn(p.stockIn.toString());
+      setEntryProcessed(p.processed.toString());
+      setEntryOutput((p.outputLitres ?? 0).toString());
+    } catch {
+      if (rid !== prefillRequestRef.current) return;
+      setEditMaterial(null);
+      toast({ title: 'Failed to load entry data', variant: 'destructive' });
+    } finally {
+      if (rid === prefillRequestRef.current) setPrefillLoading(false);
+    }
+  }
+
+  const entryOpVal = parseFloat(entryOpening) || 0;
+  const entryStVal = parseFloat(entryStockIn) || 0;
+  const entryPrVal = parseFloat(entryProcessed) || 0;
+  const entryOutVal = parseFloat(entryOutput) || 0;
+  const entryClosing = Math.max(0, entryOpVal + entryStVal - entryPrVal);
+  const overdrawn = entryOpVal + entryStVal - entryPrVal < 0;
 
   const criticalCount = materials.filter((m) => m.totalStock <= 0).length;
   const lowCount = materials.filter((m) => m.totalStock > 0 && m.totalStock < 20).length;
@@ -280,6 +340,15 @@ export default function RMSPage() {
                     {!todayEntry && (
                       <p className="text-xs text-gray-300 mt-2 italic">No entry logged today</p>
                     )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full mt-3 h-7 text-xs gap-1.5"
+                      onClick={() => openEntryDialog(m)}
+                    >
+                      <ClipboardList className="h-3.5 w-3.5" />
+                      Log Entry
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -287,6 +356,103 @@ export default function RMSPage() {
           })}
         </div>
       )}
+
+      {/* Log Entry Dialog */}
+      <Dialog open={!!editMaterial} onOpenChange={() => { setEditMaterial(null); setPrefill(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="flex items-start justify-between">
+              <div>
+                <DialogTitle className="text-lg">{editMaterial?.name}</DialogTitle>
+                <p className="text-sm text-gray-400 mt-0.5">Today&apos;s stock entry</p>
+              </div>
+              {prefill && (
+                <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${prefill.isExisting ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
+                  {prefill.isExisting ? 'Additional entry' : 'New entry'}
+                </span>
+              )}
+            </div>
+          </DialogHeader>
+
+          {prefillLoading ? (
+            <div className="py-10 text-center">
+              <div className="h-5 w-5 border-2 border-brand-green border-t-transparent rounded-full animate-spin mx-auto" />
+              <p className="text-sm text-gray-400 mt-3">Loading values…</p>
+            </div>
+          ) : (
+            <div className="space-y-5 py-1">
+              <div className="flex items-center justify-between rounded-xl bg-gray-50 border px-4 py-3">
+                <div>
+                  <p className="text-xs text-gray-400">Current stock</p>
+                  <p className="text-xl font-bold text-gray-800 mt-0.5">
+                    {editMaterial?.totalStock ?? 0}{' '}
+                    <span className="text-sm font-normal text-gray-400">{editMaterial?.unit}</span>
+                  </p>
+                </div>
+                <div className={`h-10 w-10 rounded-full flex items-center justify-center ${closingBadgeClass(editMaterial?.totalStock ?? 0)}`}>
+                  <FlaskConical className="h-4 w-4" />
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Raw Material ({editMaterial?.unit})</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: 'Opening', color: '', val: entryOpening, setter: setEntryOpening },
+                    { label: '+ Stock In', color: 'text-emerald-600', val: entryStockIn, setter: setEntryStockIn, border: 'border-emerald-200' },
+                    { label: '− Processed', color: 'text-orange-500', val: entryProcessed, setter: setEntryProcessed, border: 'border-orange-200' },
+                  ].map((f) => (
+                    <div key={f.label} className="space-y-1.5">
+                      <label className={`text-xs font-semibold uppercase tracking-wide ${f.color || 'text-gray-500'}`}>{f.label}</label>
+                      <Input type="number" min="0" step="0.01" placeholder="0" value={f.val} onChange={(e) => f.setter(e.target.value)} className={`text-center font-semibold text-base h-11 ${f.border ?? ''}`} />
+                      <p className="text-center text-xs text-gray-400">{editMaterial?.unit}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-medium text-blue-500 uppercase tracking-wide mb-3">Oil Output (Litres)</p>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 space-y-1.5">
+                    <label className="text-xs font-semibold text-blue-500 uppercase tracking-wide flex items-center gap-1">
+                      <Droplets className="h-3.5 w-3.5" /> Output
+                    </label>
+                    <Input type="number" min="0" step="0.01" placeholder="0" value={entryOutput} onChange={(e) => setEntryOutput(e.target.value)} className="text-center font-semibold text-base h-11 border-blue-200 focus:ring-blue-300" />
+                    <p className="text-center text-xs text-gray-400">litres</p>
+                  </div>
+                  <div className="text-center text-gray-400 mt-4">
+                    <p className="text-xs">from</p>
+                    <p className="text-sm font-bold text-orange-500">{entryPrVal} {editMaterial?.unit}</p>
+                    <p className="text-xs">processed</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className={`rounded-xl px-4 py-3.5 flex items-center justify-between ${closingBadgeClass(entryClosing)}`}>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide opacity-70">= Closing Stock</p>
+                  {overdrawn && <p className="text-xs mt-0.5 opacity-70">Clamped to 0</p>}
+                </div>
+                <p className="text-2xl font-black">{entryClosing.toFixed(2)} <span className="text-sm font-normal opacity-70">{editMaterial?.unit}</span></p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setEditMaterial(null); setPrefill(null); }}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (!editMaterial) return;
+                entryMutation.mutate({ id: editMaterial._id, openingStock: entryOpVal, stockIn: entryStVal, processed: entryPrVal, outputLitres: entryOutVal });
+              }}
+              disabled={entryMutation.isPending || prefillLoading}
+            >
+              {entryMutation.isPending ? 'Saving…' : 'Save Entry'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );
