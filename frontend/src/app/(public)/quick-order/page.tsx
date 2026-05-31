@@ -550,14 +550,13 @@ export default function QuickOrderPage() {
                 <div
                   className="grid items-center px-6 py-3.5 qo-mono"
                   style={{
-                    gridTemplateColumns: '1fr 130px 110px 110px 168px 120px',
+                    gridTemplateColumns: '1fr 110px 110px 168px 120px',
                     borderBottom: '1px solid rgba(11,28,8,0.055)',
                     fontSize: 9.5, letterSpacing: '0.14em', textTransform: 'uppercase',
                     color: 'rgba(11,28,8,0.3)',
                   }}
                 >
                   <span>Product</span>
-                  <span>SKU</span>
                   <span>Stock</span>
                   <span style={{ textAlign: 'right' }}>Price</span>
                   <span style={{ textAlign: 'center' }}>Quantity</span>
@@ -578,7 +577,7 @@ export default function QuickOrderPage() {
                         variants={rowVariants}
                         className="grid items-center px-6 py-4 relative"
                         style={{
-                          gridTemplateColumns: '1fr 130px 110px 110px 168px 120px',
+                          gridTemplateColumns: '1fr 110px 110px 168px 120px',
                           borderBottom: idx < filteredRows.length - 1 ? '1px solid rgba(11,28,8,0.04)' : 'none',
                           background: isSelected
                             ? 'linear-gradient(90deg, rgba(160,112,16,0.05), rgba(160,112,16,0.02))'
@@ -609,7 +608,7 @@ export default function QuickOrderPage() {
                           <div
                             className="relative shrink-0 overflow-hidden"
                             style={{
-                              width: 48, height: 48, borderRadius: 12,
+                              width: 80, height: 80, borderRadius: 14,
                               border: '1px solid rgba(160,112,16,0.11)', background: '#faf6ee',
                               boxShadow: isSelected ? '0 3px 12px rgba(160,112,16,0.12)' : '0 1px 4px rgba(11,28,8,0.05)',
                               transition: 'box-shadow 0.25s',
@@ -634,11 +633,6 @@ export default function QuickOrderPage() {
                             )}
                           </div>
                         </div>
-
-                        {/* SKU */}
-                        <span className="qo-mono" style={{ fontSize: 10, letterSpacing: '0.1em', color: 'rgba(11,28,8,0.35)', textTransform: 'uppercase' }}>
-                          {item.sku}
-                        </span>
 
                         {/* Stock */}
                         <StockBadge isOOS={isOOS} isLow={isLow} stock={item.stock} />
@@ -732,7 +726,7 @@ export default function QuickOrderPage() {
                         <div
                           className="relative shrink-0 overflow-hidden"
                           style={{
-                            width: 56, height: 56, borderRadius: 14,
+                            width: 80, height: 80, borderRadius: 16,
                             border: '1px solid rgba(160,112,16,0.1)', background: '#faf6ee',
                             boxShadow: isSelected ? '0 3px 12px rgba(160,112,16,0.1)' : 'none',
                             transition: 'box-shadow 0.25s',
