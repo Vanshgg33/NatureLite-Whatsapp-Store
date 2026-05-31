@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { Product } from '@/types';
 
 import ImmersiveHeroSection from '@/components/sections/ImmersiveHeroSection';
+import QuickOrderBanner from '@/components/ecommerce/quick-order-banner';
 import HomeShopSection from '@/components/sections/HomeShopSection';
 import FeaturedProductsSection from '@/components/sections/FeaturedProductsSection';
 import SocialProofSection from '@/components/sections/SocialProofSection';
@@ -526,6 +527,9 @@ export default function HomePage() {
           { icon: '💚', text: 'Farmer Sourced' },
         ]}
       />
+
+      {/* Quick Order CTA */}
+      <QuickOrderBanner />
 
       {/* 2. Product collection with category filter */}
       {products.length > 0 && (
