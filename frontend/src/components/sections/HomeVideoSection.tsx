@@ -409,10 +409,10 @@ export default function HomeVideoSection() {
           </div>
         </motion.div>
 
-        {/* Scroll strip — negative margin extends to viewport edge on mobile */}
+        {/* Scroll strip */}
         <div
-          className="flex gap-3 -mx-4 px-4 sm:mx-0 sm:px-0"
-          style={{ overflowX: 'auto', scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none', paddingBottom: 8, paddingRight: 16 }}
+          className="flex gap-3"
+          style={{ overflowX: 'auto', scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none', paddingBottom: 8 }}
         >
           {entries.map((entry, i) => (
             <div key={i} style={{ scrollSnapAlign: 'start', flexShrink: 0 }}>

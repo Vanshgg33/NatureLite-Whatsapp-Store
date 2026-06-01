@@ -731,13 +731,13 @@ export function ProductVideoSection({ videos, product }: { videos: string[]; pro
           </div>
         </motion.div>
 
-        {/* Horizontal reel strip — extends to viewport edge on mobile */}
+        {/* Horizontal reel strip */}
         <div
-          className="flex gap-3 -mx-4 px-4 sm:mx-0 sm:px-0"
+          className="flex gap-3"
           style={{
             overflowX: 'auto', scrollSnapType: 'x mandatory',
             WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none',
-            msOverflowStyle: 'none', paddingBottom: 8, paddingRight: 16,
+            msOverflowStyle: 'none', paddingBottom: 8,
           }}
         >
           {parsedVideos.map((video, i) => (

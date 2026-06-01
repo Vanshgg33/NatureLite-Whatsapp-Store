@@ -32,7 +32,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
             <PromoBar />
             <PublicHeader />
           </div>
-          <div className="min-h-screen flex flex-col bg-white">
+          <div className="min-h-screen flex flex-col bg-white" style={{ overflowX: 'clip' }}>
             <main className="flex-1">
               <ErrorBoundary>{children}</ErrorBoundary>
             </main>

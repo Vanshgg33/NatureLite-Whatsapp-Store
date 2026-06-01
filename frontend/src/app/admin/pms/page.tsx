@@ -44,6 +44,12 @@ export default function PMSPage() {
   const [entryStockIn, setEntryStockIn] = useState('');
   const [entryProcessed, setEntryProcessed] = useState('');
   const [entryOutput, setEntryOutput] = useState('');
+  // Oil breakdown fields
+  const [oilLoose, setOilLoose] = useState('');
+  const [oilProcessed, setOilProcessed] = useState('');
+  const [oilGaadIn, setOilGaadIn] = useState('');
+  const [oilPacked, setOilPacked] = useState('');
+  const [oilGaadOut, setOilGaadOut] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<RawMaterial | null>(null);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [analyticsDate, setAnalyticsDate] = useState('');
@@ -109,6 +115,7 @@ export default function PMSPage() {
       queryClient.invalidateQueries({ queryKey: ['raw-analytics-dates'] });
       queryClient.invalidateQueries({ queryKey: ['raw-analytics-day'] });
       setEditMaterial(null); setPrefill(null);
+      setOilLoose(''); setOilProcessed(''); setOilGaadIn(''); setOilPacked(''); setOilGaadOut('');
       toast({ title: 'Entry saved' });
     },
   });
@@ -122,6 +129,8 @@ export default function PMSPage() {
     const rid = ++prefillRequestRef.current;
     setEditMaterial(m); setPrefill(null);
     setEntryOpening(''); setEntryStockIn(''); setEntryProcessed(''); setEntryOutput('');
+    setOilLoose(''); setOilProcessed(''); setOilGaadIn('');
+    setOilPacked(''); setOilGaadOut('');
     setPrefillLoading(true);
     try {
       const p = await api.getRawMaterialPrefill(m._id);
@@ -143,9 +152,19 @@ export default function PMSPage() {
   const entryOpVal = parseFloat(entryOpening) || 0;
   const entryStVal = parseFloat(entryStockIn) || 0;
   const entryPrVal = parseFloat(entryProcessed) || 0;
-  const entryOutVal = parseFloat(entryOutput) || 0;
   const entryClosing = Math.max(0, entryOpVal + entryStVal - entryPrVal);
   const overdrawn = entryOpVal + entryStVal - entryPrVal < 0;
+  // Oil breakdown computed values
+  const oilLooseVal = parseFloat(oilLoose) || 0;
+  const oilProcessedVal = parseFloat(oilProcessed) || 0;
+  const oilGaadInVal = parseFloat(oilGaadIn) || 0;
+  const oilPackedVal = parseFloat(oilPacked) || 0;
+  const oilGaadOutVal = parseFloat(oilGaadOut) || 0;
+  const oilTotalIn = oilLooseVal + oilProcessedVal + oilGaadInVal;
+  const oilTotalOut = oilPackedVal + oilGaadOutVal;
+  const oilNet = Math.max(0, oilTotalIn - oilTotalOut);
+  // entryOutVal = net oil (sent to backend as outputLitres)
+  const entryOutVal = oilNet;
 
   const totalProcessed = dayItems.reduce((s, i) => s + i.processed, 0);
   const totalStockIn = dayItems.reduce((s, i) => s + i.stockIn, 0);
@@ -321,7 +340,9 @@ export default function PMSPage() {
                     <tr key={m._id} className="hover:bg-gray-50/60 transition-colors group">
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
-                          <div className={`h-2 w-2 rounded-full flex-shrink-0 ${hasEntry ? 'bg-emerald-400' : 'bg-gray-300'}`} />
+                          <div className={`h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 ${hasEntry ? 'bg-emerald-50' : 'bg-gray-100'}`}>
+                            <FlaskConical className={`h-4 w-4 ${hasEntry ? 'text-emerald-500' : 'text-gray-400'}`} />
+                          </div>
                           <div>
                             <p className="font-semibold text-gray-900">{m.name}</p>
                             <p className="text-xs text-gray-400 mt-0.5">{m.unit}{!hasEntry && ' · no entry today'}</p>
@@ -440,8 +461,15 @@ export default function PMSPage() {
                     {dayItems.map((item) => (
                       <tr key={item._id} className="hover:bg-gray-50/60 transition-colors">
                         <td className="px-5 py-3.5">
-                          <p className="font-semibold text-gray-900">{item.materialName ?? '—'}</p>
-                          <p className="text-xs text-gray-400">{item.materialUnit ?? ''}</p>
+                          <div className="flex items-center gap-3">
+                            <div className="h-9 w-9 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
+                              <FlaskConical className="h-4 w-4 text-emerald-500" />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-gray-900">{item.materialName ?? '—'}</p>
+                              <p className="text-xs text-gray-400">{item.materialUnit ?? ''}</p>
+                            </div>
+                          </div>
                         </td>
                         <td className="px-4 py-3.5 text-center font-medium text-gray-600">{item.openingStock}</td>
                         <td className="px-4 py-3.5 text-center font-bold text-gray-700">{item.entryCount ?? item.entries?.length ?? 0}</td>
@@ -501,13 +529,18 @@ export default function PMSPage() {
       </Dialog>
 
       {/* Daily Entry Dialog */}
-      <Dialog open={!!editMaterial && canEditAnalytics} onOpenChange={() => { setEditMaterial(null); setPrefill(null); }}>
-        <DialogContent className="max-w-md">
+      <Dialog open={!!editMaterial && canEditAnalytics} onOpenChange={() => { setEditMaterial(null); setPrefill(null); setOilLoose(''); setOilProcessed(''); setOilGaadIn(''); setOilPacked(''); setOilGaadOut(''); }}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <div className="flex items-start justify-between">
-              <div>
-                <DialogTitle className="text-lg">{editMaterial?.name}</DialogTitle>
-                <p className="text-sm text-gray-400 mt-0.5">Today&apos;s production entry</p>
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center flex-shrink-0">
+                  <FlaskConical className="h-6 w-6 text-emerald-500" />
+                </div>
+                <div>
+                  <DialogTitle className="text-lg leading-tight">{editMaterial?.name}</DialogTitle>
+                  <p className="text-sm text-gray-400 mt-0.5">Today&apos;s production entry</p>
+                </div>
               </div>
               {prefill && (
                 <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${prefill.isExisting ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
@@ -552,22 +585,81 @@ export default function PMSPage() {
                 </div>
               </div>
 
-              {/* Output litres */}
+              {/* Oil Tracking — left/right split */}
               <div>
-                <p className="text-xs font-medium text-blue-500 uppercase tracking-wide mb-3">Oil Output (Litres)</p>
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 space-y-1.5">
-                    <label className="text-xs font-semibold text-blue-500 uppercase tracking-wide flex items-center gap-1">
-                      <Droplets className="h-3.5 w-3.5" /> Output
-                    </label>
-                    <Input type="number" min="0" step="0.01" placeholder="0" value={entryOutput} onChange={(e) => setEntryOutput(e.target.value)} className="text-center font-semibold text-base h-11 border-blue-200 focus:ring-blue-300" />
-                    <p className="text-center text-xs text-gray-400">litres</p>
+                <div className="flex items-center gap-2 mb-3">
+                  <Droplets className="h-4 w-4 text-blue-500" />
+                  <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Oil Tracking (Litres)</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {/* LEFT — additions (+) */}
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                    <div className="flex items-center gap-1.5 mb-2.5">
+                      <span className="flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500 text-white text-[9px] font-black">+</span>
+                      <p className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">IN</p>
+                    </div>
+                    <div className="space-y-2">
+                      {[
+                        { label: 'Loose Oil', val: oilLoose, setter: setOilLoose },
+                        { label: 'Processed Oil', val: oilProcessed, setter: setOilProcessed },
+                        { label: 'Gaad Oil', val: oilGaadIn, setter: setOilGaadIn },
+                      ].map((f) => (
+                        <div key={f.label}>
+                          <label className="text-[10px] font-semibold text-emerald-700 block mb-0.5">{f.label}</label>
+                          <Input
+                            type="number" min="0" step="0.01" placeholder="0"
+                            value={f.val} onChange={(e) => f.setter(e.target.value)}
+                            className="h-9 text-center text-sm font-semibold border-emerald-300 bg-white focus:border-emerald-400"
+                          />
+                        </div>
+                      ))}
+                      <div className="border-t border-emerald-200 mt-1 pt-1.5 flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-emerald-700 uppercase">Total In</span>
+                        <span className="text-sm font-black text-emerald-600">+{oilTotalIn.toFixed(2)} L</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-center text-gray-400 mt-4">
-                    <p className="text-xs">from</p>
-                    <p className="text-sm font-bold text-orange-500">{entryPrVal} {editMaterial?.unit}</p>
-                    <p className="text-xs">processed</p>
+
+                  {/* RIGHT — deductions (−) */}
+                  <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+                    <div className="flex items-center gap-1.5 mb-2.5">
+                      <span className="flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-black">−</span>
+                      <p className="text-[11px] font-bold text-red-700 uppercase tracking-wider">OUT</p>
+                    </div>
+                    <div className="space-y-2">
+                      {[
+                        { label: 'Packed', val: oilPacked, setter: setOilPacked },
+                        { label: 'Gaad', val: oilGaadOut, setter: setOilGaadOut },
+                      ].map((f) => (
+                        <div key={f.label}>
+                          <label className="text-[10px] font-semibold text-red-700 block mb-0.5">{f.label}</label>
+                          <Input
+                            type="number" min="0" step="0.01" placeholder="0"
+                            value={f.val} onChange={(e) => f.setter(e.target.value)}
+                            className="h-9 text-center text-sm font-semibold border-red-300 bg-white focus:border-red-400"
+                          />
+                        </div>
+                      ))}
+                      {/* spacer to match 3 left fields */}
+                      <div className="h-[44px]" />
+                      <div className="border-t border-red-200 mt-1 pt-1.5 flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-red-700 uppercase">Total Out</span>
+                        <span className="text-sm font-black text-red-600">−{oilTotalOut.toFixed(2)} L</span>
+                      </div>
+                    </div>
                   </div>
+                </div>
+
+                {/* Net oil */}
+                <div className={`mt-2 rounded-xl px-4 py-2.5 flex items-center justify-between border ${oilNet >= 0 ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200'}`}>
+                  <div className="flex items-center gap-1.5">
+                    <Droplets className="h-3.5 w-3.5 text-blue-500" />
+                    <span className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Net Oil (Output)</span>
+                  </div>
+                  <span className={`text-base font-black ${oilNet >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                    {oilNet.toFixed(2)} L
+                  </span>
                 </div>
               </div>
 
@@ -583,7 +675,7 @@ export default function PMSPage() {
           )}
 
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => { setEditMaterial(null); setPrefill(null); }}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setEditMaterial(null); setPrefill(null); setOilLoose(''); setOilProcessed(''); setOilGaadIn(''); setOilPacked(''); setOilGaadOut(''); }}>Cancel</Button>
             <Button
               onClick={() => {
                 if (!editMaterial) return;

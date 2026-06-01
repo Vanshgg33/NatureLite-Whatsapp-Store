@@ -315,9 +315,14 @@ export default function RMSPage() {
                   <div className={`h-1 w-full ${m.totalStock <= 0 ? 'bg-red-400' : m.totalStock < 20 ? 'bg-amber-400' : 'bg-emerald-400'}`} />
                   <div className="p-4">
                     <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <p className="font-bold text-gray-900 text-sm leading-tight">{m.name}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">Unit: {m.unit}</p>
+                      <div className="flex items-center gap-2.5">
+                        <div className={`h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0 ${bg}`}>
+                          <FlaskConical className={`h-5 w-5 ${color}`} />
+                        </div>
+                        <div>
+                          <p className="font-bold text-gray-900 text-sm leading-tight">{m.name}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">Unit: {m.unit}</p>
+                        </div>
                       </div>
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${bg} ${color}`}>{label}</span>
                     </div>
@@ -362,9 +367,14 @@ export default function RMSPage() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <div className="flex items-start justify-between">
-              <div>
-                <DialogTitle className="text-lg">{editMaterial?.name}</DialogTitle>
-                <p className="text-sm text-gray-400 mt-0.5">Today&apos;s stock entry</p>
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center flex-shrink-0">
+                  <FlaskConical className="h-6 w-6 text-emerald-500" />
+                </div>
+                <div>
+                  <DialogTitle className="text-lg leading-tight">{editMaterial?.name}</DialogTitle>
+                  <p className="text-sm text-gray-400 mt-0.5">Today&apos;s stock entry</p>
+                </div>
               </div>
               {prefill && (
                 <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${prefill.isExisting ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>

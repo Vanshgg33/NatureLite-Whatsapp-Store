@@ -169,7 +169,7 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
 
         {/* ── Category chips ──────────────────────────────────── */}
         {safeCategories.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto pb-2 mb-2 scrollbar-hide" style={{ justifyContent: 'safe center' }}>
+          <div className="flex gap-2 overflow-x-auto pb-2 mb-2 scrollbar-hide justify-start sm:justify-center">
             <button
               onClick={() => handleCatChange(null)}
               className="flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200"

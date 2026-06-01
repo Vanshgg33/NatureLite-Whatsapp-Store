@@ -419,7 +419,19 @@ export default function IMSPage() {
       <Dialog open={!!editItem} onOpenChange={() => setEditItem(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Update Stock — {editItem?.productName}</DialogTitle>
+            <div className="flex items-center gap-3">
+              {editItem?.productImages?.[0] ? (
+                <img src={editItem.productImages[0] as string} alt="" className="h-12 w-12 rounded-xl object-cover flex-shrink-0 border" />
+              ) : (
+                <div className="h-12 w-12 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0 border">
+                  <Package className="h-6 w-6 text-gray-400" />
+                </div>
+              )}
+              <div>
+                <DialogTitle className="leading-tight">{editItem?.productName}</DialogTitle>
+                <p className="text-xs text-gray-400 mt-0.5">Update stock entry</p>
+              </div>
+            </div>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border">
