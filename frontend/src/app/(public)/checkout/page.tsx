@@ -382,7 +382,7 @@ export default function CheckoutPage() {
   const amountToPayNow = total - effectiveWalletAmount;
 
   return (
-    <div className="min-h-screen pt-20 bg-brand-cream">
+    <div className="min-h-screen pt-20 bg-brand-cream pb-[80px] lg:pb-0">
       <div className="brand-container py-12">
         <Link
           href="/cart"
@@ -758,6 +758,26 @@ export default function CheckoutPage() {
             </div>
           </div>
         </form>
+      </div>
+
+      {/* Mobile sticky Place Order bar */}
+      <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-brand-border" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <div className="flex items-center gap-3 px-4 py-3">
+          <div className="flex-1 min-w-0">
+            <p className="font-body text-xs text-brand-muted">Total to pay</p>
+            <p className="font-display text-lg font-bold text-brand-charcoal leading-tight">
+              {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amountToPayNow)}
+            </p>
+          </div>
+          <Button
+            type="button"
+            className="bg-brand-mustard hover:bg-brand-mustard-dark text-white rounded-xl px-6 py-3 flex-shrink-0"
+            disabled={isSubmitting}
+            onClick={handleSubmit(onSubmit)}
+          >
+            {isSubmitting ? 'Processing...' : 'Place Order'}
+          </Button>
+        </div>
       </div>
     </div>
   );

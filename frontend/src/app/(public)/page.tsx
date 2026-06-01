@@ -480,24 +480,27 @@ export default function HomePage() {
       <div style={{
         background: 'linear-gradient(90deg, #0d1a05 0%, #111f06 50%, #0d1a05 100%)',
         borderBottom: '1px solid rgba(120,170,20,0.15)',
-        padding: '7px 16px',
+        padding: '6px 12px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 8,
+        flexWrap: 'wrap',
+        gap: '4px 6px',
+        textAlign: 'center',
       }}>
-        <MapPin size={12} style={{ color: 'rgba(140,200,40,0.70)', flexShrink: 0 }} />
+        <MapPin size={11} style={{ color: 'rgba(140,200,40,0.70)', flexShrink: 0 }} />
         <span style={{
           fontFamily: 'monospace',
-          fontSize: 10.5,
-          letterSpacing: '0.10em',
+          fontSize: 10,
+          letterSpacing: '0.08em',
           color: 'rgba(160,220,60,0.65)',
+          lineHeight: 1.4,
         }}>
-          Currently delivering to{' '}
+          Delivering to{' '}
           <strong style={{ color: 'rgba(190,240,80,0.85)', fontWeight: 600 }}>
             Raipur · Bhilai · Durg · Bilaspur
           </strong>
-          {' '}(Chhattisgarh)
+          {' '}(CG)
         </span>
       </div>
 

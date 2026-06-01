@@ -80,7 +80,7 @@ export function SocialProofPopup() {
     <AnimatePresence>
       {isVisible && (
         <motion.div
-          className="fixed bottom-6 left-6 z-50 max-w-sm"
+          className="fixed bottom-6 left-4 z-50 max-w-[calc(100vw-2rem)] sm:left-6 sm:max-w-sm"
           initial={{ opacity: 0, y: 20, x: -20 }}
           animate={{ opacity: 1, y: 0, x: 0 }}
           exit={{ opacity: 0, y: 20, x: -20 }}

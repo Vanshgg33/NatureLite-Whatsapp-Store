@@ -85,19 +85,19 @@ function NewsletterStrip() {
             <span style={{ color: '#a07010', fontSize: 13 }}>✦ You&apos;re on the list</span>
           </div>
         ) : (
-          <form onSubmit={submit} className="flex items-center gap-0 w-full sm:w-auto">
+          <form onSubmit={submit} className="flex flex-col sm:flex-row items-stretch gap-2 w-full sm:w-auto sm:gap-0">
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="your@email.com"
-              className="flex-1 sm:w-56 px-4 py-3 rounded-l-full text-sm outline-none"
-              style={{ background: 'rgba(255,245,225,0.07)', border: '1px solid rgba(255,245,225,0.12)', borderRight: 'none', color: '#fff8f0' }}
+              className="flex-1 sm:w-56 px-4 py-3 rounded-full sm:rounded-r-none text-sm outline-none"
+              style={{ background: 'rgba(255,245,225,0.07)', border: '1px solid rgba(255,245,225,0.12)', color: '#fff8f0' }}
             />
             <button
               type="submit"
-              className="flex items-center gap-1.5 px-5 py-3 rounded-r-full text-sm font-semibold transition-opacity hover:opacity-85"
+              className="flex items-center justify-center gap-1.5 px-5 py-3 rounded-full sm:rounded-l-none text-sm font-semibold transition-opacity hover:opacity-85"
               style={{ background: '#a07010', color: '#fff' }}
             >
               Subscribe <ArrowRight className="w-3.5 h-3.5" />

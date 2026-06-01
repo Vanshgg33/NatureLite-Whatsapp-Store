@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingBag, ArrowLeft, ArrowRight, Sparkles } from 'lucide-react';
+import { ShoppingBag, ArrowLeft, ArrowRight, Sparkles, ShoppingCart } from 'lucide-react';
 import { CartItem } from '@/components/ecommerce/cart-item';
 import { CartSummary } from '@/components/ecommerce/cart-summary';
 import { PremiumProductCardCompact } from '@/components/ecommerce/premium-product-card';
@@ -97,7 +97,7 @@ export default function CartPage() {
   }
 
   return (
-    <div className="min-h-screen pt-24" style={{ background: '#f2ece0' }}>
+    <div className="min-h-screen pt-24 pb-[72px] lg:pb-0" style={{ background: '#f2ece0' }}>
       {/* Hero bar */}
       <div className="relative overflow-hidden pb-8 pt-4" style={{ borderBottom: '1px solid rgba(26,82,16,0.08)' }}>
         <div
@@ -196,6 +196,24 @@ export default function CartPage() {
             </div>
           </motion.div>
         )}
+      </div>
+
+      {/* Mobile sticky checkout bar */}
+      <div className="lg:hidden fixed bottom-0 inset-x-0 z-40" style={{ background: 'rgba(247,241,232,0.97)', backdropFilter: 'blur(16px)', borderTop: '1px solid rgba(26,82,16,0.10)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <div className="flex items-center gap-3 px-4 py-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px]" style={{ color: 'rgba(46,66,37,0.45)' }}>{itemCount} {itemCount === 1 ? 'item' : 'items'}</p>
+            <p className="font-display text-base font-bold" style={{ color: '#0b1c08' }}>View Summary</p>
+          </div>
+          <Link
+            href="/checkout"
+            className="flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold"
+            style={{ background: '#a07010', color: '#fff', boxShadow: '0 4px 18px -4px rgba(160,112,16,0.45)' }}
+          >
+            <ShoppingCart className="w-4 h-4" />
+            Checkout
+          </Link>
+        </div>
       </div>
     </div>
   );

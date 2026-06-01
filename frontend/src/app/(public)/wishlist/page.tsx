@@ -152,7 +152,7 @@ export default function WishlistPage() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <AnimatePresence>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
             {items.map((item, index) => (
               <motion.div
                 key={item.productId}
@@ -165,13 +165,14 @@ export default function WishlistPage() {
                 style={{ background: 'rgba(255,252,245,0.92)', border: '1px solid rgba(26,82,16,0.10)', boxShadow: '0 2px 16px -4px rgba(13,44,7,0.07)' }}
               >
                 {/* Image */}
-                <Link href={`/products/${item.slug}`} className="relative block aspect-[4/3] overflow-hidden" style={{ background: 'rgba(26,82,16,0.08)' }}>
+                <Link href={`/products/${item.slug}`} className="relative block aspect-square overflow-hidden" style={{ background: 'rgba(242,236,224,0.60)' }}>
                   {item.image ? (
                     <Image
                       src={item.image}
                       alt={item.name}
                       fill
-                      className="object-cover transition-transform duration-500 group-hover:scale-105"
+                      className="object-contain transition-transform duration-500 group-hover:scale-105"
+                      style={{ padding: '8%' }}
                       loading="lazy"
                     />
                   ) : (
@@ -184,7 +185,7 @@ export default function WishlistPage() {
                   {/* Remove button */}
                   <button
                     onClick={(e) => { e.preventDefault(); remove(item.productId); }}
-                    className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 opacity-0 group-hover:opacity-100"
+                    className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 sm:opacity-0 sm:group-hover:opacity-100"
                     style={{ background: 'rgba(255,252,245,0.88)', backdropFilter: 'blur(8px)', border: '1px solid rgba(26,82,16,0.15)' }}
                   >
                     <X className="w-3.5 h-3.5" style={{ color: 'rgba(46,66,37,0.60)' }} />

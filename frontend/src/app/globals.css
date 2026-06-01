@@ -1032,6 +1032,32 @@ html {
 }
 
 /* ================================================
+   DYNAMIC VIEWPORT HEIGHT — fixes iOS Safari 100vh clipping
+   ================================================ */
+
+/* Replaces h-screen (100vh) with 100dvh where supported */
+@supports (height: 100dvh) {
+  .h-screen {
+    height: 100dvh;
+  }
+  .min-h-screen {
+    min-height: 100dvh;
+  }
+}
+
+/* ================================================
+   SCROLLBAR HIDE UTILITY
+   ================================================ */
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* ================================================
    PRODUCT DESCRIPTION PROSE
    ================================================ */
 

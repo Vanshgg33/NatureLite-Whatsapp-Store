@@ -156,7 +156,8 @@ export function PremiumProductCard({
                 src={imageError ? '/images/placeholder-product.svg' : (product.images?.[0] || '/images/placeholder-product.svg')}
                 alt={product.name}
                 fill
-                className={`object-cover transition-transform duration-500 ${isHovered ? 'scale-[1.05]' : 'scale-100'} ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                className={`object-contain transition-transform duration-500 ${isHovered ? 'scale-[1.05]' : 'scale-100'} ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                style={{ padding: '6%' }}
                 onLoad={() => setImageLoaded(true)}
                 onError={() => { setImageError(true); setImageLoaded(true); }}
                 sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
@@ -390,7 +391,8 @@ export function PremiumProductCard({
               transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
             >
               <Image src={imageError ? '/images/placeholder-product.svg' : (product.images?.[0] || '/images/placeholder-product.svg')} alt={product.name}
-                fill className={`object-cover transition-opacity duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                fill className={`object-contain transition-opacity duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                style={{ padding: '8%' }}
                 onLoad={() => setImageLoaded(true)}
                 onError={() => { setImageError(true); setImageLoaded(true); }}
                 sizes="(max-width: 768px) 100vw, 33vw"
@@ -529,7 +531,7 @@ export function PremiumProductCardCompact({ product, index = 0 }: Omit<PremiumPr
       >
         <div className="relative w-20 h-20 rounded-xl overflow-hidden bg-brand-cream flex-shrink-0">
           <Image src={product.images[0] || '/images/placeholder-product.jpg'} alt={product.name}
-            fill className="object-cover group-hover:scale-110 transition-transform duration-500" sizes="80px" />
+            fill className="object-contain group-hover:scale-110 transition-transform duration-500" sizes="80px" style={{ padding: '8%' }} />
         </div>
         <div className="flex-1 min-w-0">
           <h4 className="font-medium text-brand-charcoal truncate group-hover:text-brand-green transition-colors">{product.name}</h4>

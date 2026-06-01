@@ -263,7 +263,7 @@ export default function ProductDetailPage() {
   };
 
   return (
-    <div style={{ background: '#f7f1e8', minHeight: '100vh' }}>
+    <div style={{ background: '#f7f1e8', minHeight: '100vh' }} className="pb-[72px] lg:pb-0">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }} />
 
       {/* ── Breadcrumb ─────────────────────────────────────────── */}
@@ -302,8 +302,8 @@ export default function ProductDetailPage() {
                 background: 'radial-gradient(ellipse at 50% 35%, #ffffff 0%, #ede4d0 100%)',
                 border: '1px solid rgba(200,150,12,0.15)',
                 boxShadow: '0 20px 60px -16px rgba(26,40,16,0.16), inset 0 1px 0 rgba(255,255,255,0.85)',
-                minHeight: 480,
-                height: 'clamp(480px, 68vh, 720px)',
+                minHeight: 'clamp(380px, min(90vw, 65vh), 680px)',
+                height: 'clamp(380px, min(90vw, 65vh), 680px)',
               }}
             >
               <AnimatePresence mode="wait">
@@ -1000,6 +1000,39 @@ export default function ProductDetailPage() {
           </div>
         </div>
       )}
+
+      {/* ── Mobile sticky Add-to-Cart bar ──────────────────────── */}
+      <div className="lg:hidden fixed bottom-0 inset-x-0 z-40" style={{ background: 'rgba(247,241,232,0.97)', backdropFilter: 'blur(16px)', borderTop: '1px solid rgba(200,150,12,0.15)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <div className="flex items-center gap-3 px-4 py-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-[12px] font-bold truncate" style={{ color: '#1a2810' }}>{product.name}</p>
+            <p className="text-[13px] font-black" style={{ color: '#8a6200' }}>{formatPrice(currentPrice)}</p>
+          </div>
+          <motion.button
+            onClick={handleAddToCart}
+            disabled={currentStock === 0 || isAddingToCart}
+            className="flex items-center justify-center gap-2 rounded-xl font-bold disabled:opacity-50 flex-shrink-0"
+            style={{
+              padding: '12px 20px',
+              fontSize: 13,
+              background: showCartSuccess
+                ? 'linear-gradient(135deg,#0d6b0a,#1a9b14)'
+                : currentStock === 0
+                ? 'rgba(26,40,16,0.08)'
+                : 'linear-gradient(135deg,#7a5500 0%,#c8960c 55%,#d4a017 100%)',
+              color: currentStock === 0 ? 'rgba(26,40,16,0.30)' : '#fffaed',
+              boxShadow: currentStock === 0 || showCartSuccess ? 'none' : '0 6px 20px -4px rgba(200,150,12,0.55)',
+            }}
+            whileTap={{ scale: 0.97 }}
+          >
+            {isAddingToCart ? (
+              <motion.div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full" animate={{ rotate: 360 }} transition={{ duration: 0.75, repeat: Infinity, ease: 'linear' }} />
+            ) : showCartSuccess ? (
+              <><Check style={{ width: 15, height: 15 }} /> Added!</>
+            ) : currentStock === 0 ? 'Out of Stock' : 'Add to Cart'}
+          </motion.button>
+        </div>
+      </div>
     </div>
   );
 }

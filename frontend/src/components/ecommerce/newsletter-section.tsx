@@ -154,7 +154,7 @@ export function NewsletterSection({
             </p>
 
             <form onSubmit={handleSubmit} className="max-w-md mx-auto">
-              <div className="relative">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-0 sm:relative">
                 <Input
                   type="email"
                   value={email}
@@ -163,13 +163,13 @@ export function NewsletterSection({
                     setStatus('idle');
                   }}
                   placeholder={placeholder}
-                  className="w-full px-6 py-4 pr-36 rounded-full bg-white/10 backdrop-blur-sm border-white/20 text-white placeholder:text-white/50 focus:border-brand-mustard"
+                  className="w-full px-6 py-4 sm:pr-36 rounded-full bg-white/10 backdrop-blur-sm border-white/20 text-white placeholder:text-white/50 focus:border-brand-mustard"
                   disabled={status === 'loading' || status === 'success'}
                 />
                 <Button
                   type="submit"
                   disabled={status === 'loading' || status === 'success'}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 px-6 py-2.5 bg-brand-mustard text-brand-charcoal rounded-full font-medium hover:bg-white"
+                  className="w-full sm:w-auto sm:absolute sm:right-2 sm:top-1/2 sm:-translate-y-1/2 px-6 py-2.5 bg-brand-mustard text-brand-charcoal rounded-full font-medium hover:bg-white"
                 >
                   {status === 'loading' ? (
                     <motion.div

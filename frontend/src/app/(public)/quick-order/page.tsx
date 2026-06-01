@@ -349,7 +349,7 @@ export default function QuickOrderPage() {
                 initial={{ opacity: 0, scale: 0.85 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.4, duration: 0.5 }}
-                className="qo-mono shrink-0 hidden xs:block"
+                className="qo-mono shrink-0 hidden sm:block"
                 style={{ fontSize: 9, letterSpacing: '0.36em', textTransform: 'uppercase', color: 'rgba(160,112,16,0.6)' }}
               >
                 Frictionless Checkout
@@ -615,7 +615,7 @@ export default function QuickOrderPage() {
                             }}
                           >
                             {item.image
-                              ? <Image src={item.image} alt={item.name} fill className="object-cover" />
+                              ? <Image src={item.image} alt={item.name} fill className="object-contain" style={{ padding: '8%' }} />
                               : <div className="absolute inset-0 flex items-center justify-center font-display font-black text-amber-800/20 text-xl">{item.name.charAt(0)}</div>
                             }
                           </div>
@@ -733,7 +733,7 @@ export default function QuickOrderPage() {
                           }}
                         >
                           {item.image
-                            ? <Image src={item.image} alt={item.name} fill className="object-cover" />
+                            ? <Image src={item.image} alt={item.name} fill className="object-contain" style={{ padding: '8%' }} />
                             : <div className="absolute inset-0 flex items-center justify-center font-display font-black text-amber-800/20 text-xl">{item.name.charAt(0)}</div>
                           }
                         </div>

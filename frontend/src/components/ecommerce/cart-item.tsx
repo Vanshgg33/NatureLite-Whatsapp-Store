@@ -46,7 +46,8 @@ export function CartItem({ item, variant = 'default' }: CartItemProps) {
               src={item.image}
               alt={item.name}
               fill
-              className="object-cover"
+              className="object-contain"
+              style={{ padding: '6%' }}
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
@@ -86,7 +87,8 @@ export function CartItem({ item, variant = 'default' }: CartItemProps) {
             src={item.image}
             alt={item.name}
             fill
-            className="object-cover"
+            className="object-contain"
+            style={{ padding: '8%' }}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">

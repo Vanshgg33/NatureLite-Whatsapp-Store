@@ -410,7 +410,7 @@ function ScrollStorySection() {
 
   return (
     <div ref={containerRef} style={{ height: '300vh' }}>
-      <div style={{ position: 'sticky', top: 0, height: '100vh', background: '#08110a', overflow: 'hidden', display: 'flex', alignItems: 'center' }}>
+      <div style={{ position: 'sticky', top: 0, height: '100svh', background: '#08110a', overflow: 'hidden', display: 'flex', alignItems: 'center' }}>
 
         {/* Animated bg glow */}
         <AnimatePresence>
@@ -725,7 +725,7 @@ export default function AboutClient() {
       <Cursor />
 
       {/* ── HERO ───────────────────────────────────────────────── */}
-      <section ref={heroRef} style={{ height: '100vh', position: 'relative', background: '#070f04', overflow: 'hidden' }}>
+      <section ref={heroRef} style={{ height: '100svh', position: 'relative', background: '#070f04', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', inset: 0 }}>
           <Canvas
             camera={{ position: [0, 0, 5.5], fov: 42 }}
