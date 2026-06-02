@@ -92,21 +92,21 @@ export function PublicHeader() {
           <nav className="flex items-center justify-between h-[72px]">
 
             {/* Logo */}
-            <Link href="/" className="flex items-center gap-2.5 group" aria-label="Nature Lite Foods Home">
+            <Link href="/" className="flex items-center gap-2 group" aria-label="Nature Lite Foods Home">
               <Image
                 src="/images/logo.png"
                 alt="Nature Lite Foods"
-                width={48}
-                height={48}
-                className="object-contain transition-opacity duration-200 group-hover:opacity-85 flex-shrink-0"
+                width={44}
+                height={44}
+                className="object-contain transition-opacity duration-200 group-hover:opacity-85 flex-shrink-0 rounded-full"
                 style={{ filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.14))' }}
                 priority
               />
-              <div className="hidden sm:flex flex-col gap-0">
-                <span className="font-display text-[1.05rem] font-semibold tracking-[-0.01em] leading-none text-brand-charcoal group-hover:text-brand-brown transition-colors duration-200">
+              <div className="flex flex-col gap-0">
+                <span className="font-display text-[0.92rem] sm:text-[1.05rem] font-semibold tracking-[-0.01em] leading-none text-brand-charcoal group-hover:text-brand-brown transition-colors duration-200">
                   Nature Lite Foods
                 </span>
-                <span className="text-[8.5px] tracking-[0.14em] text-brand-muted uppercase leading-none mt-0.5">
+                <span className="hidden sm:block text-[8.5px] tracking-[0.14em] text-brand-muted uppercase leading-none mt-0.5">
                   Pure · Fresh · Naturally Processed
                 </span>
               </div>

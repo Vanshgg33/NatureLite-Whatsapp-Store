@@ -138,7 +138,7 @@ function LoadingScreen({ onDone }: { onDone: () => void }) {
 
         {/* Eyebrow */}
         <p style={{ fontFamily: 'monospace', fontSize: 9, letterSpacing: '0.32em',
-          textTransform: 'uppercase', color: 'rgba(184,138,20,0.38)', marginBottom: 10 }}>
+          textTransform: 'uppercase', color: 'rgba(210,168,60,0.90)', marginBottom: 10 }}>
           Est. Traditional Methods
         </p>
 
@@ -488,16 +488,16 @@ export default function HomePage() {
         gap: '4px 6px',
         textAlign: 'center',
       }}>
-        <MapPin size={11} style={{ color: 'rgba(140,200,40,0.70)', flexShrink: 0 }} />
+        <MapPin size={11} style={{ color: 'rgba(160,230,60,1)', flexShrink: 0 }} />
         <span style={{
           fontFamily: 'monospace',
           fontSize: 10,
           letterSpacing: '0.08em',
-          color: 'rgba(160,220,60,0.65)',
+          color: 'rgba(200,240,120,0.95)',
           lineHeight: 1.4,
         }}>
           Delivering to{' '}
-          <strong style={{ color: 'rgba(190,240,80,0.85)', fontWeight: 600 }}>
+          <strong style={{ color: '#d4f07a', fontWeight: 600 }}>
             Raipur · Bhilai · Durg · Bilaspur
           </strong>
           {' '}(CG)

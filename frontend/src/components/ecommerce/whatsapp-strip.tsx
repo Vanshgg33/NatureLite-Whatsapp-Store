@@ -94,12 +94,12 @@ export default function WhatsAppStrip() {
               fontStyle: item.icon ? 'italic' : 'normal',
               letterSpacing: item.icon ? '0.01em' : '0.09em',
               color: item.icon
-                ? 'rgba(245,228,195,0.90)'
-                : 'rgba(196,150,10,0.72)',
+                ? 'rgba(255,240,210,1.0)'
+                : 'rgba(220,175,60,1.0)',
             }}>
               {item.text}
             </span>
-            <span style={{ color: 'rgba(196,150,10,0.35)', fontSize: 8, padding: '0 4px' }}>✦</span>
+            <span style={{ color: 'rgba(220,175,60,0.60)', fontSize: 8, padding: '0 4px' }}>✦</span>
           </span>
         ))}
       </div>
