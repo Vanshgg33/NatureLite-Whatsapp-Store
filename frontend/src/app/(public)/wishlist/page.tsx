@@ -167,14 +167,15 @@ export default function WishlistPage() {
                 {/* Image */}
                 <Link href={`/products/${item.slug}`} className="relative block aspect-square overflow-hidden" style={{ background: 'rgba(242,236,224,0.60)' }}>
                   {item.image ? (
-                    <Image
-                      src={item.image}
-                      alt={item.name}
-                      fill
-                      className="object-contain transition-transform duration-500 group-hover:scale-105"
-                      style={{ padding: '8%' }}
-                      loading="lazy"
-                    />
+                    <div className="absolute inset-[7%] transition-transform duration-500 group-hover:scale-105">
+                      <Image
+                        src={item.image}
+                        alt={item.name}
+                        fill
+                        className="object-contain"
+                        loading="lazy"
+                      />
+                    </div>
                   ) : (
                     <div className="absolute inset-0 flex items-center justify-center">
                       <span className="font-display font-black" style={{ fontSize: '4rem', color: 'rgba(160,112,16,0.15)', letterSpacing: '-0.04em' }}>

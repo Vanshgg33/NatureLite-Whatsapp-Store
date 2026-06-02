@@ -42,13 +42,9 @@ export function CartItem({ item, variant = 'default' }: CartItemProps) {
           className="relative w-16 h-16 rounded-lg overflow-hidden bg-brand-sand flex-shrink-0"
         >
           {item.image ? (
-            <Image
-              src={item.image}
-              alt={item.name}
-              fill
-              className="object-contain"
-              style={{ padding: '6%' }}
-            />
+            <div className="absolute inset-[6%]">
+              <Image src={item.image} alt={item.name} fill className="object-contain" />
+            </div>
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <span className="font-display text-xl text-brand-brown/20">
@@ -83,13 +79,9 @@ export function CartItem({ item, variant = 'default' }: CartItemProps) {
         className="relative w-24 h-24 sm:w-32 sm:h-32 rounded-xl overflow-hidden bg-brand-sand flex-shrink-0"
       >
         {item.image ? (
-          <Image
-            src={item.image}
-            alt={item.name}
-            fill
-            className="object-contain"
-            style={{ padding: '8%' }}
-          />
+          <div className="absolute inset-[6%]">
+            <Image src={item.image} alt={item.name} fill className="object-contain" />
+          </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <span className="font-display text-3xl text-brand-brown/20">

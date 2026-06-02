@@ -615,7 +615,7 @@ export default function QuickOrderPage() {
                             }}
                           >
                             {item.image
-                              ? <Image src={item.image} alt={item.name} fill className="object-contain" style={{ padding: '8%' }} />
+                              ? <><div className="absolute inset-[8%]"><Image src={item.image} alt={item.name} fill className="object-contain" /></div></>
                               : <div className="absolute inset-0 flex items-center justify-center font-display font-black text-amber-800/20 text-xl">{item.name.charAt(0)}</div>
                             }
                           </div>
@@ -733,7 +733,7 @@ export default function QuickOrderPage() {
                           }}
                         >
                           {item.image
-                            ? <Image src={item.image} alt={item.name} fill className="object-contain" style={{ padding: '8%' }} />
+                            ? <><div className="absolute inset-[8%]"><Image src={item.image} alt={item.name} fill className="object-contain" /></div></>
                             : <div className="absolute inset-0 flex items-center justify-center font-display font-black text-amber-800/20 text-xl">{item.name.charAt(0)}</div>
                           }
                         </div>

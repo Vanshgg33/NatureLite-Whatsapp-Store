@@ -152,17 +152,19 @@ export function PremiumProductCard({
               {!imageLoaded && (
                 <div className="absolute inset-0 animate-pulse" style={{ background: 'linear-gradient(135deg,#f5efe3,#ede7d5)' }} />
               )}
-              <Image
-                src={imageError ? '/images/placeholder-product.svg' : (product.images?.[0] || '/images/placeholder-product.svg')}
-                alt={product.name}
-                fill
-                className={`object-contain transition-transform duration-500 ${isHovered ? 'scale-[1.05]' : 'scale-100'} ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
-                style={{ padding: '6%' }}
-                onLoad={() => setImageLoaded(true)}
-                onError={() => { setImageError(true); setImageLoaded(true); }}
-                sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-                unoptimized={imageError}
-              />
+              {/* inset wrapper so image never touches the card border */}
+              <div className={`absolute inset-[5%] transition-transform duration-500 ${isHovered ? 'scale-[1.05]' : 'scale-100'}`}>
+                <Image
+                  src={imageError ? '/images/placeholder-product.svg' : (product.images?.[0] || '/images/placeholder-product.svg')}
+                  alt={product.name}
+                  fill
+                  className={`object-contain ${imageLoaded ? 'opacity-100' : 'opacity-0'} transition-opacity duration-500`}
+                  onLoad={() => setImageLoaded(true)}
+                  onError={() => { setImageError(true); setImageLoaded(true); }}
+                  sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+                  unoptimized={imageError}
+                />
+              </div>
 
               {/* Shine overlay */}
               <div
@@ -386,13 +388,13 @@ export function PremiumProductCard({
         )}>
           <div className="relative aspect-square overflow-hidden bg-brand-cream">
             {!imageLoaded && <div className="absolute inset-0 bg-gradient-to-br from-brand-cream to-brand-sand animate-pulse" />}
-            <motion.div className="relative w-full h-full"
+            <motion.div
+              className="absolute inset-[7%]"
               animate={{ scale: isHovered ? 1.07 : 1 }}
               transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
             >
               <Image src={imageError ? '/images/placeholder-product.svg' : (product.images?.[0] || '/images/placeholder-product.svg')} alt={product.name}
                 fill className={`object-contain transition-opacity duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
-                style={{ padding: '8%' }}
                 onLoad={() => setImageLoaded(true)}
                 onError={() => { setImageError(true); setImageLoaded(true); }}
                 sizes="(max-width: 768px) 100vw, 33vw"
@@ -530,8 +532,10 @@ export function PremiumProductCardCompact({ product, index = 0 }: Omit<PremiumPr
         className="flex items-center gap-4 p-3 bg-white rounded-2xl hover:shadow-brand-md transition-all duration-300"
       >
         <div className="relative w-20 h-20 rounded-xl overflow-hidden bg-brand-cream flex-shrink-0">
-          <Image src={product.images[0] || '/images/placeholder-product.jpg'} alt={product.name}
-            fill className="object-contain group-hover:scale-110 transition-transform duration-500" sizes="80px" style={{ padding: '8%' }} />
+          <div className="absolute inset-[8%] group-hover:scale-110 transition-transform duration-500">
+            <Image src={product.images[0] || '/images/placeholder-product.jpg'} alt={product.name}
+              fill className="object-contain" sizes="64px" />
+          </div>
         </div>
         <div className="flex-1 min-w-0">
           <h4 className="font-medium text-brand-charcoal truncate group-hover:text-brand-green transition-colors">{product.name}</h4>

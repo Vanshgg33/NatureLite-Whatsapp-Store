@@ -187,36 +187,24 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
                   <button
                     key={cat._id}
                     onClick={() => handleCatChange(active ? null : cat._id)}
-                    className="flex-shrink-0 flex items-center gap-2.5 pr-5 pl-2 py-2 rounded-2xl text-sm font-semibold transition-all duration-200"
+                    className="flex-shrink-0 flex items-center gap-1.5 sm:gap-2.5 px-3 sm:pr-5 sm:pl-2 py-2 rounded-2xl text-sm font-semibold transition-all duration-200"
                     style={active
                       ? { background: '#78340f', color: '#fef3c7', boxShadow: '0 4px 18px -3px rgba(120,52,15,0.55)', border: '1.5px solid rgba(251,191,36,0.45)' }
                       : { background: '#fffbf5', color: '#78340f', border: '1.5px solid rgba(120,52,15,0.22)', boxShadow: '0 2px 8px -2px rgba(120,52,15,0.10)' }
                     }
                   >
-                    {/* Side-by-side image duo */}
-                    <span className="flex items-center -space-x-2 flex-shrink-0">
+                    <span className="hidden sm:flex items-center -space-x-2 flex-shrink-0">
                       <span className="relative w-9 h-9 rounded-xl overflow-hidden ring-2 ring-white flex-shrink-0" style={{ background: '#451a03' }}>
-                        <Image
-                          src="/images/wood-press-machine.png"
-                          alt="Ghani machine"
-                          fill
-                          className="object-cover object-center"
-                          sizes="36px"
-                        />
+                        <Image src="/images/wood-press-machine.png" alt="Ghani machine" fill className="object-cover object-center" sizes="36px" />
                       </span>
                       <span className="relative w-9 h-9 rounded-xl overflow-hidden ring-2 ring-white flex-shrink-0" style={{ background: '#451a03' }}>
-                        <Image
-                          src="/images/wood-pressed-oil-bottle.png"
-                          alt="Wood pressed oil"
-                          fill
-                          className="object-cover object-center"
-                          sizes="36px"
-                        />
+                        <Image src="/images/wood-pressed-oil-bottle.png" alt="Wood pressed oil" fill className="object-cover object-center" sizes="36px" />
                       </span>
                     </span>
+                    <span className="sm:hidden text-base">🫙</span>
                     <span className="flex flex-col items-start leading-tight">
                       <span className="text-sm font-bold">{cat.name.trim()}</span>
-                      <span className="text-[10px] font-medium opacity-60 tracking-wide">Pure · Natural</span>
+                      <span className="hidden sm:block text-[10px] font-medium opacity-60 tracking-wide">Pure · Natural</span>
                     </span>
                   </button>
                 );
@@ -226,24 +214,19 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
                   <button
                     key={cat._id}
                     onClick={() => handleCatChange(active ? null : cat._id)}
-                    className="flex-shrink-0 flex items-center gap-2.5 pr-5 pl-2 py-2 rounded-2xl text-sm font-semibold transition-all duration-200"
+                    className="flex-shrink-0 flex items-center gap-1.5 sm:gap-2.5 px-3 sm:pr-5 sm:pl-2 py-2 rounded-2xl text-sm font-semibold transition-all duration-200"
                     style={active
                       ? { background: '#7c2d12', color: '#fef3c7', boxShadow: '0 4px 18px -3px rgba(124,45,18,0.55)', border: '1.5px solid rgba(251,191,36,0.45)' }
                       : { background: '#fffaf0', color: '#7c2d12', border: '1.5px solid rgba(124,45,18,0.22)', boxShadow: '0 2px 8px -2px rgba(124,45,18,0.10)' }
                     }
                   >
-                    <span className="relative w-9 h-9 rounded-xl overflow-hidden ring-2 ring-white flex-shrink-0" style={{ background: '#7c2d12' }}>
-                      <Image
-                        src="/images/bilona-method.png"
-                        alt="Bilona method"
-                        fill
-                        className="object-cover object-left"
-                        sizes="36px"
-                      />
+                    <span className="hidden sm:block relative w-9 h-9 rounded-xl overflow-hidden ring-2 ring-white flex-shrink-0" style={{ background: '#7c2d12' }}>
+                      <Image src="/images/bilona-method.png" alt="Bilona method" fill className="object-cover object-left" sizes="36px" />
                     </span>
+                    <span className="sm:hidden text-base">🧈</span>
                     <span className="flex flex-col items-start leading-tight">
                       <span className="text-sm font-bold">{cat.name.trim()}</span>
-                      <span className="text-[10px] font-medium opacity-60 tracking-wide">Hand-Churned · A2</span>
+                      <span className="hidden sm:block text-[10px] font-medium opacity-60 tracking-wide">Hand-Churned · A2</span>
                     </span>
                   </button>
                 );
@@ -253,21 +236,17 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
                   <button
                     key={cat._id}
                     onClick={() => handleCatChange(active ? null : cat._id)}
-                    className="flex-shrink-0 flex items-center gap-2.5 pr-5 pl-2 py-2 rounded-2xl text-sm font-semibold transition-all duration-200"
+                    className="flex-shrink-0 flex items-center gap-1.5 sm:gap-2.5 px-3 sm:pr-5 sm:pl-2 py-2 rounded-2xl text-sm font-semibold transition-all duration-200"
                     style={active
                       ? { background: '#78400a', color: '#fef3c7', boxShadow: '0 4px 18px -3px rgba(120,64,10,0.55)', border: '1.5px solid rgba(251,191,36,0.45)' }
                       : { background: '#fffbf0', color: '#78400a', border: '1.5px solid rgba(120,64,10,0.20)', boxShadow: '0 2px 8px -2px rgba(120,64,10,0.10)' }
                     }
                   >
-                    <span
-                      className="flex items-center justify-center w-9 h-9 rounded-xl flex-shrink-0 ring-2 ring-white"
-                      style={{ background: active ? 'rgba(255,255,255,0.15)' : '#fef3c7', fontSize: 20 }}
-                    >
-                      🌾
-                    </span>
+                    <span className="hidden sm:flex items-center justify-center w-9 h-9 rounded-xl flex-shrink-0 ring-2 ring-white" style={{ background: active ? 'rgba(255,255,255,0.15)' : '#fef3c7', fontSize: 20 }}>🌾</span>
+                    <span className="sm:hidden text-base">🌾</span>
                     <span className="flex flex-col items-start leading-tight">
                       <span className="text-sm font-bold">{cat.name.trim()}</span>
-                      <span className="text-[10px] font-medium opacity-60 tracking-wide">Stone-ground · Pure</span>
+                      <span className="hidden sm:block text-[10px] font-medium opacity-60 tracking-wide">Stone-ground · Pure</span>
                     </span>
                   </button>
                 );
@@ -277,21 +256,17 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
                   <button
                     key={cat._id}
                     onClick={() => handleCatChange(active ? null : cat._id)}
-                    className="flex-shrink-0 flex items-center gap-2.5 pr-5 pl-2 py-2 rounded-2xl text-sm font-semibold transition-all duration-200"
+                    className="flex-shrink-0 flex items-center gap-1.5 sm:gap-2.5 px-3 sm:pr-5 sm:pl-2 py-2 rounded-2xl text-sm font-semibold transition-all duration-200"
                     style={active
                       ? { background: '#7f1d1d', color: '#fef2f2', boxShadow: '0 4px 18px -3px rgba(127,29,29,0.55)', border: '1.5px solid rgba(254,202,202,0.45)' }
                       : { background: '#fff5f5', color: '#7f1d1d', border: '1.5px solid rgba(127,29,29,0.18)', boxShadow: '0 2px 8px -2px rgba(127,29,29,0.10)' }
                     }
                   >
-                    <span
-                      className="flex items-center justify-center w-9 h-9 rounded-xl flex-shrink-0 ring-2 ring-white"
-                      style={{ background: active ? 'rgba(255,255,255,0.15)' : '#fee2e2', fontSize: 20 }}
-                    >
-                      🌶️
-                    </span>
+                    <span className="hidden sm:flex items-center justify-center w-9 h-9 rounded-xl flex-shrink-0 ring-2 ring-white" style={{ background: active ? 'rgba(255,255,255,0.15)' : '#fee2e2', fontSize: 20 }}>🌶️</span>
+                    <span className="sm:hidden text-base">🌶️</span>
                     <span className="flex flex-col items-start leading-tight">
                       <span className="text-sm font-bold">{cat.name.trim()}</span>
-                      <span className="text-[10px] font-medium opacity-60 tracking-wide">Farm Fresh · Aromatic</span>
+                      <span className="hidden sm:block text-[10px] font-medium opacity-60 tracking-wide">Farm Fresh · Aromatic</span>
                     </span>
                   </button>
                 );
@@ -301,21 +276,17 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
                   <button
                     key={cat._id}
                     onClick={() => handleCatChange(active ? null : cat._id)}
-                    className="flex-shrink-0 flex items-center gap-2.5 pr-5 pl-2 py-2 rounded-2xl text-sm font-semibold transition-all duration-200"
+                    className="flex-shrink-0 flex items-center gap-1.5 sm:gap-2.5 px-3 sm:pr-5 sm:pl-2 py-2 rounded-2xl text-sm font-semibold transition-all duration-200"
                     style={active
                       ? { background: '#92400e', color: '#fffbeb', boxShadow: '0 4px 18px -3px rgba(146,64,14,0.55)', border: '1.5px solid rgba(253,230,138,0.45)' }
                       : { background: '#fffbeb', color: '#92400e', border: '1.5px solid rgba(146,64,14,0.18)', boxShadow: '0 2px 8px -2px rgba(146,64,14,0.10)' }
                     }
                   >
-                    <span
-                      className="flex items-center justify-center w-9 h-9 rounded-xl flex-shrink-0 ring-2 ring-white"
-                      style={{ background: active ? 'rgba(255,255,255,0.15)' : '#fef3c7', fontSize: 20 }}
-                    >
-                      🍯
-                    </span>
+                    <span className="hidden sm:flex items-center justify-center w-9 h-9 rounded-xl flex-shrink-0 ring-2 ring-white" style={{ background: active ? 'rgba(255,255,255,0.15)' : '#fef3c7', fontSize: 20 }}>🍯</span>
+                    <span className="sm:hidden text-base">🍯</span>
                     <span className="flex flex-col items-start leading-tight">
                       <span className="text-sm font-bold">{cat.name.trim()}</span>
-                      <span className="text-[10px] font-medium opacity-60 tracking-wide">Raw · Unrefined</span>
+                      <span className="hidden sm:block text-[10px] font-medium opacity-60 tracking-wide">Raw · Unrefined</span>
                     </span>
                   </button>
                 );
