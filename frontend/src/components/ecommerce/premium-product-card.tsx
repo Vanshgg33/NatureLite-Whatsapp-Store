@@ -142,7 +142,6 @@ export function PremiumProductCard({
               boxShadow: isHovered ? '0 12px 32px rgba(0,0,0,0.13)' : '0 1px 3px rgba(0,0,0,0.06)',
               transform: `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
               transition: isHovered ? 'transform 0.10s ease, box-shadow 0.25s ease' : 'transform 0.45s ease, box-shadow 0.25s ease',
-              transformStyle: 'preserve-3d',
             }}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
@@ -152,13 +151,12 @@ export function PremiumProductCard({
               {!imageLoaded && (
                 <div className="absolute inset-0 animate-pulse" style={{ background: 'linear-gradient(135deg,#f5efe3,#ede7d5)' }} />
               )}
-              {/* inset wrapper so image never touches the card border */}
-              <div className={`absolute inset-[5%] transition-transform duration-500 ${isHovered ? 'scale-[1.05]' : 'scale-100'}`}>
+              <div className={`absolute inset-0 transition-transform duration-500 ${isHovered ? 'scale-[1.05]' : 'scale-100'}`}>
                 <Image
                   src={imageError ? '/images/placeholder-product.svg' : (product.images?.[0] || '/images/placeholder-product.svg')}
                   alt={product.name}
                   fill
-                  className={`object-contain ${imageLoaded ? 'opacity-100' : 'opacity-0'} transition-opacity duration-500`}
+                  className={`object-cover ${imageLoaded ? 'opacity-100' : 'opacity-0'} transition-opacity duration-500`}
                   onLoad={() => setImageLoaded(true)}
                   onError={() => { setImageError(true); setImageLoaded(true); }}
                   sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
