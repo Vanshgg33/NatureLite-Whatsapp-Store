@@ -1297,6 +1297,11 @@ class ApiClient {
     await this.client.put('/store-stock/bulk', { storeId, items });
   }
 
+  async getStoreStockSummary(storeId: string): Promise<{ total: number; lowStock: number; outOfStock: number; healthyStock: number }> {
+    const response = await this.client.get<ApiResponse<{ total: number; lowStock: number; outOfStock: number; healthyStock: number }>>(`/store-stock/store/${storeId}/summary`);
+    return response.data.data;
+  }
+
   async getLowStockByStore(storeId: string): Promise<StoreStockItem[]> {
     const response = await this.client.get<ApiResponse<StoreStockItem[]>>(`/store-stock/store/${storeId}/low-stock`);
     return response.data.data;

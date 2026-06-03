@@ -351,6 +351,45 @@ export class StoreStockRepository extends BaseRepository<StoreStockDocument> {
     await this.model.bulkWrite(ops);
   }
 
+  async getStockSummaryByStore(storeId: Types.ObjectId): Promise<{
+    total: number;
+    lowStock: number;
+    outOfStock: number;
+    healthyStock: number;
+  }> {
+    const result = await this.model
+      .aggregate([
+        { $match: { store: storeId } },
+        {
+          $addFields: {
+            totalStock: { $add: ['$stock', { $ifNull: [{ $sum: '$variantStocks.stock' }, 0] }] },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: 1 },
+            outOfStock: { $sum: { $cond: [{ $lte: ['$totalStock', 0] }, 1, 0] } },
+            lowStock: {
+              $sum: {
+                $cond: [
+                  { $and: [{ $gt: ['$totalStock', 0] }, { $lte: ['$totalStock', '$lowStockThreshold'] }] },
+                  1,
+                  0,
+                ],
+              },
+            },
+            healthyStock: { $sum: { $cond: [{ $gt: ['$totalStock', '$lowStockThreshold'] }, 1, 0] } },
+          },
+        },
+      ])
+      .exec();
+    const r = result[0];
+    return r
+      ? { total: r.total, lowStock: r.lowStock, outOfStock: r.outOfStock, healthyStock: r.healthyStock }
+      : { total: 0, lowStock: 0, outOfStock: 0, healthyStock: 0 };
+  }
+
   async countLowStockByStore(storeId: Types.ObjectId): Promise<number> {
     const result = await this.model
       .aggregate([

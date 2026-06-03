@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { api } from '@/lib/api';
-import { formatCurrency, formatDate, getStatusColor } from '@/lib/utils';
+import { formatCurrency, formatDate, getStatusColor, useDebouncedValue } from '@/lib/utils';
 import { OrderStatus } from '@/types';
 
 const statusOptions = [
@@ -28,12 +28,13 @@ const statusOptions = [
 
 export default function OrdersPage() {
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['orders', page, search, status],
-    queryFn: () => api.getOrders({ page, limit: 20, search, status: (status || undefined) as OrderStatus | undefined }),
+    queryKey: ['orders', page, debouncedSearch, status],
+    queryFn: () => api.getOrders({ page, limit: 20, search: debouncedSearch, status: (status || undefined) as OrderStatus | undefined }),
   });
 
   return (

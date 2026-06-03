@@ -11,18 +11,19 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { api } from '@/lib/api';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, useDebouncedValue } from '@/lib/utils';
 import { User } from '@/types';
 
 export default function CustomersPage() {
   const router = useRouter();
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['customers', page, search],
-    queryFn: () => api.getUsers({ page, limit: 20, search }),
+    queryKey: ['customers', page, debouncedSearch],
+    queryFn: () => api.getUsers({ page, limit: 20, search: debouncedSearch }),
   });
 
   const blockMutation = useMutation({

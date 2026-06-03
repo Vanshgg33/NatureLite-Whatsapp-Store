@@ -259,6 +259,11 @@ export class StoreStockService {
     return this.storeStockRepository.aggregateStockByProducts(objIds);
   }
 
+  async getStockSummary(storeId: string): Promise<{ total: number; lowStock: number; outOfStock: number; healthyStock: number }> {
+    const storeObjId = parseObjectId(storeId, 'storeId');
+    return this.storeStockRepository.getStockSummaryByStore(storeObjId);
+  }
+
   async getLowStockByStore(storeId: string): Promise<StoreStock[]> {
     const storeObjId = parseObjectId(storeId, 'storeId');
     return this.storeStockRepository.findLowStockByStore(storeObjId);

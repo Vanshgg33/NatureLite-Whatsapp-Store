@@ -199,7 +199,7 @@ export class ProductRepository extends BaseRepository<ProductDocument> {
     ).exec();
   }
 
-  async findLowStock(): Promise<ProductDocument[]> {
+  async findLowStock(limit = 20): Promise<ProductDocument[]> {
     return this.model
       .aggregate([
         { $addFields: { totalStock: { $add: ['$stock', { $ifNull: [{ $sum: '$variants.stock' }, 0] }] } } },
@@ -210,6 +210,8 @@ export class ProductRepository extends BaseRepository<ProductDocument> {
             $expr: { $lte: ['$totalStock', '$lowStockThreshold'] },
           },
         },
+        { $sort: { totalStock: 1 } },
+        { $limit: limit },
       ])
       .exec() as unknown as Promise<ProductDocument[]>;
   }

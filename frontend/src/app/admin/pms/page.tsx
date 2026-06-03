@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useDebouncedValue } from '@/lib/utils';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Cog, Search, Plus, Trash2, FlaskConical, BarChart2, ChevronDown, ChevronUp,
@@ -34,6 +35,7 @@ export default function PMSPage() {
   const { toast } = useToast();
   const [selectedStoreId, setSelectedStoreId] = useState<string>(user?.storeId || '');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [addDialog, setAddDialog] = useState(false);
   const [newName, setNewName] = useState('');
   const [newUnit, setNewUnit] = useState('kg');
@@ -73,8 +75,8 @@ export default function PMSPage() {
     : user?.storeName || 'Store';
 
   const { data: materials = [], isLoading } = useQuery<RawMaterial[]>({
-    queryKey: ['raw-materials', selectedStoreId, search],
-    queryFn: () => api.getRawMaterials(selectedStoreId, search ? { search } : undefined),
+    queryKey: ['raw-materials', selectedStoreId, debouncedSearch],
+    queryFn: () => api.getRawMaterials(selectedStoreId, debouncedSearch ? { search: debouncedSearch } : undefined),
     enabled: !!selectedStoreId,
   });
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useDebouncedValue } from '@/lib/utils';
 import { useRouter, useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
@@ -70,8 +71,10 @@ export default function EditProductPage() {
   const [allergen, setAllergen] = useState('');
   const [allergenActive, setAllergenActive] = useState(false);
   const [relatedSearch, setRelatedSearch] = useState('');
+  const debouncedRelatedSearch = useDebouncedValue(relatedSearch, 300);
   const [relatedProducts, setRelatedProducts] = useState<{ id: string; name: string }[]>([]);
   const [upsellSearch, setUpsellSearch] = useState('');
+  const debouncedUpsellSearch = useDebouncedValue(upsellSearch, 300);
   const [upsellProducts, setUpsellProducts] = useState<{ id: string; name: string }[]>([]);
   const [productVideos, setProductVideos] = useState<string[]>([]);
   const [newVideoUrl, setNewVideoUrl] = useState('');
@@ -88,14 +91,14 @@ export default function EditProductPage() {
   });
   const { data: categories } = useQuery({ queryKey: ['categories'], queryFn: () => api.getCategories({ limit: 100 }) });
   const { data: searchResults } = useQuery({
-    queryKey: ['product-search', relatedSearch],
-    queryFn: () => relatedSearch.length > 1 ? api.searchProducts(relatedSearch) : Promise.resolve([]),
-    enabled: relatedSearch.length > 1,
+    queryKey: ['product-search', debouncedRelatedSearch],
+    queryFn: () => debouncedRelatedSearch.length > 1 ? api.searchProducts(debouncedRelatedSearch) : Promise.resolve([]),
+    enabled: debouncedRelatedSearch.length > 1,
   });
   const { data: upsellResults } = useQuery({
-    queryKey: ['product-search-upsell', upsellSearch],
-    queryFn: () => upsellSearch.length > 1 ? api.searchProducts(upsellSearch) : Promise.resolve([]),
-    enabled: upsellSearch.length > 1,
+    queryKey: ['product-search-upsell', debouncedUpsellSearch],
+    queryFn: () => debouncedUpsellSearch.length > 1 ? api.searchProducts(debouncedUpsellSearch) : Promise.resolve([]),
+    enabled: debouncedUpsellSearch.length > 1,
   });
 
   useEffect(() => {

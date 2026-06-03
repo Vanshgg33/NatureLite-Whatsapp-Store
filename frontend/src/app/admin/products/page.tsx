@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { api } from '@/lib/api';
-import { formatCurrency, getProductTotalStock } from '@/lib/utils';
+import { formatCurrency, getProductTotalStock, useDebouncedValue } from '@/lib/utils';
 import { Product, Category } from '@/types';
 
 type SortField = 'name' | 'sku' | 'price' | 'stock' | 'isActive' | 'createdAt';
@@ -27,6 +27,7 @@ function SortIcon({ field, current, dir }: { field: SortField; current: SortFiel
 
 export default function ProductsPage() {
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkCategoryId, setBulkCategoryId] = useState('');
@@ -37,8 +38,8 @@ export default function ProductsPage() {
   const queryClient = useQueryClient();
 
   const { data: rawData, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['products', page, search, filterCategory, sortBy, sortDir],
-    queryFn: () => api.getProducts({ page, limit: 20, search, category: filterCategory || undefined, sortBy, sortOrder: sortDir }),
+    queryKey: ['products', page, debouncedSearch, filterCategory, sortBy, sortDir],
+    queryFn: () => api.getProducts({ page, limit: 20, search: debouncedSearch, category: filterCategory || undefined, sortBy, sortOrder: sortDir }),
   });
 
   const { data: categories } = useQuery({

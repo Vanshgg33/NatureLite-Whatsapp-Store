@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useDebouncedValue } from '@/lib/utils';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Boxes, Search, AlertTriangle, Package, FileText,
@@ -30,6 +31,7 @@ export default function IMSPage() {
   const { toast } = useToast();
   const [selectedStoreId, setSelectedStoreId] = useState<string>(user?.storeId || '');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [editItem, setEditItem] = useState<StoreStockItem | null>(null);
@@ -59,14 +61,14 @@ export default function IMSPage() {
   const storeName = selectedStore?.name || user?.storeName || 'Store';
 
   const { data: stockData, isLoading } = useQuery({
-    queryKey: ['store-stock', selectedStoreId, page, search, lowStockOnly],
-    queryFn: () => api.getStoreStock(selectedStoreId, { page, limit: 20, search, lowStockOnly }),
+    queryKey: ['store-stock', selectedStoreId, page, debouncedSearch, lowStockOnly],
+    queryFn: () => api.getStoreStock(selectedStoreId, { page, limit: 20, search: debouncedSearch, lowStockOnly }),
     enabled: !!selectedStoreId,
   });
 
-  const { data: allStockData } = useQuery({
-    queryKey: ['store-stock-all', selectedStoreId],
-    queryFn: () => api.getStoreStock(selectedStoreId, { page: 1, limit: 1000 }),
+  const { data: stockSummary } = useQuery({
+    queryKey: ['store-stock-summary', selectedStoreId],
+    queryFn: () => api.getStoreStockSummary(selectedStoreId),
     enabled: !!selectedStoreId,
   });
 
@@ -130,7 +132,8 @@ export default function IMSPage() {
       };
     }
 
-    const items = (allStockData?.items ?? stockData?.items ?? []) as StoreStockItem[];
+    const allData = await api.getStoreStock(selectedStoreId, { page: 1, limit: 5000 });
+    const items = (allData?.items ?? stockData?.items ?? []) as StoreStockItem[];
     const now = new Date();
     const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
     const inStock = items.filter((i) => getStoreItemTotalStock(i) > i.lowStockThreshold);
@@ -175,30 +178,28 @@ export default function IMSPage() {
   const statCards = [
     {
       label: 'Total Products',
-      value: allStockData?.total ?? stockData?.total ?? 0,
+      value: stockSummary?.total ?? stockData?.total ?? 0,
       icon: Package,
       color: 'text-gray-700',
       bg: 'bg-gray-50',
     },
     {
       label: 'Low Stock',
-      value: (allStockData?.items ?? []).filter((i: StoreStockItem) => {
-        const s = getStoreItemTotalStock(i); return s > 0 && s <= i.lowStockThreshold;
-      }).length,
+      value: stockSummary?.lowStock ?? 0,
       icon: TrendingDown,
       color: 'text-amber-600',
       bg: 'bg-amber-50',
     },
     {
       label: 'Out of Stock',
-      value: (allStockData?.items ?? []).filter((i: StoreStockItem) => getStoreItemTotalStock(i) <= 0).length,
+      value: stockSummary?.outOfStock ?? 0,
       icon: AlertTriangle,
       color: 'text-red-600',
       bg: 'bg-red-50',
     },
     {
       label: 'Healthy Stock',
-      value: (allStockData?.items ?? []).filter((i: StoreStockItem) => getStoreItemTotalStock(i) > i.lowStockThreshold).length,
+      value: stockSummary?.healthyStock ?? 0,
       icon: CheckCircle2,
       color: 'text-emerald-600',
       bg: 'bg-emerald-50',

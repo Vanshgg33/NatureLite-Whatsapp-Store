@@ -378,8 +378,8 @@ export class ProductsService implements OnModuleInit {
     await this.productRepository.incrementViewCount(parseObjectId(id, 'id'));
   }
 
-  async getLowStockProducts(): Promise<Product[]> {
-    return this.productRepository.findLowStock() as Promise<Product[]>;
+  async getLowStockProducts(limit = 20): Promise<Product[]> {
+    return this.productRepository.findLowStock(limit) as Promise<Product[]>;
   }
 
   async searchProducts(searchTerm: string, limit: number = 20): Promise<Product[]> {
@@ -399,15 +399,13 @@ export class ProductsService implements OnModuleInit {
   }
 
   async deleteMany(ids: string[]): Promise<{ deletedCount: number }> {
-    let deletedCount = 0;
-    for (const id of ids) {
-      try {
-        await this.delete(id);
-        deletedCount++;
-      } catch (err) {
-        this.logger.error(`Failed to delete product ${id}: ${(err as Error).message}`);
+    const results = await Promise.allSettled(ids.map((id) => this.delete(id)));
+    const deletedCount = results.filter((r) => r.status === 'fulfilled').length;
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') {
+        this.logger.error(`Failed to delete product ${ids[i]}: ${(r.reason as Error).message}`);
       }
-    }
+    });
     return { deletedCount };
   }
 

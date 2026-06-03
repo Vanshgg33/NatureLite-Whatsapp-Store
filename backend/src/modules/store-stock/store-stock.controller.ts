@@ -43,6 +43,11 @@ export class StoreStockController {
     return this.storeStockService.bulkSetStock(dto);
   }
 
+  @Get('store/:storeId/summary')
+  async getStockSummary(@Param('storeId') storeId: string) {
+    return this.storeStockService.getStockSummary(storeId);
+  }
+
   @Get('store/:storeId/low-stock')
   async getLowStockByStore(@Param('storeId') storeId: string) {
     return this.storeStockService.getLowStockByStore(storeId);

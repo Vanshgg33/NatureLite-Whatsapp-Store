@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useDebouncedValue } from '@/lib/utils';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   FlaskConical, Search, FileText, TrendingDown, AlertTriangle, CheckCircle2,
@@ -40,6 +41,7 @@ export default function RMSPage() {
   const queryClient = useQueryClient();
   const [selectedStoreId, setSelectedStoreId] = useState<string>(user?.storeId || '');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [reportDate, setReportDate] = useState('');
 
   const [editMaterial, setEditMaterial] = useState<RawMaterial | null>(null);
@@ -68,8 +70,8 @@ export default function RMSPage() {
     : user?.storeName || 'Store';
 
   const { data: materials = [], isLoading } = useQuery<RawMaterial[]>({
-    queryKey: ['raw-materials', selectedStoreId, search],
-    queryFn: () => api.getRawMaterials(selectedStoreId, search ? { search } : undefined),
+    queryKey: ['raw-materials', selectedStoreId, debouncedSearch],
+    queryFn: () => api.getRawMaterials(selectedStoreId, debouncedSearch ? { search: debouncedSearch } : undefined),
     enabled: !!selectedStoreId,
   });
 

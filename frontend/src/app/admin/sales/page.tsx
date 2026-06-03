@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useDebouncedValue } from '@/lib/utils';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Receipt, Plus, Search, ShoppingBag, Trash2, Camera, Upload, X, Bell, Pencil, FileText, Printer } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -46,6 +47,7 @@ export default function SalesPage() {
   const { user } = useAdminAuthStore();
   const [selectedStoreId, setSelectedStoreId] = useState<string>(user?.storeId || '');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [saleTypeFilter, setSaleTypeFilter] = useState('');
   const [page, setPage] = useState(1);
   const [showLogSale, setShowLogSale] = useState(false);
@@ -57,6 +59,7 @@ export default function SalesPage() {
   const [saleType, setSaleType] = useState<'walk_in' | 'delivery'>('walk_in');
   const [cartItems, setCartItems] = useState<CartLineItem[]>([]);
   const [productSearch, setProductSearch] = useState('');
+  const debouncedProductSearch = useDebouncedValue(productSearch, 300);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
@@ -83,6 +86,7 @@ export default function SalesPage() {
   const [editPaymentProofUrl, setEditPaymentProofUrl] = useState<string | null>(null);
   const [editNotes, setEditNotes] = useState('');
   const [editProductSearch, setEditProductSearch] = useState('');
+  const debouncedEditProductSearch = useDebouncedValue(editProductSearch, 300);
   const [editProductDropdownOpen, setEditProductDropdownOpen] = useState(false);
   const [editImages, setEditImages] = useState<string[]>([]);
   const [editProofUploading, setEditProofUploading] = useState(false);
@@ -146,22 +150,22 @@ export default function SalesPage() {
   }, [editingSale]);
 
   const { data: salesData, isLoading } = useQuery({
-    queryKey: ['store-sales', selectedStoreId, page, search, saleTypeFilter],
+    queryKey: ['store-sales', selectedStoreId, page, debouncedSearch, saleTypeFilter],
     queryFn: () =>
       api.getStoreSales(selectedStoreId, {
         page,
         limit: 20,
-        search,
+        search: debouncedSearch,
         saleType: saleTypeFilter || undefined,
       }),
     enabled: !!selectedStoreId,
   });
 
   const { data: inStockProductsData } = useQuery({
-    queryKey: ['store-stock-available', effectiveLogSaleStore, productSearch],
+    queryKey: ['store-stock-available', effectiveLogSaleStore, debouncedProductSearch],
     queryFn: () =>
       api.getStoreStock(effectiveLogSaleStore, {
-        search: productSearch || undefined,
+        search: debouncedProductSearch || undefined,
         inStockOnly: true,
         limit: 50,
         page: 1,
@@ -228,10 +232,10 @@ export default function SalesPage() {
     : selectedStoreId);
 
   const { data: editInStockData } = useQuery({
-    queryKey: ['store-stock-available', editStoreId, productSearch],
+    queryKey: ['store-stock-available', editStoreId, debouncedEditProductSearch],
     queryFn: () =>
       api.getStoreStock(editStoreId, {
-        search: productSearch || undefined,
+        search: debouncedEditProductSearch || undefined,
         inStockOnly: true,
         limit: 50,
         page: 1,
