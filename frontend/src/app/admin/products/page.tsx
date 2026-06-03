@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, Search, Package, Tag, X, CheckSquare, Download, Upload, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import Image from 'next/image';
@@ -47,24 +47,25 @@ export default function ProductsPage() {
     queryFn: () => api.getCategories({ limit: 100 }),
   });
 
-  const categoryList: Category[] = Array.isArray(categories)
-    ? categories
-    : Array.isArray((categories as { items?: Category[] })?.items)
-      ? (categories as { items: Category[] }).items
-      : [];
+  const categoryList = useMemo<Category[]>(() => {
+    if (Array.isArray(categories)) return categories as Category[];
+    const items = (categories as { items?: Category[] })?.items;
+    return Array.isArray(items) ? items : [];
+  }, [categories]);
 
-  const raw = rawData as { items?: Product[]; data?: Product[] } | undefined;
-  const items = Array.isArray(raw?.items) ? raw.items : Array.isArray(raw?.data) ? raw.data : [];
-  const data = rawData
-    ? {
-        ...rawData,
-        items,
-        total: typeof rawData.total === 'number' ? rawData.total : items.length,
-        totalPages: typeof rawData.totalPages === 'number' ? rawData.totalPages : Math.max(1, Math.ceil((rawData.total ?? items.length) / (rawData.limit ?? 20))),
-        hasPrevious: rawData.hasPrevious ?? page > 1,
-        hasNext: rawData.hasNext ?? items.length === (rawData.limit ?? 20),
-      }
-    : undefined;
+  const data = useMemo(() => {
+    if (!rawData) return undefined;
+    const raw = rawData as { items?: Product[]; data?: Product[] };
+    const items = Array.isArray(raw?.items) ? raw.items : Array.isArray(raw?.data) ? raw.data : [];
+    return {
+      ...rawData,
+      items,
+      total: typeof rawData.total === 'number' ? rawData.total : items.length,
+      totalPages: typeof rawData.totalPages === 'number' ? rawData.totalPages : Math.max(1, Math.ceil((rawData.total ?? items.length) / (rawData.limit ?? 20))),
+      hasPrevious: rawData.hasPrevious ?? page > 1,
+      hasNext: rawData.hasNext ?? items.length === (rawData.limit ?? 20),
+    };
+  }, [rawData, page]);
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.deleteProduct(id),
@@ -147,8 +148,9 @@ export default function ProductsPage() {
     setPage(1);
   };
 
-  const allIds = items.map((p) => p._id);
-  const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id));
+  const items = data?.items ?? [];
+  const allIds = useMemo(() => items.map((p) => p._id), [items]);
+  const allSelected = useMemo(() => allIds.length > 0 && allIds.every((id) => selected.has(id)), [allIds, selected]);
   const someSelected = selected.size > 0;
 
   const toggleAll = () => {

@@ -269,7 +269,9 @@ export default function CouponsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data?.items.map((coupon) => (
+                  {data?.items.map((coupon) => {
+                    const active = isActive(coupon);
+                    return (
                     <TableRow key={coupon._id}>
                       <TableCell>
                         <code className="px-2 py-1 bg-muted rounded text-sm font-semibold">
@@ -310,16 +312,12 @@ export default function CouponsPage() {
                           />
                           <Badge
                             className={
-                              isActive(coupon)
+                              active
                                 ? 'bg-green-100 text-green-800'
                                 : 'bg-gray-100 text-gray-800'
                             }
                           >
-                            {isActive(coupon)
-                              ? 'Active'
-                              : coupon.isActive
-                              ? 'Expired'
-                              : 'Off'}
+                            {active ? 'Active' : coupon.isActive ? 'Expired' : 'Off'}
                           </Badge>
                         </div>
                       </TableCell>
@@ -342,9 +340,35 @@ export default function CouponsPage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
+            )}
+            {data && data.totalPages > 1 && (
+              <div className="flex items-center justify-between mt-6">
+                <p className="text-sm text-muted-foreground">
+                  Page {page} of {data.totalPages} ({data.total} coupons)
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={!data.hasPrevious}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => p + 1)}
+                    disabled={!data.hasNext}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>

@@ -95,7 +95,7 @@ export default function PMSPage() {
   const { data: dayData, isLoading: dayLoading } = useQuery({
     queryKey: ['raw-analytics-day', selectedStoreId, analyticsDate],
     queryFn: () => api.getRawMaterialAnalytics(selectedStoreId, { date: analyticsDate }),
-    enabled: !!selectedStoreId && !!analyticsDate,
+    enabled: !!selectedStoreId && !!analyticsDate && showAnalytics,
   });
 
   const dayItems = (dayData?.items ?? []) as RawMaterialDailyItem[];

@@ -219,6 +219,25 @@ export default function DashboardPage() {
     }));
   }, [storesTodayRevenue]);
 
+  const { totalRevenue14d, totalOrders14d, avgOrderValue } = useMemo(() => {
+    const rev = revenueData?.reduce((s: number, d: RevenueDataPoint) => s + d.revenue, 0) ?? 0;
+    const ord = revenueData?.reduce((s: number, d: RevenueDataPoint) => s + d.orders, 0) ?? 0;
+    return { totalRevenue14d: rev, totalOrders14d: ord, avgOrderValue: ord > 0 ? rev / ord : 0 };
+  }, [revenueData]);
+
+  const { pieData, pieTotal } = useMemo(() => {
+    const data = ordersByStatus
+      ? Object.entries(ordersByStatus)
+          .filter(([, count]) => (count as number) > 0)
+          .map(([status, count]) => ({
+            name: status.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+            value: count as number,
+            color: STATUS_COLORS[status] || '#6B7280',
+          }))
+      : [];
+    return { pieData: data, pieTotal: data.reduce((s, d) => s + d.value, 0) };
+  }, [ordersByStatus]);
+
   if (isStoreAdmin ? storeLoading : isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -240,21 +259,6 @@ export default function DashboardPage() {
         { title: 'Total Customers', value: stats?.totalCustomers || 0, icon: Users, iconBg: 'bg-blue-50', iconColor: 'text-blue-600', stripe: '#3B82F6' },
         { title: 'Pending Orders', value: stats?.pendingOrders || 0, icon: Clock, iconBg: 'bg-orange-50', iconColor: 'text-orange-600', stripe: '#EF4444' },
       ];
-
-  const pieData = ordersByStatus
-    ? Object.entries(ordersByStatus)
-        .filter(([, count]) => (count as number) > 0)
-        .map(([status, count]) => ({
-          name: status.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
-          value: count as number,
-          color: STATUS_COLORS[status] || '#6B7280',
-        }))
-    : [];
-  const pieTotal = pieData.reduce((s, d) => s + d.value, 0);
-
-  const totalRevenue14d = revenueData?.reduce((s: number, d: RevenueDataPoint) => s + d.revenue, 0) || 0;
-  const totalOrders14d = revenueData?.reduce((s: number, d: RevenueDataPoint) => s + d.orders, 0) || 0;
-  const avgOrderValue = totalOrders14d > 0 ? totalRevenue14d / totalOrders14d : 0;
 
   const greeting = (() => {
     const h = new Date().getHours();

@@ -173,6 +173,19 @@ export class AuthService {
   }
 
   async adminRegister(dto: AdminRegisterDto): Promise<AuthResponse> {
+    // Guard: if ADMIN_INVITE_TOKEN env var is set, the caller must supply a matching token.
+    // If the env var is not set, only allow registration when no admins exist yet (bootstrap).
+    const configuredToken = process.env.ADMIN_INVITE_TOKEN;
+    const adminCount = await this.adminUserRepository.countDocuments({});
+    if (configuredToken) {
+      if (dto.inviteToken !== configuredToken) {
+        throw new UnauthorizedException('Invalid or missing invite token');
+      }
+    } else if (adminCount > 0) {
+      // No invite token configured and admins already exist → registration is closed.
+      throw new UnauthorizedException('Admin registration is closed. Set ADMIN_INVITE_TOKEN to enable.');
+    }
+
     const existingAdmin = await this.adminUserRepository.findOneByEmail(dto.email.toLowerCase());
 
     if (existingAdmin) {
@@ -181,8 +194,8 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-    // First admin to register becomes superadmin (store owner); subsequent public registrations get admin role
-    const adminCount = await this.adminUserRepository.countDocuments({});
+    // First admin to register becomes superadmin (store owner); subsequent registrations get admin role
+    // adminCount was already fetched above for the invite-token guard — reuse it here.
     const adminData: any = {
       name: dto.name,
       email: dto.email.toLowerCase(),
@@ -245,7 +258,9 @@ export class AuthService {
 
   async customerLogin(dto: CustomerLoginDto): Promise<AuthResponse> {
     const stored = this.otpStore.get(dto.phone);
-    const devBypass = dto.otp === '123456' && process.env.NODE_ENV !== 'production';
+    // OTP bypass is allowed only when ENABLE_OTP_BYPASS=true is explicitly set.
+    // Relying on NODE_ENV is unsafe because staging may not be set to 'production'.
+    const devBypass = dto.otp === '123456' && process.env.ENABLE_OTP_BYPASS === 'true';
     if (!devBypass) {
       if (!stored) {
         throw new UnauthorizedException('Invalid or expired OTP. Please request a new one.');
@@ -397,9 +412,9 @@ export class AuthService {
       throw new BadRequestException(`Please wait ${waitSec} seconds before requesting another OTP.`);
     }
 
-    const otp = process.env.NODE_ENV === 'production'
-      ? String(Math.floor(100000 + Math.random() * 900000))
-      : '123456';
+    const otp = process.env.ENABLE_OTP_BYPASS === 'true'
+      ? '123456'
+      : String(Math.floor(100000 + Math.random() * 900000));
     this.otpStore.set(phone, { otp, expiresAt: now + AuthService.OTP_TTL_MS });
     this.otpRateLimit.set(phone, now);
 

@@ -70,6 +70,7 @@ export default function EditProductPage() {
   const [ingredientsActive, setIngredientsActive] = useState(false);
   const [allergen, setAllergen] = useState('');
   const [allergenActive, setAllergenActive] = useState(false);
+  const debouncedSku = useDebouncedValue(formData.sku, 400);
   const [relatedSearch, setRelatedSearch] = useState('');
   const debouncedRelatedSearch = useDebouncedValue(relatedSearch, 300);
   const [relatedProducts, setRelatedProducts] = useState<{ id: string; name: string }[]>([]);
@@ -242,11 +243,12 @@ export default function EditProductPage() {
 
   const originalSku = product?.sku ?? '';
 
-  const checkSku = useCallback(async (sku: string) => {
-    if (sku.length < 3 || sku === originalSku) { setSkuError(''); return; }
-    const exists = await api.checkSkuExists(sku);
-    setSkuError(exists ? `SKU "${sku}" is already in use` : '');
-  }, [originalSku]);
+  useEffect(() => {
+    if (debouncedSku.length < 3 || debouncedSku === originalSku) { setSkuError(''); return; }
+    api.checkSkuExists(debouncedSku).then((exists) => {
+      setSkuError(exists ? `SKU "${debouncedSku}" is already in use` : '');
+    });
+  }, [debouncedSku, originalSku]);
 
   const set = (field: string, value: string | boolean) => setFormData((prev) => ({ ...prev, [field]: value }));
 
@@ -479,7 +481,7 @@ export default function EditProductPage() {
                   <Label>Product SKU *</Label>
                   <Input
                     value={formData.sku}
-                    onChange={(e) => { set('sku', e.target.value.toUpperCase()); checkSku(e.target.value.toUpperCase()); }}
+                    onChange={(e) => set('sku', e.target.value.toUpperCase())}
                     placeholder="e.g. OIL-001"
                     className={skuError ? 'border-red-500' : ''}
                     required

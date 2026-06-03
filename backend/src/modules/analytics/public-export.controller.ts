@@ -15,15 +15,25 @@ export class PublicExportController {
     private readonly rawMaterialService: RawMaterialService,
   ) {}
 
+  private getSheetsSecret(): string {
+    const secret = process.env.SHEETS_EXPORT_SECRET || process.env.JWT_SECRET;
+    if (!secret) throw new UnauthorizedException('Export secret not configured');
+    return secret;
+  }
+
   private verifySheetsToken(storeId: string, token: string): boolean {
     if (!storeId || !token) return false;
-    const secret = process.env.JWT_SECRET || 'fallback-sheets-secret-key-12345';
-    const expectedToken = crypto
-      .createHash('sha256')
-      .update(`${storeId}:${secret}`)
-      .digest('hex')
-      .slice(0, 16);
-    return token === expectedToken;
+    try {
+      const secret = this.getSheetsSecret();
+      const expectedToken = crypto
+        .createHash('sha256')
+        .update(`${storeId}:${secret}`)
+        .digest('hex')
+        .slice(0, 16);
+      return crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expectedToken));
+    } catch {
+      return false;
+    }
   }
 
   private convertToCsv(headers: string[], rows: any[][]): string {
@@ -40,7 +50,7 @@ export class PublicExportController {
   @Roles('admin', 'superadmin')
   async getLinks(@Query('storeId') storeId: string, @Req() req: Request) {
     if (!storeId) throw new BadRequestException('storeId query is required');
-    const secret = process.env.JWT_SECRET || 'fallback-sheets-secret-key-12345';
+    const secret = this.getSheetsSecret();
     const token = crypto
       .createHash('sha256')
       .update(`${storeId}:${secret}`)

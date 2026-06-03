@@ -35,6 +35,10 @@ export class AdminRegisterDto {
   @IsEnum(['admin', 'superadmin'])
   @IsOptional()
   role?: 'admin' | 'superadmin';
+
+  @IsString()
+  @IsOptional()
+  inviteToken?: string;
 }
 
 export class CustomerLoginDto {

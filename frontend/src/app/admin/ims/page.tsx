@@ -89,6 +89,7 @@ export default function IMSPage() {
       api.setStoreStock(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['store-stock'] });
+      queryClient.invalidateQueries({ queryKey: ['store-stock-summary', selectedStoreId] });
       queryClient.invalidateQueries({ queryKey: ['stock-analytics-dates'] });
       setEditItem(null);
       toast({ title: 'Stock updated' });

@@ -42,7 +42,7 @@ export class User {
   @Prop({ sparse: true })
   email?: string;
 
-  @Prop()
+  @Prop({ select: false })
   password?: string;
 
   @Prop({ type: [AddressSchema], default: [] })

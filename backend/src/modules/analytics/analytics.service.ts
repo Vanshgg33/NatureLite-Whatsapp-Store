@@ -47,8 +47,16 @@ export class AnalyticsService {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    await this.createSnapshot('daily', yesterday, today);
-    await this.generateFullDailyReport(yesterday, today);
+    // Fetch all metrics once and share between snapshot and daily report
+    const [orderMetrics, customerMetrics, productMetrics, chatMetrics] = await Promise.all([
+      this.getOrderMetrics(yesterday, today),
+      this.getCustomerMetrics(yesterday, today),
+      this.getProductMetrics(yesterday, today),
+      this.getChatMetrics(yesterday, today),
+    ]);
+
+    await this.createSnapshotFromMetrics('daily', yesterday, today, orderMetrics, customerMetrics, productMetrics, chatMetrics);
+    await this.generateFullDailyReport(yesterday, today, orderMetrics, customerMetrics, productMetrics, chatMetrics);
   }
 
   @Cron(CronExpression.EVERY_WEEK)
@@ -79,6 +87,29 @@ export class AnalyticsService {
     lastMonthEnd.setHours(0, 0, 0, 0);
 
     await this.createSnapshot('monthly', lastMonthStart, lastMonthEnd);
+  }
+
+  private async createSnapshotFromMetrics(
+    period: SnapshotPeriod,
+    startDate: Date,
+    endDate: Date,
+    orderMetrics: Record<string, unknown>,
+    customerMetrics: Record<string, unknown>,
+    productMetrics: Record<string, unknown>,
+    chatMetrics: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      await this.snapshotRepository.create({
+        period,
+        date: startDate,
+        orders: orderMetrics,
+        customers: customerMetrics,
+        products: productMetrics,
+        chat: chatMetrics,
+      } as any);
+    } catch (error) {
+      this.logger.error('Failed to create analytics snapshot', error);
+    }
   }
 
   private async createSnapshot(
@@ -115,13 +146,20 @@ export class AnalyticsService {
     return `${Math.round(value * 10) / 10}%`;
   }
 
-  private async generateFullDailyReport(startDate: Date, endDate: Date): Promise<void> {
+  private async generateFullDailyReport(
+    startDate: Date,
+    endDate: Date,
+    preOrders?: Record<string, unknown>,
+    preCustomers?: Record<string, unknown>,
+    preProducts?: Record<string, unknown>,
+    preChat?: Record<string, unknown>,
+  ): Promise<void> {
     try {
       const [orders, customers, products, chat, revenueSeries, topOverallProducts, topCustomersOverall] = await Promise.all([
-        this.getOrderMetrics(startDate, endDate),
-        this.getCustomerMetrics(startDate, endDate),
-        this.getProductMetrics(startDate, endDate),
-        this.getChatMetrics(startDate, endDate),
+        preOrders   ? Promise.resolve(preOrders)   : this.getOrderMetrics(startDate, endDate),
+        preCustomers ? Promise.resolve(preCustomers) : this.getCustomerMetrics(startDate, endDate),
+        preProducts  ? Promise.resolve(preProducts)  : this.getProductMetrics(startDate, endDate),
+        preChat      ? Promise.resolve(preChat)      : this.getChatMetrics(startDate, endDate),
         this.getRevenueByDay(14),
         this.getTopSellingOverall(startDate, endDate, 5),
         this.getTopCustomersOverall(5),
@@ -269,6 +307,7 @@ export class AnalyticsService {
       monthStoreSales,
       totalCustomers,
       pendingOrders,
+      recentOrders,
     ] = await Promise.all([
       orderModel.aggregate([
         { $match: { createdAt: { $gte: today } } },
@@ -288,15 +327,14 @@ export class AnalyticsService {
       ]),
       this.userRepository.countDocuments(),
       orderModel.countDocuments({ status: { $in: [...ORDER_STATUSES_PENDING_FULFILLMENT] }, createdAt: { $gte: resetAt ?? new Date(0) } }),
+      orderModel
+        .find(resetAt ? { createdAt: { $gte: resetAt } } : {})
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .populate('user', 'name phone')
+        .select('orderNumber total status createdAt')
+        .exec(),
     ]);
-
-    const recentOrders = await orderModel
-      .find(resetAt ? { createdAt: { $gte: resetAt } } : {})
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .populate('user', 'name phone')
-      .select('orderNumber total status createdAt')
-      .exec();
 
     return {
       todayOrders: (todayOrders[0]?.count || 0) + (todayStoreSales[0]?.count || 0),
@@ -367,36 +405,16 @@ export class AnalyticsService {
     endDate: Date,
   ): Promise<Record<string, unknown>> {
     const userModel = this.userRepository.getModel();
-    const [totalCustomers, newCustomers, activeCustomers] = await Promise.all([
+    const [totalCustomers, newCustomers, activeCustomers, returningCustomers] = await Promise.all([
       userModel.countDocuments(),
-      userModel.countDocuments({
-        createdAt: { $gte: startDate, $lt: endDate },
-      }),
-      userModel.countDocuments({
-        lastOrderAt: { $gte: startDate },
-      }),
-    ]);
-
-    const returningCustomers = await this.orderRepository.getModel().aggregate([
-      {
-        $match: {
-          createdAt: { $gte: startDate, $lt: endDate },
-        },
-      },
-      {
-        $group: {
-          _id: '$user',
-          orderCount: { $sum: 1 },
-        },
-      },
-      {
-        $match: {
-          orderCount: { $gt: 1 },
-        },
-      },
-      {
-        $count: 'count',
-      },
+      userModel.countDocuments({ createdAt: { $gte: startDate, $lt: endDate } }),
+      userModel.countDocuments({ lastOrderAt: { $gte: startDate } }),
+      this.orderRepository.getModel().aggregate([
+        { $match: { createdAt: { $gte: startDate, $lt: endDate } } },
+        { $group: { _id: '$user', orderCount: { $sum: 1 } } },
+        { $match: { orderCount: { $gt: 1 } } },
+        { $count: 'count' },
+      ]),
     ]);
 
     return {

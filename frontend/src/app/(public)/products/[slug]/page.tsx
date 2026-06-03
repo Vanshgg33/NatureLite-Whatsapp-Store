@@ -30,9 +30,31 @@ const formatPrice = (price: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(price);
 
 // Break emoji-bulleted plain text into spaced paragraphs; pass HTML through unchanged
+/** Safe allowlist of HTML tags permitted in product descriptions. */
+const ALLOWED_TAGS = new Set(['p','br','strong','em','b','i','u','ul','ol','li','h1','h2','h3','h4','h5','h6','blockquote','span','div','a','img']);
+
+/**
+ * Strip tags/attributes not in the allowlist and remove all event handlers and
+ * javascript: URLs. Prevents stored XSS from admin-entered product descriptions.
+ */
+function sanitizeHtml(html: string): string {
+  // Remove script, style, iframe, object, embed, form, input, textarea, select entirely
+  let out = html.replace(/<(script|style|iframe|object|embed|form|input|textarea|select|button|noscript|base|meta|link)[^>]*>[\s\S]*?<\/\1>/gi, '');
+  out = out.replace(/<(script|style|iframe|object|embed|form|input|textarea|select|button|noscript|base|meta|link)[^>]*\/?>/gi, '');
+  // Strip all event handler attributes (on*=...) and javascript: hrefs
+  out = out.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi, '');
+  out = out.replace(/\s+href\s*=\s*["']?\s*javascript:[^"'\s>]*/gi, ' href="#"');
+  out = out.replace(/\s+src\s*=\s*["']?\s*javascript:[^"'\s>]*/gi, '');
+  // Strip unknown tags (keep content)
+  out = out.replace(/<\/?([a-z][a-z0-9]*)[^>]*>/gi, (match, tag: string) => {
+    return ALLOWED_TAGS.has(tag.toLowerCase()) ? match : '';
+  });
+  return out;
+}
+
 const formatDescription = (desc: string): string => {
   if (!desc) return '';
-  if (/<[a-z]/i.test(desc)) return desc;
+  if (/<[a-z]/i.test(desc)) return sanitizeHtml(desc);
   // Split before common emoji code points (surrogate pairs in JS: 🌀 range etc.)
   // Use a simple approach: split on characters in the high-surrogate emoji range
   const parts = desc

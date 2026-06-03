@@ -251,10 +251,11 @@ export default function AnalyticsPage() {
     queryFn: () => api.getLowStockProducts(),
   });
 
+  // Single stores query shared by both IMS and PMS/RMS tabs
   const { data: stores = [] } = useQuery<Store[]>({
     queryKey: ['stores'],
     queryFn: () => api.getStores(),
-    enabled: isSuperadmin && stockTab,
+    enabled: isSuperadmin && (stockTab || rawTab),
   });
 
   const activeStockStoreId = isSuperadmin ? stockStoreId : defaultStoreId;
@@ -285,23 +286,17 @@ export default function AnalyticsPage() {
   const { data: stockAnalyticsDay, isLoading: dayLoading } = useQuery({
     queryKey: ['stock-analytics-day', activeStockStoreId, selectedStockDate],
     queryFn: () => api.getStockAnalytics(activeStockStoreId, { date: selectedStockDate }),
-    enabled: !!activeStockStoreId && !!selectedStockDate,
+    enabled: !!activeStockStoreId && !!selectedStockDate && stockTab,
   });
 
-  // Raw Materials analytics
+  // Raw Materials analytics — reuses the shared stores query above
   const activeRawStoreId = isSuperadmin ? rawStoreId : defaultStoreId;
 
-  const { data: rawStores = [] } = useQuery<Store[]>({
-    queryKey: ['stores-for-analytics'],
-    queryFn: () => api.getStores(),
-    enabled: isSuperadmin && rawTab,
-  });
-
   useEffect(() => {
-    if (isSuperadmin && rawStores.length > 0 && !rawStoreId) {
-      setRawStoreId(rawStores[0]._id);
+    if (isSuperadmin && stores.length > 0 && !rawStoreId) {
+      setRawStoreId(stores[0]._id);
     }
-  }, [rawStores, isSuperadmin, rawStoreId]);
+  }, [stores, isSuperadmin, rawStoreId]);
 
   const { data: rawAnalyticsDates, isLoading: rawDatesLoading } = useQuery({
     queryKey: ['raw-analytics-dates', activeRawStoreId],
@@ -323,13 +318,13 @@ export default function AnalyticsPage() {
   const { data: rawAnalyticsDay, isLoading: rawDayLoading } = useQuery({
     queryKey: ['raw-analytics-day', activeRawStoreId, selectedRawDate],
     queryFn: () => api.getRawMaterialAnalytics(activeRawStoreId, { date: selectedRawDate }),
-    enabled: !!activeRawStoreId && !!selectedRawDate,
+    enabled: !!activeRawStoreId && !!selectedRawDate && rawTab,
   });
 
   const { data: rawMaterials = [], isLoading: rawMaterialsLoading } = useQuery<RawMaterial[]>({
     queryKey: ['raw-materials-for-analytics', activeRawStoreId],
     queryFn: () => api.getRawMaterials(activeRawStoreId),
-    enabled: !!activeRawStoreId,
+    enabled: !!activeRawStoreId && rmsTab,
   });
 
   const stockAnalyticsEditMutation = useMutation({
@@ -685,29 +680,50 @@ export default function AnalyticsPage() {
     );
   }
 
-  const totalRevenue =
-    revenueData?.reduce((sum: number, day: RevenueDataPoint) => sum + day.revenue, 0) || 0;
-  const totalOrders =
-    revenueData?.reduce((sum: number, day: RevenueDataPoint) => sum + day.orders, 0) || 0;
-  const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+  const { totalRevenue, totalOrders, avgOrderValue } = useMemo(() => {
+    const rev = revenueData?.reduce((s: number, d: RevenueDataPoint) => s + d.revenue, 0) ?? 0;
+    const ord = revenueData?.reduce((s: number, d: RevenueDataPoint) => s + d.orders, 0) ?? 0;
+    return { totalRevenue: rev, totalOrders: ord, avgOrderValue: ord > 0 ? rev / ord : 0 };
+  }, [revenueData]);
 
   const imsStoreName = stores.find((s) => s._id === activeStockStoreId)?.name || 'Main Store';
   const pmsStoreName = stores.find((s) => s._id === activeRawStoreId)?.name || 'Main Store';
 
-  const imsDayItems = (stockAnalyticsDay?.items ?? []) as StockSnapshotItem[];
-  const imsTotalStockIn = imsDayItems.reduce((s, i) => s + (i.stockInDelta ?? 0), 0);
-  const imsTotalReturned = imsDayItems.reduce((s, i) => s + (i.returnedDelta ?? 0), 0);
-  const imsTotalDamaged = imsDayItems.reduce((s, i) => s + (i.damagedDelta ?? 0), 0);
-  const imsTotalSaleLog = imsDayItems.reduce((s, i) => s + (i.saleLogDelta ?? 0), 0);
+  const imsDayItems = useMemo(() => (stockAnalyticsDay?.items ?? []) as StockSnapshotItem[], [stockAnalyticsDay]);
+  const { imsTotalStockIn, imsTotalReturned, imsTotalDamaged, imsTotalSaleLog } = useMemo(() =>
+    imsDayItems.reduce(
+      (acc, i) => {
+        acc.imsTotalStockIn += i.stockInDelta ?? 0;
+        acc.imsTotalReturned += i.returnedDelta ?? 0;
+        acc.imsTotalDamaged += i.damagedDelta ?? 0;
+        acc.imsTotalSaleLog += i.saleLogDelta ?? 0;
+        return acc;
+      },
+      { imsTotalStockIn: 0, imsTotalReturned: 0, imsTotalDamaged: 0, imsTotalSaleLog: 0 },
+    ), [imsDayItems]);
 
-  const pmsDayItems = (rawAnalyticsDay?.items ?? []) as RawMaterialDailyItem[];
-  const pmsTotalStockIn = pmsDayItems.reduce((s, i) => s + (i.stockIn ?? 0), 0);
-  const pmsTotalProcessed = pmsDayItems.reduce((s, i) => s + (i.processed ?? 0), 0);
-  const pmsTotalOutput = pmsDayItems.reduce((s, i) => s + (i.outputLitres ?? 0), 0);
+  const pmsDayItems = useMemo(() => (rawAnalyticsDay?.items ?? []) as RawMaterialDailyItem[], [rawAnalyticsDay]);
+  const { pmsTotalStockIn, pmsTotalProcessed, pmsTotalOutput } = useMemo(() =>
+    pmsDayItems.reduce(
+      (acc, i) => {
+        acc.pmsTotalStockIn += i.stockIn ?? 0;
+        acc.pmsTotalProcessed += i.processed ?? 0;
+        acc.pmsTotalOutput += i.outputLitres ?? 0;
+        return acc;
+      },
+      { pmsTotalStockIn: 0, pmsTotalProcessed: 0, pmsTotalOutput: 0 },
+    ), [pmsDayItems]);
 
-  const rmsGoodCount = rawMaterials.filter((m) => m.totalStock >= 20).length;
-  const rmsLowCount = rawMaterials.filter((m) => m.totalStock > 0 && m.totalStock < 20).length;
-  const rmsCriticalCount = rawMaterials.filter((m) => m.totalStock <= 0).length;
+  const { rmsGoodCount, rmsLowCount, rmsCriticalCount } = useMemo(() =>
+    rawMaterials.reduce(
+      (acc, m) => {
+        if (m.totalStock <= 0) acc.rmsCriticalCount++;
+        else if (m.totalStock < 20) acc.rmsLowCount++;
+        else acc.rmsGoodCount++;
+        return acc;
+      },
+      { rmsGoodCount: 0, rmsLowCount: 0, rmsCriticalCount: 0 },
+    ), [rawMaterials]);
 
   const summaryCards = [
     {
@@ -2037,7 +2053,7 @@ export default function AnalyticsPage() {
                 {/* Store + Date selectors */}
                 <div className="flex flex-wrap items-end justify-between w-full gap-3">
                   <div className="flex flex-wrap items-end gap-3">
-                    {isSuperadmin && rawStores.length > 0 && (
+                    {isSuperadmin && stores.length > 0 && (
                       <div className="w-52">
                         <label className="text-xs font-medium text-gray-500 mb-1.5 block uppercase tracking-wide">Store</label>
                         <Select value={rawStoreId} onValueChange={(v) => setRawStoreId(v)}>
@@ -2045,7 +2061,7 @@ export default function AnalyticsPage() {
                             <SelectValue placeholder="Select store" />
                           </SelectTrigger>
                           <SelectContent>
-                            {rawStores.filter((s) => s._id).map((store) => (
+                            {stores.filter((s) => s._id).map((store) => (
                               <SelectItem key={store._id} value={store._id}>
                                 {store.name} {store.isMainStore ? '(Main)' : ''}
                               </SelectItem>
@@ -2328,7 +2344,7 @@ export default function AnalyticsPage() {
                 {/* Store selector */}
                 <div className="flex flex-wrap items-end justify-between w-full gap-3">
                   <div className="flex flex-wrap items-end gap-3">
-                    {isSuperadmin && rawStores.length > 0 && (
+                    {isSuperadmin && stores.length > 0 && (
                       <div className="w-52">
                         <label className="text-xs font-medium text-gray-500 mb-1.5 block uppercase tracking-wide">Store / Factory</label>
                         <Select value={rawStoreId} onValueChange={(v) => setRawStoreId(v)}>
@@ -2336,7 +2352,7 @@ export default function AnalyticsPage() {
                             <SelectValue placeholder="Select store" />
                           </SelectTrigger>
                           <SelectContent>
-                            {rawStores.filter((s) => s._id).map((store) => (
+                            {stores.filter((s) => s._id).map((store) => (
                               <SelectItem key={store._id} value={store._id}>
                                 {store.name} {store.isMainStore ? '(Main)' : ''}
                               </SelectItem>

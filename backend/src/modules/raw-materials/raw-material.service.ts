@@ -101,8 +101,7 @@ export class RawMaterialService {
 
     await this.rawMaterialRepository.setTotalStock(objId, entry.closing);
 
-    const updated = await this.rawMaterialRepository.findById(objId);
-    return { ...updated!.toObject(), todayEntry: entry?.toObject() ?? null };
+    return { ...material.toObject(), totalStock: entry.closing, todayEntry: entry.toObject() };
   }
 
   /** Return today's entry for pre-fill (opening = yesterday's closing if no today entry). */

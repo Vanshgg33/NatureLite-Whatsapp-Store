@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useDebouncedValue } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -61,6 +61,7 @@ export default function NewProductPage() {
   const [ingredientsActive, setIngredientsActive] = useState(false);
   const [allergen, setAllergen] = useState('');
   const [allergenActive, setAllergenActive] = useState(false);
+  const debouncedSku = useDebouncedValue(formData.sku, 400);
   const [relatedSearch, setRelatedSearch] = useState('');
   const debouncedRelatedSearch = useDebouncedValue(relatedSearch, 300);
   const [relatedProducts, setRelatedProducts] = useState<{ id: string; name: string }[]>([]);
@@ -90,11 +91,12 @@ export default function NewProductPage() {
     onError: (error: Error) => setSubmitError(error.message || 'Failed to create product.'),
   });
 
-  const checkSku = useCallback(async (sku: string) => {
-    if (sku.length < 3) { setSkuError(''); return; }
-    const exists = await api.checkSkuExists(sku);
-    setSkuError(exists ? `SKU "${sku}" is already in use` : '');
-  }, []);
+  useEffect(() => {
+    if (debouncedSku.length < 3) { setSkuError(''); return; }
+    api.checkSkuExists(debouncedSku).then((exists) => {
+      setSkuError(exists ? `SKU "${debouncedSku}" is already in use` : '');
+    });
+  }, [debouncedSku]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, variantIndex?: number) => {
     const files = e.target.files;
@@ -328,7 +330,7 @@ export default function NewProductPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="sku">Product SKU *</Label>
-                  <Input id="sku" value={formData.sku} onChange={(e) => { set('sku', e.target.value.toUpperCase()); checkSku(e.target.value); }} className={`${getError('sku') || skuError ? 'border-red-500' : ''}`} placeholder="e.g. OIL-001" />
+                  <Input id="sku" value={formData.sku} onChange={(e) => set('sku', e.target.value.toUpperCase())} className={`${getError('sku') || skuError ? 'border-red-500' : ''}`} placeholder="e.g. OIL-001" />
                   {(getError('sku') || skuError) && <p className="text-sm text-red-500">{getError('sku') || skuError}</p>}
                 </div>
 

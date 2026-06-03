@@ -56,11 +56,7 @@ export class UsersService {
     }
     let userDoc = await this.userRepository.findOneByPhone(phone);
     if (!userDoc) {
-      await this.userRepository.create({ phone } as Partial<User>);
-      userDoc = await this.userRepository.findOneByPhone(phone);
-      if (!userDoc) {
-        throw new NotFoundException('User not found after create');
-      }
+      userDoc = await this.userRepository.create({ phone } as Partial<User>);
     }
     userDoc.name = trimmed;
     return userDoc.save();

@@ -64,15 +64,12 @@ export class ProductsService implements OnModuleInit {
     const categoryId = parseObjectId(dto.category, 'category');
     const slug = dto.slug || this.generateSlug(dto.name);
 
-    const existingSku = await this.productRepository.findOneBySku(dto.sku);
-    if (existingSku) {
-      throw new BadRequestException('Product with this SKU already exists');
-    }
-
-    const existingSlug = await this.productRepository.findOneBySlug(slug);
-    if (existingSlug) {
-      throw new BadRequestException('Product with this slug already exists');
-    }
+    const [existingSku, existingSlug] = await Promise.all([
+      this.productRepository.findOneBySku(dto.sku),
+      this.productRepository.findOneBySlug(slug),
+    ]);
+    if (existingSku) throw new BadRequestException('Product with this SKU already exists');
+    if (existingSlug) throw new BadRequestException('Product with this slug already exists');
 
     const saved = await this.productRepository.create({
       ...dto,
@@ -160,21 +157,14 @@ export class ProductsService implements OnModuleInit {
       // initializeStockForProduct uses $setOnInsert, so it can't *change* an
       // existing main-store row — we need a direct setStock for updates.
       await this.storeStockService.initializeStockForProduct(productId, storeIds);
+      const stockUpdates: Promise<unknown>[] = [];
       if (seed.stock !== undefined) {
-        await this.storeStockService.setStock({
-          storeId: mainStore._id.toString(),
-          productId,
-          stock: seed.stock,
-        });
+        stockUpdates.push(this.storeStockService.setStock({ storeId: mainStore._id.toString(), productId, stock: seed.stock }));
       }
       for (const v of seed.variantStocks ?? []) {
-        await this.storeStockService.setStock({
-          storeId: mainStore._id.toString(),
-          productId,
-          stock: v.stock,
-          variantSku: v.variantSku,
-        });
+        stockUpdates.push(this.storeStockService.setStock({ storeId: mainStore._id.toString(), productId, stock: v.stock, variantSku: v.variantSku }));
       }
+      await Promise.all(stockUpdates);
     } catch (error) {
       this.logger.warn(
         `Failed to mirror stock to main store for product ${productId}: ${(error as Error).message}`,
@@ -195,11 +185,14 @@ export class ProductsService implements OnModuleInit {
       throw new NotFoundException('Product not found');
     }
     const catId = product.category?.toString?.() ?? (product.category as unknown);
+    const populateOps: Promise<unknown>[] = [
+      product.populate('relatedProducts', 'name'),
+      product.populate('upsellProducts', 'name'),
+    ];
     if (isValidObjectIdString(catId)) {
-      await product.populate('category', 'name slug');
+      populateOps.push(product.populate('category', 'name slug'));
     }
-    await product.populate('relatedProducts', 'name');
-    await product.populate('upsellProducts', 'name');
+    await Promise.all(populateOps);
     await this.overlayStoreStock([product as unknown as { _id: Types.ObjectId; stock?: number; variants?: Array<{ sku: string; stock?: number }> }]);
     return product as Product;
   }

@@ -75,6 +75,12 @@ export default function RMSPage() {
     enabled: !!selectedStoreId,
   });
 
+  const { data: allMaterials = [] } = useQuery<RawMaterial[]>({
+    queryKey: ['raw-materials', selectedStoreId],
+    queryFn: () => api.getRawMaterials(selectedStoreId),
+    enabled: !!selectedStoreId,
+  });
+
   const { data: datesData } = useQuery({
     queryKey: ['raw-analytics-dates', selectedStoreId],
     queryFn: () => api.getRawMaterialAnalytics(selectedStoreId),
@@ -128,9 +134,15 @@ export default function RMSPage() {
   const entryClosing = Math.max(0, entryOpVal + entryStVal - entryPrVal);
   const overdrawn = entryOpVal + entryStVal - entryPrVal < 0;
 
-  const criticalCount = materials.filter((m) => m.totalStock <= 0).length;
-  const lowCount = materials.filter((m) => m.totalStock > 0 && m.totalStock < 20).length;
-  const goodCount = materials.filter((m) => m.totalStock >= 20).length;
+  const { criticalCount, lowCount, goodCount } = allMaterials.reduce(
+    (acc, m) => {
+      if (m.totalStock <= 0) acc.criticalCount++;
+      else if (m.totalStock < 20) acc.lowCount++;
+      else acc.goodCount++;
+      return acc;
+    },
+    { criticalCount: 0, lowCount: 0, goodCount: 0 },
+  );
 
   async function buildRmsReportOptions() {
     if (reportDate) {
@@ -209,7 +221,7 @@ export default function RMSPage() {
   }
 
   const statCards = [
-    { label: 'Total Materials', value: materials.length, icon: FlaskConical, color: 'text-gray-700', bg: 'bg-gray-50' },
+    { label: 'Total Materials', value: allMaterials.length, icon: FlaskConical, color: 'text-gray-700', bg: 'bg-gray-50' },
     { label: 'Good Stock', value: goodCount, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
     { label: 'Low Stock', value: lowCount, icon: TrendingDown, color: 'text-amber-600', bg: 'bg-amber-50' },
     { label: 'Critical / Zero', value: criticalCount, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50' },

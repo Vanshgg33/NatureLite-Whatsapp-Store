@@ -68,44 +68,47 @@ export class StoreStockRepository extends BaseRepository<StoreStockDocument> {
       });
     }
 
-    const countPipeline = [...pipeline, { $count: 'total' }];
-    const countResult = await this.model.aggregate(countPipeline).exec();
-    const total = countResult[0]?.total ?? 0;
-
-    pipeline.push(
-      { $sort: { 'productInfo.name': 1 } },
-      { $skip: skip },
-      { $limit: limit },
-      {
-        $lookup: {
-          from: 'categories',
-          localField: 'productInfo.category',
-          foreignField: '_id',
-          as: 'categoryInfo',
-        },
+    pipeline.push({
+      $facet: {
+        data: [
+          { $sort: { 'productInfo.name': 1 } },
+          { $skip: skip },
+          { $limit: limit },
+          {
+            $lookup: {
+              from: 'categories',
+              localField: 'productInfo.category',
+              foreignField: '_id',
+              as: 'categoryInfo',
+            },
+          },
+          { $unwind: { path: '$categoryInfo', preserveNullAndEmptyArrays: true } },
+          {
+            $project: {
+              _id: 1,
+              store: 1,
+              product: 1,
+              stock: 1,
+              variantStocks: 1,
+              lowStockThreshold: 1,
+              createdAt: 1,
+              updatedAt: 1,
+              productName: '$productInfo.name',
+              productSku: '$productInfo.sku',
+              productPrice: '$productInfo.price',
+              productImages: '$productInfo.images',
+              productVariants: '$productInfo.variants',
+              categoryName: '$categoryInfo.name',
+            },
+          },
+        ],
+        count: [{ $count: 'total' }],
       },
-      { $unwind: { path: '$categoryInfo', preserveNullAndEmptyArrays: true } },
-      {
-        $project: {
-          _id: 1,
-          store: 1,
-          product: 1,
-          stock: 1,
-          variantStocks: 1,
-          lowStockThreshold: 1,
-          createdAt: 1,
-          updatedAt: 1,
-          productName: '$productInfo.name',
-          productSku: '$productInfo.sku',
-          productPrice: '$productInfo.price',
-          productImages: '$productInfo.images',
-          productVariants: '$productInfo.variants',
-          categoryName: '$categoryInfo.name',
-        },
-      },
-    );
+    });
 
-    const data = await this.model.aggregate(pipeline).exec();
+    const [result] = await this.model.aggregate(pipeline).exec();
+    const total = result?.count?.[0]?.total ?? 0;
+    const data = result?.data ?? [];
     return paginate(data, total, { page, limit });
   }
 

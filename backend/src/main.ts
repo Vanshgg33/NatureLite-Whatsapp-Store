@@ -119,7 +119,9 @@ async function createApp() {
   });
 
   app.enableCors({
-    origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+    // Never reflect arbitrary origins with credentials — fall back to no CORS
+    // rather than an open wildcard when FRONTEND_URL is not configured.
+    origin: allowedOrigins.length > 0 ? allowedOrigins : false,
     credentials: true,
   });
 

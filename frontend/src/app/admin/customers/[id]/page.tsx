@@ -72,7 +72,7 @@ export default function CustomerDetailPage() {
     enabled: !!params.id,
   });
 
-  const { data: walletSummary, refetch: refetchWallet } = useQuery({
+  const { data: walletSummary } = useQuery({
     queryKey: ['customer-wallet', params.id],
     queryFn: () => api.adminGetWallet(params.id as string),
   });
@@ -103,7 +103,7 @@ export default function CustomerDetailPage() {
     onSuccess: () => {
       setWalletAmountInput('');
       setWalletNoteInput('');
-      refetchWallet();
+      queryClient.invalidateQueries({ queryKey: ['customer-wallet', params.id] });
     },
   });
 
@@ -117,7 +117,7 @@ export default function CustomerDetailPage() {
     onSuccess: () => {
       setWalletAmountInput('');
       setWalletNoteInput('');
-      refetchWallet();
+      queryClient.invalidateQueries({ queryKey: ['customer-wallet', params.id] });
     },
   });
 
