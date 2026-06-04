@@ -473,10 +473,7 @@ export default function HomePage() {
 
   return (
     <motion.main variants={pageVariants} initial="hidden" animate="visible">
-      {/* 1a. WhatsApp ordering strip — above the fold */}
-      <WhatsAppStrip />
-
-      {/* 1b. Delivery area notice — above the fold */}
+      {/* 1a. Delivery area notice — above the fold */}
       <div style={{
         background: 'linear-gradient(90deg, #0d1a05 0%, #111f06 50%, #0d1a05 100%)',
         borderBottom: '1px solid rgba(120,170,20,0.15)',
@@ -503,6 +500,9 @@ export default function HomePage() {
           {' '}(CG)
         </span>
       </div>
+
+      {/* 1b. WhatsApp ordering strip */}
+      <WhatsAppStrip />
 
       {/* 1. Immersive hero with 3D oil bottle */}
       <motion.div variants={sectionVariants}>
