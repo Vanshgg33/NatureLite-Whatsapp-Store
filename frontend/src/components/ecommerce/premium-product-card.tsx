@@ -35,17 +35,30 @@ export function PremiumProductCard({
   const [isAddingToCart,   setIsAddingToCart]   = useState(false);
   const [showSuccess,      setShowSuccess]      = useState(false);
   const [heartBurst,       setHeartBurst]       = useState(false);
-  const [tilt,             setTilt]             = useState({ x: 0, y: 0, shineX: 50, shineY: 50 });
   const [selectedVarIdx,   setSelectedVarIdx]   = useState(0);
   const addToCartBtnRef = useRef<HTMLButtonElement>(null);
+  const tiltRef  = useRef<HTMLDivElement>(null);
+  const shineRef = useRef<HTMLDivElement>(null);
 
+  // Use direct DOM manipulation instead of state to avoid re-renders on every mousemove
   const handleCardMouseMove = (e: React.MouseEvent<HTMLElement>) => {
+    const el = tiltRef.current;
+    if (!el) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const relX = (e.clientX - rect.left) / rect.width;
     const relY = (e.clientY - rect.top) / rect.height;
-    setTilt({ x: (relY - 0.5) * 9, y: (relX - 0.5) * -9, shineX: relX * 100, shineY: relY * 100 });
+    el.style.transform = `rotateX(${(relY - 0.5) * 9}deg) rotateY(${(relX - 0.5) * -9}deg)`;
+    if (shineRef.current) {
+      shineRef.current.style.backgroundImage = `radial-gradient(circle at ${relX * 100}% ${relY * 100}%, rgba(255,255,255,0.22) 0%, transparent 65%)`;
+    }
   };
-  const handleCardMouseLeave = () => setTilt({ x: 0, y: 0, shineX: 50, shineY: 50 });
+  const handleCardMouseLeave = () => {
+    const el = tiltRef.current;
+    if (el) {
+      el.style.transition = 'transform 0.45s ease, box-shadow 0.25s ease';
+      el.style.transform = 'rotateX(0deg) rotateY(0deg)';
+    }
+  };
 
   const addItem    = useCartStore((s) => s.addItem);
   const cartItems  = useCartStore((s) => s.items);
@@ -137,13 +150,16 @@ export function PremiumProductCard({
       >
         <Link href={`/products/${product.slug}`} className="block">
           <div
+            ref={tiltRef}
             className="bg-white rounded-xl overflow-hidden"
             style={{
               boxShadow: isHovered ? '0 12px 32px rgba(0,0,0,0.13)' : '0 1px 3px rgba(0,0,0,0.06)',
-              transform: `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
-              transition: isHovered ? 'transform 0.10s ease, box-shadow 0.25s ease' : 'transform 0.45s ease, box-shadow 0.25s ease',
+              transition: 'transform 0.45s ease, box-shadow 0.25s ease',
             }}
-            onMouseEnter={() => setIsHovered(true)}
+            onMouseEnter={() => {
+              setIsHovered(true);
+              if (tiltRef.current) tiltRef.current.style.transition = 'transform 0.10s ease, box-shadow 0.25s ease';
+            }}
             onMouseLeave={() => setIsHovered(false)}
           >
             {/* Image */}
@@ -166,9 +182,10 @@ export function PremiumProductCard({
 
               {/* Shine overlay */}
               <div
+                ref={shineRef}
                 className="absolute inset-0 pointer-events-none z-[5] rounded-t-xl transition-opacity duration-300"
                 style={{
-                  background: `radial-gradient(circle at ${tilt.shineX}% ${tilt.shineY}%, rgba(255,255,255,0.22) 0%, transparent 65%)`,
+                  backgroundImage: `radial-gradient(circle at 50% 50%, rgba(255,255,255,0.22) 0%, transparent 65%)`,
                   opacity: isHovered ? 1 : 0,
                 }}
               />
@@ -437,39 +454,48 @@ export function PremiumProductCard({
                   <Heart className={`w-5 h-5 ${isWishlisted ? 'fill-current' : ''}`} />
                 </motion.button>
               </div>
-              {isHovered && onQuickView && (
-                <motion.button onClick={handleQuickView}
+              {onQuickView && (
+                <button
+                  onClick={handleQuickView}
                   className="w-11 h-11 rounded-full bg-white/90 backdrop-blur-sm text-brand-charcoal flex items-center justify-center hover:bg-brand-charcoal hover:text-white transition-all duration-300"
-                  initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
-                  whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}
+                  style={{
+                    opacity: isHovered ? 1 : 0,
+                    transform: isHovered ? 'translateX(0)' : 'translateX(8px)',
+                    transition: 'opacity 0.25s ease, transform 0.25s ease',
+                  }}
                 >
                   <Eye className="w-5 h-5" />
-                </motion.button>
+                </button>
               )}
             </div>
 
-            <AnimatePresence>
-              {isHovered && totalStock > 0 && (
-                <motion.div className="absolute bottom-0 left-0 right-0 p-4"
-                  initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} transition={{ duration: 0.3 }}
+            {totalStock > 0 && (
+              <div
+                className="absolute bottom-0 left-0 right-0 p-4 transition-all duration-300"
+                style={{
+                  opacity: isHovered ? 1 : 0,
+                  transform: isHovered ? 'translateY(0)' : 'translateY(12px)',
+                }}
+              >
+                <button
+                  ref={addToCartBtnRef}
+                  onClick={handleAddToCart}
+                  disabled={isAddingToCart || showSuccess}
+                  className={cn(
+                    "w-full py-3 rounded-2xl font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-90",
+                    showSuccess ? "bg-brand-green text-white" : "bg-brand-charcoal text-white hover:bg-brand-green"
+                  )}
                 >
-                  <motion.button ref={addToCartBtnRef} onClick={handleAddToCart}
-                    disabled={isAddingToCart || showSuccess}
-                    className={cn("w-full py-3 rounded-2xl font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-90",
-                      showSuccess ? "bg-brand-green text-white" : "bg-brand-charcoal text-white hover:bg-brand-green")}
-                    whileHover={!showSuccess ? { scale: 1.02 } : {}} whileTap={!showSuccess ? { scale: 0.98 } : {}}
-                  >
-                    {isAddingToCart ? (
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : showSuccess ? (
-                      <><Check className="w-5 h-5" /> Added!</>
-                    ) : (
-                      <><ShoppingBag className="w-5 h-5" /> Add to Cart</>
-                    )}
-                  </motion.button>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  {isAddingToCart ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : showSuccess ? (
+                    <><Check className="w-5 h-5" /> Added!</>
+                  ) : (
+                    <><ShoppingBag className="w-5 h-5" /> Add to Cart</>
+                  )}
+                </button>
+              </div>
+            )}
 
             {totalStock === 0 && (
               <div className="absolute inset-0 bg-white/60 backdrop-blur-sm flex items-center justify-center">

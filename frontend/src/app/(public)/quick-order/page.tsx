@@ -71,7 +71,7 @@ function Stepper({
       }}
     >
       <motion.button
-        whileTap={{ scale: 0.78 }}
+        whileTap={{ scale: 0.93 }}
         onClick={onDecrement}
         disabled={qty === 0}
         style={{
@@ -91,7 +91,7 @@ function Stepper({
       </div>
 
       <motion.button
-        whileTap={{ scale: 0.78 }}
+        whileTap={{ scale: 0.93 }}
         onClick={onIncrement}
         disabled={qty >= stock}
         style={{

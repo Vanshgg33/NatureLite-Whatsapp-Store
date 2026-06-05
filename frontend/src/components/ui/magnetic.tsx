@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { motion, useSpring } from 'framer-motion';
 
 interface MagneticProps {
@@ -10,8 +10,7 @@ interface MagneticProps {
 }
 
 export function Magnetic({ children, strength = 0.35, className }: MagneticProps) {
-  const ref    = useRef<HTMLDivElement>(null);
-  const [active, setActive] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
   const mx = useSpring(0, { stiffness: 220, damping: 22, mass: 0.5 });
   const my = useSpring(0, { stiffness: 220, damping: 22, mass: 0.5 });
@@ -29,7 +28,6 @@ export function Magnetic({ children, strength = 0.35, className }: MagneticProps
   const onLeave = () => {
     mx.set(0);
     my.set(0);
-    setActive(false);
   };
 
   return (
@@ -38,9 +36,7 @@ export function Magnetic({ children, strength = 0.35, className }: MagneticProps
       className={className}
       style={{ x: mx, y: my }}
       onMouseMove={onMove}
-      onMouseEnter={() => setActive(true)}
       onMouseLeave={onLeave}
-      data-magnetic={active ? 'true' : undefined}
     >
       {children}
     </motion.div>

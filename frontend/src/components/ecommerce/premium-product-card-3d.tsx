@@ -103,7 +103,6 @@ export function PremiumProductCard3D({
       className="group relative"
       style={{
         perspective: 1200,
-        transformStyle: 'preserve-3d',
       }}
       initial={{ opacity: 0, y: 50 }}
       animate={{ opacity: 1, y: 0 }}
@@ -118,7 +117,6 @@ export function PremiumProductCard3D({
           rotateX,
           rotateY,
           scale,
-          transformStyle: 'preserve-3d',
         }}
       >
         {/* Shine overlay */}
@@ -136,17 +134,14 @@ export function PremiumProductCard3D({
         {/* Image Section */}
         <div className="relative aspect-[4/5] overflow-hidden bg-brand-cream">
           <Link href={`/products/${product.slug}`}>
-            <motion.div
-              className="absolute inset-0"
-              style={{ translateZ: 20 }}
-            >
+            <div className="absolute inset-0">
               <Image
                 src={product.images?.[0] || '/images/placeholder-product.jpg'}
                 alt={product.name}
                 fill
                 className="object-cover transition-transform duration-700 group-hover:scale-110"
               />
-            </motion.div>
+            </div>
           </Link>
 
           {/* Gradient overlay on hover */}
@@ -199,55 +194,45 @@ export function PremiumProductCard3D({
             <Heart className={`w-5 h-5 ${isLiked ? 'fill-current' : ''}`} />
           </motion.button>
 
-          {/* Quick Actions */}
-          <motion.div
-            className="absolute bottom-4 left-4 right-4 z-20 flex gap-2"
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: isHovered ? 0 : 20, opacity: isHovered ? 1 : 0 }}
-            transition={{ duration: 0.3 }}
+          {/* Quick Actions — always in DOM, CSS-animated on hover */}
+          <div
+            className="absolute bottom-4 left-4 right-4 z-20 flex gap-2 transition-all duration-300"
+            style={{
+              opacity: isHovered ? 1 : 0,
+              transform: isHovered ? 'translateY(0)' : 'translateY(12px)',
+            }}
           >
-            <motion.button
+            <button
               className="flex-1 py-3 bg-white text-brand-charcoal rounded-xl font-semibold text-sm flex items-center justify-center gap-2 hover:bg-brand-charcoal hover:text-white transition-colors shadow-lg"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
               onClick={handleAddToCart}
               disabled={isAddingToCart}
             >
               {isAddingToCart ? (
-                <motion.div
-                  className="w-5 h-5 border-2 border-brand-charcoal/30 border-t-brand-charcoal rounded-full"
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                />
+                <div className="w-5 h-5 border-2 border-brand-charcoal/30 border-t-brand-charcoal rounded-full animate-spin" />
               ) : (
                 <>
                   <ShoppingBag className="w-4 h-4" />
                   Add to Cart
                 </>
               )}
-            </motion.button>
+            </button>
 
             {onQuickView && (
-              <motion.button
+              <button
                 className="w-12 h-12 bg-white/90 backdrop-blur-sm text-brand-charcoal rounded-xl flex items-center justify-center hover:bg-brand-charcoal hover:text-white transition-colors shadow-lg"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
                 onClick={(e) => {
                   e.preventDefault();
                   onQuickView(product);
                 }}
               >
                 <Eye className="w-5 h-5" />
-              </motion.button>
+              </button>
             )}
-          </motion.div>
+          </div>
         </div>
 
         {/* Content Section */}
-        <motion.div
-          className="p-5"
-          style={{ translateZ: 30 }}
-        >
+        <div className="p-5">
           {/* Category */}
           {typeof product.category === 'object' && product.category?.name && (
             <span className="text-xs text-brand-muted uppercase tracking-wider font-medium">
@@ -318,7 +303,7 @@ export function PremiumProductCard3D({
               </motion.div>
             ) : null;
           })()}
-        </motion.div>
+        </div>
 
         {/* Bottom border accent */}
         <motion.div
