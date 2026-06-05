@@ -8,12 +8,14 @@ export type TimelineMetadata = {
   step?: DeliveryWorkflowStep;
   paymentMethod?: 'cash' | 'upi';
   paymentProofUrl?: string;
+  deliveryProofUrl?: string;
 };
 
 export type DeliveryWorkflowMetadata = {
   status: DeliveryWorkflowStep;
   paymentMethod?: 'cash' | 'upi';
   paymentProofUrl?: string;
+  deliveryProofUrl?: string;
   note?: string;
   updatedBy: string;
   updatedAt: Date;

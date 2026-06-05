@@ -812,6 +812,10 @@ export class OrdersService implements OnModuleInit {
         order.billedAt = new Date();
         order.billedBy = dto.updatedBy;
       }
+      if (dto.assignedTo) {
+        order.assignedDeliveryUserId = dto.assignedTo;
+        order.assignedDeliveryAt = new Date();
+      }
     } else if (dto.status === 'delivered') {
       order.deliveredAt = new Date();
     }
@@ -950,12 +954,25 @@ export class OrdersService implements OnModuleInit {
       );
     }
 
+    if (
+      order.assignedDeliveryUserId &&
+      departmentType === 'delivery' &&
+      order.assignedDeliveryUserId !== updatedBy
+    ) {
+      throw new BadRequestException('This order is assigned to a different delivery person.');
+    }
+
+    if (dto.status === 'delivery_done' && !dto.deliveryProofUrl) {
+      throw new BadRequestException('A delivery proof photo is required to mark the order as delivered.');
+    }
+
     const previousStatus = order.status;
     const metadata: OrderMetadata = order.metadata || {};
     const workflow: DeliveryWorkflowMetadata = {
       status: dto.status,
       paymentMethod: dto.paymentMethod,
       paymentProofUrl: dto.paymentProofUrl,
+      deliveryProofUrl: dto.deliveryProofUrl,
       note: dto.note,
       updatedBy,
       updatedAt: new Date(),
@@ -977,6 +994,7 @@ export class OrdersService implements OnModuleInit {
       }
       order.status = 'delivered';
       order.deliveredAt = new Date();
+      order.deliveryProofUrl = dto.deliveryProofUrl;
     }
 
     this.pushTimelineEntry(order, {
@@ -989,6 +1007,7 @@ export class OrdersService implements OnModuleInit {
         step,
         paymentMethod: dto.paymentMethod,
         paymentProofUrl: dto.paymentProofUrl,
+        deliveryProofUrl: dto.deliveryProofUrl,
       },
     });
 
@@ -1286,6 +1305,15 @@ export class OrdersService implements OnModuleInit {
     }
     const resetAt = await this.settingsService.getMetricsResetAt();
     return this.orderRepository.getOrdersByStatus(resetAt);
+  }
+
+  async assignDelivery(orderId: string, deliveryUserId: string): Promise<Order> {
+    const idObj = parseObjectId(orderId, 'id');
+    const order = await this.orderRepository.findById(idObj);
+    if (!order) throw new NotFoundException('Order not found');
+    order.assignedDeliveryUserId = deliveryUserId;
+    order.assignedDeliveryAt = new Date();
+    return order.save();
   }
 
   private async generateOrderNumber(): Promise<string> {

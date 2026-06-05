@@ -751,6 +751,7 @@ class ApiClient {
       status: 'delivery_done' | 'customer_ringing' | 'customer_cancelled' | 'customer_tomorrow';
       paymentMethod?: 'cash' | 'upi';
       paymentProofUrl?: string;
+      deliveryProofUrl?: string;
       note?: string;
     }
   ): Promise<Order> {

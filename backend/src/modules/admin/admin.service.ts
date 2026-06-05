@@ -12,6 +12,10 @@ export class AdminService {
     return this.adminUserRepository.findAllExcludePassword();
   }
 
+  async findDeliveryStaff(): Promise<AdminUser[]> {
+    return this.adminUserRepository.findByDepartment('delivery');
+  }
+
   async findById(id: string): Promise<AdminUser> {
     const idObj = parseObjectId(id, 'id');
     const admin = await this.adminUserRepository.findByIdExcludePassword(idObj);

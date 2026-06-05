@@ -13,12 +13,19 @@ import { AdminUser } from './schemas/admin-user.schema';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 
 @Controller('admin/users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('superadmin')
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
+
+  @Get('delivery-staff')
+  @Roles('admin', 'superadmin')
+  async getDeliveryStaff(): Promise<AdminUser[]> {
+    return this.adminService.findDeliveryStaff();
+  }
 
   @Get()
   async findAll(): Promise<AdminUser[]> {

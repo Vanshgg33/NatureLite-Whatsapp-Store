@@ -40,8 +40,10 @@ export class RolesGuard implements CanActivate {
         'updateStatus',
         'markPacked',
         'updateDeliveryWorkflow',
+        'assignDelivery',
         'findOne',
         'findByOrderNumber',
+        'uploadImage',
       ];
       if (!allowedDepartmentHandlers.includes(handlerName)) {
         throw new ForbiddenException('Department staff cannot access this area. Use the department portal.');

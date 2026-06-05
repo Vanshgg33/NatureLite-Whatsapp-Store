@@ -16,6 +16,10 @@ export class AdminUserRepository extends BaseRepository<AdminUserDocument> {
     return this.model.find().select('-password').exec();
   }
 
+  async findByDepartment(departmentType: string): Promise<AdminUserDocument[]> {
+    return this.model.find({ departmentType, isActive: true }).select('-password').exec();
+  }
+
   async findByIdExcludePassword(id: Types.ObjectId): Promise<AdminUserDocument | null> {
     return this.model.findById(id).select('-password').exec();
   }

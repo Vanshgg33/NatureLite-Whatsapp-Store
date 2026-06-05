@@ -21,6 +21,7 @@ import {
   ReorderDto,
   UpdateDeliveryWorkflowDto,
   GuestCreateOrderDto,
+  AssignDeliveryDto,
 } from './dto/order.dto';
 import { Order } from './schemas/order.schema';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -62,7 +63,13 @@ export class OrdersController {
   @Get()
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
-  async findAll(@Query() query: OrderQueryDto): Promise<PaginatedResult<Order>> {
+  async findAll(
+    @Query() query: OrderQueryDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<PaginatedResult<Order>> {
+    if (query.forDelivery && user.departmentType === 'delivery') {
+      query.deliveryUserId = user.sub;
+    }
     return this.ordersService.findAll(query);
   }
 
@@ -135,6 +142,20 @@ export class OrdersController {
   ): Promise<Order> {
     dto.updatedBy = user.sub;
     return this.ordersService.updateStatus(id, dto, user.departmentType);
+  }
+
+  @Put(':id/assign-delivery')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  async assignDelivery(
+    @Param('id') id: string,
+    @Body() dto: AssignDeliveryDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<Order> {
+    if (user.departmentType === 'packing' || user.departmentType === 'delivery') {
+      throw new ForbiddenException('Only billing staff or superadmin can assign delivery.');
+    }
+    return this.ordersService.assignDelivery(id, dto.deliveryUserId);
   }
 
   @Put(':id/mark-packed')

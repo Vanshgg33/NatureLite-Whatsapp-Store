@@ -116,6 +116,10 @@ export class UpdateOrderStatusDto {
   @IsString()
   @IsOptional()
   updatedBy?: string;
+
+  @IsString()
+  @IsOptional()
+  assignedTo?: string;
 }
 
 export class UpdatePaymentStatusDto {
@@ -212,6 +216,16 @@ export class OrderQueryDto {
 
   @IsOptional()
   forDelivery?: boolean;
+
+  @IsString()
+  @IsOptional()
+  deliveryUserId?: string;
+}
+
+export class AssignDeliveryDto {
+  @IsString()
+  @IsNotEmpty()
+  deliveryUserId: string;
 }
 
 export class ReorderDto {
@@ -236,6 +250,10 @@ export class UpdateDeliveryWorkflowDto {
   @IsString()
   @IsOptional()
   paymentProofUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  deliveryProofUrl?: string;
 
   @IsString()
   @IsOptional()

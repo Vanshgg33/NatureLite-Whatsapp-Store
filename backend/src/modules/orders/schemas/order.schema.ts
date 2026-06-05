@@ -192,6 +192,15 @@ export class Order {
   outForDeliveryAt?: Date;
 
   @Prop()
+  assignedDeliveryUserId?: string;
+
+  @Prop()
+  assignedDeliveryAt?: Date;
+
+  @Prop()
+  deliveryProofUrl?: string;
+
+  @Prop()
   cancelledAt?: Date;
 
   @Prop()

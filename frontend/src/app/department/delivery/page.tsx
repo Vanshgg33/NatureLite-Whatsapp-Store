@@ -1,9 +1,19 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
-import { Truck, Search, Camera, CheckCircle2, Package } from 'lucide-react';
+import {
+  Truck,
+  Search,
+  Camera,
+  CheckCircle2,
+  Package,
+  ImagePlus,
+  X,
+  AlertCircle,
+  RefreshCw,
+} from 'lucide-react';
 import { api } from '@/lib/api';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -17,102 +27,179 @@ import type { Order } from '@/types';
 
 type DeliveryStatus = 'delivery_done' | 'customer_ringing' | 'customer_cancelled' | 'customer_tomorrow';
 
+interface PhotoUploadBoxProps {
+  label: string;
+  hint: string;
+  required?: boolean;
+  url: string | undefined;
+  uploading: boolean;
+  onFile: (file: File) => void;
+  onClear: () => void;
+}
+
+function PhotoUploadBox({ label, hint, required, url, uploading, onFile, onClear }: PhotoUploadBoxProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) onFile(file);
+    e.target.value = '';
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-1.5">
+        <p className="text-sm font-medium text-gray-800">{label}</p>
+        {required && <span className="text-xs text-red-500 font-medium">Required</span>}
+      </div>
+      <p className="text-xs text-gray-500">{hint}</p>
+
+      {url ? (
+        <div className="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
+          <div className="relative w-full" style={{ paddingBottom: '60%' }}>
+            <Image src={url} alt={label} fill className="object-contain" sizes="(max-width: 768px) 100vw, 400px" />
+          </div>
+          <button
+            type="button"
+            onClick={onClear}
+            className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm rounded-full p-1.5 shadow-sm border border-gray-200"
+            aria-label="Remove photo"
+          >
+            <X className="h-3.5 w-3.5 text-gray-700" />
+          </button>
+          <div className="absolute bottom-2 left-2 bg-green-500/90 backdrop-blur-sm text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
+            <CheckCircle2 className="h-3 w-3" /> Photo captured
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={uploading}
+          onClick={() => inputRef.current?.click()}
+          className="w-full min-h-[120px] rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 flex flex-col items-center justify-center gap-2 active:bg-gray-100 transition-colors disabled:opacity-60"
+        >
+          {uploading ? (
+            <>
+              <RefreshCw className="h-6 w-6 text-gray-400 animate-spin" />
+              <span className="text-sm text-gray-500">Uploading…</span>
+            </>
+          ) : (
+            <>
+              <div className="rounded-full bg-white border border-gray-200 p-3 shadow-sm">
+                <Camera className="h-6 w-6 text-amber-600" />
+              </div>
+              <span className="text-sm font-medium text-gray-700">Tap to take photo</span>
+              <span className="text-xs text-gray-400">or choose from gallery</span>
+            </>
+          )}
+        </button>
+      )}
+
+      <input
+        ref={inputRef}
+        type="file"
+        className="hidden"
+        accept="image/*"
+        capture="environment"
+        disabled={uploading}
+        onChange={handleChange}
+      />
+    </div>
+  );
+}
+
 export default function DeliveryDashboardPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
   const [orderNumber, setOrderNumber] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [status, setStatus] = useState<DeliveryStatus>('delivery_done');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'upi'>('cash');
   const [paymentProofUrl, setPaymentProofUrl] = useState<string | undefined>();
+  const [deliveryProofUrl, setDeliveryProofUrl] = useState<string | undefined>();
   const [note, setNote] = useState('');
-  const [uploading, setUploading] = useState(false);
+  const [uploadingPayment, setUploadingPayment] = useState(false);
+  const [uploadingDelivery, setUploadingDelivery] = useState(false);
 
   const { data: billedData, isLoading: loadingBilled } = useQuery({
     queryKey: ['department', 'delivery', 'orders'],
-    queryFn: () =>
-      api.getOrders({
-        forDelivery: true,
-        page: 1,
-        limit: 50,
-      }),
+    queryFn: () => api.getOrders({ forDelivery: true, page: 1, limit: 50 }),
     refetchInterval: 15_000,
   });
 
   const billedOrders = useMemo(() => (billedData?.items ?? []) as Order[], [billedData]);
-  const order = selectedOrder;
+
+  const resetForm = useCallback(() => {
+    setSelectedOrder(null);
+    setOrderNumber('');
+    setPaymentProofUrl(undefined);
+    setDeliveryProofUrl(undefined);
+    setNote('');
+    setStatus('delivery_done');
+    setPaymentMethod('cash');
+  }, []);
+
+  const selectOrder = (o: Order) => {
+    setSelectedOrder(o);
+    setPaymentProofUrl(undefined);
+    setDeliveryProofUrl(undefined);
+    setNote('');
+    setStatus('delivery_done');
+  };
 
   const searchOrder = async () => {
     if (!orderNumber.trim()) return;
     try {
       const result = await api.getOrderByNumber(orderNumber.trim());
-      setSelectedOrder(result);
-      setPaymentProofUrl(undefined);
-      setNote('');
+      selectOrder(result);
     } catch {
       setSelectedOrder(null);
-      toast({
-        title: 'Order not found',
-        description: 'Please check the order number and try again.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Order not found', description: 'Check the order number and try again.', variant: 'destructive' });
     }
   };
 
-  const selectOrder = (o: Order) => {
-    setSelectedOrder(o);
-    setPaymentProofUrl(undefined);
-    setNote('');
-  };
-
-  const uploadProof = async (file: File) => {
-    setUploading(true);
+  const uploadPhoto = async (
+    file: File,
+    folder: string,
+    setUrl: (u: string) => void,
+    setLoading: (v: boolean) => void,
+  ) => {
+    setLoading(true);
     try {
-      const result = await api.uploadImage(file, 'delivery-payments');
-      setPaymentProofUrl(result.url);
-      toast({
-        title: 'Payment photo uploaded',
-        description: 'The image has been attached to this delivery.',
-      });
+      const result = await api.uploadImage(file, folder);
+      setUrl(result.secureUrl || result.url);
+      toast({ title: 'Photo uploaded', description: 'Image attached successfully.' });
     } catch {
-      toast({
-        title: 'Upload failed',
-        description: 'Please try again or capture a clearer photo.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Upload failed', description: 'Please try again or capture a clearer photo.', variant: 'destructive' });
     } finally {
-      setUploading(false);
+      setLoading(false);
     }
   };
+
+  const isDone = status === 'delivery_done';
 
   const updateDelivery = useMutation({
     mutationFn: async () => {
-      if (!order) return;
+      if (!selectedOrder) return;
+      if (isDone && !deliveryProofUrl) throw new Error('Please capture a delivery proof photo before marking as delivered.');
+      if (isDone && !paymentProofUrl) throw new Error('Please capture a payment proof photo before marking as delivered.');
 
-      if (status === 'delivery_done' && !paymentProofUrl) {
-        throw new Error('Please upload a payment photo before marking as delivered.');
-      }
-
-      return api.updateDeliveryWorkflow(order._id, {
+      return api.updateDeliveryWorkflow(selectedOrder._id, {
         status,
-        paymentMethod,
-        paymentProofUrl,
+        paymentMethod: isDone ? paymentMethod : undefined,
+        paymentProofUrl: isDone ? paymentProofUrl : undefined,
+        deliveryProofUrl: isDone ? deliveryProofUrl : undefined,
         note,
       });
     },
     onSuccess: () => {
-      toast({
-        title: 'Delivery status updated',
-        description: 'The order has been updated successfully.',
-      });
-      if (order) {
-        queryClient.invalidateQueries({ queryKey: ['order', order._id] });
+      toast({ title: 'Delivery updated', description: 'Order status saved successfully.' });
+      if (selectedOrder) {
+        queryClient.invalidateQueries({ queryKey: ['order', selectedOrder._id] });
         queryClient.invalidateQueries({ queryKey: ['department', 'delivery', 'orders'] });
       }
-      setSelectedOrder(null);
-      setOrderNumber('');
-      setPaymentProofUrl(undefined);
-      setNote('');
+      resetForm();
     },
     onError: (err) => {
       toast({
@@ -123,221 +210,256 @@ export default function DeliveryDashboardPage() {
     },
   });
 
+  const order = selectedOrder;
+
+  const canSubmit =
+    !updateDelivery.isPending &&
+    !!order &&
+    (!isDone || (!!deliveryProofUrl && !!paymentProofUrl));
+
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col min-h-screen bg-gray-50">
       <Header
-        title="Delivery Partner Dashboard"
-        description="Billed orders ready for delivery. Select one, capture payment, and mark status."
+        title="Delivery Dashboard"
+        description="Select an order, capture photos, and update delivery status."
         icon={<Truck className="h-6 w-6 text-amber-600" />}
       />
 
-      <div className="flex-1 overflow-auto p-6 space-y-6">
-        <div className="bg-white rounded-xl border border-gray-100 p-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="flex-1 flex items-center gap-2">
-            <Search className="h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Or search by Order Number"
-              value={orderNumber}
-              onChange={(e) => setOrderNumber(e.target.value)}
-              className="h-10"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  searchOrder();
-                }
-              }}
-            />
-          </div>
-          <Button variant="outline" className="sm:h-10" onClick={searchOrder}>
-            Find order
+      <div className="flex-1 p-4 space-y-4 max-w-2xl mx-auto w-full pb-8">
+
+        {/* Search bar */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-3 flex gap-2 items-center shadow-sm">
+          <Search className="h-4 w-4 text-gray-400 shrink-0" />
+          <Input
+            placeholder="Search by order number"
+            value={orderNumber}
+            onChange={(e) => setOrderNumber(e.target.value)}
+            className="border-0 shadow-none h-9 p-0 focus-visible:ring-0"
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); searchOrder(); } }}
+          />
+          <Button size="sm" variant="outline" onClick={searchOrder} className="shrink-0 h-9">
+            Find
           </Button>
         </div>
 
-        {!order && billedOrders.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-gray-800">Billed orders (ready for delivery)</p>
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {billedOrders.map((o) => (
-                <Card
-                  key={o._id}
-                  className="border-amber-50 cursor-pointer hover:border-amber-200 transition-colors"
-                  onClick={() => selectOrder(o)}
-                >
-                  <CardContent className="p-3 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-sm">{o.orderNumber}</span>
-                      <span className="text-sm font-medium">{formatCurrency(o.total)}</span>
-                    </div>
-                    <p className="text-xs text-gray-600 truncate">
-                      {o.shippingAddress.name} · {o.shippingAddress.phone}
-                    </p>
-                    <p className="text-xs text-gray-500 truncate">
-                      {o.shippingAddress.street}, {o.shippingAddress.city}
-                    </p>
-                    <Button
-                      size="sm"
-                      className="w-full mt-2"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        selectOrder(o);
-                      }}
-                    >
-                      <Package className="h-4 w-4 mr-1" />
-                      Update delivery
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {!order && (loadingBilled || billedOrders.length === 0) && (
-          <p className="text-sm text-gray-500">
-            {loadingBilled ? 'Loading billed orders...' : 'No billed orders waiting for delivery. Search by order number if needed.'}
-          </p>
-        )}
-
-        {order && (
+        {/* Order list */}
+        {!order && (
           <>
-            <Button
-              variant="ghost"
-              className="text-sm -mb-2"
-              onClick={() => {
-                setSelectedOrder(null);
-                setOrderNumber('');
-                setPaymentProofUrl(undefined);
-                setNote('');
-              }}
+            {loadingBilled && (
+              <p className="text-sm text-gray-400 text-center py-8">Loading orders…</p>
+            )}
+            {!loadingBilled && billedOrders.length === 0 && (
+              <p className="text-sm text-gray-400 text-center py-8">No orders assigned to you. Search by order number if needed.</p>
+            )}
+            {billedOrders.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1">
+                  Your assigned orders ({billedOrders.length})
+                </p>
+                <div className="grid gap-3">
+                  {billedOrders.map((o) => (
+                    <Card
+                      key={o._id}
+                      className="border-gray-100 shadow-sm active:shadow-none transition-all cursor-pointer"
+                      onClick={() => selectOrder(o)}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-0.5 min-w-0">
+                            <p className="font-semibold text-gray-900 text-sm">{o.orderNumber}</p>
+                            <p className="text-sm text-gray-700 truncate">{o.shippingAddress.name}</p>
+                            <p className="text-xs text-gray-500">{o.shippingAddress.phone}</p>
+                            <p className="text-xs text-gray-400 truncate">
+                              {o.shippingAddress.street}, {o.shippingAddress.city}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0 space-y-2">
+                            <p className="font-semibold text-gray-900">{formatCurrency(o.total)}</p>
+                            <span className="inline-block bg-amber-50 text-amber-700 text-xs px-2 py-0.5 rounded-full border border-amber-100">
+                              {o.paymentMethod?.toUpperCase()}
+                            </span>
+                          </div>
+                        </div>
+                        <Button size="sm" className="w-full mt-3 h-9" onClick={(e) => { e.stopPropagation(); selectOrder(o); }}>
+                          <Package className="h-3.5 w-3.5 mr-1.5" />
+                          Update delivery
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Order detail + action form */}
+        {order && (
+          <div className="space-y-4">
+            <button
+              type="button"
+              className="flex items-center gap-1 text-sm text-gray-500 -mb-1"
+              onClick={resetForm}
             >
               ← Back to list
-            </Button>
-            <div className="grid gap-6 md:grid-cols-[2fr,1.5fr]">
-            <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-3">
-              <div className="flex items-center justify-between">
+            </button>
+
+            {/* Order summary card */}
+            <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
+              <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs text-gray-500">Order</p>
-                  <p className="font-semibold text-gray-900">{order.orderNumber}</p>
+                  <p className="text-xs text-gray-400">Order</p>
+                  <p className="font-bold text-gray-900">{order.orderNumber}</p>
                 </div>
-                <p className="text-sm font-semibold">{formatCurrency(order.total)}</p>
+                <p className="font-bold text-gray-900">{formatCurrency(order.total)}</p>
               </div>
-
-              <div className="text-sm space-y-1">
-                <p className="font-medium">
+              <div>
+                <p className="text-sm font-medium text-gray-800">
                   {order.shippingAddress.name}{' '}
-                  <span className="text-gray-500 text-xs">({order.shippingAddress.phone})</span>
+                  <span className="text-gray-400 font-normal text-xs">· {order.shippingAddress.phone}</span>
                 </p>
-                <p className="text-gray-500 text-xs">
-                  {order.shippingAddress.street}, {order.shippingAddress.city}, {order.shippingAddress.state} -{' '}
-                  {order.shippingAddress.pincode}
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {order.shippingAddress.street}, {order.shippingAddress.city}, {order.shippingAddress.state} – {order.shippingAddress.pincode}
                 </p>
               </div>
-
-              <div className="mt-3 space-y-1 text-sm">
-                <p className="font-medium">Products</p>
-                <ul className="space-y-1 text-xs text-gray-700">
-                  {order.items.map((item, idx) => (
-                    <li key={idx} className="flex justify-between gap-2">
-                      <span className="truncate">
-                        {item.name} x {item.quantity}
-                      </span>
-                      <span>{formatCurrency(item.total)}</span>
-                    </li>
-                  ))}
-                </ul>
+              <div className="border-t border-gray-50 pt-3 space-y-1">
+                {order.items.map((item, idx) => (
+                  <div key={idx} className="flex justify-between gap-2 text-xs text-gray-700">
+                    <span className="truncate">{item.name}{item.variantName ? ` (${item.variantName})` : ''} × {item.quantity}</span>
+                    <span className="shrink-0">{formatCurrency(item.total)}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
-            <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-4">
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-gray-800">Payment details</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
+            {/* Status selector */}
+            <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
+              <p className="text-sm font-semibold text-gray-800">Delivery status</p>
+              <div className="grid grid-cols-2 gap-2">
+                {(
+                  [
+                    { value: 'delivery_done', label: 'Delivered ✓' },
+                    { value: 'customer_ringing', label: 'No answer' },
+                    { value: 'customer_cancelled', label: 'Cancelled' },
+                    { value: 'customer_tomorrow', label: 'Tomorrow' },
+                  ] as { value: DeliveryStatus; label: string }[]
+                ).map((opt) => (
+                  <button
+                    key={opt.value}
                     type="button"
-                    variant={paymentMethod === 'cash' ? 'default' : 'outline'}
-                    className="h-9 text-xs"
-                    onClick={() => setPaymentMethod('cash')}
+                    onClick={() => setStatus(opt.value)}
+                    className={`h-11 rounded-xl text-sm font-medium border transition-all ${
+                      status === opt.value
+                        ? opt.value === 'delivery_done'
+                          ? 'bg-green-500 text-white border-green-500'
+                          : 'bg-gray-900 text-white border-gray-900'
+                        : 'bg-white text-gray-700 border-gray-200'
+                    }`}
                   >
-                    Cash
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={paymentMethod === 'upi' ? 'default' : 'outline'}
-                    className="h-9 text-xs"
-                    onClick={() => setPaymentMethod('upi')}
-                  >
-                    UPI
-                  </Button>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Photos — only required/shown for delivery_done */}
+            {isDone && (
+              <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-5">
+                <div className="flex items-center gap-2">
+                  <ImagePlus className="h-4 w-4 text-amber-600" />
+                  <p className="text-sm font-semibold text-gray-800">Delivery photos</p>
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-gray-800">Payment photo</p>
-                <div className="flex items-center gap-3">
-                  <label className="inline-flex items-center gap-2 px-3 py-2 border rounded-lg text-sm cursor-pointer hover:bg-gray-50">
-                    <Camera className="h-4 w-4" />
-                    <span>{uploading ? 'Uploading...' : 'Upload photo'}</span>
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept="image/*"
-                      disabled={uploading}
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) uploadProof(file);
-                      }}
-                    />
-                  </label>
-                  {paymentProofUrl && (
-                    <div className="relative h-14 w-14 rounded-lg overflow-hidden border">
-                      <Image src={paymentProofUrl} alt="Payment" fill className="object-cover" />
-                    </div>
-                  )}
+                <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 flex gap-2">
+                  <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-700">Both photos are required to mark this order as delivered.</p>
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-gray-800">Order status</p>
-                <Select
-                  value={status}
-                  onValueChange={(v) => setStatus(v as DeliveryStatus)}
-                >
-                  <SelectTrigger className="h-10">
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="delivery_done">Delivery done</SelectItem>
-                    <SelectItem value="customer_ringing">Customer ringing</SelectItem>
-                    <SelectItem value="customer_cancelled">Customer cancelled order</SelectItem>
-                    <SelectItem value="customer_tomorrow">Customer told tomorrow</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-gray-800">Notes (optional)</p>
-                <Textarea
-                  rows={3}
-                  placeholder="Any additional details about this delivery..."
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
+                <PhotoUploadBox
+                  label="Delivery proof"
+                  hint="Photo of the package handed to customer or placed at door"
+                  required
+                  url={deliveryProofUrl}
+                  uploading={uploadingDelivery}
+                  onFile={(f) => uploadPhoto(f, 'delivery-proof', setDeliveryProofUrl, setUploadingDelivery)}
+                  onClear={() => setDeliveryProofUrl(undefined)}
                 />
-              </div>
 
-              <Button
-                className="w-full flex items-center justify-center gap-2"
-                onClick={() => updateDelivery.mutate()}
-                disabled={updateDelivery.isPending || !order}
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Save delivery update
-              </Button>
+                <PhotoUploadBox
+                  label="Payment proof"
+                  hint="Photo of cash received or UPI payment screen"
+                  required
+                  url={paymentProofUrl}
+                  uploading={uploadingPayment}
+                  onFile={(f) => uploadPhoto(f, 'delivery-payments', setPaymentProofUrl, setUploadingPayment)}
+                  onClear={() => setPaymentProofUrl(undefined)}
+                />
+
+                {/* Payment method */}
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-gray-800">Payment method</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('cash')}
+                      className={`h-11 rounded-xl text-sm font-medium border transition-all ${paymentMethod === 'cash' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'}`}
+                    >
+                      Cash
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('upi')}
+                      className={`h-11 rounded-xl text-sm font-medium border transition-all ${paymentMethod === 'upi' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'}`}
+                    >
+                      UPI
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Notes */}
+            <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-2">
+              <p className="text-sm font-medium text-gray-800">Notes <span className="text-gray-400 font-normal">(optional)</span></p>
+              <Textarea
+                rows={3}
+                placeholder="Any details about this delivery…"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                className="resize-none"
+              />
             </div>
+
+            {/* Submit */}
+            <Button
+              size="lg"
+              className={`w-full h-14 text-base font-semibold rounded-2xl transition-all ${
+                isDone && canSubmit ? 'bg-green-600 hover:bg-green-700' : ''
+              }`}
+              onClick={() => updateDelivery.mutate()}
+              disabled={!canSubmit}
+            >
+              {updateDelivery.isPending ? (
+                <><RefreshCw className="h-5 w-5 mr-2 animate-spin" /> Saving…</>
+              ) : isDone ? (
+                <><CheckCircle2 className="h-5 w-5 mr-2" /> Mark as Delivered</>
+              ) : (
+                <><CheckCircle2 className="h-5 w-5 mr-2" /> Save update</>
+              )}
+            </Button>
+
+            {isDone && (!deliveryProofUrl || !paymentProofUrl) && (
+              <p className="text-xs text-center text-red-500">
+                {!deliveryProofUrl && !paymentProofUrl
+                  ? 'Both delivery and payment photos are required'
+                  : !deliveryProofUrl
+                  ? 'Delivery proof photo is required'
+                  : 'Payment proof photo is required'}
+              </p>
+            )}
           </div>
-          </>
         )}
       </div>
     </div>
   );
 }
-

@@ -67,6 +67,7 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
       forPacking,
       forBilling,
       forDelivery,
+      deliveryUserId,
     } = query;
     const filter: Record<string, unknown> = {};
     if (isValidObjectIdString(userId)) {
@@ -85,6 +86,9 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
       filter.packedAt = { $ne: null };
     } else if (forDelivery) {
       filter.status = 'out_for_delivery';
+      if (deliveryUserId) {
+        filter.assignedDeliveryUserId = deliveryUserId;
+      }
     } else if (status) {
       filter.status = status;
     }
