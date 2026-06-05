@@ -167,6 +167,19 @@
   body {
     @apply bg-background text-foreground antialiased;
   }
+  /* Eliminate 300ms tap delay and prevent double-tap zoom on all interactive elements */
+  a,
+  button,
+  input,
+  select,
+  textarea,
+  label,
+  [role="button"],
+  [role="tab"],
+  [role="menuitem"],
+  [role="option"] {
+    touch-action: manipulation;
+  }
 }
 
 /* ================================================

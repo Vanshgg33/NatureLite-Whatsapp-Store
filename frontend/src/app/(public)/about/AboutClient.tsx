@@ -108,12 +108,12 @@ function Drop({ position, scale = 1 }: { position: [number, number, number]; sca
 }
 
 // ── Hero 3D scene ─────────────────────────────────────────────────────────────
-function HeroScene({ mouse }: { mouse: { x: number; y: number } }) {
+function HeroScene({ mouseRef }: { mouseRef: React.MutableRefObject<{ x: number; y: number }> }) {
   const g = useRef<THREE.Group>(null);
   useFrame(() => {
     if (!g.current) return;
-    g.current.rotation.y += (mouse.x * 0.36 - g.current.rotation.y) * 0.042;
-    g.current.rotation.x += (-mouse.y * 0.18 - g.current.rotation.x) * 0.042;
+    g.current.rotation.y += (mouseRef.current.x * 0.36 - g.current.rotation.y) * 0.042;
+    g.current.rotation.x += (-mouseRef.current.y * 0.18 - g.current.rotation.x) * 0.042;
   });
   return (
     <>
@@ -702,7 +702,7 @@ function CtaSection() {
 
 // ── Root ───────────────────────────────────────────────────────────────────────
 export default function AboutClient() {
-  const [mouse, setMouse] = useState({ x: 0, y: 0 });
+  const mouseRef = useRef({ x: 0, y: 0 });
   const [heroReady, setHeroReady] = useState(false);
   const heroRef = useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({ target: heroRef, offset: ['start start', 'end start'] });
@@ -712,10 +712,12 @@ export default function AboutClient() {
   useEffect(() => {
     // Slight delay so initial paint is committed before animating words
     const t = setTimeout(() => setHeroReady(true), 80);
-    const fn = (e: MouseEvent) => setMouse({
-      x: (e.clientX / window.innerWidth - 0.5) * 2,
-      y: (e.clientY / window.innerHeight - 0.5) * 2,
-    });
+    const fn = (e: MouseEvent) => {
+      mouseRef.current = {
+        x: (e.clientX / window.innerWidth - 0.5) * 2,
+        y: (e.clientY / window.innerHeight - 0.5) * 2,
+      };
+    };
     window.addEventListener('mousemove', fn, { passive: true });
     return () => { clearTimeout(t); window.removeEventListener('mousemove', fn); };
   }, []);
@@ -734,7 +736,7 @@ export default function AboutClient() {
             style={{ background: '#070f04' }}
           >
             <Suspense fallback={null}>
-              <HeroScene mouse={mouse} />
+              <HeroScene mouseRef={mouseRef} />
             </Suspense>
           </Canvas>
         </div>

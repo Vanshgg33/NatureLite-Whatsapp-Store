@@ -46,7 +46,7 @@ export function QuantitySelector({
         type="button"
         onClick={decrease}
         disabled={disabled || value <= min}
-        whileTap={{ scale: 0.82 }}
+        whileTap={{ scale: 0.93 }}
         transition={{ type: 'spring', stiffness: 600, damping: 20 }}
         className={cn(
           classes.button,
@@ -82,7 +82,7 @@ export function QuantitySelector({
         type="button"
         onClick={increase}
         disabled={disabled || value >= max}
-        whileTap={{ scale: 0.82 }}
+        whileTap={{ scale: 0.93 }}
         transition={{ type: 'spring', stiffness: 600, damping: 20 }}
         className={cn(
           classes.button,

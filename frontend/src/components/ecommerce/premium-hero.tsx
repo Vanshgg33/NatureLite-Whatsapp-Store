@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { motion, useScroll, useTransform, useSpring } from 'framer-motion';
+import { motion, useScroll, useTransform, useSpring, useMotionValue } from 'framer-motion';
 import { ArrowRight, Leaf, ChevronDown } from 'lucide-react';
 
 // Botanical SVG decorations
@@ -70,21 +70,21 @@ export function PremiumHero({
   const scale = useTransform(scrollYProgress, [0, 1], [1, 1.1]);
   const springY = useSpring(y, { stiffness: 100, damping: 30 });
 
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+  const leafX1 = useTransform(mouseX, v => v * 0.5);
+  const leafY1 = useTransform(mouseY, v => v * 0.5);
+  const leafX2 = useTransform(mouseX, v => v * -0.3);
+  const leafY2 = useTransform(mouseY, v => v * -0.3);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      const { clientX, clientY } = e;
-      const { innerWidth, innerHeight } = window;
-      setMousePosition({
-        x: (clientX / innerWidth - 0.5) * 20,
-        y: (clientY / innerHeight - 0.5) * 20,
-      });
+      mouseX.set((e.clientX / window.innerWidth - 0.5) * 20);
+      mouseY.set((e.clientY / window.innerHeight - 0.5) * 20);
     };
-
-    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
     return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, []);
+  }, [mouseX, mouseY]);
 
   return (
     <section
@@ -134,20 +134,14 @@ export function PremiumHero({
       {/* Decorative botanical elements */}
       <motion.div
         className="absolute top-20 left-10 text-brand-green/10 z-10"
-        style={{
-          x: mousePosition.x * 0.5,
-          y: mousePosition.y * 0.5,
-        }}
+        style={{ x: leafX1, y: leafY1 }}
       >
         <LeafDecoration className="w-32 h-32 md:w-48 md:h-48" />
       </motion.div>
 
       <motion.div
         className="absolute bottom-20 right-10 text-brand-mustard/10 z-10 rotate-180"
-        style={{
-          x: mousePosition.x * -0.3,
-          y: mousePosition.y * -0.3,
-        }}
+        style={{ x: leafX2, y: leafY2 }}
       >
         <LeafDecoration className="w-24 h-24 md:w-40 md:h-40" />
       </motion.div>
