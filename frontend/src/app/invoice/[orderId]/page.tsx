@@ -74,7 +74,7 @@ export default function InvoicePage() {
   const invoiceRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
 
-  const { data: order, isLoading } = useQuery<Order>({
+  const { data: order, isLoading, isError } = useQuery<Order>({
     queryKey: ['invoice-order', orderId],
     queryFn: () => api.getOrder(orderId),
   });
@@ -118,25 +118,31 @@ export default function InvoicePage() {
     );
   }
 
+  if (isError) return <div style={{ padding: 40, color: '#dc2626', fontFamily: 'sans-serif' }}>Failed to load order. Please try again.</div>;
   if (!order) return <div style={{ padding: 40, color: '#dc2626', fontFamily: 'sans-serif' }}>Order not found.</div>;
 
-  const addr = order.shippingAddress;
-  const fy = new Date(order.createdAt);
+  const addr = order.shippingAddress ?? ({} as typeof order.shippingAddress);
+  const fy = order.createdAt ? new Date(order.createdAt) : new Date();
   const fyStart = fy.getMonth() >= 3 ? fy.getFullYear() : fy.getFullYear() - 1;
   const invoiceNo = `NLF-${String(fyStart).slice(2)}-${String(fyStart + 1).slice(2)}/${order.orderNumber}`;
 
-  const totalQty = order.items.reduce((s, i) => s + i.quantity, 0);
-  const cgst = order.gstTotal / 2;
-  const sgst = order.gstTotal / 2;
-  const gstRatePct = order.subtotal > 0 && order.gstTotal > 0
-    ? Math.round((order.gstTotal / order.subtotal) * 100)
+  const totalQty = order.items.reduce((s, i) => s + (i.quantity ?? 0), 0);
+  const gstTotal = order.gstTotal ?? 0;
+  const cgst = gstTotal / 2;
+  const sgst = gstTotal / 2;
+  const subtotal = order.subtotal ?? 0;
+  const total = order.total ?? 0;
+  const discount = order.discount ?? 0;
+  const shippingCharge = order.shippingCharge ?? 0;
+  const gstRatePct = subtotal > 0 && gstTotal > 0
+    ? Math.round((gstTotal / subtotal) * 100)
     : 0;
   const halfRate = gstRatePct / 2;
-  const discountPct = order.subtotal > 0 && order.discount > 0
-    ? (order.discount / order.subtotal) * 100
+  const discountPct = subtotal > 0 && discount > 0
+    ? (discount / subtotal) * 100
     : 0;
   const itemDiscount = (item: OrderItem) =>
-    order.subtotal > 0 && order.discount > 0 ? (item.total / order.subtotal) * order.discount : 0;
+    subtotal > 0 && discount > 0 ? (item.total / subtotal) * discount : 0;
 
   return (
     <>
@@ -191,7 +197,7 @@ export default function InvoicePage() {
             <div>
               <div style={{ fontSize: 10.5, opacity: 0.75, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 }}>Amount Due</div>
               <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: 0.5, lineHeight: 1 }}>
-                ₹ {INR(order.total)}
+                ₹ {INR(total)}
               </div>
             </div>
             <div style={{ textAlign: 'right', opacity: 0.85, fontSize: 11 }}>
@@ -231,15 +237,15 @@ export default function InvoicePage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
             <div style={{ padding: '14px 28px' }}>
               <div style={S.label}>Bill To:</div>
-              <div style={{ fontWeight: 700, fontSize: 14, color: S.text, marginBottom: 4 }}>{addr.name}</div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: S.text, marginBottom: 4 }}>{addr.name ?? '–'}</div>
               <div style={{ color: S.muted, lineHeight: 1.75, fontSize: 11.5 }}>
-                {addr.street}
+                {addr.street ?? ''}
                 {addr.landmark ? `, ${addr.landmark}` : ''}<br />
-                {addr.city}, {addr.state}<br />
-                PIN – {addr.pincode}
+                {[addr.city, addr.state].filter(Boolean).join(', ')}<br />
+                {addr.pincode ? `PIN – ${addr.pincode}` : ''}
               </div>
-              <div style={{ color: S.green, fontWeight: 600, fontSize: 12, marginTop: 5 }}>☎ {addr.phone}</div>
-              <div style={{ fontSize: 11, color: S.muted, marginTop: 2 }}>{addr.state}</div>
+              <div style={{ color: S.green, fontWeight: 600, fontSize: 12, marginTop: 5 }}>☎ {addr.phone ?? '–'}</div>
+              <div style={{ fontSize: 11, color: S.muted, marginTop: 2 }}>{addr.state ?? ''}</div>
             </div>
             <div style={{ padding: '14px 28px', borderLeft: `1px solid ${S.border}` }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
@@ -278,7 +284,7 @@ export default function InvoicePage() {
                   const prod = getProduct(item);
                   const hsn = prod?.hsnCode ?? '–';
                   const disc = itemDiscount(item);
-                  const gstRate = item.total > 0 ? (item.gstAmount / item.total) * 100 : 0;
+                  const gstRate = item.total > 0 ? ((item.gstAmount ?? 0) / item.total) * 100 : 0;
                   const isEven = idx % 2 === 0;
                   return (
                     <tr key={`${typeof item.product === 'object' ? item.product._id : item.product}-${item.variantSku ?? idx}`} style={{ background: isEven ? '#fff' : '#fafcfb', borderBottom: `1px solid ${S.border}` }}>
@@ -306,7 +312,7 @@ export default function InvoicePage() {
                         <div style={{ color: disc > 0 ? '#dc2626' : '#aaa', fontSize: 10.5, marginTop: 4 }}>
                           {disc > 0 ? `– ${INR(disc)}` : '0.000'}
                         </div>
-                        <div style={{ color: '#aaa', fontSize: 10.5, marginTop: 2 }}>{INR(item.gstAmount)}</div>
+                        <div style={{ color: '#aaa', fontSize: 10.5, marginTop: 2 }}>{INR(item.gstAmount ?? 0)}</div>
                       </td>
                     </tr>
                   );
@@ -318,7 +324,7 @@ export default function InvoicePage() {
                   <td style={{ padding: '9px 6px', fontWeight: 700, fontSize: 12.5, color: S.green }}>Total</td>
                   <td style={{ padding: '9px 6px', textAlign: 'right', fontWeight: 700, color: S.green }}>{totalQty}</td>
                   <td />
-                  <td style={{ padding: '9px 6px', textAlign: 'right', fontWeight: 700, color: S.green }}>{INR(order.subtotal)}</td>
+                  <td style={{ padding: '9px 6px', textAlign: 'right', fontWeight: 700, color: S.green }}>{INR(subtotal)}</td>
                 </tr>
               </tbody>
             </table>
@@ -333,7 +339,7 @@ export default function InvoicePage() {
               {[
                 [`SGST @ ${halfRate}%`, sgst],
                 [`CGST @ ${halfRate}%`, cgst],
-                ...(order.shippingCharge > 0 ? [['Shipping', order.shippingCharge]] : []),
+                ...(shippingCharge > 0 ? [['Shipping', shippingCharge]] : []),
               ].map(([label, val]) => (
                 <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0', borderBottom: `1px dashed ${S.border}` }}>
                   <span style={{ color: S.muted }}>{label}</span>
@@ -346,11 +352,11 @@ export default function InvoicePage() {
             <div style={{ textAlign: 'right' }}>
               <div style={S.label}>Order Summary</div>
               {[
-                ['Subtotal (Taxable)', order.subtotal],
-                ...(order.discount > 0 ? [['Discount', -order.discount]] : []),
+                ['Subtotal (Taxable)', subtotal],
+                ...(discount > 0 ? [['Discount', -discount]] : []),
                 [`SGST (${halfRate}%)`, sgst],
                 [`CGST (${halfRate}%)`, cgst],
-                ...(order.shippingCharge > 0 ? [['Shipping', order.shippingCharge]] : [['Shipping', null]]),
+                ...(shippingCharge > 0 ? [['Shipping', shippingCharge]] : [['Shipping', null]]),
               ].map(([label, val]) => (
                 <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, padding: '2.5px 0' }}>
                   <span style={{ color: S.muted }}>{label}</span>
@@ -361,12 +367,12 @@ export default function InvoicePage() {
               ))}
               <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `2px solid ${S.green}`, marginTop: 6, paddingTop: 6, fontSize: 14, fontWeight: 700, color: S.green }}>
                 <span>Grand Total</span>
-                <span>₹ {INR(order.total)}</span>
+                <span>₹ {INR(total)}</span>
               </div>
-              {order.discount > 0 && (
+              {discount > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5, fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
                   <span>🎉 You Saved</span>
-                  <span>{INR(order.discount)}</span>
+                  <span>{INR(discount)}</span>
                 </div>
               )}
             </div>
@@ -375,7 +381,7 @@ export default function InvoicePage() {
           {/* ── Amount in Words ───────────────────────────────────── */}
           <div style={{ background: S.lightGreen, borderTop: `1px solid ${S.border}`, padding: '10px 28px', fontSize: 11.5 }}>
             <strong style={{ color: S.green }}>Amount in Words : </strong>
-            <span style={{ fontStyle: 'italic', color: '#444' }}>{toWords(order.total)}</span>
+            <span style={{ fontStyle: 'italic', color: '#444' }}>{toWords(total)}</span>
           </div>
 
           {/* ── Footer ───────────────────────────────────────────── */}
