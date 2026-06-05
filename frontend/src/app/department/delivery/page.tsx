@@ -13,19 +13,29 @@ import {
   X,
   AlertCircle,
   RefreshCw,
+  MapPin,
+  Phone,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { formatCurrency } from '@/lib/utils';
 import type { Order } from '@/types';
 
 type DeliveryStatus = 'delivery_done' | 'customer_ringing' | 'customer_cancelled' | 'customer_tomorrow';
+
+// ─── Photo upload box ─────────────────────────────────────────────────────────
 
 interface PhotoUploadBoxProps {
   label: string;
@@ -108,6 +118,138 @@ function PhotoUploadBox({ label, hint, required, url, uploading, onFile, onClear
   );
 }
 
+// ─── Confirmation dialog ──────────────────────────────────────────────────────
+
+interface ConfirmDeliveryDialogProps {
+  open: boolean;
+  order: Order;
+  deliveryProofUrl: string;
+  paymentProofUrl: string;
+  paymentMethod: 'cash' | 'upi';
+  amountCollected: string;
+  note: string;
+  submitting: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function ConfirmDeliveryDialog({
+  open,
+  order,
+  deliveryProofUrl,
+  paymentProofUrl,
+  paymentMethod,
+  amountCollected,
+  note,
+  submitting,
+  onConfirm,
+  onCancel,
+}: ConfirmDeliveryDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v && !submitting) onCancel(); }}>
+      <DialogContent className="max-w-sm mx-auto rounded-2xl p-0 overflow-hidden gap-0">
+        <DialogHeader className="px-5 pt-5 pb-3">
+          <DialogTitle className="text-base font-semibold text-gray-900">
+            Confirm delivery
+          </DialogTitle>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Review everything before marking this order as delivered. This cannot be undone.
+          </p>
+        </DialogHeader>
+
+        <div className="px-5 pb-2 space-y-4 max-h-[60vh] overflow-y-auto">
+          {/* Order summary */}
+          <div className="bg-gray-50 rounded-xl p-3 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Order</span>
+              <span className="text-sm font-bold text-gray-900">{order.orderNumber}</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-gray-700">
+              <Phone className="h-3 w-3 text-gray-400" />
+              {order.shippingAddress.name} · {order.shippingAddress.phone}
+            </div>
+            <div className="flex items-start gap-1.5 text-xs text-gray-500">
+              <MapPin className="h-3 w-3 text-gray-400 mt-0.5 shrink-0" />
+              <span>{order.shippingAddress.street}, {order.shippingAddress.city}, {order.shippingAddress.state} – {order.shippingAddress.pincode}</span>
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-gray-200">
+              <span className="text-xs text-gray-500">Order total</span>
+              <span className="text-sm font-bold text-gray-900">{formatCurrency(order.total)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-500">Amount collected</span>
+              <span className={`text-sm font-bold ${amountCollected ? 'text-green-700' : 'text-gray-400 italic'}`}>
+                {amountCollected ? `₹ ${parseFloat(amountCollected).toLocaleString('en-IN')}` : 'Not entered'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-500">Payment via</span>
+              <span className="text-xs font-semibold text-gray-700 uppercase">{paymentMethod}</span>
+            </div>
+          </div>
+
+          {/* Photos side by side */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-gray-600">Delivery proof</p>
+              <div className="relative rounded-lg overflow-hidden border border-gray-200 bg-gray-50" style={{ paddingBottom: '75%' }}>
+                <Image src={deliveryProofUrl} alt="Delivery proof" fill className="object-cover" sizes="150px" />
+                <div className="absolute inset-0 flex items-end p-1">
+                  <span className="bg-green-500/90 text-white text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                    <CheckCircle2 className="h-2.5 w-2.5" /> OK
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-gray-600">Payment proof</p>
+              <div className="relative rounded-lg overflow-hidden border border-gray-200 bg-gray-50" style={{ paddingBottom: '75%' }}>
+                <Image src={paymentProofUrl} alt="Payment proof" fill className="object-cover" sizes="150px" />
+                <div className="absolute inset-0 flex items-end p-1">
+                  <span className="bg-green-500/90 text-white text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                    <CheckCircle2 className="h-2.5 w-2.5" /> OK
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {note ? (
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-xs font-medium text-gray-500 mb-0.5">Note</p>
+              <p className="text-xs text-gray-700">{note}</p>
+            </div>
+          ) : null}
+        </div>
+
+        <DialogFooter className="px-5 pt-3 pb-5 flex flex-col gap-2">
+          <Button
+            className="w-full h-11 bg-green-600 hover:bg-green-700 font-semibold rounded-xl"
+            onClick={onConfirm}
+            disabled={submitting}
+          >
+            {submitting ? (
+              <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Saving…</>
+            ) : (
+              <><CheckCircle2 className="h-4 w-4 mr-2" /> Yes, mark as delivered</>
+            )}
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full h-11 rounded-xl"
+            onClick={onCancel}
+            disabled={submitting}
+          >
+            Go back & review
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
+
 export default function DeliveryDashboardPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -118,9 +260,11 @@ export default function DeliveryDashboardPage() {
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'upi'>('cash');
   const [paymentProofUrl, setPaymentProofUrl] = useState<string | undefined>();
   const [deliveryProofUrl, setDeliveryProofUrl] = useState<string | undefined>();
+  const [amountCollected, setAmountCollected] = useState('');
   const [note, setNote] = useState('');
   const [uploadingPayment, setUploadingPayment] = useState(false);
   const [uploadingDelivery, setUploadingDelivery] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const { data: billedData, isLoading: loadingBilled } = useQuery({
     queryKey: ['department', 'delivery', 'orders'],
@@ -135,17 +279,22 @@ export default function DeliveryDashboardPage() {
     setOrderNumber('');
     setPaymentProofUrl(undefined);
     setDeliveryProofUrl(undefined);
+    setAmountCollected('');
     setNote('');
     setStatus('delivery_done');
     setPaymentMethod('cash');
+    setShowConfirm(false);
   }, []);
 
   const selectOrder = (o: Order) => {
     setSelectedOrder(o);
     setPaymentProofUrl(undefined);
     setDeliveryProofUrl(undefined);
+    setAmountCollected('');
     setNote('');
     setStatus('delivery_done');
+    setPaymentMethod('cash');
+    setShowConfirm(false);
   };
 
   const searchOrder = async () => {
@@ -169,7 +318,6 @@ export default function DeliveryDashboardPage() {
     try {
       const result = await api.uploadImage(file, folder);
       setUrl(result.secureUrl || result.url);
-      toast({ title: 'Photo uploaded', description: 'Image attached successfully.' });
     } catch {
       toast({ title: 'Upload failed', description: 'Please try again or capture a clearer photo.', variant: 'destructive' });
     } finally {
@@ -181,20 +329,19 @@ export default function DeliveryDashboardPage() {
 
   const updateDelivery = useMutation({
     mutationFn: async () => {
-      if (!selectedOrder) return;
-      if (isDone && !deliveryProofUrl) throw new Error('Please capture a delivery proof photo before marking as delivered.');
-      if (isDone && !paymentProofUrl) throw new Error('Please capture a payment proof photo before marking as delivered.');
-
+      if (!selectedOrder) throw new Error('No order selected');
+      const parsedAmount = parseFloat(amountCollected);
       return api.updateDeliveryWorkflow(selectedOrder._id, {
         status,
         paymentMethod: isDone ? paymentMethod : undefined,
         paymentProofUrl: isDone ? paymentProofUrl : undefined,
         deliveryProofUrl: isDone ? deliveryProofUrl : undefined,
+        amountCollected: isDone && !isNaN(parsedAmount) ? parsedAmount : undefined,
         note,
       });
     },
     onSuccess: () => {
-      toast({ title: 'Delivery updated', description: 'Order status saved successfully.' });
+      toast({ title: 'Delivery marked ✓', description: 'Order has been confirmed as delivered.' });
       if (selectedOrder) {
         queryClient.invalidateQueries({ queryKey: ['order', selectedOrder._id] });
         queryClient.invalidateQueries({ queryKey: ['department', 'delivery', 'orders'] });
@@ -202,6 +349,7 @@ export default function DeliveryDashboardPage() {
       resetForm();
     },
     onError: (err) => {
+      setShowConfirm(false);
       toast({
         title: 'Update failed',
         description: err instanceof Error ? err.message : 'Please try again.',
@@ -211,11 +359,21 @@ export default function DeliveryDashboardPage() {
   });
 
   const order = selectedOrder;
+  const photosReady = !!deliveryProofUrl && !!paymentProofUrl;
+  const uploading = uploadingPayment || uploadingDelivery;
 
-  const canSubmit =
-    !updateDelivery.isPending &&
-    !!order &&
-    (!isDone || (!!deliveryProofUrl && !!paymentProofUrl));
+  // For non-delivery_done statuses, allow submit directly.
+  // For delivery_done, open confirmation dialog instead.
+  const canOpenConfirm = !uploading && !!order && isDone && photosReady;
+  const canSubmitOther = !updateDelivery.isPending && !uploading && !!order && !isDone;
+
+  const handlePrimaryButton = () => {
+    if (isDone) {
+      setShowConfirm(true);
+    } else {
+      updateDelivery.mutate();
+    }
+  };
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
@@ -249,7 +407,7 @@ export default function DeliveryDashboardPage() {
               <p className="text-sm text-gray-400 text-center py-8">Loading orders…</p>
             )}
             {!loadingBilled && billedOrders.length === 0 && (
-              <p className="text-sm text-gray-400 text-center py-8">No orders assigned to you. Search by order number if needed.</p>
+              <p className="text-sm text-gray-400 text-center py-8">No orders assigned to you yet.</p>
             )}
             {billedOrders.length > 0 && (
               <div className="space-y-2">
@@ -362,7 +520,7 @@ export default function DeliveryDashboardPage() {
               </div>
             </div>
 
-            {/* Photos — only required/shown for delivery_done */}
+            {/* Photos — only for delivery_done */}
             {isDone && (
               <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-5">
                 <div className="flex items-center gap-2">
@@ -372,7 +530,7 @@ export default function DeliveryDashboardPage() {
 
                 <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 flex gap-2">
                   <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-700">Both photos are required to mark this order as delivered.</p>
+                  <p className="text-xs text-amber-700">Both photos are required. You will review them before confirming.</p>
                 </div>
 
                 <PhotoUploadBox
@@ -394,6 +552,34 @@ export default function DeliveryDashboardPage() {
                   onFile={(f) => uploadPhoto(f, 'delivery-payments', setPaymentProofUrl, setUploadingPayment)}
                   onClear={() => setPaymentProofUrl(undefined)}
                 />
+
+                {/* Amount collected */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-800">
+                    Amount collected
+                    <span className="text-xs text-gray-400 font-normal ml-1">(enter what customer paid)</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium text-sm">₹</span>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="0.01"
+                      placeholder={order ? order.total.toFixed(2) : '0.00'}
+                      value={amountCollected}
+                      onChange={(e) => setAmountCollected(e.target.value)}
+                      className="pl-7 h-11 text-base font-semibold"
+                    />
+                  </div>
+                  {amountCollected && parseFloat(amountCollected) !== order?.total && (
+                    <p className={`text-xs font-medium ${parseFloat(amountCollected) < (order?.total ?? 0) ? 'text-red-500' : 'text-amber-600'}`}>
+                      {parseFloat(amountCollected) < (order?.total ?? 0)
+                        ? `Short by ₹ ${((order?.total ?? 0) - parseFloat(amountCollected)).toLocaleString('en-IN')}`
+                        : `Excess ₹ ${(parseFloat(amountCollected) - (order?.total ?? 0)).toLocaleString('en-IN')}`}
+                    </p>
+                  )}
+                </div>
 
                 {/* Payment method */}
                 <div className="space-y-2">
@@ -430,25 +616,34 @@ export default function DeliveryDashboardPage() {
               />
             </div>
 
-            {/* Submit */}
+            {/* Upload progress indicator */}
+            {uploading && (
+              <div className="flex items-center justify-center gap-2 py-2 text-sm text-amber-600">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                Uploading photo, please wait…
+              </div>
+            )}
+
+            {/* Primary button */}
             <Button
               size="lg"
               className={`w-full h-14 text-base font-semibold rounded-2xl transition-all ${
-                isDone && canSubmit ? 'bg-green-600 hover:bg-green-700' : ''
+                isDone && canOpenConfirm ? 'bg-green-600 hover:bg-green-700' : ''
               }`}
-              onClick={() => updateDelivery.mutate()}
-              disabled={!canSubmit}
+              onClick={handlePrimaryButton}
+              disabled={isDone ? !canOpenConfirm : !canSubmitOther}
             >
               {updateDelivery.isPending ? (
                 <><RefreshCw className="h-5 w-5 mr-2 animate-spin" /> Saving…</>
               ) : isDone ? (
-                <><CheckCircle2 className="h-5 w-5 mr-2" /> Mark as Delivered</>
+                <><CheckCircle2 className="h-5 w-5 mr-2" /> Review & Confirm Delivery</>
               ) : (
                 <><CheckCircle2 className="h-5 w-5 mr-2" /> Save update</>
               )}
             </Button>
 
-            {isDone && (!deliveryProofUrl || !paymentProofUrl) && (
+            {/* Missing photo hint */}
+            {isDone && !uploading && (!deliveryProofUrl || !paymentProofUrl) && (
               <p className="text-xs text-center text-red-500">
                 {!deliveryProofUrl && !paymentProofUrl
                   ? 'Both delivery and payment photos are required'
@@ -460,6 +655,22 @@ export default function DeliveryDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Confirmation dialog */}
+      {order && isDone && deliveryProofUrl && paymentProofUrl && (
+        <ConfirmDeliveryDialog
+          open={showConfirm}
+          order={order}
+          deliveryProofUrl={deliveryProofUrl}
+          paymentProofUrl={paymentProofUrl}
+          paymentMethod={paymentMethod}
+          amountCollected={amountCollected}
+          note={note}
+          submitting={updateDelivery.isPending}
+          onConfirm={() => updateDelivery.mutate()}
+          onCancel={() => setShowConfirm(false)}
+        />
+      )}
     </div>
   );
 }

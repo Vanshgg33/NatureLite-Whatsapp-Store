@@ -255,6 +255,10 @@ export class UpdateDeliveryWorkflowDto {
   @IsOptional()
   deliveryProofUrl?: string;
 
+  @IsNumber()
+  @IsOptional()
+  amountCollected?: number;
+
   @IsString()
   @IsOptional()
   note?: string;

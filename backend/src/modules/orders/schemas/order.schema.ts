@@ -201,6 +201,12 @@ export class Order {
   deliveryProofUrl?: string;
 
   @Prop()
+  paymentProofUrl?: string;
+
+  @Prop()
+  amountCollected?: number;
+
+  @Prop()
   cancelledAt?: Date;
 
   @Prop()

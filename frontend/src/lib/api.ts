@@ -278,6 +278,11 @@ class ApiClient {
     return response.data.data;
   }
 
+  async getDeliveryStaff(): Promise<AdminUser[]> {
+    const response = await this.client.get<ApiResponse<AdminUser[]>>('/admin/users/delivery-staff');
+    return response.data.data;
+  }
+
   async createAdminUser(data: {
     name: string;
     email: string;
@@ -752,6 +757,7 @@ class ApiClient {
       paymentMethod?: 'cash' | 'upi';
       paymentProofUrl?: string;
       deliveryProofUrl?: string;
+      amountCollected?: number;
       note?: string;
     }
   ): Promise<Order> {

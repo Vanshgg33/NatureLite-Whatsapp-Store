@@ -9,6 +9,7 @@ export type TimelineMetadata = {
   paymentMethod?: 'cash' | 'upi';
   paymentProofUrl?: string;
   deliveryProofUrl?: string;
+  amountCollected?: number;
 };
 
 export type DeliveryWorkflowMetadata = {
@@ -16,6 +17,7 @@ export type DeliveryWorkflowMetadata = {
   paymentMethod?: 'cash' | 'upi';
   paymentProofUrl?: string;
   deliveryProofUrl?: string;
+  amountCollected?: number;
   note?: string;
   updatedBy: string;
   updatedAt: Date;

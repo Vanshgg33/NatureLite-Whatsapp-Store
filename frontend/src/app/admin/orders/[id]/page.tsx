@@ -3,7 +3,7 @@
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { ArrowLeft, FileText } from 'lucide-react';
+import { ArrowLeft, FileText, Camera, Banknote } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -144,6 +144,67 @@ export default function AdminOrderDetailPage() {
             ))}
           </CardContent>
         </Card>
+
+        {/* Delivery proof — shown only after delivery is completed */}
+        {(order.deliveryProofUrl || order.paymentProofUrl || order.amountCollected !== undefined) && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Camera className="h-4 w-4 text-green-600" />
+                Delivery Confirmation
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Amount collected row */}
+              {order.amountCollected !== undefined && (
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-100">
+                  <Banknote className="h-5 w-5 text-green-600 shrink-0" />
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium">Amount collected by delivery</p>
+                    <p className="text-lg font-bold text-green-700">{formatCurrency(order.amountCollected)}</p>
+                    {order.amountCollected !== order.total && (
+                      <p className={`text-xs font-medium mt-0.5 ${order.amountCollected < order.total ? 'text-red-500' : 'text-amber-600'}`}>
+                        {order.amountCollected < order.total
+                          ? `Short by ${formatCurrency(order.total - order.amountCollected)}`
+                          : `Excess ${formatCurrency(order.amountCollected - order.total)}`}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Photo grid */}
+              <div className="grid grid-cols-2 gap-4">
+                {order.deliveryProofUrl && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-semibold text-gray-600">Delivery proof</p>
+                    <a href={order.deliveryProofUrl} target="_blank" rel="noopener noreferrer">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={order.deliveryProofUrl}
+                        alt="Delivery proof"
+                        className="w-full rounded-lg border object-cover aspect-[4/3] hover:opacity-90 transition-opacity cursor-zoom-in"
+                      />
+                    </a>
+                  </div>
+                )}
+                {order.paymentProofUrl && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-semibold text-gray-600">Payment proof</p>
+                    <a href={order.paymentProofUrl} target="_blank" rel="noopener noreferrer">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={order.paymentProofUrl}
+                        alt="Payment proof"
+                        className="w-full rounded-lg border object-cover aspect-[4/3] hover:opacity-90 transition-opacity cursor-zoom-in"
+                      />
+                    </a>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

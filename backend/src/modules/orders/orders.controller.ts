@@ -67,7 +67,8 @@ export class OrdersController {
     @Query() query: OrderQueryDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<PaginatedResult<Order>> {
-    if (query.forDelivery && user.departmentType === 'delivery') {
+    if (user.departmentType === 'delivery') {
+      query.forDelivery = true;
       query.deliveryUserId = user.sub;
     }
     return this.ordersService.findAll(query);
@@ -115,6 +116,13 @@ export class OrdersController {
       throw new ForbiddenException('You do not have access to this order');
     }
 
+    if (user.departmentType === 'delivery') {
+      const assigned = (order as any).assignedDeliveryUserId as string | undefined;
+      if (!assigned || assigned !== user.sub) {
+        throw new ForbiddenException('This order is not assigned to you.');
+      }
+    }
+
     return order;
   }
 
@@ -127,6 +135,13 @@ export class OrdersController {
 
     if (user.role === 'customer' && getOrderUserId(order) !== user.sub) {
       throw new ForbiddenException('You do not have access to this order');
+    }
+
+    if (user.departmentType === 'delivery') {
+      const assigned = (order as any).assignedDeliveryUserId as string | undefined;
+      if (!assigned || assigned !== user.sub) {
+        throw new ForbiddenException('This order is not assigned to you.');
+      }
     }
 
     return order;
@@ -155,7 +170,7 @@ export class OrdersController {
     if (user.departmentType === 'packing' || user.departmentType === 'delivery') {
       throw new ForbiddenException('Only billing staff or superadmin can assign delivery.');
     }
-    return this.ordersService.assignDelivery(id, dto.deliveryUserId);
+    return this.ordersService.assignDelivery(id, dto.deliveryUserId, user.sub);
   }
 
   @Put(':id/mark-packed')

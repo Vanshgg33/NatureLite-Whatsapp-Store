@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Logger,
   OnModuleInit,
 } from '@nestjs/common';
@@ -24,6 +25,7 @@ import { StoreSalesService } from '../store-sales/store-sales.service';
 import { WalletService } from '../wallet/wallet.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UcmService } from '../ucm/ucm.service';
+import { AdminService } from '../admin/admin.service';
 import { UpdateUserDto } from '../users/dto/user.dto';
 import {
   CreateOrderDto,
@@ -107,6 +109,7 @@ export class OrdersService implements OnModuleInit {
     private walletService: WalletService,
     private readonly notificationsService: NotificationsService,
     private readonly ucmService: UcmService,
+    private readonly adminService: AdminService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -954,12 +957,13 @@ export class OrdersService implements OnModuleInit {
       );
     }
 
-    if (
-      order.assignedDeliveryUserId &&
-      departmentType === 'delivery' &&
-      order.assignedDeliveryUserId !== updatedBy
-    ) {
-      throw new BadRequestException('This order is assigned to a different delivery person.');
+    if (departmentType === 'delivery') {
+      if (!order.assignedDeliveryUserId) {
+        throw new ForbiddenException('This order has not been assigned to any delivery staff yet.');
+      }
+      if (order.assignedDeliveryUserId !== updatedBy) {
+        throw new ForbiddenException('This order is assigned to a different delivery person.');
+      }
     }
 
     if (dto.status === 'delivery_done' && !dto.deliveryProofUrl) {
@@ -973,6 +977,7 @@ export class OrdersService implements OnModuleInit {
       paymentMethod: dto.paymentMethod,
       paymentProofUrl: dto.paymentProofUrl,
       deliveryProofUrl: dto.deliveryProofUrl,
+      amountCollected: dto.amountCollected,
       note: dto.note,
       updatedBy,
       updatedAt: new Date(),
@@ -995,6 +1000,10 @@ export class OrdersService implements OnModuleInit {
       order.status = 'delivered';
       order.deliveredAt = new Date();
       order.deliveryProofUrl = dto.deliveryProofUrl;
+      order.paymentProofUrl = dto.paymentProofUrl;
+      if (dto.amountCollected !== undefined) {
+        order.amountCollected = dto.amountCollected;
+      }
     }
 
     this.pushTimelineEntry(order, {
@@ -1008,6 +1017,7 @@ export class OrdersService implements OnModuleInit {
         paymentMethod: dto.paymentMethod,
         paymentProofUrl: dto.paymentProofUrl,
         deliveryProofUrl: dto.deliveryProofUrl,
+        amountCollected: dto.amountCollected,
       },
     });
 
@@ -1307,12 +1317,39 @@ export class OrdersService implements OnModuleInit {
     return this.orderRepository.getOrdersByStatus(resetAt);
   }
 
-  async assignDelivery(orderId: string, deliveryUserId: string): Promise<Order> {
+  async assignDelivery(orderId: string, deliveryUserId: string, assignedBy?: string): Promise<Order> {
     const idObj = parseObjectId(orderId, 'id');
     const order = await this.orderRepository.findById(idObj);
     if (!order) throw new NotFoundException('Order not found');
+
+    const assignableStatuses: OrderStatus[] = ['preparing', 'out_for_delivery'];
+    if (!assignableStatuses.includes(order.status)) {
+      throw new BadRequestException(
+        `Cannot assign delivery: order status is "${order.status}". Only preparing or out_for_delivery orders can be assigned.`,
+      );
+    }
+
+    let deliveryUser;
+    try {
+      deliveryUser = await this.adminService.findById(deliveryUserId);
+    } catch {
+      throw new BadRequestException('Delivery user not found.');
+    }
+    if (deliveryUser.departmentType !== 'delivery') {
+      throw new BadRequestException('The specified user is not a delivery staff member.');
+    }
+    if (!deliveryUser.isActive) {
+      throw new BadRequestException('The specified delivery staff member is inactive.');
+    }
+
     order.assignedDeliveryUserId = deliveryUserId;
     order.assignedDeliveryAt = new Date();
+    this.pushTimelineEntry(order, {
+      status: order.status,
+      message: `Order assigned to delivery staff: ${deliveryUser.name}`,
+      updatedBy: assignedBy,
+    });
+
     return order.save();
   }
 

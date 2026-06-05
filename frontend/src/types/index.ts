@@ -246,6 +246,10 @@ export interface Order {
   returnRequestedAt?: string;
   returnRequestReason?: string;
   returnRequestStatus?: 'requested' | 'approved' | 'rejected' | 'completed';
+  deliveryProofUrl?: string;
+  paymentProofUrl?: string;
+  amountCollected?: number;
+  assignedDeliveryUserId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -665,6 +669,7 @@ export interface UpdateOrderStatusDto {
   status: OrderStatus;
   message?: string;
   updatedBy?: string;
+  assignedTo?: string;
 }
 
 export interface UpdateShippingDto {

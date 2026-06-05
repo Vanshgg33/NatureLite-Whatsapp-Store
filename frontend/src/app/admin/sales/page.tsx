@@ -635,6 +635,18 @@ export default function SalesPage() {
                     className="flex-1"
                     onClick={() => {
                       const sid = typeof sale.store === 'object' ? (sale.store as { _id: string })._id : sale.store;
+                      window.open(`/invoice/sale/${sale._id}?storeId=${sid}`, '_blank');
+                    }}
+                  >
+                    <FileText className="h-4 w-4 mr-1" />
+                    GST Invoice
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => {
+                      const sid = typeof sale.store === 'object' ? (sale.store as { _id: string })._id : sale.store;
                       setEditingSaleId(sale._id);
                       setEditingSaleStoreId(sid);
                     }}
@@ -755,6 +767,17 @@ export default function SalesPage() {
                             title="View bill"
                           >
                             <FileText className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const sid = typeof sale.store === 'object' ? (sale.store as { _id: string })._id : sale.store;
+                              window.open(`/invoice/sale/${sale._id}?storeId=${sid}`, '_blank');
+                            }}
+                            title="Generate GST Invoice"
+                          >
+                            <Printer className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="ghost"

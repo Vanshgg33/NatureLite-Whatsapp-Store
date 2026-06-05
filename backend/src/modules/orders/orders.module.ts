@@ -16,6 +16,7 @@ import { StoreSalesModule } from '../store-sales/store-sales.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { UcmModule } from '../ucm/ucm.module';
+import { AdminModule } from '../admin/admin.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { UcmModule } from '../ucm/ucm.module';
     WalletModule,
     NotificationsModule,
     UcmModule,
+    AdminModule,
   ],
   controllers: [OrdersController],
   providers: [OrderRepository, OrdersService],
