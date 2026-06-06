@@ -27,6 +27,7 @@ export interface AdminUser {
   store?: string;
   departmentType?: 'packing' | 'billing' | 'delivery';
   permissions: string[];
+  plainPassword?: string;
   createdAt: string;
   updatedAt: string;
 }

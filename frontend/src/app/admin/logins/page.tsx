@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { KeyRound, Plus, Trash2, RefreshCw } from 'lucide-react';
+import { KeyRound, Plus, Trash2, Eye, EyeOff, Check, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AdminUser } from '@/types';
 import { Header } from '@/components/layout/header';
@@ -27,6 +27,38 @@ export default function AdminLoginsPage() {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'admin' | 'superadmin'>('admin');
   const [departmentType, setDepartmentType] = useState<'packing' | 'billing' | 'delivery' | 'none'>('none');
+
+  // per-row password editing state
+  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
+  const [editingPassword, setEditingPassword] = useState<Record<string, string>>({});
+  const [savingPassword, setSavingPassword] = useState<Record<string, boolean>>({});
+
+  const toggleVisible = (id: string) =>
+    setVisiblePasswords((prev) => ({ ...prev, [id]: !prev[id] }));
+
+  const startEdit = (user: AdminUser) =>
+    setEditingPassword((prev) => ({ ...prev, [user._id]: user.plainPassword ?? '' }));
+
+  const cancelEdit = (id: string) =>
+    setEditingPassword((prev) => { const n = { ...prev }; delete n[id]; return n; });
+
+  const savePassword = async (id: string) => {
+    const newPass = editingPassword[id];
+    if (!newPass) return;
+    if (newPass.length < 6) {
+      toast({ title: 'Password too short', description: 'Password must be at least 6 characters.', variant: 'destructive' });
+      return;
+    }
+    setSavingPassword((prev) => ({ ...prev, [id]: true }));
+    try {
+      await resetPassword.mutateAsync({ id, password: newPass });
+      cancelEdit(id);
+    } catch {
+      toast({ title: 'Failed to update password', description: 'Please try again.', variant: 'destructive' });
+    } finally {
+      setSavingPassword((prev) => { const n = { ...prev }; delete n[id]; return n; });
+    }
+  };
 
   const createUser = useMutation({
     mutationFn: () =>
@@ -93,6 +125,7 @@ export default function AdminLoginsPage() {
         title: 'Password reset',
         description: 'New password has been set for this login.',
       });
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
     },
   });
 
@@ -219,6 +252,7 @@ export default function AdminLoginsPage() {
                     <th className="px-4 py-2 text-left font-medium text-gray-700">Name</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-700">Email</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-700">Phone</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-700">Password</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-700">Department</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-700">Role</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-700">Active</th>
@@ -226,11 +260,80 @@ export default function AdminLoginsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((user: AdminUser) => (
+                  {users.map((user: AdminUser) => {
+                    const isEditing = user._id in editingPassword;
+                    const isVisible = !!visiblePasswords[user._id];
+                    const isSaving = !!savingPassword[user._id];
+                    return (
                     <tr key={user._id} className="border-b last:border-0">
                       <td className="px-4 py-2">{user.name}</td>
                       <td className="px-4 py-2">{user.email}</td>
                       <td className="px-4 py-2">{user.phone || '-'}</td>
+                      <td className="px-4 py-2">
+                        {isEditing ? (
+                          <div className="flex items-center gap-1">
+                            <Input
+                              className="h-7 text-xs w-36"
+                              value={editingPassword[user._id]}
+                              onChange={(e) =>
+                                setEditingPassword((prev) => ({ ...prev, [user._id]: e.target.value }))
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') savePassword(user._id);
+                                if (e.key === 'Escape') cancelEdit(user._id);
+                              }}
+                              autoFocus
+                            />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-green-600"
+                              disabled={isSaving}
+                              onClick={() => savePassword(user._id)}
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-gray-500"
+                              onClick={() => cancelEdit(user._id)}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <span className="font-mono text-xs text-gray-800 min-w-[80px]">
+                              {user.plainPassword
+                                ? isVisible
+                                  ? user.plainPassword
+                                  : '••••••••'
+                                : <span className="text-gray-400 italic">not set</span>
+                              }
+                            </span>
+                            {user.plainPassword && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-gray-400"
+                                onClick={() => toggleVisible(user._id)}
+                              >
+                                {isVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                              </Button>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-amber-600"
+                              title="Edit password"
+                              onClick={() => startEdit(user)}
+                            >
+                              <KeyRound className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        )}
+                      </td>
                       <td className="px-4 py-2 capitalize">
                         {user.departmentType ? user.departmentType : '-'}
                       </td>
@@ -256,20 +359,6 @@ export default function AdminLoginsPage() {
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-8 w-8"
-                            title="Reset password"
-                            onClick={() => {
-                              const newPass = prompt('Enter new password for this login:');
-                              if (newPass) {
-                                resetPassword.mutate({ id: user._id, password: newPass });
-                              }
-                            }}
-                          >
-                            <RefreshCw className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="icon"
                             className="h-8 w-8 text-red-600"
                             title="Delete login"
                             onClick={() => {
@@ -283,7 +372,8 @@ export default function AdminLoginsPage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { formatCurrency, formatDate, getStatusColor } from '@/lib/utils';
+import { formatCurrency, getStatusColor } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 import type { Order, AdminUser } from '@/types';
 
@@ -20,17 +20,11 @@ export default function BillingDashboardPage() {
   const { user } = useAdminAuthStore();
   const { toast } = useToast();
 
-  // Per-order delivery assignment selection
   const [selectedRider, setSelectedRider] = useState<Record<string, string>>({});
 
   const { data, isLoading } = useQuery({
     queryKey: ['department', 'billing', 'orders'],
-    queryFn: () =>
-      api.getOrders({
-        forBilling: true,
-        page: 1,
-        limit: 50,
-      }),
+    queryFn: () => api.getOrders({ forBilling: true, page: 1, limit: 50 }),
     refetchInterval: 15_000,
   });
 
@@ -40,11 +34,7 @@ export default function BillingDashboardPage() {
     staleTime: 60_000,
   });
 
-  const activeRiders = useMemo(
-    () => deliveryStaff.filter((s) => s.isActive),
-    [deliveryStaff],
-  );
-
+  const activeRiders = useMemo(() => deliveryStaff.filter((s) => s.isActive), [deliveryStaff]);
   const orders = useMemo(() => data?.items ?? [], [data]) as Order[];
 
   const markBilled = useMutation({
@@ -54,30 +44,38 @@ export default function BillingDashboardPage() {
         updatedBy: user?.id,
         assignedTo: riderId,
       }),
-    onSuccess: (_, { orderId }) => {
-      queryClient.invalidateQueries({ queryKey: ['department', 'billing', 'orders'] });
-      queryClient.invalidateQueries({ queryKey: ['department', 'delivery', 'orders'] });
-      setSelectedRider((prev) => {
-        const next = { ...prev };
-        delete next[orderId];
-        return next;
+    onMutate: async ({ orderId }) => {
+      await queryClient.cancelQueries({ queryKey: ['department', 'billing', 'orders'] });
+      const prev = queryClient.getQueryData(['department', 'billing', 'orders']);
+      queryClient.setQueryData(['department', 'billing', 'orders'], (old: any) => {
+        if (!old?.items) return old;
+        return { ...old, items: old.items.filter((o: any) => o._id !== orderId) };
       });
-      toast({ title: 'Order sent for delivery', description: 'Delivery staff has been notified.' });
+      return { prev };
     },
-    onError: () => {
+    onError: (_err, { orderId }, context: any) => {
+      if (context?.prev) queryClient.setQueryData(['department', 'billing', 'orders'], context.prev);
       toast({ title: 'Failed to send order', variant: 'destructive' });
+    },
+    onSuccess: (_, { orderId }) => {
+      setSelectedRider((prev) => { const n = { ...prev }; delete n[orderId]; return n; });
+      toast({ title: 'Sent for delivery', description: 'Delivery staff has been notified.' });
+      queryClient.invalidateQueries({ queryKey: ['department', 'delivery', 'orders'] });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['department', 'billing', 'orders'] });
     },
   });
 
   return (
     <div className="flex flex-col h-screen">
       <Header
-        title="Billing Dashboard"
-        description="Packed orders ready for billing — assign a delivery person and send out."
-        icon={<FileText className="h-6 w-6 text-sky-600" />}
+        title="Billing"
+        description="Assign a rider and send packed orders out."
+        icon={<FileText className="h-5 w-5 text-sky-600" />}
       />
 
-      <div className="flex-1 overflow-auto p-6 space-y-4">
+      <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-3">
         {isLoading && (
           <div className="flex items-center justify-center h-40">
             <div className="h-8 w-8 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
@@ -85,18 +83,18 @@ export default function BillingDashboardPage() {
         )}
 
         {!isLoading && orders.length === 0 && (
-          <div className="text-center text-sm text-gray-500">
+          <div className="text-center text-sm text-gray-500 py-12">
             No packed orders waiting for billing right now.
           </div>
         )}
 
         {!isLoading && activeRiders.length === 0 && orders.length > 0 && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            No active delivery staff found. Add delivery logins before sending orders out.
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            No active delivery staff found. Add delivery logins from the admin panel.
           </div>
         )}
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {orders.map((order) => {
             const riderId = selectedRider[order._id] ?? '';
             const canSend = order.status === 'preparing' && !!order.packedAt && !!riderId;
@@ -104,48 +102,45 @@ export default function BillingDashboardPage() {
             return (
               <Card key={order._id} className="border-sky-50 shadow-sm">
                 <CardContent className="p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="text-xs text-gray-500">Order</p>
-                      <p className="font-semibold text-gray-900">{order.orderNumber}</p>
+                      <p className="text-xs text-gray-400">Order</p>
+                      <p className="font-bold text-gray-900 text-base">{order.orderNumber}</p>
                     </div>
-                    <Badge className={getStatusColor(order.status)}>{order.status.toUpperCase()}</Badge>
+                    <Badge className={getStatusColor(order.status)}>{order.status.replace(/_/g, ' ').toUpperCase()}</Badge>
                   </div>
 
-                  <div className="text-sm space-y-1">
-                    <p className="font-medium">
-                      {order.shippingAddress.name}{' '}
-                      <span className="text-gray-500 text-xs">({order.shippingAddress.phone})</span>
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-semibold text-gray-800">
+                      {order.shippingAddress.name}
+                      <span className="font-normal text-gray-500 text-xs ml-1">· {order.shippingAddress.phone}</span>
                     </p>
-                    <p className="text-gray-500 text-xs">
-                      {order.shippingAddress.street}, {order.shippingAddress.city}, {order.shippingAddress.state} –{' '}
-                      {order.shippingAddress.pincode}
+                    <p className="text-xs text-gray-400 line-clamp-2">
+                      {order.shippingAddress.street}, {order.shippingAddress.city}, {order.shippingAddress.state} – {order.shippingAddress.pincode}
                     </p>
                   </div>
 
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-500">
-                      {order.items.length} item{order.items.length > 1 ? 's' : ''}
-                    </span>
-                    <span className="font-semibold">{formatCurrency(order.total)}</span>
+                  <div className="flex items-center justify-between text-sm border-t border-gray-50 pt-2">
+                    <span className="text-gray-500">{order.items.length} item{order.items.length !== 1 ? 's' : ''}</span>
+                    <span className="font-bold text-gray-900">{formatCurrency(order.total)}</span>
                   </div>
 
-                  {/* Delivery staff selector */}
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-gray-600 flex items-center gap-1">
-                      <Truck className="h-3 w-3" /> Assign delivery person
-                    </label>
+                  {/* Rider selector */}
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                      <Truck className="h-3 w-3" /> Delivery person
+                    </p>
                     <Select
                       value={riderId}
                       onValueChange={(v) => setSelectedRider((prev) => ({ ...prev, [order._id]: v }))}
                       disabled={activeRiders.length === 0}
                     >
-                      <SelectTrigger className="h-8 text-xs">
+                      <SelectTrigger className="h-11 text-sm">
                         <SelectValue placeholder={activeRiders.length === 0 ? 'No riders available' : 'Select rider…'} />
                       </SelectTrigger>
                       <SelectContent>
                         {activeRiders.map((rider) => (
-                          <SelectItem key={rider._id} value={rider._id} className="text-xs">
+                          <SelectItem key={rider._id} value={rider._id}>
                             {rider.name}
                           </SelectItem>
                         ))}
@@ -153,20 +148,17 @@ export default function BillingDashboardPage() {
                     </Select>
                   </div>
 
-                  <div className="flex gap-2 mt-1">
+                  <div className="flex gap-2">
                     <Button
-                      size="sm"
-                      className="flex-1 flex items-center justify-center gap-2"
+                      className="flex-1 h-12 text-sm font-semibold gap-2"
                       disabled={!canSend || markBilled.isPending}
                       onClick={() => markBilled.mutate({ orderId: order._id, riderId })}
-                      title={!riderId ? 'Select a delivery person first' : undefined}
                     >
-                      <CheckCircle2 className="h-4 w-4" />
-                      Send out for delivery
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      {!riderId ? 'Select rider first' : 'Send for delivery'}
                     </Button>
                     <Link href={`/department/order/${order._id}`}>
-                      <Button size="sm" variant="outline" className="flex items-center justify-center gap-1">
-                        Open
+                      <Button variant="outline" className="h-12 px-3 flex items-center gap-1">
                         <ArrowRight className="h-4 w-4" />
                       </Button>
                     </Link>

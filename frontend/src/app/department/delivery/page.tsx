@@ -340,21 +340,31 @@ export default function DeliveryDashboardPage() {
         note,
       });
     },
+    onMutate: async () => {
+      if (!selectedOrder) return;
+      await queryClient.cancelQueries({ queryKey: ['department', 'delivery', 'orders'] });
+      const prev = queryClient.getQueryData(['department', 'delivery', 'orders']);
+      queryClient.setQueryData(['department', 'delivery', 'orders'], (old: any) => {
+        if (!old?.items) return old;
+        return { ...old, items: old.items.filter((o: any) => o._id !== selectedOrder._id) };
+      });
+      return { prev };
+    },
     onSuccess: () => {
-      toast({ title: 'Delivery marked ✓', description: 'Order has been confirmed as delivered.' });
-      if (selectedOrder) {
-        queryClient.invalidateQueries({ queryKey: ['order', selectedOrder._id] });
-        queryClient.invalidateQueries({ queryKey: ['department', 'delivery', 'orders'] });
-      }
+      toast({ title: 'Delivery marked ✓', description: 'Order has been confirmed.' });
       resetForm();
     },
-    onError: (err) => {
+    onError: (err, _, context: any) => {
+      if (context?.prev) queryClient.setQueryData(['department', 'delivery', 'orders'], context.prev);
       setShowConfirm(false);
       toast({
         title: 'Update failed',
         description: err instanceof Error ? err.message : 'Please try again.',
         variant: 'destructive',
       });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['department', 'delivery', 'orders'] });
     },
   });
 

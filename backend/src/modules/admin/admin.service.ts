@@ -51,6 +51,7 @@ export class AdminService {
       name: data.name,
       email: data.email.toLowerCase(),
       password: hashedPassword,
+      plainPassword: data.password,
       role: data.role || 'admin',
       departmentType: data.departmentType,
     };
@@ -85,17 +86,26 @@ export class AdminService {
   }
 
   async resetPassword(id: string, newPassword: string): Promise<void> {
+    if (!newPassword || newPassword.length < 6) {
+      throw new BadRequestException('Password must be at least 6 characters');
+    }
     const idObj = parseObjectId(id, 'id');
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     const result = await this.adminUserRepository.updateOne(
       { _id: idObj },
-      { $set: { password: hashedPassword } },
+      { $set: { password: hashedPassword, plainPassword: newPassword, failedLoginAttempts: 0 } },
     );
 
     if (result.modifiedCount === 0) {
       throw new NotFoundException('Admin not found');
     }
+
+    // Clear any lockout so the new password works immediately
+    await this.adminUserRepository.getModel().updateOne(
+      { _id: idObj },
+      { $unset: { lockoutUntil: 1 } },
+    ).exec();
   }
 
   async deactivate(id: string): Promise<AdminUser> {

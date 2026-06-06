@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Package, CheckCircle2, ArrowRight } from 'lucide-react';
 import { api } from '@/lib/api';
-import { useAdminAuthStore } from '@/lib/admin-store';
 import { useToast } from '@/components/ui/use-toast';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -16,17 +15,11 @@ import type { Order } from '@/types';
 
 export default function PackingDashboardPage() {
   const queryClient = useQueryClient();
-  const { user } = useAdminAuthStore();
   const { toast } = useToast();
 
   const { data, isLoading } = useQuery({
     queryKey: ['department', 'packing', 'orders'],
-    queryFn: () =>
-      api.getOrders({
-        forPacking: true,
-        page: 1,
-        limit: 50,
-      }),
+    queryFn: () => api.getOrders({ forPacking: true, page: 1, limit: 50 }),
     refetchInterval: 15_000,
   });
 
@@ -34,32 +27,41 @@ export default function PackingDashboardPage() {
 
   const markPacked = useMutation({
     mutationFn: (orderId: string) => api.markOrderPacked(orderId),
-    onSuccess: () => {
-      toast({
-        title: 'Order marked as packed',
-        description: 'Billing can now send it out for delivery.',
+    onMutate: async (orderId) => {
+      await queryClient.cancelQueries({ queryKey: ['department', 'packing', 'orders'] });
+      const prev = queryClient.getQueryData(['department', 'packing', 'orders']);
+      queryClient.setQueryData(['department', 'packing', 'orders'], (old: any) => {
+        if (!old?.items) return old;
+        return { ...old, items: old.items.filter((o: any) => o._id !== orderId) };
       });
-      queryClient.invalidateQueries({ queryKey: ['department', 'packing', 'orders'] });
-      queryClient.invalidateQueries({ queryKey: ['department', 'billing', 'orders'] });
+      return { prev };
     },
-    onError: (err) => {
+    onError: (err, _orderId, context: any) => {
+      if (context?.prev) queryClient.setQueryData(['department', 'packing', 'orders'], context.prev);
       toast({
         title: 'Could not update order',
         description: err instanceof Error ? err.message : 'Please try again.',
         variant: 'destructive',
       });
     },
+    onSuccess: () => {
+      toast({ title: 'Order marked as packed', description: 'Billing can now send it out for delivery.' });
+      queryClient.invalidateQueries({ queryKey: ['department', 'billing', 'orders'] });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['department', 'packing', 'orders'] });
+    },
   });
 
   return (
     <div className="flex flex-col h-screen">
       <Header
-        title="Packing Dashboard"
-        description="Confirm packing for orders in “preparing”. Billing then marks them out for delivery."
-        icon={<Package className="h-6 w-6 text-emerald-600" />}
+        title="Packing"
+        description="Confirm packing for preparing orders."
+        icon={<Package className="h-5 w-5 text-emerald-600" />}
       />
 
-      <div className="flex-1 overflow-auto p-6 space-y-4">
+      <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-3">
         {isLoading && (
           <div className="flex items-center justify-center h-40">
             <div className="h-8 w-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
@@ -67,54 +69,49 @@ export default function PackingDashboardPage() {
         )}
 
         {!isLoading && orders.length === 0 && (
-          <div className="text-center text-sm text-gray-500">No orders waiting for packing right now.</div>
+          <div className="text-center text-sm text-gray-500 py-12">
+            No orders waiting for packing right now.
+          </div>
         )}
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {orders.map((order) => (
             <Card key={order._id} className="border-emerald-50 shadow-sm">
               <CardContent className="p-4 space-y-3">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-xs text-gray-500">Order</p>
-                    <p className="font-semibold text-gray-900">{order.orderNumber}</p>
+                    <p className="text-xs text-gray-400">Order</p>
+                    <p className="font-bold text-gray-900 text-base">{order.orderNumber}</p>
                   </div>
-                  <Badge className={getStatusColor(order.status)}>{order.status.toUpperCase()}</Badge>
+                  <Badge className={getStatusColor(order.status)}>{order.status.replace(/_/g, ' ').toUpperCase()}</Badge>
                 </div>
 
-                <div className="text-sm space-y-1">
-                  <p className="font-medium">
-                    {order.shippingAddress.name}{' '}
-                    <span className="text-gray-500 text-xs">({order.shippingAddress.phone})</span>
+                <div className="space-y-0.5">
+                  <p className="text-sm font-semibold text-gray-800">
+                    {order.shippingAddress.name}
+                    <span className="font-normal text-gray-500 text-xs ml-1">· {order.shippingAddress.phone}</span>
                   </p>
-                  <p className="text-gray-500 text-xs">
-                    {order.shippingAddress.street}, {order.shippingAddress.city}, {order.shippingAddress.state} -{' '}
-                    {order.shippingAddress.pincode}
+                  <p className="text-xs text-gray-400 line-clamp-2">
+                    {order.shippingAddress.street}, {order.shippingAddress.city}, {order.shippingAddress.state} – {order.shippingAddress.pincode}
                   </p>
                 </div>
 
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">
-                    {order.items.length} item{order.items.length > 1 ? 's' : ''}
-                  </span>
-                  <span className="font-semibold">{formatCurrency(order.total)}</span>
+                <div className="flex items-center justify-between text-sm border-t border-gray-50 pt-2">
+                  <span className="text-gray-500">{order.items.length} item{order.items.length !== 1 ? 's' : ''}</span>
+                  <span className="font-bold text-gray-900">{formatCurrency(order.total)}</span>
                 </div>
 
-                <p className="text-xs text-gray-400">Placed {formatDate(order.createdAt)}</p>
-
-                <div className="flex gap-2 mt-1">
+                <div className="flex gap-2">
                   <Button
-                    size="sm"
-                    className="flex-1 flex items-center justify-center gap-2"
+                    className="flex-1 h-12 text-sm font-semibold gap-2"
                     disabled={markPacked.isPending || !!order.packedAt || !['placed', 'confirmed', 'preparing'].includes(order.status)}
                     onClick={() => markPacked.mutate(order._id)}
                   >
-                    <CheckCircle2 className="h-4 w-4" />
-                    Mark as packed
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    {order.packedAt ? 'Already packed' : 'Mark packed'}
                   </Button>
                   <Link href={`/department/order/${order._id}`}>
-                    <Button size="sm" variant="outline" className="flex items-center justify-center gap-1">
-                      Open
+                    <Button variant="outline" className="h-12 px-3 flex items-center gap-1">
                       <ArrowRight className="h-4 w-4" />
                     </Button>
                   </Link>
@@ -127,4 +124,3 @@ export default function PackingDashboardPage() {
     </div>
   );
 }
-

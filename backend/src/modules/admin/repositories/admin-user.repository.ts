@@ -17,11 +17,11 @@ export class AdminUserRepository extends BaseRepository<AdminUserDocument> {
   }
 
   async findByDepartment(departmentType: string): Promise<AdminUserDocument[]> {
-    return this.model.find({ departmentType, isActive: true }).select('-password').exec();
+    return this.model.find({ departmentType, isActive: true }).select('-password -plainPassword').exec();
   }
 
   async findByIdExcludePassword(id: Types.ObjectId): Promise<AdminUserDocument | null> {
-    return this.model.findById(id).select('-password').exec();
+    return this.model.findById(id).select('-password -plainPassword').exec();
   }
 
   async findOneByEmail(email: string): Promise<AdminUserDocument | null> {
