@@ -365,7 +365,7 @@ export class AnalyticsService {
         .sort({ createdAt: -1 })
         .limit(5)
         .populate('user', 'name phone')
-        .select('orderNumber total status createdAt')
+        .select('orderNumber total status createdAt shippingAddress')
         .exec(),
     ]);
 

@@ -97,9 +97,12 @@ class ApiClient {
         try {
           const url = (config.url || '').replace(/^\/+/, '');
           const isAdminApiRoute = url.startsWith('admin/') || url.startsWith('admin?') || url === 'admin';
-          // Also treat any request made from an admin panel page as an admin request
-          // so that protected product/category/order mutations get the admin Bearer token.
-          const isAdminPage = window.location.pathname.startsWith('/admin');
+          // Also treat any request made from an admin panel page, a department page, or
+          // an invoice page (opened in new tab by admins) as an admin request so that
+          // protected mutations get the admin Bearer token.
+          const isAdminPage = window.location.pathname.startsWith('/admin')
+            || window.location.pathname.startsWith('/department')
+            || window.location.pathname.startsWith('/invoice');
 
           if (isAdminApiRoute || isAdminPage) {
             const adminStorage = localStorage.getItem('admin-auth-storage');
@@ -144,11 +147,16 @@ class ApiClient {
 
             const failedUrl = (originalRequest.url || '').replace(/^\/+/, '');
             const failedRouteIsAdmin = failedUrl.startsWith('admin/') || failedUrl.startsWith('admin?') || failedUrl === 'admin';
+            // Department pages use the admin token but call non-admin API routes (e.g. /orders/…),
+            // so we must also check the current page path to pick the right storage key.
+            const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+            const isDepartmentPage = currentPath.startsWith('/department')
+              || currentPath.startsWith('/invoice');
 
             let refreshTokenToSend: string | undefined;
             if (typeof window !== 'undefined') {
               try {
-                const storageKey = failedRouteIsAdmin ? 'admin-auth-storage' : 'customer-auth-storage';
+                const storageKey = (failedRouteIsAdmin || isDepartmentPage) ? 'admin-auth-storage' : 'customer-auth-storage';
                 const storage = localStorage.getItem(storageKey);
                 if (storage) {
                   const parsed = JSON.parse(storage);

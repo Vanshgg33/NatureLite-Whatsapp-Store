@@ -89,7 +89,6 @@ export default function OrdersPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Order</TableHead>
                       <TableHead>Customer</TableHead>
                       <TableHead>Items</TableHead>
                       <TableHead>Total</TableHead>
@@ -103,14 +102,12 @@ export default function OrdersPage() {
                     {data?.items.map((order) => (
                       <TableRow key={order._id}>
                         <TableCell>
-                          <p className="font-medium">{order.orderNumber}</p>
-                        </TableCell>
-                        <TableCell>
                           <div>
-                            <p className="font-medium">{order.shippingAddress.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {order.shippingAddress.phone}
+                            <p className="font-medium leading-tight">{order.shippingAddress.name}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5 leading-tight">
+                              {order.shippingAddress.city}, {order.shippingAddress.state} – {order.shippingAddress.pincode}
                             </p>
+                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">{order.orderNumber}</p>
                           </div>
                         </TableCell>
                         <TableCell>{order.items.length} items</TableCell>

@@ -131,13 +131,13 @@ export class AuthService {
       if (attempts >= 5) {
         update.lockoutUntil = new Date(Date.now() + 15 * 60 * 1000);
       }
-      await this.adminUserRepository.updateOne({ _id: admin._id }, update);
+      await this.adminUserRepository.updateOne({ _id: admin._id }, { $set: update });
       throw new UnauthorizedException('Invalid credentials');
     }
 
     await this.adminUserRepository.updateOne(
       { _id: admin._id },
-      { lastLoginAt: new Date(), failedLoginAttempts: 0, lockoutUntil: null },
+      { $set: { lastLoginAt: new Date(), failedLoginAttempts: 0 }, $unset: { lockoutUntil: 1 } },
     );
 
     let storeId: string | undefined;

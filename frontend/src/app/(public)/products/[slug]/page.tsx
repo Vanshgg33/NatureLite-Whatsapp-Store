@@ -338,14 +338,15 @@ export default function ProductDetailPage() {
                   className="absolute inset-0"
                 >
                   {images[selectedImageIndex] ? (
-                    <Image
-                      src={images[selectedImageIndex]!}
-                      alt={product.name}
-                      fill
-                      className="object-contain"
-                      style={{ padding: '7%' }}
-                      priority
-                    />
+                    <div className="absolute inset-[4%]">
+                      <Image
+                        src={images[selectedImageIndex]!}
+                        alt={product.name}
+                        fill
+                        className="object-contain"
+                        priority
+                      />
+                    </div>
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
                       <span

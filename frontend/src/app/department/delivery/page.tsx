@@ -49,11 +49,14 @@ interface PhotoUploadBoxProps {
 
 function PhotoUploadBox({ label, hint, required, url, uploading, onFile, onClear }: PhotoUploadBoxProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  // Incrementing the key forces the input to remount after each selection,
+  // clearing any stale browser state that could retrigger the camera on Android.
+  const [inputKey, setInputKey] = useState(0);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) onFile(file);
-    e.target.value = '';
+    setInputKey((k) => k + 1);
   };
 
   return (
@@ -65,13 +68,18 @@ function PhotoUploadBox({ label, hint, required, url, uploading, onFile, onClear
       <p className="text-xs text-gray-500">{hint}</p>
 
       {url ? (
-        <div className="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
-          <div className="relative w-full" style={{ paddingBottom: '60%' }}>
-            <Image src={url} alt={label} fill className="object-contain" sizes="(max-width: 768px) 100vw, 400px" />
-          </div>
+        <div
+          className="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-50"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <a href={url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+            <div className="relative w-full" style={{ paddingBottom: '60%' }}>
+              <Image src={url} alt={label} fill className="object-contain" sizes="(max-width: 768px) 100vw, 400px" />
+            </div>
+          </a>
           <button
             type="button"
-            onClick={onClear}
+            onClick={(e) => { e.stopPropagation(); onClear(); }}
             className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm rounded-full p-1.5 shadow-sm border border-gray-200"
             aria-label="Remove photo"
           >
@@ -105,13 +113,15 @@ function PhotoUploadBox({ label, hint, required, url, uploading, onFile, onClear
         </button>
       )}
 
+      {/* Disabled when a photo is already captured to prevent stray taps from re-opening the camera */}
       <input
+        key={inputKey}
         ref={inputRef}
         type="file"
         className="hidden"
         accept="image/*"
         capture="environment"
-        disabled={uploading}
+        disabled={uploading || !!url}
         onChange={handleChange}
       />
     </div>

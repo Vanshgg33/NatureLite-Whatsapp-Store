@@ -133,7 +133,8 @@ export class CartAutomationService {
     }
   }
 
-  private extractPopulatedUser(value: Types.ObjectId | PopulatedCartUser): PopulatedCartUser | null {
+  private extractPopulatedUser(value: Types.ObjectId | PopulatedCartUser | null): PopulatedCartUser | null {
+    if (!value) return null;
     if (value instanceof Types.ObjectId) return null;
     if (!value._id) return null;
     return value;

@@ -746,25 +746,39 @@ export default function DashboardPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Order</TableHead>
+                          <TableHead>Customer</TableHead>
                           <TableHead>Date</TableHead>
                           <TableHead className="text-right">Amount</TableHead>
                           <TableHead className="text-right">Status</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {stats.recentOrders.map((order) => (
-                          <TableRow key={order._id} className="hover:bg-muted/30">
-                            <TableCell><p className="font-medium text-sm">{order.orderNumber}</p></TableCell>
-                            <TableCell><p className="text-sm text-muted-foreground">{formatDate(order.createdAt)}</p></TableCell>
-                            <TableCell className="text-right font-medium text-sm">{formatCurrency(order.total)}</TableCell>
-                            <TableCell className="text-right">
-                              <Badge className={`${getStatusColor(order.status)} rounded-lg text-xs`}>
-                                {order.status.replace(/_/g, ' ')}
-                              </Badge>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {stats.recentOrders.map((order) => {
+                          const customerName = typeof order.user === 'object' && order.user
+                            ? (order.user as { name?: string }).name || 'Customer'
+                            : 'Customer';
+                          const addr = order.shippingAddress;
+                          return (
+                            <TableRow key={order._id} className="hover:bg-muted/30">
+                              <TableCell>
+                                <p className="font-medium text-sm leading-tight">{customerName}</p>
+                                {addr && (
+                                  <p className="text-xs text-muted-foreground mt-0.5 leading-tight">
+                                    {addr.city}, {addr.state}
+                                  </p>
+                                )}
+                                <p className="text-[10px] text-muted-foreground/60 mt-0.5">{order.orderNumber}</p>
+                              </TableCell>
+                              <TableCell><p className="text-sm text-muted-foreground">{formatDate(order.createdAt)}</p></TableCell>
+                              <TableCell className="text-right font-medium text-sm">{formatCurrency(order.total)}</TableCell>
+                              <TableCell className="text-right">
+                                <Badge className={`${getStatusColor(order.status)} rounded-lg text-xs`}>
+                                  {order.status.replace(/_/g, ' ')}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   ) : (
