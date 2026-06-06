@@ -362,6 +362,7 @@ export class UcmService {
       const chunk = items.slice(i, i + chunkSize);
       if (i === 0) {
         this.logger.log(`First batch retailer_ids: ${JSON.stringify(chunk.map(c => String(c.item.retailer_id)))}`);
+        this.logger.log(`First item data fields: ${JSON.stringify(Object.keys(chunk[0].item))}`);
       }
       try {
         await this.upsertRemoteProductsBatch(state, chunk.map((c) => c.item), remoteCatalogId);
@@ -807,27 +808,29 @@ export class UcmService {
       throw new BadRequestException('Catalog access token is not configured');
     }
 
-    // Meta items_batch CREATE format: retailer_id belongs inside `data` only.
-    // Putting it at the top-level request AND inside data causes the
-    // "Duplicate retailer_id in batch api call" error.
-    const requests = items.map((item) => ({
-      method: 'CREATE',
-      item_type: 'PRODUCT_ITEM',
-      data: item,  // item already contains retailer_id as its first field
-    }));
+    // Meta items_batch API (v20+):
+    //   - retailer_id belongs at the REQUEST level, NOT inside data
+    //   - item_type belongs at the TOP-LEVEL body, NOT inside each request
+    //   - JSON body is required (form-urlencoded causes "Duplicate retailer_id" errors)
+    const requests = items.map((item) => {
+      const { retailer_id, ...data } = item;
+      return {
+        method: 'CREATE',
+        retailer_id: String(retailer_id),
+        data,
+      };
+    });
 
-    const payload = new URLSearchParams();
-    payload.set('allow_upsert', 'true');
-    payload.set('item_type', 'PRODUCT_ITEM');
-    payload.set('requests', JSON.stringify(requests));
+    const jsonBody = {
+      allow_upsert: true,
+      item_type: 'PRODUCT_ITEM',
+      requests,
+    };
 
     await this.withMetaCatalogBatchRetry(async () => {
-      const response = await this.graphClient.post(`/${catalogId}/items_batch`, payload, {
+      const response = await this.graphClient.post(`/${catalogId}/items_batch`, jsonBody, {
         params: {
           access_token: catalogConfig.accessToken,
-        },
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
         },
       });
 
