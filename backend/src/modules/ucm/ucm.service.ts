@@ -340,12 +340,22 @@ export class UcmService {
 
     // Meta rate limits catalog batch uploads (#80014). Avoid per-product
     // `items_batch` calls; instead upsert in chunks with retry/backoff.
-    const items: Array<{ product: ProductDocument; item: Record<string, unknown> }> = products.map((product) => {
+    const seenRetailerIds = new Set<string>();
+    const items: Array<{ product: ProductDocument; item: Record<string, unknown> }> = [];
+    for (const product of products) {
       const stockForItem = stockMap.has(product._id.toString())
         ? stockMap.get(product._id.toString())!
         : product.trackStock === false ? null : 0;
-      return { product, item: this.buildCatalogItem(product, false, stockForItem) };
-    });
+      const item = this.buildCatalogItem(product, false, stockForItem);
+      const rid = String(item.retailer_id);
+      if (seenRetailerIds.has(rid)) {
+        this.logger.warn(`Skipping product ${product._id} — duplicate retailer_id "${rid}" in sync batch`);
+        details.push({ retailerId: rid, status: 'skipped', message: 'duplicate retailer_id' });
+        continue;
+      }
+      seenRetailerIds.add(rid);
+      items.push({ product, item });
+    }
 
     const chunkSize = 25;
     for (let i = 0; i < items.length; i += chunkSize) {
@@ -609,7 +619,11 @@ export class UcmService {
       return remoteRetailerId;
     }
 
-    return product.sku || product._id.toString();
+    // Always use MongoDB _id — it is guaranteed unique across the catalog.
+    // product.sku is NOT used here because SKUs are often duplicated or left
+    // blank across products, which causes Meta to reject the entire batch with
+    // "Duplicate retailer_id in batch api call".
+    return product._id.toString();
   }
 
   private catalogAmountToLocal(amount?: number | string): number | undefined {
