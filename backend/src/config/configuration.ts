@@ -75,6 +75,15 @@ export interface DeliveryConfig {
   serviceablePincodes: string[];
 }
 
+export interface RedisConfig {
+  url?: string;
+  host: string;
+  port: number;
+  username?: string;
+  password?: string;
+  tls: boolean;
+}
+
 export interface Configuration {
   app: AppConfig;
   database: DatabaseConfig;
@@ -88,6 +97,7 @@ export interface Configuration {
   razorpayX?: RazorpayXConfig;
   smtp: SmtpConfig;
   delivery: DeliveryConfig;
+  redis: RedisConfig;
   frontendUrl: string;
 }
 
@@ -168,6 +178,28 @@ export default (): Configuration => ({
       .map((s) => s.trim())
       .filter((s) => /^\d{6}$/.test(s)),
   },
+  redis: (() => {
+    const url = process.env.REDIS_URL;
+    if (url) {
+      // Parse the URL (supports redis:// and rediss://)
+      const parsed = new URL(url);
+      return {
+        url,
+        host: parsed.hostname,
+        port: parseInt(parsed.port || '6379', 10),
+        username: parsed.username || 'default',
+        password: parsed.password || undefined,
+        tls: parsed.protocol === 'rediss:' || process.env.REDIS_TLS === 'true',
+      };
+    }
+    return {
+      host: process.env.REDIS_HOST || '127.0.0.1',
+      port: parseInt(process.env.REDIS_PORT || '6379', 10),
+      username: process.env.REDIS_USERNAME || undefined,
+      password: process.env.REDIS_PASSWORD || undefined,
+      tls: process.env.REDIS_TLS === 'true',
+    };
+  })(),
   // Frontend URL used for CORS/CSRF checks. Must be set explicitly in env.
   frontendUrl: process.env.FRONTEND_URL || '',
 });

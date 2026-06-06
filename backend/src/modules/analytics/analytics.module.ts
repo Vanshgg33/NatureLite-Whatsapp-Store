@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ScheduleModule } from '@nestjs/schedule';
+import { BullModule } from '@nestjs/bullmq';
 import { AnalyticsService } from './analytics.service';
+import { AnalyticsProcessor } from './analytics.processor';
 import { AnalyticsController } from './analytics.controller';
 import { AnalyticsSnapshot, AnalyticsSnapshotSchema } from './schemas/analytics-snapshot.schema';
 import { AnalyticsSnapshotRepository } from './repositories/analytics-snapshot.repository';
@@ -16,10 +18,12 @@ import { StoresModule } from '../stores/stores.module';
 import { SettingsModule } from '../settings/settings.module';
 import { RawMaterialModule } from '../raw-materials/raw-material.module';
 import { PublicExportController } from './public-export.controller';
+import { QUEUE_ANALYTICS } from '../queues/queues.constants';
 
 @Module({
   imports: [
     ScheduleModule.forRoot(),
+    BullModule.registerQueue({ name: QUEUE_ANALYTICS }),
     MongooseModule.forFeature([
       { name: AnalyticsSnapshot.name, schema: AnalyticsSnapshotSchema },
     ]),
@@ -35,7 +39,7 @@ import { PublicExportController } from './public-export.controller';
     RawMaterialModule,
   ],
   controllers: [AnalyticsController, PublicExportController],
-  providers: [AnalyticsSnapshotRepository, AnalyticsService],
+  providers: [AnalyticsSnapshotRepository, AnalyticsService, AnalyticsProcessor],
   exports: [AnalyticsSnapshotRepository, AnalyticsService],
 })
 export class AnalyticsModule {}

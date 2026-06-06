@@ -1,8 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { Model } from 'mongoose';
 import { Response } from 'express';
+import { RedisService } from '../redis/redis.service';
+import { QUEUE_ADMIN, ADMIN_JOBS, DEFAULT_JOB_OPTIONS } from '../queues/queues.constants';
 import { ProductRepository } from '../products/repositories/product.repository';
 import { ChatSessionRepository } from '../chatbot/repositories/chat-session.repository';
 import { AuditLogRepository } from '../audit/repositories/audit-log.repository';
@@ -89,6 +93,8 @@ export class AdminChatbotService {
     private readonly adminChatSessionRepository: AdminChatSessionRepository,
     private readonly emailService: EmailService,
     @InjectModel(Subscription.name) private readonly subscriptionModel: Model<any>,
+    private readonly redisService: RedisService,
+    @InjectQueue(QUEUE_ADMIN) private readonly adminQueue: Queue,
   ) {}
 
   // ─── Gemini helpers ───────────────────────────────────────────────────────────
@@ -668,35 +674,96 @@ export class AdminChatbotService {
     const adminEmail = process.env.ADMIN_REPORT_EMAIL;
     if (!adminEmail) return;
 
-    this.logger.log('Running scheduled daily report email');
-    try {
-      const briefing = await this.getBriefing();
-      const html = `
-        <!DOCTYPE html><html><body style="font-family:sans-serif;color:#1a1a1a;max-width:600px;margin:auto">
-          <div style="background:#1E3D2B;padding:20px;text-align:center">
-            <h1 style="color:#E8A838;margin:0;font-size:20px">🌿 Naturelite — Daily Briefing</h1>
-            <p style="color:#aaa;font-size:12px;margin:4px 0 0">${new Date().toLocaleDateString('en-IN', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}</p>
-          </div>
-          <div style="padding:24px">
-            ${briefing.dashboard ? `<h3 style="color:#1E3D2B;border-bottom:2px solid #E8A838;padding-bottom:6px">📊 Dashboard Summary</h3><pre style="background:#f5f5f5;padding:12px;border-radius:8px;font-size:13px;white-space:pre-wrap">${briefing.dashboard}</pre>` : ''}
-            ${briefing.orderStatus ? `<h3 style="color:#1E3D2B;border-bottom:2px solid #E8A838;padding-bottom:6px">📦 Order Status</h3><pre style="background:#f5f5f5;padding:12px;border-radius:8px;font-size:13px;white-space:pre-wrap">${briefing.orderStatus}</pre>` : ''}
-            ${briefing.lowStock ? `<h3 style="color:#c0392b;border-bottom:2px solid #c0392b;padding-bottom:6px">⚠️ Low Stock Alert</h3><pre style="background:#fff5f5;padding:12px;border-radius:8px;font-size:13px;white-space:pre-wrap">${briefing.lowStock}</pre>` : ''}
-          </div>
-          <div style="background:#f0f0f0;padding:12px;text-align:center;font-size:11px;color:#888">
-            AI — Aditya Intelligence | Naturelite Admin
-          </div>
-        </body></html>
-      `;
-      await (this.emailService as any).send(adminEmail, `📊 Naturelite Daily Briefing — ${new Date().toLocaleDateString('en-IN')}`, html);
-      this.logger.log(`Daily report sent to ${adminEmail}`);
-    } catch (err) {
-      this.logger.error(`Daily report failed: ${(err as Error).message}`);
-    }
+    const dateKey = new Date().toISOString().slice(0, 10);
+    await this.adminQueue.add(
+      ADMIN_JOBS.DAILY_BRIEFING,
+      { adminEmail },
+      { ...DEFAULT_JOB_OPTIONS, attempts: 2, jobId: `admin-briefing-${dateKey}` },
+    );
+    this.logger.log(`Daily briefing job enqueued for ${adminEmail}`);
+  }
+
+  async _executeDailyBriefing(data: { adminEmail: string }): Promise<void> {
+    const { adminEmail } = data;
+    this.logger.log(`Executing daily briefing for ${adminEmail}`);
+
+    const briefing = await this.getBriefing();
+    const html = `
+      <!DOCTYPE html><html><body style="font-family:sans-serif;color:#1a1a1a;max-width:600px;margin:auto">
+        <div style="background:#1E3D2B;padding:20px;text-align:center">
+          <h1 style="color:#E8A838;margin:0;font-size:20px">Naturelite — Daily Briefing</h1>
+          <p style="color:#aaa;font-size:12px;margin:4px 0 0">${new Date().toLocaleDateString('en-IN', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}</p>
+        </div>
+        <div style="padding:24px">
+          ${briefing.dashboard ? `<h3 style="color:#1E3D2B;border-bottom:2px solid #E8A838;padding-bottom:6px">Dashboard Summary</h3><pre style="background:#f5f5f5;padding:12px;border-radius:8px;font-size:13px;white-space:pre-wrap">${briefing.dashboard}</pre>` : ''}
+          ${briefing.orderStatus ? `<h3 style="color:#1E3D2B;border-bottom:2px solid #E8A838;padding-bottom:6px">Order Status</h3><pre style="background:#f5f5f5;padding:12px;border-radius:8px;font-size:13px;white-space:pre-wrap">${briefing.orderStatus}</pre>` : ''}
+          ${briefing.lowStock ? `<h3 style="color:#c0392b;border-bottom:2px solid #c0392b;padding-bottom:6px">Low Stock Alert</h3><pre style="background:#fff5f5;padding:12px;border-radius:8px;font-size:13px;white-space:pre-wrap">${briefing.lowStock}</pre>` : ''}
+        </div>
+        <div style="background:#f0f0f0;padding:12px;text-align:center;font-size:11px;color:#888">
+          AI — Aditya Intelligence | Naturelite Admin
+        </div>
+      </body></html>
+    `;
+    await this.emailService.sendAdminReport(
+      adminEmail,
+      `Naturelite Daily Briefing — ${new Date().toLocaleDateString('en-IN')}`,
+      html,
+    );
+    this.logger.log(`Daily briefing sent to ${adminEmail}`);
   }
 
   // ─── Tool executor ────────────────────────────────────────────────────────────
 
+  private toolCacheKey(step: RagStep): { key: string | null; ttl: number } {
+    // Only cache read-only, non-action tools
+    const UNCACHED = new Set(['preview_email_report', 'send_email_report']);
+    if (UNCACHED.has(step.tool)) return { key: null, ttl: 0 };
+
+    const TTL_MAP: Record<string, number> = {
+      get_dashboard_summary: 120,
+      get_orders_by_status: 120,
+      search_low_stock_products: 300,
+      search_out_of_stock_products: 300,
+      search_in_stock_products: 300,
+      search_products: 300,
+      get_revenue_trend: 300,
+      get_analytics_period: 600,
+      get_top_selling_products: 600,
+      get_top_customers_online: 600,
+      get_new_customers: 300,
+      get_store_sales: 300,
+      get_payment_failures: 120,
+      get_subscription_data: 300,
+      get_whatsapp_queue: 60,
+      get_reminders: 60,
+      get_coupon_list: 300,
+      get_feedback_list: 120,
+      search_recent_orders: 120,
+      search_orders_by_date_range: 180,
+      search_customers: 180,
+      get_customer_orders: 120,
+      search_abandoned_carts: 180,
+      get_wallet_balances: 120,
+      get_login_audit_logs: 120,
+      compare_periods: 300,
+    };
+
+    const ttl = TTL_MAP[step.tool] ?? 120;
+    const paramHash = step.params && Object.keys(step.params).length
+      ? `:${Buffer.from(JSON.stringify(step.params)).toString('base64url')}`
+      : '';
+    return { key: `chatbot:tool:${step.tool}${paramHash}`, ttl };
+  }
+
   async executeTool(step: RagStep): Promise<string | null> {
+    const { key, ttl } = this.toolCacheKey(step);
+    if (key) {
+      return this.redisService.cached<string | null>(key, ttl, () => this._runTool(step));
+    }
+    return this._runTool(step);
+  }
+
+  private async _runTool(step: RagStep): Promise<string | null> {
     switch (step.tool) {
 
       case 'get_dashboard_summary': {

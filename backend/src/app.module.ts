@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
+import { BullModule } from '@nestjs/bullmq';
 import { APP_GUARD, APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 
 import configuration from './config/configuration';
@@ -39,6 +40,7 @@ import { WishlistModule } from './modules/wishlist/wishlist.module';
 import { WalletModule } from './modules/wallet/wallet.module';
 import { RawMaterialModule } from './modules/raw-materials/raw-material.module';
 import { AdminChatbotModule } from './modules/admin-chatbot/admin-chatbot.module';
+import { RedisModule } from './modules/redis/redis.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -59,6 +61,33 @@ import { HealthController } from './health.controller';
     }),
 
     ScheduleModule.forRoot(),
+
+    RedisModule,
+
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
+        const host = configService.get<string>('redis.host');
+        const port = configService.get<number>('redis.port');
+        const password = configService.get<string>('redis.password');
+        const username = configService.get<string>('redis.username');
+        const tls = configService.get<boolean>('redis.tls');
+        return {
+          connection: {
+            host,
+            port,
+            ...(username ? { username } : {}),
+            ...(password ? { password } : {}),
+            ...(tls ? { tls: { rejectUnauthorized: false } } : {}),
+            // Required for BullMQ workers — disables ioredis auto-retry behaviour
+            // that conflicts with BullMQ's own blocking commands
+            maxRetriesPerRequest: null,
+            enableReadyCheck: false,
+          },
+        };
+      },
+    }),
 
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],

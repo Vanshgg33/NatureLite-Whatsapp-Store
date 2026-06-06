@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { AnalyticsSnapshotRepository } from './repositories/analytics-snapshot.repository';
 import { OrderRepository } from '../orders/repositories/order.repository';
 import { UserRepository } from '../users/repositories/user.repository';
@@ -13,6 +15,7 @@ import { SettingsService } from '../settings/settings.service';
 import { AnalyticsSnapshot, SnapshotPeriod } from './schemas/analytics-snapshot.schema';
 import { parseObjectId } from '../../common/utils/objectid.util';
 import { ORDER_STATUSES_PENDING_FULFILLMENT } from '../../common/constants/order-status';
+import { QUEUE_ANALYTICS, ANALYTICS_JOBS, DEFAULT_JOB_OPTIONS } from '../queues/queues.constants';
 
 @Injectable()
 export class AnalyticsService {
@@ -29,6 +32,7 @@ export class AnalyticsService {
     private readonly storeStockRepository: StoreStockRepository,
     private readonly storeRepository: StoreRepository,
     private readonly settingsService: SettingsService,
+    @InjectQueue(QUEUE_ANALYTICS) private readonly analyticsQueue: Queue,
   ) {}
 
   private effectiveStart(nominal: Date, resetAt: Date | null): Date {
@@ -38,8 +42,6 @@ export class AnalyticsService {
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, { timeZone: 'Asia/Kolkata' })
   async generateDailySnapshot(): Promise<void> {
-    this.logger.log('Generating daily analytics snapshot');
-
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     yesterday.setHours(0, 0, 0, 0);
@@ -47,22 +49,17 @@ export class AnalyticsService {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Fetch all metrics once and share between snapshot and daily report
-    const [orderMetrics, customerMetrics, productMetrics, chatMetrics] = await Promise.all([
-      this.getOrderMetrics(yesterday, today),
-      this.getCustomerMetrics(yesterday, today),
-      this.getProductMetrics(yesterday, today),
-      this.getChatMetrics(yesterday, today),
-    ]);
-
-    await this.createSnapshotFromMetrics('daily', yesterday, today, orderMetrics, customerMetrics, productMetrics, chatMetrics);
-    await this.generateFullDailyReport(yesterday, today, orderMetrics, customerMetrics, productMetrics, chatMetrics);
+    const dateKey = yesterday.toISOString().slice(0, 10);
+    await this.analyticsQueue.add(
+      ANALYTICS_JOBS.DAILY_SNAPSHOT,
+      { startDate: yesterday.toISOString(), endDate: today.toISOString() },
+      { ...DEFAULT_JOB_OPTIONS, attempts: 2, jobId: `analytics-daily-${dateKey}` },
+    );
+    this.logger.log(`Enqueued daily analytics snapshot for ${dateKey}`);
   }
 
   @Cron(CronExpression.EVERY_WEEK)
   async generateWeeklySnapshot(): Promise<void> {
-    this.logger.log('Generating weekly analytics snapshot');
-
     const lastWeekStart = new Date();
     lastWeekStart.setDate(lastWeekStart.getDate() - 7);
     lastWeekStart.setHours(0, 0, 0, 0);
@@ -70,13 +67,17 @@ export class AnalyticsService {
     const lastWeekEnd = new Date();
     lastWeekEnd.setHours(0, 0, 0, 0);
 
-    await this.createSnapshot('weekly', lastWeekStart, lastWeekEnd);
+    const dateKey = lastWeekStart.toISOString().slice(0, 10);
+    await this.analyticsQueue.add(
+      ANALYTICS_JOBS.WEEKLY_SNAPSHOT,
+      { startDate: lastWeekStart.toISOString(), endDate: lastWeekEnd.toISOString() },
+      { ...DEFAULT_JOB_OPTIONS, attempts: 2, jobId: `analytics-weekly-${dateKey}` },
+    );
+    this.logger.log(`Enqueued weekly analytics snapshot starting ${dateKey}`);
   }
 
   @Cron('0 0 1 * *')
   async generateMonthlySnapshot(): Promise<void> {
-    this.logger.log('Generating monthly analytics snapshot');
-
     const lastMonthStart = new Date();
     lastMonthStart.setMonth(lastMonthStart.getMonth() - 1);
     lastMonthStart.setDate(1);
@@ -86,7 +87,39 @@ export class AnalyticsService {
     lastMonthEnd.setDate(1);
     lastMonthEnd.setHours(0, 0, 0, 0);
 
-    await this.createSnapshot('monthly', lastMonthStart, lastMonthEnd);
+    const dateKey = lastMonthStart.toISOString().slice(0, 7);
+    await this.analyticsQueue.add(
+      ANALYTICS_JOBS.MONTHLY_SNAPSHOT,
+      { startDate: lastMonthStart.toISOString(), endDate: lastMonthEnd.toISOString() },
+      { ...DEFAULT_JOB_OPTIONS, attempts: 2, jobId: `analytics-monthly-${dateKey}` },
+    );
+    this.logger.log(`Enqueued monthly analytics snapshot for ${dateKey}`);
+  }
+
+  async _executeDailySnapshot(data: { startDate: string; endDate: string }): Promise<void> {
+    this.logger.log('Executing daily analytics snapshot');
+    const startDate = new Date(data.startDate);
+    const endDate = new Date(data.endDate);
+
+    const [orderMetrics, customerMetrics, productMetrics, chatMetrics] = await Promise.all([
+      this.getOrderMetrics(startDate, endDate),
+      this.getCustomerMetrics(startDate, endDate),
+      this.getProductMetrics(startDate, endDate),
+      this.getChatMetrics(startDate, endDate),
+    ]);
+
+    await this.createSnapshotFromMetrics('daily', startDate, endDate, orderMetrics, customerMetrics, productMetrics, chatMetrics);
+    await this.generateFullDailyReport(startDate, endDate, orderMetrics, customerMetrics, productMetrics, chatMetrics);
+  }
+
+  async _executeWeeklySnapshot(data: { startDate: string; endDate: string }): Promise<void> {
+    this.logger.log('Executing weekly analytics snapshot');
+    await this.createSnapshot('weekly', new Date(data.startDate), new Date(data.endDate));
+  }
+
+  async _executeMonthlySnapshot(data: { startDate: string; endDate: string }): Promise<void> {
+    this.logger.log('Executing monthly analytics snapshot');
+    await this.createSnapshot('monthly', new Date(data.startDate), new Date(data.endDate));
   }
 
   private async createSnapshotFromMetrics(

@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { BullModule } from '@nestjs/bullmq';
 import { AdminChatbotController } from './admin-chatbot.controller';
 import { AdminChatbotService } from './admin-chatbot.service';
+import { AdminChatbotProcessor } from './admin-chatbot.processor';
+import { QUEUE_ADMIN } from '../queues/queues.constants';
 import { AdminChatSessionRepository } from './repositories/admin-chat-session.repository';
 import { AdminChatSession, AdminChatSessionSchema } from './schemas/admin-chat-session.schema';
 import { Subscription, SubscriptionSchema } from '../subscriptions/schemas/subscription.schema';
@@ -22,6 +25,7 @@ import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
+    BullModule.registerQueue({ name: QUEUE_ADMIN }),
     MongooseModule.forFeature([
       { name: AdminChatSession.name, schema: AdminChatSessionSchema },
       { name: Subscription.name, schema: SubscriptionSchema },
@@ -42,6 +46,6 @@ import { EmailModule } from '../email/email.module';
     EmailModule,
   ],
   controllers: [AdminChatbotController],
-  providers: [AdminChatbotService, AdminChatSessionRepository],
+  providers: [AdminChatbotService, AdminChatSessionRepository, AdminChatbotProcessor],
 })
 export class AdminChatbotModule {}

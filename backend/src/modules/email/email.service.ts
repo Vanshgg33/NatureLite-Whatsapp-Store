@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import * as nodemailer from 'nodemailer';
+import { QUEUE_EMAIL, EMAIL_JOBS, DEFAULT_JOB_OPTIONS } from '../queues/queues.constants';
 
 @Injectable()
 export class EmailService {
@@ -8,7 +11,10 @@ export class EmailService {
   private transporter: nodemailer.Transporter;
   private fromAddress: string;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    @InjectQueue(QUEUE_EMAIL) private readonly emailQueue: Queue,
+  ) {
     const smtpUser = this.configService.get<string>('smtp.user');
     this.fromAddress = this.configService.get<string>('smtp.from');
 
@@ -54,6 +60,15 @@ export class EmailService {
   }
 
   async sendOrderConfirmation(order: any, customerEmail: string): Promise<void> {
+    if (!customerEmail) return;
+    await this.emailQueue.add(
+      EMAIL_JOBS.ORDER_CONFIRMATION,
+      { order: this.serializeOrder(order), email: customerEmail },
+      { ...DEFAULT_JOB_OPTIONS, jobId: `email-order-conf-${order._id?.toString() ?? Date.now()}` },
+    );
+  }
+
+  async _executeOrderConfirmation(order: any, customerEmail: string): Promise<void> {
     const itemsHtml = (order.items || [])
       .map(
         (item: any) =>
@@ -112,6 +127,15 @@ export class EmailService {
   }
 
   async sendShippingUpdate(order: any, customerEmail: string): Promise<void> {
+    if (!customerEmail) return;
+    await this.emailQueue.add(
+      EMAIL_JOBS.SHIPPING_UPDATE,
+      { order: this.serializeOrder(order), email: customerEmail },
+      { ...DEFAULT_JOB_OPTIONS, jobId: `email-shipping-${order._id?.toString() ?? Date.now()}` },
+    );
+  }
+
+  async _executeShippingUpdate(order: any, customerEmail: string): Promise<void> {
     const html = `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
         <div style="background:#2A5A3A;padding:20px;text-align:center">
@@ -137,6 +161,15 @@ export class EmailService {
   }
 
   async sendDeliveryConfirmation(order: any, customerEmail: string): Promise<void> {
+    if (!customerEmail) return;
+    await this.emailQueue.add(
+      EMAIL_JOBS.DELIVERY_CONFIRMATION,
+      { order: this.serializeOrder(order), email: customerEmail },
+      { ...DEFAULT_JOB_OPTIONS, jobId: `email-delivery-${order._id?.toString() ?? Date.now()}` },
+    );
+  }
+
+  async _executeDeliveryConfirmation(order: any, customerEmail: string): Promise<void> {
     const html = `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
         <div style="background:#2A5A3A;padding:20px;text-align:center">
@@ -155,6 +188,14 @@ export class EmailService {
   }
 
   async sendAdminReport(to: string, subject: string, html: string): Promise<void> {
+    await this.emailQueue.add(
+      EMAIL_JOBS.ADMIN_REPORT,
+      { to, subject, html },
+      DEFAULT_JOB_OPTIONS,
+    );
+  }
+
+  async _executeAdminReport(to: string, subject: string, html: string): Promise<void> {
     await this.send(to, subject, html);
   }
 
@@ -584,6 +625,15 @@ export class EmailService {
   }
 
   async sendOrderCancelled(order: any, customerEmail: string): Promise<void> {
+    if (!customerEmail) return;
+    await this.emailQueue.add(
+      EMAIL_JOBS.ORDER_CANCELLED,
+      { order: this.serializeOrder(order), email: customerEmail },
+      { ...DEFAULT_JOB_OPTIONS, jobId: `email-cancelled-${order._id?.toString() ?? Date.now()}` },
+    );
+  }
+
+  async _executeOrderCancelled(order: any, customerEmail: string): Promise<void> {
     const html = `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
         <div style="background:#CD7F32;padding:20px;text-align:center">
@@ -600,5 +650,15 @@ export class EmailService {
     `;
 
     await this.send(customerEmail, `Order Cancelled - #${order.orderNumber}`, html);
+  }
+
+  private serializeOrder(order: any): Record<string, any> {
+    if (order && typeof order.toObject === 'function') {
+      return order.toObject();
+    }
+    if (order && typeof order.toJSON === 'function') {
+      return order.toJSON();
+    }
+    return { ...order };
   }
 }
