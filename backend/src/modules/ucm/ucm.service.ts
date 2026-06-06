@@ -360,6 +360,9 @@ export class UcmService {
     const chunkSize = 25;
     for (let i = 0; i < items.length; i += chunkSize) {
       const chunk = items.slice(i, i + chunkSize);
+      if (i === 0) {
+        this.logger.log(`First batch retailer_ids: ${JSON.stringify(chunk.map(c => String(c.item.retailer_id)))}`);
+      }
       try {
         await this.upsertRemoteProductsBatch(state, chunk.map((c) => c.item), remoteCatalogId);
         syncedProducts += chunk.length;
@@ -804,11 +807,13 @@ export class UcmService {
       throw new BadRequestException('Catalog access token is not configured');
     }
 
+    // Meta items_batch CREATE format: retailer_id belongs inside `data` only.
+    // Putting it at the top-level request AND inside data causes the
+    // "Duplicate retailer_id in batch api call" error.
     const requests = items.map((item) => ({
-      retailer_id: String(item.retailer_id),
       method: 'CREATE',
       item_type: 'PRODUCT_ITEM',
-      data: item,
+      data: item,  // item already contains retailer_id as its first field
     }));
 
     const payload = new URLSearchParams();
