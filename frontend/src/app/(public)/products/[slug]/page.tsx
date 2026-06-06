@@ -338,12 +338,12 @@ export default function ProductDetailPage() {
                   className="absolute inset-0"
                 >
                   {images[selectedImageIndex] ? (
-                    <div className="absolute inset-[4%]">
+                    <div className="absolute inset-0">
                       <Image
                         src={images[selectedImageIndex]!}
                         alt={product.name}
                         fill
-                        className="object-contain"
+                        className="object-cover"
                         priority
                       />
                     </div>

@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { ArrowRight, Sparkles } from 'lucide-react';
 import { PremiumProductCard } from '@/components/ecommerce/premium-product-card';
+import { QuickViewModal } from '@/components/ecommerce/quick-view-modal';
 import { Product } from '@/types';
 import { ScrollReveal } from '@/components/ui/scroll-reveal';
 import { Magnetic } from '@/components/ui/magnetic';
@@ -14,6 +15,8 @@ interface FeaturedProductsSectionProps {
 }
 
 export default function FeaturedProductsSection({ products }: FeaturedProductsSectionProps) {
+  const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
+
   const featured = useMemo(
     () => [...products].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5),
     [products],
@@ -137,6 +140,7 @@ export default function FeaturedProductsSection({ products }: FeaturedProductsSe
                 index={index}
                 showMostPopular={index === 0}
                 compact
+                onQuickView={product.variants?.length > 0 ? setQuickViewProduct : undefined}
               />
             </motion.div>
           ))}
@@ -153,6 +157,12 @@ export default function FeaturedProductsSection({ products }: FeaturedProductsSe
           </Link>
         </div>
       </div>
+
+      <QuickViewModal
+        product={quickViewProduct}
+        isOpen={!!quickViewProduct}
+        onClose={() => setQuickViewProduct(null)}
+      />
     </section>
   );
 }

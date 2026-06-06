@@ -147,6 +147,15 @@ export class StoreSalesService {
       total: item.total,
     }));
 
+    const addr = order.shippingAddress;
+    const customerAddress = [
+      addr?.street,
+      addr?.landmark,
+      addr?.city,
+      addr?.state,
+      addr?.pincode ? `PIN-${addr.pincode}` : undefined,
+    ].filter(Boolean).join(', ') || undefined;
+
     const saleData = {
       saleNumber,
       store: new Types.ObjectId(storeId),
@@ -154,6 +163,7 @@ export class StoreSalesService {
       items: saleItems,
       customerName: order.shippingAddress?.name,
       customerPhone: order.shippingAddress?.phone,
+      customerAddress,
       subtotal: order.subtotal,
       discount: order.discount || 0,
       total: order.total,

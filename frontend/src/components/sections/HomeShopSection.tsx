@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { PremiumProductCard } from '@/components/ecommerce/premium-product-card';
+import { QuickViewModal } from '@/components/ecommerce/quick-view-modal';
 import { Product, Category } from '@/types';
 import { api } from '@/lib/api';
 import { ScrollReveal } from '@/components/ui/scroll-reveal';
@@ -106,9 +107,10 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
     return (p.category as Category | null)?._id != null;
   }), [products]);
 
-  const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
-  const [selectedPill,  setSelectedPill]  = useState<PillKey>('best');
-  const [visibleCount,  setVisibleCount]  = useState(INITIAL);
+  const [selectedCatId,    setSelectedCatId]    = useState<string | null>(null);
+  const [selectedPill,     setSelectedPill]     = useState<PillKey>('best');
+  const [visibleCount,     setVisibleCount]     = useState(INITIAL);
+  const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
 
   const { data: categoryData, isLoading: catLoading } = useQuery({
     queryKey: ['home-category-products', selectedCatId],
@@ -368,6 +370,7 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
                       index={index}
                       showMostPopular={index === 0 && selectedPill === 'best' && !selectedCatId}
                       compact
+                      onQuickView={product.variants?.length > 0 ? setQuickViewProduct : undefined}
                     />
                   </TiltCard>
                 ))
@@ -419,6 +422,12 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
           </Magnetic>
         </div>
       </div>
+
+      <QuickViewModal
+        product={quickViewProduct}
+        isOpen={!!quickViewProduct}
+        onClose={() => setQuickViewProduct(null)}
+      />
     </section>
   );
 }

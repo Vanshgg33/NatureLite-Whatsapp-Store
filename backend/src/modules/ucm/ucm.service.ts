@@ -803,7 +803,7 @@ export class UcmService {
     payload.set('requests', JSON.stringify(requests));
 
     await this.withMetaCatalogBatchRetry(async () => {
-      await this.graphClient.post(`/${catalogId}/items_batch`, payload, {
+      const response = await this.graphClient.post(`/${catalogId}/items_batch`, payload, {
         params: {
           access_token: catalogConfig.accessToken,
         },
@@ -811,6 +811,24 @@ export class UcmService {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
       });
+
+      // Meta returns HTTP 200 even when individual items are rejected.
+      // Log the full response so real errors are visible.
+      const body = response.data as Record<string, unknown>;
+      const handles = Array.isArray(body?.handles) ? body.handles : [];
+      this.logger.log(`Meta items_batch response: handles=${JSON.stringify(handles)}, raw=${JSON.stringify(body)}`);
+
+      // validation_status contains per-item errors on some API versions
+      const validationStatus = Array.isArray(body?.validation_status) ? body.validation_status as Array<Record<string, unknown>> : [];
+      const itemErrors = validationStatus.filter((v) => Array.isArray(v.errors) && (v.errors as unknown[]).length > 0);
+      if (itemErrors.length > 0) {
+        this.logger.warn(`Meta items_batch per-item errors (${itemErrors.length} items): ${JSON.stringify(itemErrors)}`);
+      }
+
+      // Top-level error field means the whole batch was rejected
+      if (body?.error) {
+        throw new BadRequestException(`Meta catalog batch rejected: ${JSON.stringify(body.error)}`);
+      }
     }, requests.length);
   }
 

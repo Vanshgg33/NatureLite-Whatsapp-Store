@@ -252,6 +252,29 @@ export function PremiumProductCard({
                   <span style={{ fontSize: 11, fontWeight: 600, background: 'rgba(11,28,8,0.75)', color: '#fff', padding: '4px 10px', borderRadius: 99 }}>Out of Stock</span>
                 </div>
               )}
+
+              {/* Quick View button */}
+              {onQuickView && (
+                <button
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onQuickView(product); }}
+                  className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 z-20 transition-all duration-200"
+                  style={{
+                    background: 'rgba(11,28,8,0.78)',
+                    backdropFilter: 'blur(8px)',
+                    color: '#fff',
+                    fontSize: 10,
+                    fontWeight: 600,
+                    padding: '5px 12px',
+                    borderRadius: 99,
+                    opacity: isHovered ? 1 : 0,
+                    transform: `translateX(-50%) translateY(${isHovered ? '0px' : '6px'})`,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <Eye className="w-3 h-3" />
+                  Quick View
+                </button>
+              )}
             </div>
 
             {/* Info */}
