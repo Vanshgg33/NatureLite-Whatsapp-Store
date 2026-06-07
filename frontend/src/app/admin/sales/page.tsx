@@ -319,6 +319,11 @@ export default function SalesPage() {
   const [logSaleStoreId, setLogSaleStoreId] = useState<string>('');
   const [reminderMessage, setReminderMessage] = useState('');
   const [reminderDueAt, setReminderDueAt] = useState('');
+  const [addrStreet, setAddrStreet] = useState('');
+  const [addrLandmark, setAddrLandmark] = useState('');
+  const [addrCity, setAddrCity] = useState('');
+  const [addrState, setAddrState] = useState('Maharashtra');
+  const [addrPincode, setAddrPincode] = useState('');
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -551,7 +556,9 @@ export default function SalesPage() {
         })),
         customerName: customerName || undefined,
         customerPhone: customerPhone || undefined,
-        customerAddress: customerAddress || undefined,
+        customerAddress: saleType === 'delivery'
+          ? [addrStreet, addrLandmark, addrCity, addrState, addrPincode ? `PIN-${addrPincode}` : ''].filter(Boolean).join(', ') || undefined
+          : customerAddress || undefined,
         discount: parseFloat(discount) || 0,
         paymentMethod,
         paymentProofUrl: paymentMethod === 'upi' ? upiProofUrl || undefined : undefined,
@@ -640,6 +647,11 @@ export default function SalesPage() {
     setUpiProofUrl(null);
     setReminderMessage('');
     setReminderDueAt('');
+    setAddrStreet('');
+    setAddrLandmark('');
+    setAddrCity('');
+    setAddrState('Maharashtra');
+    setAddrPincode('');
   };
 
   const handleUpiProofFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1358,7 +1370,7 @@ export default function SalesPage() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm font-medium">Customer Name (Optional)</label>
+                  <label className="text-sm font-medium">Customer Name <span className="text-muted-foreground font-normal">(Optional)</span></label>
                   <Input
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
@@ -1366,7 +1378,7 @@ export default function SalesPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">Customer Phone (Optional)</label>
+                  <label className="text-sm font-medium">Customer Phone <span className="text-muted-foreground font-normal">(Optional)</span></label>
                   <Input
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
@@ -1374,16 +1386,68 @@ export default function SalesPage() {
                   />
                 </div>
               </div>
-              <div>
-                <label className="text-sm font-medium">Customer Address (Optional)</label>
-                <Textarea
-                  value={customerAddress}
-                  onChange={(e) => setCustomerAddress(e.target.value)}
-                  placeholder="Street, city, pincode..."
-                  rows={2}
-                  className="resize-none"
-                />
-              </div>
+
+              {saleType === 'delivery' ? (
+                <div className="space-y-3 border rounded-lg p-3 bg-muted/30">
+                  <label className="text-sm font-medium block">
+                    Delivery Address <span className="text-muted-foreground font-normal">(Optional)</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
+                      <label className="text-xs text-muted-foreground mb-1 block">Street / House No.</label>
+                      <Input
+                        value={addrStreet}
+                        onChange={(e) => setAddrStreet(e.target.value)}
+                        placeholder="e.g. 12, Nehru Nagar, Near Bus Stand"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">Landmark</label>
+                      <Input
+                        value={addrLandmark}
+                        onChange={(e) => setAddrLandmark(e.target.value)}
+                        placeholder="e.g. Near temple"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">City</label>
+                      <Input
+                        value={addrCity}
+                        onChange={(e) => setAddrCity(e.target.value)}
+                        placeholder="e.g. Hinganghat"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">State</label>
+                      <Input
+                        value={addrState}
+                        onChange={(e) => setAddrState(e.target.value)}
+                        placeholder="e.g. Maharashtra"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">Pincode</label>
+                      <Input
+                        value={addrPincode}
+                        onChange={(e) => setAddrPincode(e.target.value)}
+                        placeholder="e.g. 442301"
+                        maxLength={6}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="text-sm font-medium">Customer Address <span className="text-muted-foreground font-normal">(Optional)</span></label>
+                  <Textarea
+                    value={customerAddress}
+                    onChange={(e) => setCustomerAddress(e.target.value)}
+                    placeholder="Street, city, pincode..."
+                    rows={2}
+                    className="resize-none"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
