@@ -47,8 +47,10 @@ type RemoteCatalogProduct = {
   price?: number | string;
   sale_price?: number | string;
   image_url?: string;
+  image_link?: string;
   inventory?: number;
   url?: string;
+  link?: string;
   product_type?: string;
   category?: string;
   custom_label_0?: string;
@@ -351,13 +353,13 @@ export class UcmService {
           retailer_id: diagId,
           data: {
             id: diagId,
-            name: 'Diagnostic Test Item',
+            title: 'Diagnostic Test Item',
             description: 'Temporary diagnostic item — safe to delete',
             availability: 'in stock',
             condition: 'new',
             price: '1.00 INR',
-            image_url: 'https://picsum.photos/200/200',
-            url: 'https://www.google.com',
+            image_link: 'https://picsum.photos/200/200',
+            link: 'https://www.google.com',
           },
         }],
       }, {
@@ -501,7 +503,7 @@ export class UcmService {
         // returns only the default fields (id, name) — every imported
         // product ends up with price=0 because the price field never
         // arrived in the response. Keep this as a plain CSV.
-        const fieldsArray = ['id', 'retailer_id', 'title', 'name', 'description', 'short_description', 'price', 'sale_price', 'availability', 'condition', 'currency', 'image_url', 'inventory', 'url', 'product_type', 'category', 'custom_label_0', 'custom_label_1', 'custom_data'];
+        const fieldsArray = ['id', 'retailer_id', 'title', 'name', 'description', 'short_description', 'price', 'sale_price', 'availability', 'condition', 'currency', 'image_link', 'image_url', 'inventory', 'link', 'url', 'product_type', 'category', 'custom_label_0', 'custom_label_1', 'custom_data'];
         const response = await this.graphClient.get<RemoteProductsResponse>(`/${catalogId}/products`, {
           params: {
             access_token: catalogConfig.accessToken,
@@ -589,7 +591,7 @@ export class UcmService {
     };
 
     const resolvedImages = await this.resolveProductImages(
-      remoteProduct.image_url,
+      remoteProduct.image_link || remoteProduct.image_url,
       existing?.images ?? [],
     );
 
@@ -806,11 +808,12 @@ export class UcmService {
     }
 
     // Only add optional fields if they have values
+    // Meta Commerce catalog uses Google Shopping field names: image_link / link
     if (product.images?.[0]) {
-      item.image_url = product.images[0];
+      item.image_link = product.images[0];
     }
     if (baseUrl) {
-      item.url = `${baseUrl}/products/${product.slug}`;
+      item.link = `${baseUrl}/products/${product.slug}`;
     }
     if (stockTracked) {
       item.inventory = effectiveStock ?? 0;
