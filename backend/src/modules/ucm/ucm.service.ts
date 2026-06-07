@@ -868,7 +868,7 @@ export class UcmService {
 
     if (requests.length > 0) {
       const r = requests[0];
-      this.logger.log(`First Meta request: method=${r.method}, retailer_id=${r.retailer_id}, data_keys=${JSON.stringify(Object.keys(r.data as object))}, url=${(r.data as Record<string, unknown>).url}, price=${(r.data as Record<string, unknown>).price}`);
+      this.logger.log(`First Meta request: method=${r.method}, retailer_id=${r.retailer_id}, data_keys=${JSON.stringify(Object.keys(r.data as object))}, link=${(r.data as Record<string, unknown>).link}, price=${(r.data as Record<string, unknown>).price}`);
     }
 
     await this.withMetaCatalogBatchRetry(async () => {
