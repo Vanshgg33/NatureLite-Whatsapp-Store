@@ -355,8 +355,7 @@ export class UcmService {
             description: 'Temporary diagnostic item — safe to delete',
             availability: 'in stock',
             condition: 'new',
-            price: 100,
-            currency: 'INR',
+            price: '1.00 INR',
             image_url: 'https://picsum.photos/200/200',
             url: 'https://www.google.com',
           },
@@ -789,26 +788,21 @@ export class UcmService {
       title: product.name,
       description: (product.description || product.shortDescription || '').toString().slice(0, 5000),
       availability: unavailable ? 'out of stock' : 'in stock',
-      // Hide unavailable items from the customer-facing catalog entirely
-      // rather than greying them out. Flips back to 'published' on the next
-      // sync once stock is restored, since the field is always sent.
       visibility: unavailable ? 'hidden' : 'published',
       condition: 'new',
-      currency: 'INR',
       custom_label_1: product.sku,
     };
 
-    if (product.compareAtPrice && product.compareAtPrice > product.price) {
-      item.price = this.toCatalogAmount(product.compareAtPrice) ?? catalogPrice ?? 0;
-      item.sale_price = catalogPrice ?? 0;
+    // Meta Commerce catalog requires price as "200.00 INR" (string with currency code).
+    // A separate `currency` field is not recognised for PRODUCT_ITEM type.
+    const priceRupees = product.price ?? 0;
+    const compareRupees = product.compareAtPrice ?? 0;
+    if (compareRupees > priceRupees) {
+      item.price = `${compareRupees.toFixed(2)} INR`;
+      item.sale_price = `${priceRupees.toFixed(2)} INR`;
     } else {
-      item.price = catalogPrice ?? 0;
-      // Always emit sale_price so a previously-synced discount value gets
-      // overwritten when the discount is removed locally. Setting it equal
-      // to price means Meta won't render a "sale" badge (sale_price !<
-      // price), and we avoid sending nullable/empty-string values that some
-      // Meta API versions reject.
-      item.sale_price = catalogPrice ?? 0;
+      item.price = `${priceRupees.toFixed(2)} INR`;
+      item.sale_price = `${priceRupees.toFixed(2)} INR`;
     }
 
     // Only add optional fields if they have values
