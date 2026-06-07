@@ -33,6 +33,7 @@ type RemoteCatalog = {
 type RemoteCatalogProduct = {
   id?: string;
   retailer_id?: string;
+  title?: string;
   name?: string;
   description?: string;
   short_description?: string;
@@ -112,7 +113,12 @@ export class UcmService {
   async getDashboardSnapshot(): Promise<{ config: CatalogState; catalogs: RemoteCatalog[]; productCount: number }> {
     const [config, catalogs, productCount] = await Promise.all([
       this.getCatalogState(),
-      this.listRemoteCatalogs().catch(() => []),
+      this.listRemoteCatalogs().catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        const body = axios.isAxiosError(err) ? JSON.stringify(err.response?.data) : '';
+        this.logger.warn(`listRemoteCatalogs failed: ${msg}${body ? ` | body=${body}` : ''}`);
+        return [];
+      }),
       this.productRepository.countDocuments(),
     ]);
 
@@ -322,6 +328,48 @@ export class UcmService {
 
     this.logger.log(`Syncing ${products.length} products to catalog ${remoteCatalogId} (${remoteCatalogName})`);
 
+    // Health-check: verify catalog is readable with current token before pushing
+    const catalogConfig = this.configService.get<CatalogConfig>('catalog')!;
+    try {
+      const catalogCheck = await this.graphClient.get(`/${remoteCatalogId}`, {
+        params: { access_token: catalogConfig.accessToken, fields: 'id,name,vertical,catalog_type' },
+      });
+      this.logger.log(`Catalog health-check OK: ${JSON.stringify(catalogCheck.data)}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Catalog health-check FAILED — token may lack catalog_management permission: ${msg}`);
+    }
+
+    // Write diagnostic: try one item with a unique timestamp ID + public URL.
+    try {
+      const diagId = `diag-${Date.now()}`;
+      const diagResp = await this.graphClient.post(`/${remoteCatalogId}/items_batch`, {
+        item_type: 'PRODUCT_ITEM',
+        allow_upsert: true,
+        requests: [{
+          method: 'CREATE',
+          retailer_id: diagId,
+          data: {
+            id: diagId,
+            name: 'Diagnostic Test Item',
+            description: 'Temporary diagnostic item — safe to delete',
+            availability: 'in stock',
+            condition: 'new',
+            price: 100,
+            currency: 'INR',
+            image_url: 'https://picsum.photos/200/200',
+            url: 'https://www.google.com',
+          },
+        }],
+      }, {
+        params: { access_token: catalogConfig.accessToken },
+      });
+      this.logger.log(`Write diagnostic response: ${JSON.stringify(diagResp.data)}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Write diagnostic error: ${msg}`);
+    }
+
     let stockMap: Map<string, number | null>;
     try {
       stockMap = await this.resolveMainStoreStockMap(products);
@@ -454,7 +502,7 @@ export class UcmService {
         // returns only the default fields (id, name) — every imported
         // product ends up with price=0 because the price field never
         // arrived in the response. Keep this as a plain CSV.
-        const fieldsArray = ['id', 'retailer_id', 'name', 'description', 'short_description', 'price', 'sale_price', 'availability', 'condition', 'currency', 'image_url', 'inventory', 'url', 'product_type', 'category', 'custom_label_0', 'custom_label_1', 'custom_data'];
+        const fieldsArray = ['id', 'retailer_id', 'title', 'name', 'description', 'short_description', 'price', 'sale_price', 'availability', 'condition', 'currency', 'image_url', 'inventory', 'url', 'product_type', 'category', 'custom_label_0', 'custom_label_1', 'custom_data'];
         const response = await this.graphClient.get<RemoteProductsResponse>(`/${catalogId}/products`, {
           params: {
             access_token: catalogConfig.accessToken,
@@ -529,7 +577,7 @@ export class UcmService {
       );
     }
 
-    const baseSlug = this.slugify(remoteProduct.name || retailerId);
+    const baseSlug = this.slugify(remoteProduct.title || remoteProduct.name || retailerId);
     const slug = existing?.slug || await this.resolveUniqueProductSlug(baseSlug, retailerId);
     const metadata: Record<string, unknown> = {
       ...(existing?.metadata ? (existing.metadata as Record<string, unknown>) : {}),
@@ -547,7 +595,7 @@ export class UcmService {
     );
 
     const payload: Record<string, unknown> = {
-      name: remoteProduct.name || retailerId,
+      name: remoteProduct.title || remoteProduct.name || retailerId,
       slug,
       description: (remoteProduct.description || remoteProduct.short_description || '').toString().slice(0, 5000),
       shortDescription: (remoteProduct.short_description || remoteProduct.description || '').toString().slice(0, 5000),
@@ -618,15 +666,15 @@ export class UcmService {
 
   private resolveRemoteRetailerId(product: ProductDocument): string {
     const metadata = product.metadata as Record<string, unknown> | undefined;
-    const remoteRetailerId = typeof metadata?.remoteCatalogRetailerId === 'string' ? metadata.remoteCatalogRetailerId.trim() : '';
-    if (remoteRetailerId) {
-      return remoteRetailerId;
+    const stored = typeof metadata?.remoteCatalogRetailerId === 'string' ? metadata.remoteCatalogRetailerId.trim() : '';
+    // Reject trivially invalid values (".", " ", single chars) that a bad pull
+    // may have written from a corrupt catalog item — these cause the
+    // "Duplicate retailer_id in batch api call - ." error when multiple
+    // products share the same invalid stored ID.
+    if (stored && stored.length > 1) {
+      return stored;
     }
 
-    // Always use MongoDB _id — it is guaranteed unique across the catalog.
-    // product.sku is NOT used here because SKUs are often duplicated or left
-    // blank across products, which causes Meta to reject the entire batch with
-    // "Duplicate retailer_id in batch api call".
     return product._id.toString();
   }
 
@@ -738,7 +786,7 @@ export class UcmService {
 
     const item: Record<string, unknown> = {
       retailer_id: remoteRetailerId,
-      name: product.name,
+      title: product.name,
       description: (product.description || product.shortDescription || '').toString().slice(0, 5000),
       availability: unavailable ? 'out of stock' : 'in stock',
       // Hide unavailable items from the customer-facing catalog entirely
@@ -808,27 +856,33 @@ export class UcmService {
       throw new BadRequestException('Catalog access token is not configured');
     }
 
-    // Meta items_batch API (v20+):
-    //   - retailer_id belongs at the REQUEST level, NOT inside data
-    //   - item_type belongs at the TOP-LEVEL body, NOT inside each request
-    //   - JSON body is required (form-urlencoded causes "Duplicate retailer_id" errors)
+    // Meta items_batch API: retailer_id at the REQUEST level identifies the item.
+    // item_type MUST be in the JSON body (not query params) — without it Meta
+    // applies wrong validation and returns misleading "Duplicate retailer_id" errors.
     const requests = items.map((item) => {
-      const { retailer_id, ...data } = item;
+      const { retailer_id, ...rest } = item as Record<string, unknown>;
+      const retailerId = String(retailer_id ?? '');
       return {
         method: 'CREATE',
-        retailer_id: String(retailer_id),
-        data,
+        retailer_id: retailerId,
+        data: { id: retailerId, ...rest },
       };
     });
 
-    const jsonBody = {
-      allow_upsert: true,
-      item_type: 'PRODUCT_ITEM',
-      requests,
-    };
+    if (requests.length > 0) {
+      const r = requests[0];
+      this.logger.log(`First Meta request: method=${r.method}, retailer_id=${r.retailer_id}, data_keys=${JSON.stringify(Object.keys(r.data as object))}, url=${(r.data as Record<string, unknown>).url}, price=${(r.data as Record<string, unknown>).price}`);
+    }
 
     await this.withMetaCatalogBatchRetry(async () => {
-      const response = await this.graphClient.post(`/${catalogId}/items_batch`, jsonBody, {
+      // item_type MUST be in the JSON body — passing it as a query param causes
+      // Meta to apply wrong schema validation, producing misleading errors.
+      // allow_upsert also stays in the body so CREATE acts as an upsert.
+      const response = await this.graphClient.post(`/${catalogId}/items_batch`, {
+        item_type: 'PRODUCT_ITEM',
+        allow_upsert: true,
+        requests,
+      }, {
         params: {
           access_token: catalogConfig.accessToken,
         },

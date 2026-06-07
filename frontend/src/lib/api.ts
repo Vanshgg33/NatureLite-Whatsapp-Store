@@ -142,10 +142,23 @@ class ApiClient {
         if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
           originalRequest._retry = true;
 
+          const failedUrl = (originalRequest.url || '').replace(/^\/+/, '');
+
+          // Auth endpoints return 401 for bad credentials, not expired tokens.
+          // Attempting a refresh is pointless and adds a redundant network round-trip
+          // that makes login failures look instant (no spinner) to the user.
+          const isAuthEndpoint = [
+            'auth/admin/login', 'auth/admin/register',
+            'auth/customer/login', 'auth/customer/email-login', 'auth/customer/register',
+            'auth/refresh',
+          ].includes(failedUrl);
+          if (isAuthEndpoint) {
+            return Promise.reject(error);
+          }
+
           if (!this.isRefreshing) {
             this.isRefreshing = true;
 
-            const failedUrl = (originalRequest.url || '').replace(/^\/+/, '');
             const failedRouteIsAdmin = failedUrl.startsWith('admin/') || failedUrl.startsWith('admin?') || failedUrl === 'admin';
             // Department pages use the admin token but call non-admin API routes (e.g. /orders/…),
             // so we must also check the current page path to pick the right storage key.

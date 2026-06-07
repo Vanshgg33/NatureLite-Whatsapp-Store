@@ -1,15 +1,20 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
+import { Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { CartAutomationService } from './cart-automation.service';
 import { QUEUE_CART_AUTOMATION, CART_JOBS } from '../queues/queues.constants';
+import { attachRateLimitGuard } from '../queues/rate-limit-guard';
 
-@Processor(QUEUE_CART_AUTOMATION, { concurrency: 10 })
-export class CartAutomationProcessor extends WorkerHost {
+@Processor(QUEUE_CART_AUTOMATION, { concurrency: 10, drainDelay: 30 })
+export class CartAutomationProcessor extends WorkerHost implements OnApplicationBootstrap {
   private readonly logger = new Logger(CartAutomationProcessor.name);
 
   constructor(private readonly cartAutomationService: CartAutomationService) {
     super();
+  }
+
+  onApplicationBootstrap(): void {
+    attachRateLimitGuard(this.worker, this.logger);
   }
 
   async process(job: Job): Promise<void> {

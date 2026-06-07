@@ -1,15 +1,20 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
+import { Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { AnalyticsService } from './analytics.service';
 import { QUEUE_ANALYTICS, ANALYTICS_JOBS } from '../queues/queues.constants';
+import { attachRateLimitGuard } from '../queues/rate-limit-guard';
 
-@Processor(QUEUE_ANALYTICS, { concurrency: 1 })
-export class AnalyticsProcessor extends WorkerHost {
+@Processor(QUEUE_ANALYTICS, { concurrency: 1, drainDelay: 30 })
+export class AnalyticsProcessor extends WorkerHost implements OnApplicationBootstrap {
   private readonly logger = new Logger(AnalyticsProcessor.name);
 
   constructor(private readonly analyticsService: AnalyticsService) {
     super();
+  }
+
+  onApplicationBootstrap(): void {
+    attachRateLimitGuard(this.worker, this.logger);
   }
 
   async process(job: Job): Promise<void> {
