@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
 import {
@@ -198,8 +198,8 @@ function ConfirmDeliveryDialog({
             </div>
           </div>
 
-          {/* Photos side by side */}
-          <div className="grid grid-cols-2 gap-2">
+          {/* Photos */}
+          <div className={`grid gap-2 ${paymentProofUrl ? 'grid-cols-2' : 'grid-cols-1'}`}>
             <div className="space-y-1">
               <p className="text-xs font-medium text-gray-600">Delivery proof</p>
               <div className="relative rounded-lg overflow-hidden border border-gray-200 bg-gray-50" style={{ paddingBottom: '75%' }}>
@@ -211,17 +211,19 @@ function ConfirmDeliveryDialog({
                 </div>
               </div>
             </div>
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-gray-600">Payment proof</p>
-              <div className="relative rounded-lg overflow-hidden border border-gray-200 bg-gray-50" style={{ paddingBottom: '75%' }}>
-                <Image src={paymentProofUrl} alt="Payment proof" fill className="object-cover" sizes="150px" />
-                <div className="absolute inset-0 flex items-end p-1">
-                  <span className="bg-green-500/90 text-white text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                    <CheckCircle2 className="h-2.5 w-2.5" /> OK
-                  </span>
+            {paymentProofUrl && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-600">Payment proof</p>
+                <div className="relative rounded-lg overflow-hidden border border-gray-200 bg-gray-50" style={{ paddingBottom: '75%' }}>
+                  <Image src={paymentProofUrl} alt="Payment proof" fill className="object-cover" sizes="150px" />
+                  <div className="absolute inset-0 flex items-end p-1">
+                    <span className="bg-green-500/90 text-white text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                      <CheckCircle2 className="h-2.5 w-2.5" /> OK
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
           {note ? (
@@ -260,6 +262,8 @@ function ConfirmDeliveryDialog({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
+const DELIVERY_STATE_KEY = 'nl-delivery-form';
+
 export default function DeliveryDashboardPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -275,16 +279,81 @@ export default function DeliveryDashboardPage() {
   const [uploadingPayment, setUploadingPayment] = useState(false);
   const [uploadingDelivery, setUploadingDelivery] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [restoring, setRestoring] = useState(false);
 
   const { data: billedData, isLoading: loadingBilled } = useQuery({
     queryKey: ['department', 'delivery', 'orders'],
-    queryFn: () => api.getOrders({ forDelivery: true, page: 1, limit: 50 }),
+    queryFn: () => api.getOrders({ forDelivery: true, page: 1, limit: 50, sortBy: 'updatedAt', sortOrder: 'desc' }),
     refetchInterval: 15_000,
   });
 
   const billedOrders = useMemo(() => (billedData?.items ?? []) as Order[], [billedData]);
 
+  // Restore state from sessionStorage on mount (handles Android camera-kill page reload)
+  useEffect(() => {
+    let cancelled = false;
+    try {
+      const raw = sessionStorage.getItem(DELIVERY_STATE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as {
+        orderId?: string;
+        status?: DeliveryStatus;
+        paymentMethod?: 'cash' | 'upi';
+        amountCollected?: string;
+        note?: string;
+        deliveryProofUrl?: string | null;
+        paymentProofUrl?: string | null;
+      };
+      if (!saved?.orderId) return;
+
+      // Restore form fields immediately so they're ready when the order loads
+      if (saved.status) setStatus(saved.status);
+      if (saved.paymentMethod) setPaymentMethod(saved.paymentMethod);
+      if (saved.amountCollected !== undefined) setAmountCollected(saved.amountCollected);
+      if (saved.note) setNote(saved.note);
+      if (saved.deliveryProofUrl) setDeliveryProofUrl(saved.deliveryProofUrl);
+      if (saved.paymentProofUrl) setPaymentProofUrl(saved.paymentProofUrl);
+
+      setRestoring(true);
+      api.getOrder(saved.orderId)
+        .then((order) => {
+          if (!cancelled) {
+            setSelectedOrder(order);
+            setRestoring(false);
+            toast({ title: 'Session restored', description: 'Your previous order has been reloaded.' });
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            sessionStorage.removeItem(DELIVERY_STATE_KEY);
+            setRestoring(false);
+          }
+        });
+    } catch {
+      sessionStorage.removeItem(DELIVERY_STATE_KEY);
+    }
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist form state to sessionStorage so a camera-triggered page reload can recover
+  useEffect(() => {
+    if (!selectedOrder) return;
+    try {
+      sessionStorage.setItem(DELIVERY_STATE_KEY, JSON.stringify({
+        orderId: selectedOrder._id,
+        status,
+        paymentMethod,
+        amountCollected,
+        note,
+        deliveryProofUrl: deliveryProofUrl ?? null,
+        paymentProofUrl: paymentProofUrl ?? null,
+      }));
+    } catch {}
+  }, [selectedOrder, status, paymentMethod, amountCollected, note, deliveryProofUrl, paymentProofUrl]);
+
   const resetForm = useCallback(() => {
+    try { sessionStorage.removeItem(DELIVERY_STATE_KEY); } catch {}
     setSelectedOrder(null);
     setOrderNumber('');
     setPaymentProofUrl(undefined);
@@ -296,14 +365,16 @@ export default function DeliveryDashboardPage() {
     setShowConfirm(false);
   }, []);
 
+  const isCod = (o: Order) => o.paymentMethod === 'cod';
+
   const selectOrder = (o: Order) => {
     setSelectedOrder(o);
     setPaymentProofUrl(undefined);
     setDeliveryProofUrl(undefined);
-    setAmountCollected('');
+    setAmountCollected(isCod(o) ? '' : '0');
     setNote('');
     setStatus('delivery_done');
-    setPaymentMethod('cash');
+    setPaymentMethod(o.paymentMethod === 'upi' ? 'upi' : 'cash');
     setShowConfirm(false);
   };
 
@@ -379,7 +450,8 @@ export default function DeliveryDashboardPage() {
   });
 
   const order = selectedOrder;
-  const photosReady = !!deliveryProofUrl && !!paymentProofUrl;
+  const orderIsCod = order ? isCod(order) : true;
+  const photosReady = !!deliveryProofUrl && (orderIsCod ? !!paymentProofUrl : true);
   const uploading = uploadingPayment || uploadingDelivery;
 
   // For non-delivery_done statuses, allow submit directly.
@@ -404,6 +476,14 @@ export default function DeliveryDashboardPage() {
       />
 
       <div className="flex-1 p-4 space-y-4 max-w-2xl mx-auto w-full pb-8">
+
+        {/* Camera-reload recovery banner */}
+        {restoring && (
+          <div className="flex items-center gap-3 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3 text-sm text-amber-700">
+            <RefreshCw className="h-4 w-4 animate-spin shrink-0" />
+            Restoring your session after camera reload…
+          </div>
+        )}
 
         {/* Search bar */}
         <div className="bg-white rounded-2xl border border-gray-100 p-3 flex gap-2 items-center shadow-sm">
@@ -450,6 +530,9 @@ export default function DeliveryDashboardPage() {
                             <p className="text-xs text-gray-400 truncate">
                               {o.shippingAddress.street}, {o.shippingAddress.city}
                             </p>
+                            {o.shippingAddress.landmark && (
+                              <p className="text-xs text-amber-600">Near: {o.shippingAddress.landmark}</p>
+                            )}
                           </div>
                           <div className="text-right shrink-0 space-y-2">
                             <p className="font-semibold text-gray-900">{formatCurrency(o.total)}</p>
@@ -499,6 +582,9 @@ export default function DeliveryDashboardPage() {
                 <p className="text-xs text-gray-500 mt-0.5">
                   {order.shippingAddress.street}, {order.shippingAddress.city}, {order.shippingAddress.state} – {order.shippingAddress.pincode}
                 </p>
+                {order.shippingAddress.landmark && (
+                  <p className="text-xs text-amber-600 mt-0.5">Near: {order.shippingAddress.landmark}</p>
+                )}
               </div>
               <div className="border-t border-gray-50 pt-3 space-y-1">
                 {order.items.map((item, idx) => (
@@ -548,10 +634,22 @@ export default function DeliveryDashboardPage() {
                   <p className="text-sm font-semibold text-gray-800">Delivery photos</p>
                 </div>
 
-                <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 flex gap-2">
-                  <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-700">Both photos are required. You will review them before confirming.</p>
-                </div>
+                {/* Prepaid banner */}
+                {!orderIsCod && (
+                  <div className="bg-green-50 border border-green-100 rounded-xl p-3 flex gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
+                    <p className="text-xs text-green-700">
+                      This order is <strong>prepaid</strong> ({order?.paymentMethod?.toUpperCase()}). No payment collection needed — just capture the delivery photo.
+                    </p>
+                  </div>
+                )}
+
+                {orderIsCod && (
+                  <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 flex gap-2">
+                    <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-700">Both photos are required. You will review them before confirming.</p>
+                  </div>
+                )}
 
                 <PhotoUploadBox
                   label="Delivery proof"
@@ -563,64 +661,70 @@ export default function DeliveryDashboardPage() {
                   onClear={() => setDeliveryProofUrl(undefined)}
                 />
 
-                <PhotoUploadBox
-                  label="Payment proof"
-                  hint="Photo of cash received or UPI payment screen"
-                  required
-                  url={paymentProofUrl}
-                  uploading={uploadingPayment}
-                  onFile={(f) => uploadPhoto(f, 'delivery-payments', setPaymentProofUrl, setUploadingPayment)}
-                  onClear={() => setPaymentProofUrl(undefined)}
-                />
+                {orderIsCod && (
+                  <PhotoUploadBox
+                    label="Payment proof"
+                    hint="Photo of cash received or UPI payment screen"
+                    required
+                    url={paymentProofUrl}
+                    uploading={uploadingPayment}
+                    onFile={(f) => uploadPhoto(f, 'delivery-payments', setPaymentProofUrl, setUploadingPayment)}
+                    onClear={() => setPaymentProofUrl(undefined)}
+                  />
+                )}
 
-                {/* Amount collected */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-800">
-                    Amount collected
-                    <span className="text-xs text-gray-400 font-normal ml-1">(enter what customer paid)</span>
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium text-sm">₹</span>
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      min="0"
-                      step="0.01"
-                      placeholder={order ? order.total.toFixed(2) : '0.00'}
-                      value={amountCollected}
-                      onChange={(e) => setAmountCollected(e.target.value)}
-                      className="pl-7 h-11 text-base font-semibold"
-                    />
+                {/* Amount collected — only for COD */}
+                {orderIsCod && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-800">
+                      Amount collected
+                      <span className="text-xs text-gray-400 font-normal ml-1">(enter what customer paid)</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium text-sm">₹</span>
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        step="0.01"
+                        placeholder={order ? order.total.toFixed(2) : '0.00'}
+                        value={amountCollected}
+                        onChange={(e) => setAmountCollected(e.target.value)}
+                        className="pl-7 h-11 text-base font-semibold"
+                      />
+                    </div>
+                    {amountCollected && parseFloat(amountCollected) !== order?.total && (
+                      <p className={`text-xs font-medium ${parseFloat(amountCollected) < (order?.total ?? 0) ? 'text-red-500' : 'text-amber-600'}`}>
+                        {parseFloat(amountCollected) < (order?.total ?? 0)
+                          ? `Short by ₹ ${((order?.total ?? 0) - parseFloat(amountCollected)).toLocaleString('en-IN')}`
+                          : `Excess ₹ ${(parseFloat(amountCollected) - (order?.total ?? 0)).toLocaleString('en-IN')}`}
+                      </p>
+                    )}
                   </div>
-                  {amountCollected && parseFloat(amountCollected) !== order?.total && (
-                    <p className={`text-xs font-medium ${parseFloat(amountCollected) < (order?.total ?? 0) ? 'text-red-500' : 'text-amber-600'}`}>
-                      {parseFloat(amountCollected) < (order?.total ?? 0)
-                        ? `Short by ₹ ${((order?.total ?? 0) - parseFloat(amountCollected)).toLocaleString('en-IN')}`
-                        : `Excess ₹ ${(parseFloat(amountCollected) - (order?.total ?? 0)).toLocaleString('en-IN')}`}
-                    </p>
-                  )}
-                </div>
+                )}
 
-                {/* Payment method */}
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-gray-800">Payment method</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod('cash')}
-                      className={`h-11 rounded-xl text-sm font-medium border transition-all ${paymentMethod === 'cash' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'}`}
-                    >
-                      Cash
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod('upi')}
-                      className={`h-11 rounded-xl text-sm font-medium border transition-all ${paymentMethod === 'upi' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'}`}
-                    >
-                      UPI
-                    </button>
+                {/* Payment method — only for COD */}
+                {orderIsCod && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-gray-800">Payment method</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('cash')}
+                        className={`h-11 rounded-xl text-sm font-medium border transition-all ${paymentMethod === 'cash' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'}`}
+                      >
+                        Cash
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('upi')}
+                        className={`h-11 rounded-xl text-sm font-medium border transition-all ${paymentMethod === 'upi' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'}`}
+                      >
+                        UPI
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
 
@@ -663,9 +767,9 @@ export default function DeliveryDashboardPage() {
             </Button>
 
             {/* Missing photo hint */}
-            {isDone && !uploading && (!deliveryProofUrl || !paymentProofUrl) && (
+            {isDone && !uploading && (!deliveryProofUrl || (orderIsCod && !paymentProofUrl)) && (
               <p className="text-xs text-center text-red-500">
-                {!deliveryProofUrl && !paymentProofUrl
+                {!deliveryProofUrl && orderIsCod && !paymentProofUrl
                   ? 'Both delivery and payment photos are required'
                   : !deliveryProofUrl
                   ? 'Delivery proof photo is required'
@@ -677,12 +781,12 @@ export default function DeliveryDashboardPage() {
       </div>
 
       {/* Confirmation dialog */}
-      {order && isDone && deliveryProofUrl && paymentProofUrl && (
+      {order && isDone && deliveryProofUrl && (orderIsCod ? !!paymentProofUrl : true) && (
         <ConfirmDeliveryDialog
           open={showConfirm}
           order={order}
           deliveryProofUrl={deliveryProofUrl}
-          paymentProofUrl={paymentProofUrl}
+          paymentProofUrl={paymentProofUrl ?? ''}
           paymentMethod={paymentMethod}
           amountCollected={amountCollected}
           note={note}

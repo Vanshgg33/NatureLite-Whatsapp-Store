@@ -24,7 +24,7 @@ export default function BillingDashboardPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['department', 'billing', 'orders'],
-    queryFn: () => api.getOrders({ forBilling: true, page: 1, limit: 50 }),
+    queryFn: () => api.getOrders({ forBilling: true, page: 1, limit: 50, sortBy: 'updatedAt', sortOrder: 'desc' }),
     refetchInterval: 15_000,
   });
 
@@ -97,7 +97,7 @@ export default function BillingDashboardPage() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {orders.map((order) => {
             const riderId = selectedRider[order._id] ?? '';
-            const canSend = order.status === 'preparing' && !!order.packedAt && !!riderId;
+            const canSend = !!riderId;
 
             return (
               <Card key={order._id} className="border-sky-50 shadow-sm">
@@ -118,11 +118,26 @@ export default function BillingDashboardPage() {
                     <p className="text-xs text-gray-400 line-clamp-2">
                       {order.shippingAddress.street}, {order.shippingAddress.city}, {order.shippingAddress.state} – {order.shippingAddress.pincode}
                     </p>
+                    {order.shippingAddress.landmark && (
+                      <p className="text-xs text-amber-600">Near: {order.shippingAddress.landmark}</p>
+                    )}
                   </div>
 
-                  <div className="flex items-center justify-between text-sm border-t border-gray-50 pt-2">
-                    <span className="text-gray-500">{order.items.length} item{order.items.length !== 1 ? 's' : ''}</span>
-                    <span className="font-bold text-gray-900">{formatCurrency(order.total)}</span>
+                  <div className="border-t border-gray-50 pt-2 space-y-1">
+                    {order.items.map((item, idx) => (
+                      <div key={idx} className="flex justify-between text-xs text-gray-600 gap-2">
+                        <span className="truncate font-medium">
+                          {item.name}{item.variantName ? ` (${item.variantName})` : ''}
+                        </span>
+                        <span className="shrink-0 text-gray-400">× {item.quantity}</span>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between pt-1.5 border-t border-gray-50">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${order.paymentMethod === 'cod' ? 'bg-orange-50 text-orange-700' : 'bg-green-50 text-green-700'}`}>
+                        {order.paymentMethod === 'cod' ? 'COD' : 'PREPAID'}
+                      </span>
+                      <span className="font-bold text-gray-900 text-sm">{formatCurrency(order.total)}</span>
+                    </div>
                   </div>
 
                   {/* Rider selector */}

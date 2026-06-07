@@ -101,7 +101,7 @@ export default function OrdersPage() {
 
   const { data: ordersData, isLoading } = useQuery({
     queryKey: ['orders', page, debouncedSearch, status],
-    queryFn: () => api.getOrders({ page, limit: 20, search: debouncedSearch, status: (status || undefined) as OrderStatus | undefined }),
+    queryFn: () => api.getOrders({ page, limit: 20, search: debouncedSearch, status: (status || undefined) as OrderStatus | undefined, sortBy: 'updatedAt', sortOrder: 'desc' }),
   });
 
   const { data: productSearchResults = [] } = useQuery({

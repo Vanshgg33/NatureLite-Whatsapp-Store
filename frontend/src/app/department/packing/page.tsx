@@ -19,7 +19,7 @@ export default function PackingDashboardPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['department', 'packing', 'orders'],
-    queryFn: () => api.getOrders({ forPacking: true, page: 1, limit: 50 }),
+    queryFn: () => api.getOrders({ forPacking: true, page: 1, limit: 50, sortBy: 'updatedAt', sortOrder: 'desc' }),
     refetchInterval: 15_000,
   });
 
@@ -96,9 +96,19 @@ export default function PackingDashboardPage() {
                   </p>
                 </div>
 
-                <div className="flex items-center justify-between text-sm border-t border-gray-50 pt-2">
-                  <span className="text-gray-500">{order.items.length} item{order.items.length !== 1 ? 's' : ''}</span>
-                  <span className="font-bold text-gray-900">{formatCurrency(order.total)}</span>
+                <div className="border-t border-gray-50 pt-2 space-y-1">
+                  {order.items.map((item, idx) => (
+                    <div key={idx} className="flex justify-between text-xs text-gray-600 gap-2">
+                      <span className="truncate font-medium">
+                        {item.name}{item.variantName ? ` (${item.variantName})` : ''}
+                      </span>
+                      <span className="shrink-0 text-gray-400">× {item.quantity}</span>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between pt-1.5 border-t border-gray-50">
+                    <span className="text-xs text-gray-400">{order.items.length} item{order.items.length !== 1 ? 's' : ''}</span>
+                    <span className="font-bold text-gray-900 text-sm">{formatCurrency(order.total)}</span>
+                  </div>
                 </div>
 
                 <div className="flex gap-2">
