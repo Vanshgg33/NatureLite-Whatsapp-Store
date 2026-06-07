@@ -56,6 +56,13 @@ export default function UcmPage() {
       queryClient.invalidateQueries({ queryKey: ['ucm-dashboard'] });
       toast({ title: 'UCM catalog saved', description: 'The master catalog settings were updated.' });
     },
+    onError: (error: unknown) => {
+      toast({
+        title: 'Save failed',
+        description: error instanceof Error ? error.message : 'Could not save UCM settings.',
+        variant: 'destructive',
+      });
+    },
   });
 
   const pullMutation = useMutation({

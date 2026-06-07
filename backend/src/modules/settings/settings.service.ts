@@ -80,13 +80,20 @@ export class SettingsService implements OnModuleInit {
     value: Record<string, unknown>,
     updatedBy?: string,
   ): Promise<Settings> {
-    const settings = await this.settingsRepository.findOneAndUpdateByKey(key, {
+    let settings = await this.settingsRepository.findOneAndUpdateByKey(key, {
       value,
       lastUpdatedBy: updatedBy,
     });
 
     if (!settings) {
-      throw new NotFoundException(`Setting "${key}" not found`);
+      settings = await this.settingsRepository.create({
+        key,
+        category: key,
+        value,
+        description: `${key} settings`,
+        isPublic: ['store', 'appearance', 'banners'].includes(key),
+        lastUpdatedBy: updatedBy,
+      } as Partial<Settings>);
     }
 
     this.invalidateCache(key);

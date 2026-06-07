@@ -14,7 +14,7 @@ export class CartAutomationProcessor extends WorkerHost implements OnApplication
   }
 
   onApplicationBootstrap(): void {
-    attachRateLimitGuard(this.worker, this.logger);
+    if (this.worker) attachRateLimitGuard(this.worker, this.logger);
   }
 
   async process(job: Job): Promise<void> {

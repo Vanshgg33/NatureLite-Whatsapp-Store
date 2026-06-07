@@ -14,7 +14,7 @@ export class NotificationsProcessor extends WorkerHost implements OnApplicationB
   }
 
   onApplicationBootstrap(): void {
-    attachRateLimitGuard(this.worker, this.logger);
+    if (this.worker) attachRateLimitGuard(this.worker, this.logger);
   }
 
   async process(job: Job): Promise<void> {

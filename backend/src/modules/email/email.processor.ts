@@ -14,7 +14,7 @@ export class EmailProcessor extends WorkerHost implements OnApplicationBootstrap
   }
 
   onApplicationBootstrap(): void {
-    attachRateLimitGuard(this.worker, this.logger);
+    if (this.worker) attachRateLimitGuard(this.worker, this.logger);
   }
 
   async process(job: Job): Promise<void> {
