@@ -10,6 +10,8 @@ import { CreateStoreSaleDto, UpdateStoreSaleDto, SaleQueryDto } from './dto/stor
 import { PaginatedResult } from '../../common/types/pagination.types';
 import { parseObjectId } from '../../common/utils/objectid.util';
 import { RemindersService } from '../reminders/reminders.service';
+import { MediaService } from '../media/media.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class StoreSalesService {
@@ -22,6 +24,8 @@ export class StoreSalesService {
     private storeStockService: StoreStockService,
     private productsService: ProductsService,
     private remindersService: RemindersService,
+    private readonly mediaService: MediaService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(dto: CreateStoreSaleDto, loggedBy: string): Promise<StoreSale> {
@@ -312,6 +316,32 @@ export class StoreSalesService {
     days: number = 30,
   ): Promise<Array<{ storeId: string; storeName: string; data: Array<{ date: string; revenue: number; sales: number }> }>> {
     return this.storeSaleRepository.getRevenueByStoreByDay(days);
+  }
+
+  async storeSaleInvoice(id: string, pdfBase64: string, filename: string): Promise<{ url: string }> {
+    const idObj = parseObjectId(id, 'id');
+    const sale = await this.storeSaleRepository.findById(idObj);
+    if (!sale) throw new NotFoundException('Sale not found');
+
+    const buffer = Buffer.from(pdfBase64, 'base64');
+    const result = await this.mediaService.uploadPdfBuffer(buffer, 'invoices/sales', filename);
+
+    (sale as any).invoiceUrl = result.secureUrl;
+    await (sale as any).save();
+    return { url: result.secureUrl };
+  }
+
+  async sendSaleInvoiceToCustomer(id: string): Promise<{ sent: boolean }> {
+    const idObj = parseObjectId(id, 'id');
+    const sale = await this.storeSaleRepository.findById(idObj);
+    if (!sale) throw new NotFoundException('Sale not found');
+    if (!(sale as any).invoiceUrl) throw new BadRequestException('No invoice found for this sale. Generate it first.');
+
+    const phone = sale.customerPhone?.trim();
+    if (!phone) throw new BadRequestException('No customer phone found for this sale.');
+
+    await this.notificationsService.sendInvoiceDocument(sale.saleNumber, phone, (sale as any).invoiceUrl);
+    return { sent: true };
   }
 
   private async generateSaleNumber(storeCode: string): Promise<string> {

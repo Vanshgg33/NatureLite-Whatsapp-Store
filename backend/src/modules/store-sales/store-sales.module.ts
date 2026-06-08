@@ -8,6 +8,8 @@ import { StoreStockModule } from '../store-stock/store-stock.module';
 import { ProductsModule } from '../products/products.module';
 import { StoresModule } from '../stores/stores.module';
 import { RemindersModule } from '../reminders/reminders.module';
+import { MediaModule } from '../media/media.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -16,6 +18,8 @@ import { RemindersModule } from '../reminders/reminders.module';
     ProductsModule,
     StoresModule,
     RemindersModule,
+    MediaModule,
+    NotificationsModule,
   ],
   controllers: [StoreSalesController],
   providers: [StoreSaleRepository, StoreSalesService],

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Eye, Plus, Trash2, ShoppingCart, MessageCircle, Globe } from 'lucide-react';
+import { Search, Eye, Plus, Trash2, ShoppingCart, MessageCircle, Globe, Download, Send, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -27,7 +27,8 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api';
 import { formatCurrency, formatDate, getStatusColor, useDebouncedValue } from '@/lib/utils';
-import { OrderStatus, Product } from '@/types';
+import { generateOrderBillPdf, billFilename, base64ToBlob } from '@/lib/bill-pdf';
+import { OrderStatus, Product, Order } from '@/types';
 
 const statusOptions = [
   { value: '', label: 'All Statuses' },
@@ -80,6 +81,9 @@ export default function OrdersPage() {
   const debouncedSearch = useDebouncedValue(search, 300);
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
+
+  const [billLoadingId, setBillLoadingId] = useState<string | null>(null);
+  const [sendLoadingId, setSendLoadingId] = useState<string | null>(null);
 
   // Create order dialog
   const [showCreate, setShowCreate] = useState(false);
@@ -156,6 +160,36 @@ export default function OrdersPage() {
     setCart([]);
     setProductSearch('');
     setCreateError('');
+  }
+
+  async function handleDownloadBill(order: Order) {
+    setBillLoadingId(order._id);
+    try {
+      const b64 = await generateOrderBillPdf(order);
+      const blob = base64ToBlob(b64);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = billFilename(order.orderNumber);
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setBillLoadingId(null);
+    }
+  }
+
+  async function handleSendBill(order: Order) {
+    setSendLoadingId(order._id);
+    try {
+      const b64 = await generateOrderBillPdf(order);
+      await api.uploadOrderInvoice(order._id, b64, billFilename(order.orderNumber));
+      await api.sendOrderInvoice(order._id);
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to send bill');
+    } finally {
+      setSendLoadingId(null);
+    }
   }
 
   function addToCart(row: ProductRow) {
@@ -292,11 +326,31 @@ export default function OrdersPage() {
                             {formatDate(order.createdAt)}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Link href={`/admin/orders/${order._id}`}>
-                              <Button variant="ghost" size="icon" aria-label="View order">
-                                <Eye className="h-4 w-4" />
+                            <div className="flex items-center justify-end gap-0.5">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Download bill PDF"
+                                disabled={billLoadingId === order._id}
+                                onClick={() => handleDownloadBill(order)}
+                              >
+                                {billLoadingId === order._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                               </Button>
-                            </Link>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title={order.shippingAddress?.phone ? 'Send bill to customer via WhatsApp' : 'No phone on order'}
+                                disabled={sendLoadingId === order._id || !order.shippingAddress?.phone}
+                                onClick={() => handleSendBill(order)}
+                              >
+                                {sendLoadingId === order._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                              </Button>
+                              <Link href={`/admin/orders/${order._id}`}>
+                                <Button variant="ghost" size="icon" aria-label="View order">
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </Link>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}

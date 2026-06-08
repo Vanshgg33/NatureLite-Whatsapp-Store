@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, BadRequestException } from '@nestjs/common';
 import { StoreSalesService } from './store-sales.service';
 import { CreateStoreSaleDto, UpdateStoreSaleDto, SaleQueryDto } from './dto/store-sale.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -64,5 +64,20 @@ export class StoreSalesController {
     @Body() dto: UpdateStoreSaleDto,
   ) {
     return this.storeSalesService.update(id, dto);
+  }
+
+  @Post(':id/invoice')
+  async storeInvoice(
+    @Param('id') id: string,
+    @Body('pdfBase64') pdfBase64: string,
+    @Body('filename') filename: string,
+  ): Promise<{ url: string }> {
+    if (!pdfBase64) throw new BadRequestException('pdfBase64 is required');
+    return this.storeSalesService.storeSaleInvoice(id, pdfBase64, filename || `sale_${id}.pdf`);
+  }
+
+  @Post(':id/send-invoice')
+  async sendInvoice(@Param('id') id: string): Promise<{ sent: boolean }> {
+    return this.storeSalesService.sendSaleInvoiceToCustomer(id);
   }
 }

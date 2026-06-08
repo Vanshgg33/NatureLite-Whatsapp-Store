@@ -3,9 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useDebouncedValue } from '@/lib/utils';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Receipt, Plus, Search, ShoppingBag, Trash2, Camera, Upload, X, Bell, Pencil, FileText, Printer } from 'lucide-react';
+import { Receipt, Plus, Search, ShoppingBag, Trash2, Camera, Upload, X, Bell, Pencil, FileText, Printer, Download, Send, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
+import { generateSaleBillPdf, billFilename, base64ToBlob } from '@/lib/bill-pdf';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -397,6 +398,9 @@ export default function SalesPage() {
   const editProofCameraRef = useRef<HTMLInputElement>(null);
   const editImagesFileRef = useRef<HTMLInputElement>(null);
 
+  const [billLoadingId, setBillLoadingId] = useState<string | null>(null);
+  const [sendLoadingId, setSendLoadingId] = useState<string | null>(null);
+
   const isSuperadmin = user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
   const effectiveLogSaleStore = (isSuperadmin ? logSaleStoreId : user?.storeId ?? selectedStoreId) || selectedStoreId;
 
@@ -657,6 +661,37 @@ export default function SalesPage() {
     }
     setEditProductSearch('');
   };
+
+  async function handleDownloadBill(sale: StoreSale) {
+    setBillLoadingId(sale._id);
+    try {
+      const b64 = await generateSaleBillPdf(sale);
+      const blob = base64ToBlob(b64);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = billFilename(sale.saleNumber);
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setBillLoadingId(null);
+    }
+  }
+
+  async function handleSendBill(sale: StoreSale) {
+    if (!sale.customerPhone) { alert('No customer phone number on this sale.'); return; }
+    setSendLoadingId(sale._id);
+    try {
+      const b64 = await generateSaleBillPdf(sale);
+      await api.uploadSaleInvoice(sale._id, b64, billFilename(sale.saleNumber));
+      await api.sendSaleInvoice(sale._id);
+      queryClient.invalidateQueries({ queryKey: ['store-sales'] });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to send bill');
+    } finally {
+      setSendLoadingId(null);
+    }
+  }
 
   const resetForm = () => {
     setSaleType('walk_in');
@@ -1023,10 +1058,31 @@ export default function SalesPage() {
                   <span className="font-bold">₹{sale.total.toLocaleString()}</span>
                   <span className="text-xs text-gray-500 capitalize">{sale.paymentMethod}</span>
                 </div>
-                <div className="flex gap-2 mt-3">
+                <div className="flex gap-2 mt-3 flex-wrap">
                   <Button variant="outline" size="sm" className="flex-1" onClick={() => setViewingBillSale(sale)}>
                     <FileText className="h-4 w-4 mr-1" />
                     Bill
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    disabled={billLoadingId === sale._id}
+                    onClick={() => handleDownloadBill(sale)}
+                  >
+                    {billLoadingId === sale._id ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
+                    PDF
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    disabled={sendLoadingId === sale._id || !sale.customerPhone}
+                    title={sale.customerPhone ? 'Send bill via WhatsApp' : 'No phone'}
+                    onClick={() => handleSendBill(sale)}
+                  >
+                    {sendLoadingId === sale._id ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />}
+                    Send
                   </Button>
                   <Button
                     variant="outline"
@@ -1037,8 +1093,8 @@ export default function SalesPage() {
                       window.open(`/invoice/sale/${sale._id}?storeId=${sid}`, '_blank');
                     }}
                   >
-                    <FileText className="h-4 w-4 mr-1" />
-                    GST Invoice
+                    <Printer className="h-4 w-4 mr-1" />
+                    GST
                   </Button>
                   <Button
                     variant="outline"
@@ -1165,6 +1221,24 @@ export default function SalesPage() {
                             title="View bill"
                           >
                             <FileText className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="Download bill PDF"
+                            disabled={billLoadingId === sale._id}
+                            onClick={() => handleDownloadBill(sale)}
+                          >
+                            {billLoadingId === sale._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title={sale.customerPhone ? 'Send bill to customer via WhatsApp' : 'No phone — cannot send'}
+                            disabled={sendLoadingId === sale._id || !sale.customerPhone}
+                            onClick={() => handleSendBill(sale)}
+                          >
+                            {sendLoadingId === sale._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                           </Button>
                           <Button
                             variant="ghost"

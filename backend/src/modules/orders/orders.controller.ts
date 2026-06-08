@@ -8,6 +8,7 @@ import {
   Param,
   Query,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import {
@@ -286,5 +287,24 @@ export class OrdersController {
     @Body() dto: ReorderDto,
   ): Promise<Order> {
     return this.ordersService.reorder(userId, dto);
+  }
+
+  @Post(':id/invoice')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  async storeInvoice(
+    @Param('id') id: string,
+    @Body('pdfBase64') pdfBase64: string,
+    @Body('filename') filename: string,
+  ): Promise<{ url: string }> {
+    if (!pdfBase64) throw new BadRequestException('pdfBase64 is required');
+    return this.ordersService.storeOrderInvoice(id, pdfBase64, filename || `invoice_${id}.pdf`);
+  }
+
+  @Post(':id/send-invoice')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  async sendInvoice(@Param('id') id: string): Promise<{ sent: boolean }> {
+    return this.ordersService.sendOrderInvoiceToCustomer(id);
   }
 }

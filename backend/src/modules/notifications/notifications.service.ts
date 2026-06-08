@@ -541,6 +541,17 @@ export class NotificationsService {
     });
   }
 
+  async sendInvoiceDocument(docNumber: string, phone: string, invoiceUrl: string): Promise<void> {
+    const normalizedPhone = phone.replace(/\D/g, '');
+    await this.whatsappService.sendMediaMessage({
+      phone: normalizedPhone,
+      mediaType: 'document',
+      mediaUrl: invoiceUrl,
+      caption: `Hi! Your invoice for ${docNumber} is attached. Thank you for shopping with Nature Lite Foods!`,
+      filename: `Invoice_${docNumber}.pdf`,
+    });
+  }
+
   async sendMediaBroadcast(
     phones: string[],
     imageUrl: string,

@@ -251,6 +251,7 @@ export interface Order {
   paymentProofUrl?: string;
   amountCollected?: number;
   assignedDeliveryUserId?: string;
+  invoiceUrl?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -998,6 +999,7 @@ export interface StoreSale {
   notes?: string;
   loggedBy: { _id: string; name: string } | string;
   linkedOrder?: string;
+  invoiceUrl?: string;
   createdAt: string;
   updatedAt: string;
 }

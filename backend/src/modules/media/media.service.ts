@@ -222,6 +222,33 @@ export class MediaService {
     return Promise.all(uploads);
   }
 
+  async uploadPdfBuffer(buffer: Buffer, folder: string = 'invoices', filename: string = 'invoice'): Promise<UploadResult> {
+    const publicId = filename.replace(/\.pdf$/i, '');
+    return new Promise((resolve, reject) => {
+      cloudinary.uploader
+        .upload_stream(
+          { folder, resource_type: 'raw', public_id: publicId, format: 'pdf' },
+          (error: UploadApiErrorResponse | undefined, result: UploadApiResponse | undefined) => {
+            if (error || !result) {
+              this.logger.error('PDF upload failed', error);
+              reject(new BadRequestException('Failed to upload PDF to Cloudinary'));
+              return;
+            }
+            resolve({
+              publicId: result.public_id,
+              url: result.url,
+              secureUrl: result.secure_url,
+              format: result.format,
+              width: 0,
+              height: 0,
+              bytes: result.bytes,
+            });
+          },
+        )
+        .end(buffer);
+    });
+  }
+
   async deleteImage(publicId: string): Promise<boolean> {
     try {
       const result = await cloudinary.uploader.destroy(publicId);

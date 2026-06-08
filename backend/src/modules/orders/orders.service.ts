@@ -26,6 +26,7 @@ import { WalletService } from '../wallet/wallet.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UcmService } from '../ucm/ucm.service';
 import { AdminService } from '../admin/admin.service';
+import { MediaService } from '../media/media.service';
 import { UpdateUserDto } from '../users/dto/user.dto';
 import {
   CreateOrderDto,
@@ -110,6 +111,7 @@ export class OrdersService implements OnModuleInit {
     private readonly notificationsService: NotificationsService,
     private readonly ucmService: UcmService,
     private readonly adminService: AdminService,
+    private readonly mediaService: MediaService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -825,37 +827,28 @@ export class OrdersService implements OnModuleInit {
 
     const savedOrder = await order.save();
 
-    // Send email notifications based on status change (non-blocking)
-    try {
-      const user = await this.usersService.findById(order.user.toString());
+    // Fire-and-forget: email + WhatsApp run after response is sent
+    const orderObj = savedOrder.toObject() as Order;
+    const phone = savedOrder.shippingAddress?.phone?.trim();
+
+    this.usersService.findById(order.user.toString()).then((user) => {
       if (user?.email) {
-        const orderObj = savedOrder.toObject();
         if (dto.status === 'out_for_delivery') {
           this.emailService.sendShippingUpdate(orderObj, user.email);
         } else if (dto.status === 'delivered') {
           this.emailService.sendDeliveryConfirmation(orderObj, user.email);
         }
       }
-    } catch (emailError) {
-      this.logger.warn(`Failed to send status update email: ${emailError.message}`);
-    }
+    }).catch((err) => this.logger.warn(`Failed to send status update email: ${err.message}`));
 
-    // WhatsApp status update notification (non-blocking)
-    try {
-      const phone = savedOrder.shippingAddress?.phone?.trim();
-      if (phone) {
-        if (dto.status === 'confirmed') {
-          await this.notificationsService.sendOrderConfirmed(savedOrder.toObject() as Order, phone);
-        } else if (dto.status === 'out_for_delivery') {
-          await this.notificationsService.sendOutForDeliveryNotification(savedOrder.toObject() as Order, phone);
-        } else {
-          await this.notificationsService.notifyOrderStatusChanged(savedOrder, previousStatus);
-        }
-      }
-    } catch (waErr) {
-      this.logger.warn(
-        `Failed to send WhatsApp status notification for ${savedOrder.orderNumber}`,
-        waErr,
+    if (phone) {
+      const waPromise = dto.status === 'confirmed'
+        ? this.notificationsService.sendOrderConfirmed(orderObj, phone)
+        : dto.status === 'out_for_delivery'
+          ? this.notificationsService.sendOutForDeliveryNotification(orderObj, phone)
+          : this.notificationsService.notifyOrderStatusChanged(savedOrder, previousStatus);
+      waPromise.catch((err) =>
+        this.logger.warn(`Failed to send WhatsApp status notification for ${savedOrder.orderNumber}: ${err.message}`),
       );
     }
 
@@ -903,14 +896,12 @@ export class OrdersService implements OnModuleInit {
     });
     const saved = await order.save();
 
-    // Notify customer that their order is packed and will ship soon (non-blocking).
-    try {
-      const phone = saved.shippingAddress?.phone?.trim();
-      if (phone) {
-        await this.notificationsService.sendOrderPacked(saved.toObject() as Order, phone);
-      }
-    } catch (waErr) {
-      this.logger.warn(`Failed to send packed notification for ${saved.orderNumber}`, waErr);
+    // Fire-and-forget: WhatsApp runs after response is sent
+    const phone = saved.shippingAddress?.phone?.trim();
+    if (phone) {
+      this.notificationsService
+        .sendOrderPacked(saved.toObject() as Order, phone)
+        .catch((err) => this.logger.warn(`Failed to send packed notification for ${saved.orderNumber}: ${err.message}`));
     }
 
     return saved;
@@ -1492,5 +1483,31 @@ export class OrdersService implements OnModuleInit {
     if (released > 0) {
       this.logger.log(`abandoned_prepaid_released count=${released}`);
     }
+  }
+
+  async storeOrderInvoice(id: string, pdfBase64: string, filename: string): Promise<{ url: string }> {
+    const idObj = parseObjectId(id, 'id');
+    const order = await this.orderRepository.findById(idObj);
+    if (!order) throw new NotFoundException('Order not found');
+
+    const buffer = Buffer.from(pdfBase64, 'base64');
+    const result = await this.mediaService.uploadPdfBuffer(buffer, 'invoices/orders', filename);
+
+    order.invoiceUrl = result.secureUrl;
+    await order.save();
+    return { url: result.secureUrl };
+  }
+
+  async sendOrderInvoiceToCustomer(id: string): Promise<{ sent: boolean }> {
+    const idObj = parseObjectId(id, 'id');
+    const order = await this.orderRepository.findById(idObj);
+    if (!order) throw new NotFoundException('Order not found');
+    if (!order.invoiceUrl) throw new BadRequestException('No invoice found for this order. Generate it first.');
+
+    const phone = order.shippingAddress?.phone?.trim();
+    if (!phone) throw new BadRequestException('No customer phone found for this order.');
+
+    await this.notificationsService.sendInvoiceDocument(order.orderNumber, phone, order.invoiceUrl);
+    return { sent: true };
   }
 }

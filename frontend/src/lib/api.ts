@@ -1412,6 +1412,26 @@ class ApiClient {
     return response.data.data;
   }
 
+  async uploadOrderInvoice(orderId: string, pdfBase64: string, filename: string): Promise<{ url: string }> {
+    const response = await this.client.post<ApiResponse<{ url: string }>>(`/orders/${orderId}/invoice`, { pdfBase64, filename });
+    return response.data.data;
+  }
+
+  async sendOrderInvoice(orderId: string): Promise<{ sent: boolean }> {
+    const response = await this.client.post<ApiResponse<{ sent: boolean }>>(`/orders/${orderId}/send-invoice`);
+    return response.data.data;
+  }
+
+  async uploadSaleInvoice(saleId: string, pdfBase64: string, filename: string): Promise<{ url: string }> {
+    const response = await this.client.post<ApiResponse<{ url: string }>>(`/store-sales/${saleId}/invoice`, { pdfBase64, filename });
+    return response.data.data;
+  }
+
+  async sendSaleInvoice(saleId: string): Promise<{ sent: boolean }> {
+    const response = await this.client.post<ApiResponse<{ sent: boolean }>>(`/store-sales/${saleId}/send-invoice`);
+    return response.data.data;
+  }
+
   // ==================== REMINDERS ====================
   async getDueReminders(): Promise<Reminder[]> {
     const response = await this.client.get<ApiResponse<Reminder[]>>('/reminders/due');
