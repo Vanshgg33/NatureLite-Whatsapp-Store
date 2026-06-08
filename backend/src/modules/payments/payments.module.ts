@@ -13,7 +13,7 @@ import { StoreSalesModule } from '../store-sales/store-sales.module';
     MongooseModule.forFeature([{ name: Payment.name, schema: PaymentSchema }]),
     forwardRef(() => OrdersModule),
     WalletModule,
-    StoreSalesModule,
+    forwardRef(() => StoreSalesModule),
   ],
   controllers: [PaymentsController],
   providers: [PaymentRepository, PaymentsService],
