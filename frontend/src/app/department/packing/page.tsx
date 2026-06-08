@@ -42,7 +42,7 @@ export default function PackingDashboardPage() {
       });
     },
     onSuccess: (_data, orderId) => {
-      setJustPacked(prev => new Set([...prev, orderId]));
+      setJustPacked(prev => { const next = new Set(prev); next.add(orderId); return next; });
       queryClient.invalidateQueries({ queryKey: ['department', 'billing', 'orders'] });
       setTimeout(() => {
         setJustPacked(prev => {
