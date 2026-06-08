@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { KeyRound, Plus, Trash2, Eye, EyeOff, Check, X } from 'lucide-react';
+import { KeyRound, Plus, Trash2, Eye, EyeOff, Check, X, Pencil } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AdminUser } from '@/types';
 import { Header } from '@/components/layout/header';
@@ -33,6 +33,10 @@ export default function AdminLoginsPage() {
   const [editingPassword, setEditingPassword] = useState<Record<string, string>>({});
   const [savingPassword, setSavingPassword] = useState<Record<string, boolean>>({});
 
+  // per-row phone editing state
+  const [editingPhone, setEditingPhone] = useState<Record<string, string>>({});
+  const [savingPhone, setSavingPhone] = useState<Record<string, boolean>>({});
+
   const toggleVisible = (id: string) =>
     setVisiblePasswords((prev) => ({ ...prev, [id]: !prev[id] }));
 
@@ -57,6 +61,26 @@ export default function AdminLoginsPage() {
       toast({ title: 'Failed to update password', description: 'Please try again.', variant: 'destructive' });
     } finally {
       setSavingPassword((prev) => { const n = { ...prev }; delete n[id]; return n; });
+    }
+  };
+
+  const startEditPhone = (user: AdminUser) =>
+    setEditingPhone((prev) => ({ ...prev, [user._id]: user.phone ?? '' }));
+
+  const cancelEditPhone = (id: string) =>
+    setEditingPhone((prev) => { const n = { ...prev }; delete n[id]; return n; });
+
+  const savePhone = async (id: string) => {
+    const newPhone = editingPhone[id].trim();
+    setSavingPhone((prev) => ({ ...prev, [id]: true }));
+    try {
+      await updateUser.mutateAsync({ id, data: { phone: newPhone || undefined } });
+      cancelEditPhone(id);
+      toast({ title: 'Phone updated', description: 'Phone number has been saved.' });
+    } catch {
+      toast({ title: 'Failed to update phone', description: 'Please try again.', variant: 'destructive' });
+    } finally {
+      setSavingPhone((prev) => { const n = { ...prev }; delete n[id]; return n; });
     }
   };
 
@@ -264,11 +288,63 @@ export default function AdminLoginsPage() {
                     const isEditing = user._id in editingPassword;
                     const isVisible = !!visiblePasswords[user._id];
                     const isSaving = !!savingPassword[user._id];
+                    const isEditingPhone = user._id in editingPhone;
+                    const isSavingPhone = !!savingPhone[user._id];
                     return (
                     <tr key={user._id} className="border-b last:border-0">
                       <td className="px-4 py-2">{user.name}</td>
                       <td className="px-4 py-2">{user.email}</td>
-                      <td className="px-4 py-2">{user.phone || '-'}</td>
+                      <td className="px-4 py-2">
+                        {isEditingPhone ? (
+                          <div className="flex items-center gap-1">
+                            <Input
+                              className="h-7 text-xs w-36"
+                              value={editingPhone[user._id]}
+                              onChange={(e) =>
+                                setEditingPhone((prev) => ({ ...prev, [user._id]: e.target.value }))
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') savePhone(user._id);
+                                if (e.key === 'Escape') cancelEditPhone(user._id);
+                              }}
+                              autoFocus
+                              placeholder="10-digit phone"
+                            />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-green-600"
+                              disabled={isSavingPhone}
+                              onClick={() => savePhone(user._id)}
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-gray-500"
+                              onClick={() => cancelEditPhone(user._id)}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-gray-800 min-w-[80px]">
+                              {user.phone || <span className="text-gray-400 italic">not set</span>}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-amber-600"
+                              title="Edit phone"
+                              onClick={() => startEditPhone(user)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        )}
+                      </td>
                       <td className="px-4 py-2">
                         {isEditing ? (
                           <div className="flex items-center gap-1">

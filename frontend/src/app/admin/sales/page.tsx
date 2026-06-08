@@ -10,6 +10,7 @@ import { captureInvoicePdf, billFilename, base64ToBlob } from '@/lib/bill-pdf';
 import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -365,6 +366,7 @@ export default function SalesPage() {
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
   const [discount, setDiscount] = useState('0');
+  const [discountIsPercent, setDiscountIsPercent] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [notes, setNotes] = useState('');
   const [productDropdownOpen, setProductDropdownOpen] = useState(false);
@@ -388,6 +390,7 @@ export default function SalesPage() {
   const [editCustomerPhone, setEditCustomerPhone] = useState('');
   const [editCustomerAddress, setEditCustomerAddress] = useState('');
   const [editDiscount, setEditDiscount] = useState('0');
+  const [editDiscountIsPercent, setEditDiscountIsPercent] = useState(false);
   const [editPaymentMethod, setEditPaymentMethod] = useState('cash');
   const [editPaymentProofUrl, setEditPaymentProofUrl] = useState<string | null>(null);
   const [editNotes, setEditNotes] = useState('');
@@ -589,7 +592,7 @@ export default function SalesPage() {
         customerAddress: saleType === 'delivery'
           ? [addrStreet, addrLandmark, addrCity, addrState, addrPincode ? `PIN-${addrPincode}` : ''].filter(Boolean).join(', ') || undefined
           : customerAddress || undefined,
-        discount: parseFloat(discount) || 0,
+        discount: discountAmount,
         paymentMethod,
         paymentProofUrl: paymentMethod === 'upi' ? upiProofUrl || undefined : undefined,
         notes: notes || undefined,
@@ -619,7 +622,12 @@ export default function SalesPage() {
         customerName: editCustomerName || undefined,
         customerPhone: editCustomerPhone || undefined,
         customerAddress: editCustomerAddress || undefined,
-        discount: parseFloat(editDiscount) || 0,
+        discount: (() => {
+          const editSubtotal = editCartItems.reduce((s, i) => s + i.price * i.quantity, 0);
+          return editDiscountIsPercent
+            ? editSubtotal * (Math.min(parseFloat(editDiscount) || 0, 100) / 100)
+            : (parseFloat(editDiscount) || 0);
+        })(),
         paymentMethod: editPaymentMethod,
         paymentProofUrl: editPaymentMethod === 'upi' ? editPaymentProofUrl || undefined : undefined,
         images: editImages,
@@ -715,6 +723,7 @@ export default function SalesPage() {
     setCustomerPhone('');
     setCustomerAddress('');
     setDiscount('0');
+    setDiscountIsPercent(false);
     setPaymentMethod('cash');
     setNotes('');
     setUpiProofUrl(null);
@@ -774,7 +783,10 @@ export default function SalesPage() {
   };
 
   const subtotal = cartItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
-  const total = Math.max(0, subtotal - (parseFloat(discount) || 0));
+  const discountAmount = discountIsPercent
+    ? subtotal * (Math.min(parseFloat(discount) || 0, 100) / 100)
+    : (parseFloat(discount) || 0);
+  const total = Math.max(0, subtotal - discountAmount);
 
   const storeNameForBill = (sale: StoreSale) => {
     const s = sale.store;
@@ -1607,13 +1619,30 @@ export default function SalesPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-sm font-medium">Discount</label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={discount}
-                  onChange={(e) => setDiscount(e.target.value)}
-                />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-sm font-medium">Discount</label>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-muted-foreground">₹</span>
+                    <Switch
+                      checked={discountIsPercent}
+                      onCheckedChange={setDiscountIsPercent}
+                    />
+                    <span className="text-xs text-muted-foreground">%</span>
+                  </div>
+                </div>
+                <div className="relative">
+                  <Input
+                    type="number"
+                    min="0"
+                    max={discountIsPercent ? 100 : undefined}
+                    value={discount}
+                    onChange={(e) => setDiscount(e.target.value)}
+                    className="pr-7"
+                  />
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
+                    {discountIsPercent ? '%' : '₹'}
+                  </span>
+                </div>
               </div>
               <div>
                 <label className="text-sm font-medium">Notes</label>
@@ -1658,10 +1687,12 @@ export default function SalesPage() {
                   <span className="text-gray-600">Subtotal</span>
                   <span>₹{subtotal.toLocaleString()}</span>
                 </div>
-                {parseFloat(discount) > 0 && (
+                {discountAmount > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Discount</span>
-                    <span className="text-red-600">-₹{parseFloat(discount).toLocaleString()}</span>
+                    <span className="text-gray-600">
+                      Discount{discountIsPercent ? ` (${parseFloat(discount) || 0}%)` : ''}
+                    </span>
+                    <span className="text-red-600">-₹{discountAmount.toLocaleString()}</span>
                   </div>
                 )}
                 <div className="flex justify-between font-bold text-lg border-t pt-2">
@@ -1902,8 +1933,30 @@ export default function SalesPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm font-medium">Discount</label>
-                  <Input type="number" min="0" value={editDiscount} onChange={(e) => setEditDiscount(e.target.value)} />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-sm font-medium">Discount</label>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-muted-foreground">₹</span>
+                      <Switch
+                        checked={editDiscountIsPercent}
+                        onCheckedChange={setEditDiscountIsPercent}
+                      />
+                      <span className="text-xs text-muted-foreground">%</span>
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      min="0"
+                      max={editDiscountIsPercent ? 100 : undefined}
+                      value={editDiscount}
+                      onChange={(e) => setEditDiscount(e.target.value)}
+                      className="pr-7"
+                    />
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
+                      {editDiscountIsPercent ? '%' : '₹'}
+                    </span>
+                  </div>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Notes</label>
@@ -1911,18 +1964,33 @@ export default function SalesPage() {
                 </div>
               </div>
 
-              {editCartItems.length > 0 && (
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <div className="flex justify-between font-bold text-lg">
-                    <span>Total</span>
-                    <span>
-                      ₹{Math.max(0,
-                        editCartItems.reduce((s, i) => s + i.price * i.quantity, 0) - (parseFloat(editDiscount) || 0)
-                      ).toLocaleString()}
-                    </span>
+              {editCartItems.length > 0 && (() => {
+                const editSubtotal = editCartItems.reduce((s, i) => s + i.price * i.quantity, 0);
+                const editDiscountAmt = editDiscountIsPercent
+                  ? editSubtotal * (Math.min(parseFloat(editDiscount) || 0, 100) / 100)
+                  : (parseFloat(editDiscount) || 0);
+                const editTotal = Math.max(0, editSubtotal - editDiscountAmt);
+                return (
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Subtotal</span>
+                      <span>₹{editSubtotal.toLocaleString()}</span>
+                    </div>
+                    {editDiscountAmt > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">
+                          Discount{editDiscountIsPercent ? ` (${parseFloat(editDiscount) || 0}%)` : ''}
+                        </span>
+                        <span className="text-red-600">-₹{editDiscountAmt.toLocaleString()}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-bold text-lg border-t pt-2">
+                      <span>Total</span>
+                      <span>₹{editTotal.toLocaleString()}</span>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           )}
           {editingSale && (

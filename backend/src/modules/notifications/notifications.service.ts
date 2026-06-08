@@ -200,18 +200,26 @@ export class NotificationsService {
   }
 
   /** Notify customer when their order goes out for delivery, with courier details if available. */
-  async sendOutForDeliveryNotification(order: Order, phone: string): Promise<void> {
+  async sendOutForDeliveryNotification(
+    order: Order,
+    phone: string,
+    deliveryPerson?: { name: string; phone?: string },
+  ): Promise<void> {
     const idempotencyKey = `out_for_delivery_${order._id.toString()}`;
     if (this.isRecentlySent({ entityId: order._id.toString(), type: 'out_for_delivery' })) return;
     await this.notifQueue.add(
       NOTIFICATION_JOBS.OUT_FOR_DELIVERY_BTN,
-      { order: this.serializeOrder(order), phone },
+      { order: this.serializeOrder(order), phone, deliveryPerson },
       { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey },
     );
   }
 
-  async _executeOutForDelivery(data: { order: any; phone: string }): Promise<void> {
-    const { order, phone } = data;
+  async _executeOutForDelivery(data: {
+    order: any;
+    phone: string;
+    deliveryPerson?: { name: string; phone?: string };
+  }): Promise<void> {
+    const { order, phone, deliveryPerson } = data;
     const idempotencyKey = `out_for_delivery_${order._id?.toString()}`;
     if (await this.isDuplicate(idempotencyKey)) return;
     this.markAsSent(idempotencyKey);
@@ -222,12 +230,18 @@ export class NotificationsService {
     if (order.trackingUrl) courierLines.push(`🔗 Track:  ${order.trackingUrl}`);
     const courierBlock = courierLines.length > 0 ? `\n\n${courierLines.join('\n')}` : '';
 
+    const deliveryLines: string[] = [];
+    if (deliveryPerson?.name) deliveryLines.push(`👤 Delivery:  *${deliveryPerson.name}*`);
+    if (deliveryPerson?.phone) deliveryLines.push(`📞 Contact:  *${deliveryPerson.phone}*`);
+    const deliveryBlock = deliveryLines.length > 0 ? `\n\n${deliveryLines.join('\n')}` : '';
+
     await this.whatsappService.sendInteractiveButtons({
       phone,
       headerText: '🚚 Out for Delivery',
       bodyText:
         `*#${order.orderNumber}* is on its way! 🎉\n\n` +
         `Your order will be delivered today or tomorrow.` +
+        deliveryBlock +
         courierBlock,
       buttons: [{ id: `order_${order._id?.toString()}`, title: '📦 Track order' }],
       meta: { idempotencyKey },

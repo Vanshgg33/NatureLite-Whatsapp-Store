@@ -842,14 +842,30 @@ export class OrdersService implements OnModuleInit {
     }).catch((err) => this.logger.warn(`Failed to send status update email: ${err.message}`));
 
     if (phone) {
-      const waPromise = dto.status === 'confirmed'
-        ? this.notificationsService.sendOrderConfirmed(orderObj, phone)
-        : dto.status === 'out_for_delivery'
-          ? this.notificationsService.sendOutForDeliveryNotification(orderObj, phone)
+      if (dto.status === 'out_for_delivery') {
+        const deliveryUserId = savedOrder.assignedDeliveryUserId || dto.assignedTo;
+        const deliveryPersonPromise = deliveryUserId
+          ? this.adminService.findById(deliveryUserId.toString()).catch(() => null)
+          : Promise.resolve(null);
+        deliveryPersonPromise
+          .then((deliveryUser) =>
+            this.notificationsService.sendOutForDeliveryNotification(
+              orderObj,
+              phone,
+              deliveryUser ? { name: deliveryUser.name, phone: deliveryUser.phone } : undefined,
+            ),
+          )
+          .catch((err) =>
+            this.logger.warn(`Failed to send out-for-delivery WhatsApp for ${savedOrder.orderNumber}: ${err.message}`),
+          );
+      } else {
+        const waPromise = dto.status === 'confirmed'
+          ? this.notificationsService.sendOrderConfirmed(orderObj, phone)
           : this.notificationsService.notifyOrderStatusChanged(savedOrder, previousStatus);
-      waPromise.catch((err) =>
-        this.logger.warn(`Failed to send WhatsApp status notification for ${savedOrder.orderNumber}: ${err.message}`),
-      );
+        waPromise.catch((err) =>
+          this.logger.warn(`Failed to send WhatsApp status notification for ${savedOrder.orderNumber}: ${err.message}`),
+        );
+      }
     }
 
     return savedOrder;
