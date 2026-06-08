@@ -1,8 +1,8 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { Printer, Download, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Order, OrderItem } from '@/types';
@@ -85,6 +85,8 @@ const TD: React.CSSProperties = {
 
 export default function InvoicePage() {
   const { orderId } = useParams<{ orderId: string }>();
+  const searchParams = useSearchParams();
+  const captureMode = searchParams.get('mode') === 'capture';
   const invoiceRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
 
@@ -121,6 +123,35 @@ export default function InvoicePage() {
       setDownloading(false);
     }
   };
+
+  // When opened in capture mode (from admin panel), auto-generate PDF and post back
+  useEffect(() => {
+    if (!captureMode || !order || !invoiceRef.current) return;
+    const timer = setTimeout(async () => {
+      try {
+        const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+          import('jspdf'),
+          import('html2canvas'),
+        ]);
+        const canvas = await html2canvas(invoiceRef.current!, {
+          scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false,
+        });
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        const pdfW = pdf.internal.pageSize.getWidth();
+        const pdfH = (canvas.height * pdfW) / canvas.width;
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
+        const base64 = pdf.output('datauristring').split(',')[1];
+        window.opener?.postMessage({ type: 'INVOICE_PDF_READY', id: orderId, base64 }, window.location.origin);
+      } catch (err) {
+        window.opener?.postMessage({ type: 'INVOICE_PDF_ERROR', id: orderId, error: String(err) }, window.location.origin);
+      } finally {
+        window.close();
+      }
+    }, 900);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [captureMode, order]);
 
   if (isLoading) {
     return (

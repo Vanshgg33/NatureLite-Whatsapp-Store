@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Receipt, Plus, Search, ShoppingBag, Trash2, Camera, Upload, X, Bell, Pencil, FileText, Printer, Download, Send, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
-import { generateSaleBillPdf, billFilename, base64ToBlob } from '@/lib/bill-pdf';
+import { captureInvoicePdf, billFilename, base64ToBlob } from '@/lib/bill-pdf';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -662,10 +662,15 @@ export default function SalesPage() {
     setEditProductSearch('');
   };
 
+  function getSaleInvoiceUrl(sale: StoreSale): string {
+    const sid = typeof sale.store === 'object' ? (sale.store as { _id: string })._id : sale.store;
+    return `/invoice/sale/${sale._id}?storeId=${sid}`;
+  }
+
   async function handleDownloadBill(sale: StoreSale) {
     setBillLoadingId(sale._id);
     try {
-      const b64 = await generateSaleBillPdf(sale);
+      const b64 = await captureInvoicePdf(getSaleInvoiceUrl(sale), sale._id);
       const blob = base64ToBlob(b64);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -673,6 +678,8 @@ export default function SalesPage() {
       a.download = billFilename(sale.saleNumber);
       a.click();
       URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to generate PDF');
     } finally {
       setBillLoadingId(null);
     }
@@ -682,7 +689,7 @@ export default function SalesPage() {
     if (!sale.customerPhone) { alert('No customer phone number on this sale.'); return; }
     setSendLoadingId(sale._id);
     try {
-      const b64 = await generateSaleBillPdf(sale);
+      const b64 = await captureInvoicePdf(getSaleInvoiceUrl(sale), sale._id);
       await api.uploadSaleInvoice(sale._id, b64, billFilename(sale.saleNumber));
       await api.sendSaleInvoice(sale._id);
       queryClient.invalidateQueries({ queryKey: ['store-sales'] });

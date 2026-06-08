@@ -27,7 +27,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api';
 import { formatCurrency, formatDate, getStatusColor, useDebouncedValue } from '@/lib/utils';
-import { generateOrderBillPdf, billFilename, base64ToBlob } from '@/lib/bill-pdf';
+import { captureInvoicePdf, billFilename, base64ToBlob } from '@/lib/bill-pdf';
 import { OrderStatus, Product, Order } from '@/types';
 
 const statusOptions = [
@@ -165,7 +165,7 @@ export default function OrdersPage() {
   async function handleDownloadBill(order: Order) {
     setBillLoadingId(order._id);
     try {
-      const b64 = await generateOrderBillPdf(order);
+      const b64 = await captureInvoicePdf(`/invoice/${order._id}`, order._id);
       const blob = base64ToBlob(b64);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -173,6 +173,8 @@ export default function OrdersPage() {
       a.download = billFilename(order.orderNumber);
       a.click();
       URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to generate PDF');
     } finally {
       setBillLoadingId(null);
     }
@@ -181,7 +183,7 @@ export default function OrdersPage() {
   async function handleSendBill(order: Order) {
     setSendLoadingId(order._id);
     try {
-      const b64 = await generateOrderBillPdf(order);
+      const b64 = await captureInvoicePdf(`/invoice/${order._id}`, order._id);
       await api.uploadOrderInvoice(order._id, b64, billFilename(order.orderNumber));
       await api.sendOrderInvoice(order._id);
       queryClient.invalidateQueries({ queryKey: ['orders'] });

@@ -2,7 +2,7 @@
 
 import { useParams, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { useRef, useState, Suspense } from 'react';
+import { useRef, useState, useEffect, Suspense } from 'react';
 import { Printer, Download, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { StoreSale, SaleItem, Product } from '@/types';
@@ -85,6 +85,7 @@ function SaleInvoiceInner() {
   const { saleId } = useParams<{ saleId: string }>();
   const searchParams = useSearchParams();
   const storeId = searchParams.get('storeId') || undefined;
+  const captureMode = searchParams.get('mode') === 'capture';
   const invoiceRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
 
@@ -121,6 +122,36 @@ function SaleInvoiceInner() {
       setDownloading(false);
     }
   };
+
+  // When opened in capture mode (from admin panel), auto-generate PDF and post back
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    if (!captureMode || !sale || !invoiceRef.current) return;
+    const timer = setTimeout(async () => {
+      try {
+        const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+          import('jspdf'),
+          import('html2canvas'),
+        ]);
+        const canvas = await html2canvas(invoiceRef.current!, {
+          scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false,
+        });
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        const pdfW = pdf.internal.pageSize.getWidth();
+        const pdfH = (canvas.height * pdfW) / canvas.width;
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
+        const base64 = pdf.output('datauristring').split(',')[1];
+        window.opener?.postMessage({ type: 'INVOICE_PDF_READY', id: saleId, base64 }, window.location.origin);
+      } catch (err) {
+        window.opener?.postMessage({ type: 'INVOICE_PDF_ERROR', id: saleId, error: String(err) }, window.location.origin);
+      } finally {
+        window.close();
+      }
+    }, 900);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [captureMode, sale]);
 
   if (isLoading) {
     return (
