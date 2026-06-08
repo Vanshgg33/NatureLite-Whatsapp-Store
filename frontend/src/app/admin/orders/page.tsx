@@ -28,6 +28,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api';
 import { formatCurrency, formatDate, getStatusColor, useDebouncedValue } from '@/lib/utils';
 import { captureInvoicePdf, billFilename, base64ToBlob } from '@/lib/bill-pdf';
+import { useToast } from '@/components/ui/use-toast';
 import { OrderStatus, Product, Order } from '@/types';
 
 const statusOptions = [
@@ -75,6 +76,7 @@ function flattenProductRows(products: Product[]): ProductRow[] {
 
 export default function OrdersPage() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   // List state
   const [search, setSearch] = useState('');
@@ -170,11 +172,11 @@ export default function OrdersPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = billFilename(order.orderNumber);
+      a.download = billFilename(order.shippingAddress.name);
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to generate PDF');
+      toast({ title: 'Failed to generate PDF', description: err instanceof Error ? err.message : 'Please try again.', variant: 'destructive' });
     } finally {
       setBillLoadingId(null);
     }
@@ -184,11 +186,13 @@ export default function OrdersPage() {
     setSendLoadingId(order._id);
     try {
       const b64 = await captureInvoicePdf(`/invoice/${order._id}`, order._id);
-      await api.uploadOrderInvoice(order._id, b64, billFilename(order.orderNumber));
+      await api.uploadOrderInvoice(order._id, b64, billFilename(order.shippingAddress.name));
       await api.sendOrderInvoice(order._id);
       queryClient.invalidateQueries({ queryKey: ['orders'] });
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to send bill');
+      toast({ title: 'Invoice sent!', description: `Bill for ${order.orderNumber} sent to customer via WhatsApp.` });
+    } catch (err: unknown) {
+      const msg = (err as any)?.response?.data?.message || (err instanceof Error ? err.message : 'Please try again.');
+      toast({ title: 'Failed to send invoice', description: msg, variant: 'destructive' });
     } finally {
       setSendLoadingId(null);
     }

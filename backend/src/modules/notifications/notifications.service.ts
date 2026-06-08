@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
@@ -542,14 +542,20 @@ export class NotificationsService {
   }
 
   async sendInvoiceDocument(docNumber: string, phone: string, invoiceUrl: string): Promise<void> {
-    const normalizedPhone = phone.replace(/\D/g, '');
-    await this.whatsappService.sendMediaMessage({
-      phone: normalizedPhone,
-      mediaType: 'document',
-      mediaUrl: invoiceUrl,
-      caption: `Hi! Your invoice for ${docNumber} is attached. Thank you for shopping with Nature Lite Foods!`,
-      filename: `Invoice_${docNumber}.pdf`,
+    // Template messages bypass the WhatsApp 24-hour session window.
+    // Create a template named "invoice_ready" on your 360dialog dashboard with body:
+    //   "Your invoice for order {{1}} is ready. Tap to view and download: {{2}}"
+    const messageId = await this.whatsappService.sendTemplateMessage({
+      phone,
+      templateName: 'invoice_ready',
+      languageCode: 'en',
+      bodyParams: [docNumber, invoiceUrl],
     });
+    if (!messageId) {
+      throw new InternalServerErrorException(
+        `WhatsApp delivery failed for ${phone}. Ensure the "invoice_ready" template is approved on 360dialog and the phone number is correct.`,
+      );
+    }
   }
 
   async sendMediaBroadcast(

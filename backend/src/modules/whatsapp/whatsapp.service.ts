@@ -959,6 +959,70 @@ export class WhatsAppService implements OnModuleInit {
     });
   }
 
+  async uploadMedia(buffer: Buffer, mimeType: string, filename: string): Promise<string | null> {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const FormData = require('form-data');
+    const form = new FormData();
+    form.append('messaging_product', 'whatsapp');
+    form.append('type', mimeType);
+    form.append('file', buffer, { filename, contentType: mimeType });
+    try {
+      const response = await this.httpClient.post<{ id: string }>('/media', form, {
+        headers: { ...form.getHeaders() },
+      });
+      return response.data?.id ?? null;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        this.logger.error(
+          `WhatsApp media upload failed: status=${error.response?.status} body=${JSON.stringify(error.response?.data).slice(0, 500)}`,
+        );
+      } else {
+        this.logger.error('WhatsApp media upload failed', error);
+      }
+      return null;
+    }
+  }
+
+  async sendDocumentByMediaId(dto: {
+    phone: string;
+    mediaId: string;
+    caption?: string;
+    filename?: string;
+    meta?: { idempotencyKey?: string };
+  }): Promise<string | null> {
+    const phone = this.normalizePhone(dto.phone);
+    const idempotencyKey = dto.meta?.idempotencyKey;
+    const content: WhatsAppMessage['content'] = { caption: dto.caption };
+
+    if (!phone) {
+      await this.logFinalOutboundFailure({
+        phone: dto.phone,
+        messageType: 'document',
+        content,
+        idempotencyKey,
+        failureReason: 'invalid_phone',
+        metadata: { idempotencyKey, isInvalidPhone: true, provider: this.getProviderTag() },
+      });
+      return null;
+    }
+
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: phone,
+      type: 'document',
+      document: { id: dto.mediaId, caption: dto.caption, filename: dto.filename },
+    };
+
+    return this.sendOutboundWithRetry({
+      phone,
+      messageType: 'document',
+      content,
+      idempotencyKey,
+      payload,
+    });
+  }
+
   async getMediaUrl(mediaId: string): Promise<string | null> {
     if (this.is360DialogSandbox) {
       this.logger.warn('Media retrieval is not available in 360dialog sandbox mode');

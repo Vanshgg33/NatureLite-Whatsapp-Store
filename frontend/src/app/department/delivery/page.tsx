@@ -289,6 +289,12 @@ export default function DeliveryDashboardPage() {
 
   const billedOrders = useMemo(() => (billedData?.items ?? []) as Order[], [billedData]);
 
+  const filteredBilledOrders = useMemo(() => {
+    if (!orderNumber.trim()) return billedOrders;
+    const q = orderNumber.trim().toLowerCase();
+    return billedOrders.filter(o => o.shippingAddress.name.toLowerCase().includes(q));
+  }, [billedOrders, orderNumber]);
+
   // Restore state from sessionStorage on mount (handles Android camera-kill page reload)
   useEffect(() => {
     let cancelled = false;
@@ -378,14 +384,14 @@ export default function DeliveryDashboardPage() {
     setShowConfirm(false);
   };
 
-  const searchOrder = async () => {
+  const searchOrder = () => {
     if (!orderNumber.trim()) return;
-    try {
-      const result = await api.getOrderByNumber(orderNumber.trim());
-      selectOrder(result);
-    } catch {
+    const match = filteredBilledOrders[0];
+    if (match) {
+      selectOrder(match);
+    } else {
       setSelectedOrder(null);
-      toast({ title: 'Order not found', description: 'Check the order number and try again.', variant: 'destructive' });
+      toast({ title: 'Customer not found', description: 'No assigned order found with that customer name.', variant: 'destructive' });
     }
   };
 
@@ -489,7 +495,7 @@ export default function DeliveryDashboardPage() {
         <div className="bg-white rounded-2xl border border-gray-100 p-3 flex gap-2 items-center shadow-sm">
           <Search className="h-4 w-4 text-gray-400 shrink-0" />
           <Input
-            placeholder="Search by order number"
+            placeholder="Search by customer name"
             value={orderNumber}
             onChange={(e) => setOrderNumber(e.target.value)}
             className="border-0 shadow-none h-9 p-0 focus-visible:ring-0"
@@ -509,13 +515,16 @@ export default function DeliveryDashboardPage() {
             {!loadingBilled && billedOrders.length === 0 && (
               <p className="text-sm text-gray-400 text-center py-8">No orders assigned to you yet.</p>
             )}
-            {billedOrders.length > 0 && (
+            {billedOrders.length > 0 && filteredBilledOrders.length === 0 && (
+              <p className="text-sm text-gray-400 text-center py-8">No orders matching that customer name.</p>
+            )}
+            {filteredBilledOrders.length > 0 && (
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1">
-                  Your assigned orders ({billedOrders.length})
+                  Your assigned orders ({filteredBilledOrders.length})
                 </p>
                 <div className="grid gap-3">
-                  {billedOrders.map((o) => (
+                  {filteredBilledOrders.map((o) => (
                     <Card
                       key={o._id}
                       className="border-gray-100 shadow-sm active:shadow-none transition-all cursor-pointer"

@@ -7,6 +7,7 @@ import { Receipt, Plus, Search, ShoppingBag, Trash2, Camera, Upload, X, Bell, Pe
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { captureInvoicePdf, billFilename, base64ToBlob } from '@/lib/bill-pdf';
+import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -343,6 +344,7 @@ interface CartLineItem {
 
 export default function SalesPage() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { user } = useAdminAuthStore();
   const [selectedStoreId, setSelectedStoreId] = useState<string>(user?.storeId || '');
   const [search, setSearch] = useState('');
@@ -679,22 +681,27 @@ export default function SalesPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to generate PDF');
+      toast({ title: 'Failed to generate PDF', description: err instanceof Error ? err.message : 'Please try again.', variant: 'destructive' });
     } finally {
       setBillLoadingId(null);
     }
   }
 
   async function handleSendBill(sale: StoreSale) {
-    if (!sale.customerPhone) { alert('No customer phone number on this sale.'); return; }
+    if (!sale.customerPhone) {
+      toast({ title: 'Cannot send', description: 'No customer phone number on this sale.', variant: 'destructive' });
+      return;
+    }
     setSendLoadingId(sale._id);
     try {
       const b64 = await captureInvoicePdf(getSaleInvoiceUrl(sale), sale._id);
       await api.uploadSaleInvoice(sale._id, b64, billFilename(sale.saleNumber));
       await api.sendSaleInvoice(sale._id);
       queryClient.invalidateQueries({ queryKey: ['store-sales'] });
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to send bill');
+      toast({ title: 'Invoice sent!', description: `Bill for ${sale.saleNumber} sent to customer via WhatsApp.` });
+    } catch (err: unknown) {
+      const msg = (err as any)?.response?.data?.message || (err instanceof Error ? err.message : 'Please try again.');
+      toast({ title: 'Failed to send invoice', description: msg, variant: 'destructive' });
     } finally {
       setSendLoadingId(null);
     }
