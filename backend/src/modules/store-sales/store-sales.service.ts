@@ -97,6 +97,7 @@ export class StoreSalesService {
       customerAddress: dto.customerAddress,
       subtotal,
       discount,
+      gstRate: dto.gstRate ?? 0,
       total,
       paymentMethod: dto.paymentMethod || 'cash',
       paymentProofUrl: dto.paymentProofUrl,
@@ -282,6 +283,7 @@ export class StoreSalesService {
     if (dto.paymentProofUrl !== undefined) updateData.paymentProofUrl = dto.paymentProofUrl;
     if (dto.images !== undefined) updateData.images = dto.images;
     if (dto.notes !== undefined) updateData.notes = dto.notes;
+    if (dto.gstRate !== undefined) updateData.gstRate = dto.gstRate;
 
     if (dto.items && dto.items.length > 0) {
       updateData.items = saleItems;

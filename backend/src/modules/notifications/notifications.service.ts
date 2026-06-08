@@ -706,7 +706,7 @@ export class NotificationsService {
     }
 
     const existing = await this.messageLogRepository.findOneByIdempotencyKey(key);
-    return !!existing;
+    return existing?.finalStatus === 'success';
   }
 
   private markAsSent(key: string): void {

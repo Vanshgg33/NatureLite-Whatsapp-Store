@@ -992,6 +992,7 @@ export interface StoreSale {
   customerAddress?: string;
   subtotal: number;
   discount: number;
+  gstRate?: number;
   total: number;
   paymentMethod: string;
   paymentProofUrl?: string;
@@ -1056,6 +1057,7 @@ export interface CreateStoreSaleDto {
   customerPhone?: string;
   customerAddress?: string;
   discount?: number;
+  gstRate?: number;
   paymentMethod?: string;
   paymentProofUrl?: string;
   images?: string[];
@@ -1072,6 +1074,7 @@ export interface UpdateStoreSaleDto {
   customerPhone?: string;
   customerAddress?: string;
   discount?: number;
+  gstRate?: number;
   paymentMethod?: string;
   paymentProofUrl?: string;
   images?: string[];

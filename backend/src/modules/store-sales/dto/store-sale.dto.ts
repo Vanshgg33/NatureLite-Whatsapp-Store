@@ -45,6 +45,11 @@ export class CreateStoreSaleDto {
   @Min(0)
   discount?: number;
 
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  gstRate?: number;
+
   @IsString()
   @IsOptional()
   paymentMethod?: string;
@@ -102,6 +107,11 @@ export class UpdateStoreSaleDto {
   @IsOptional()
   @Min(0)
   discount?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  gstRate?: number;
 
   @IsString()
   @IsOptional()

@@ -1,21 +1,25 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Package, CheckCircle2, ArrowRight } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { formatCurrency, formatDate, getStatusColor } from '@/lib/utils';
+import { formatCurrency, getStatusColor } from '@/lib/utils';
 import type { Order } from '@/types';
+
+const CONFETTI_COLORS = ['#fbbf24', '#f87171', '#34d399', '#60a5fa', '#a78bfa', '#fb923c', '#f472b6', '#4ade80'];
 
 export default function PackingDashboardPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [justPacked, setJustPacked] = useState<Set<string>>(new Set());
 
   const { data, isLoading } = useQuery({
     queryKey: ['department', 'packing', 'orders'],
@@ -27,29 +31,27 @@ export default function PackingDashboardPage() {
 
   const markPacked = useMutation({
     mutationFn: (orderId: string) => api.markOrderPacked(orderId),
-    onMutate: async (orderId) => {
+    onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: ['department', 'packing', 'orders'] });
-      const prev = queryClient.getQueryData(['department', 'packing', 'orders']);
-      queryClient.setQueryData(['department', 'packing', 'orders'], (old: any) => {
-        if (!old?.items) return old;
-        return { ...old, items: old.items.filter((o: any) => o._id !== orderId) };
-      });
-      return { prev };
     },
-    onError: (err, _orderId, context: any) => {
-      if (context?.prev) queryClient.setQueryData(['department', 'packing', 'orders'], context.prev);
+    onError: (err) => {
       toast({
         title: 'Could not update order',
         description: err instanceof Error ? err.message : 'Please try again.',
         variant: 'destructive',
       });
     },
-    onSuccess: () => {
-      toast({ title: 'Order marked as packed', description: 'Billing can now send it out for delivery.' });
+    onSuccess: (_data, orderId) => {
+      setJustPacked(prev => new Set([...prev, orderId]));
       queryClient.invalidateQueries({ queryKey: ['department', 'billing', 'orders'] });
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['department', 'packing', 'orders'] });
+      setTimeout(() => {
+        setJustPacked(prev => {
+          const next = new Set(prev);
+          next.delete(orderId);
+          return next;
+        });
+        queryClient.invalidateQueries({ queryKey: ['department', 'packing', 'orders'] });
+      }, 2400);
     },
   });
 
@@ -74,62 +76,133 @@ export default function PackingDashboardPage() {
           </div>
         )}
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {orders.map((order) => (
-            <Card key={order._id} className="border-emerald-50 shadow-sm">
-              <CardContent className="p-4 space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-xs text-gray-400">Order</p>
-                    <p className="font-bold text-gray-900 text-base">{order.orderNumber}</p>
-                  </div>
-                  <Badge className={getStatusColor(order.status)}>{order.status.replace(/_/g, ' ').toUpperCase()}</Badge>
-                </div>
+        <AnimatePresence mode="popLayout">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {orders.map((order) => {
+              const isPacked = justPacked.has(order._id);
+              return (
+                <motion.div
+                  key={order._id}
+                  layout
+                  exit={{ scale: 0.85, opacity: 0, transition: { duration: 0.35, ease: 'easeIn' } }}
+                >
+                  <Card className="border-emerald-50 shadow-sm relative overflow-hidden">
+                    {/* Packed success overlay */}
+                    <AnimatePresence>
+                      {isPacked && (
+                        <motion.div
+                          className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-lg bg-emerald-500"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0, transition: { duration: 0.25 } }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          {/* Confetti burst */}
+                          {CONFETTI_COLORS.map((color, i) => {
+                            const angle = (i / CONFETTI_COLORS.length) * Math.PI * 2;
+                            return (
+                              <motion.span
+                                key={i}
+                                className="absolute w-2.5 h-2.5 rounded-full"
+                                style={{ backgroundColor: color, top: '50%', left: '50%' }}
+                                initial={{ x: 0, y: 0, scale: 0, opacity: 1 }}
+                                animate={{
+                                  x: Math.cos(angle) * 72,
+                                  y: Math.sin(angle) * 72,
+                                  scale: [0, 1.2, 0.8],
+                                  opacity: [1, 1, 0],
+                                }}
+                                transition={{ duration: 0.75, delay: 0.1, ease: 'easeOut' }}
+                              />
+                            );
+                          })}
 
-                <div className="space-y-0.5">
-                  <p className="text-sm font-semibold text-gray-800">
-                    {order.shippingAddress.name}
-                    <span className="font-normal text-gray-500 text-xs ml-1">· {order.shippingAddress.phone}</span>
-                  </p>
-                  <p className="text-xs text-gray-400 line-clamp-2">
-                    {order.shippingAddress.street}, {order.shippingAddress.city}, {order.shippingAddress.state} – {order.shippingAddress.pincode}
-                  </p>
-                </div>
+                          {/* Checkmark */}
+                          <motion.div
+                            initial={{ scale: 0, rotate: -90 }}
+                            animate={{ scale: 1, rotate: 0 }}
+                            transition={{ type: 'spring', stiffness: 320, damping: 22, delay: 0.08 }}
+                          >
+                            <CheckCircle2 className="h-16 w-16 text-white drop-shadow-lg" />
+                          </motion.div>
 
-                <div className="border-t border-gray-50 pt-2 space-y-1">
-                  {order.items.map((item, idx) => (
-                    <div key={idx} className="flex justify-between text-xs text-gray-600 gap-2">
-                      <span className="truncate font-medium">
-                        {item.name}{item.variantName ? ` (${item.variantName})` : ''}
-                      </span>
-                      <span className="shrink-0 text-gray-400">× {item.quantity}</span>
-                    </div>
-                  ))}
-                  <div className="flex items-center justify-between pt-1.5 border-t border-gray-50">
-                    <span className="text-xs text-gray-400">{order.items.length} item{order.items.length !== 1 ? 's' : ''}</span>
-                    <span className="font-bold text-gray-900 text-sm">{formatCurrency(order.total)}</span>
-                  </div>
-                </div>
+                          {/* Label */}
+                          <motion.p
+                            className="mt-3 text-white font-bold text-xl tracking-tight"
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.28 }}
+                          >
+                            Order Packed!
+                          </motion.p>
+                          <motion.p
+                            className="mt-1 text-emerald-100 text-sm"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ delay: 0.44 }}
+                          >
+                            Handing off to billing…
+                          </motion.p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
 
-                <div className="flex gap-2">
-                  <Button
-                    className="flex-1 h-12 text-sm font-semibold gap-2"
-                    disabled={markPacked.isPending || !!order.packedAt || !['placed', 'confirmed', 'preparing'].includes(order.status)}
-                    onClick={() => markPacked.mutate(order._id)}
-                  >
-                    <CheckCircle2 className="h-4 w-4 shrink-0" />
-                    {order.packedAt ? 'Already packed' : 'Mark packed'}
-                  </Button>
-                  <Link href={`/department/order/${order._id}`}>
-                    <Button variant="outline" className="h-12 px-3 flex items-center gap-1">
-                      <ArrowRight className="h-4 w-4" />
-                    </Button>
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-xs text-gray-400">Order</p>
+                          <p className="font-bold text-gray-900 text-base">{order.orderNumber}</p>
+                        </div>
+                        <Badge className={getStatusColor(order.status)}>{order.status.replace(/_/g, ' ').toUpperCase()}</Badge>
+                      </div>
+
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-semibold text-gray-800">
+                          {order.shippingAddress.name}
+                          <span className="font-normal text-gray-500 text-xs ml-1">· {order.shippingAddress.phone}</span>
+                        </p>
+                        <p className="text-xs text-gray-400 line-clamp-2">
+                          {order.shippingAddress.street}, {order.shippingAddress.city}, {order.shippingAddress.state} – {order.shippingAddress.pincode}
+                        </p>
+                      </div>
+
+                      <div className="border-t border-gray-50 pt-2 space-y-1">
+                        {order.items.map((item, idx) => (
+                          <div key={idx} className="flex justify-between text-xs text-gray-600 gap-2">
+                            <span className="truncate font-medium">
+                              {item.name}{item.variantName ? ` (${item.variantName})` : ''}
+                            </span>
+                            <span className="shrink-0 text-gray-400">× {item.quantity}</span>
+                          </div>
+                        ))}
+                        <div className="flex items-center justify-between pt-1.5 border-t border-gray-50">
+                          <span className="text-xs text-gray-400">{order.items.length} item{order.items.length !== 1 ? 's' : ''}</span>
+                          <span className="font-bold text-gray-900 text-sm">{formatCurrency(order.total)}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button
+                          className="flex-1 h-12 text-sm font-semibold gap-2"
+                          disabled={markPacked.isPending || isPacked || !!order.packedAt || !['placed', 'confirmed', 'preparing'].includes(order.status)}
+                          onClick={() => markPacked.mutate(order._id)}
+                        >
+                          <CheckCircle2 className="h-4 w-4 shrink-0" />
+                          {order.packedAt ? 'Already packed' : 'Mark packed'}
+                        </Button>
+                        <Link href={`/department/order/${order._id}`}>
+                          <Button variant="outline" className="h-12 px-3 flex items-center gap-1">
+                            <ArrowRight className="h-4 w-4" />
+                          </Button>
+                        </Link>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              );
+            })}
+          </div>
+        </AnimatePresence>
       </div>
     </div>
   );
