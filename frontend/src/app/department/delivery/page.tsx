@@ -17,6 +17,7 @@ import {
   Phone,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useAdminAuthStore } from '@/lib/admin-store';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -262,11 +263,16 @@ function ConfirmDeliveryDialog({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-const DELIVERY_STATE_KEY = 'nl-delivery-form';
+const DELIVERY_STATE_BASE_KEY = 'nl-delivery-form';
+const DELIVERY_STATE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours — auto-expire stale recovery state
 
 export default function DeliveryDashboardPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAdminAuthStore();
+  // Per-user key prevents a different delivery staff member on the same device from
+  // triggering a recovery attempt against another person's order.
+  const deliveryStateKey = user?.id ? `${DELIVERY_STATE_BASE_KEY}-${user.id}` : DELIVERY_STATE_BASE_KEY;
 
   const [orderNumber, setOrderNumber] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -295,11 +301,11 @@ export default function DeliveryDashboardPage() {
     return billedOrders.filter(o => o.shippingAddress.name.toLowerCase().includes(q));
   }, [billedOrders, orderNumber]);
 
-  // Restore state from sessionStorage on mount (handles Android camera-kill page reload)
+  // Restore state from localStorage on mount (handles Android camera-kill page reload)
   useEffect(() => {
     let cancelled = false;
     try {
-      const raw = sessionStorage.getItem(DELIVERY_STATE_KEY);
+      const raw = localStorage.getItem(deliveryStateKey);
       if (!raw) return;
       const saved = JSON.parse(raw) as {
         orderId?: string;
@@ -309,8 +315,14 @@ export default function DeliveryDashboardPage() {
         note?: string;
         deliveryProofUrl?: string | null;
         paymentProofUrl?: string | null;
+        savedAt?: number;
       };
       if (!saved?.orderId) return;
+      // Treat missing timestamp as stale, or expire after TTL
+      if (!saved.savedAt || Date.now() - saved.savedAt > DELIVERY_STATE_TTL_MS) {
+        localStorage.removeItem(deliveryStateKey);
+        return;
+      }
 
       // Restore form fields immediately so they're ready when the order loads
       if (saved.status) setStatus(saved.status);
@@ -324,6 +336,12 @@ export default function DeliveryDashboardPage() {
       api.getOrder(saved.orderId)
         .then((order) => {
           if (!cancelled) {
+            // Don't restore if the order was already delivered/cancelled while the tab was dead
+            if (order.status !== 'out_for_delivery') {
+              localStorage.removeItem(deliveryStateKey);
+              setRestoring(false);
+              return;
+            }
             setSelectedOrder(order);
             setRestoring(false);
             toast({ title: 'Session restored', description: 'Your previous order has been reloaded.' });
@@ -331,22 +349,22 @@ export default function DeliveryDashboardPage() {
         })
         .catch(() => {
           if (!cancelled) {
-            sessionStorage.removeItem(DELIVERY_STATE_KEY);
+            localStorage.removeItem(deliveryStateKey);
             setRestoring(false);
           }
         });
     } catch {
-      sessionStorage.removeItem(DELIVERY_STATE_KEY);
+      localStorage.removeItem(deliveryStateKey);
     }
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persist form state to sessionStorage so a camera-triggered page reload can recover
+  // Persist form state to localStorage so a camera-triggered page reload can recover
   useEffect(() => {
     if (!selectedOrder) return;
     try {
-      sessionStorage.setItem(DELIVERY_STATE_KEY, JSON.stringify({
+      localStorage.setItem(deliveryStateKey, JSON.stringify({
         orderId: selectedOrder._id,
         status,
         paymentMethod,
@@ -354,12 +372,13 @@ export default function DeliveryDashboardPage() {
         note,
         deliveryProofUrl: deliveryProofUrl ?? null,
         paymentProofUrl: paymentProofUrl ?? null,
+        savedAt: Date.now(),
       }));
     } catch {}
-  }, [selectedOrder, status, paymentMethod, amountCollected, note, deliveryProofUrl, paymentProofUrl]);
+  }, [selectedOrder, status, paymentMethod, amountCollected, note, deliveryProofUrl, paymentProofUrl, deliveryStateKey]);
 
   const resetForm = useCallback(() => {
-    try { sessionStorage.removeItem(DELIVERY_STATE_KEY); } catch {}
+    try { localStorage.removeItem(deliveryStateKey); } catch {}
     setSelectedOrder(null);
     setOrderNumber('');
     setPaymentProofUrl(undefined);
@@ -369,7 +388,7 @@ export default function DeliveryDashboardPage() {
     setStatus('delivery_done');
     setPaymentMethod('cash');
     setShowConfirm(false);
-  }, []);
+  }, [deliveryStateKey]);
 
   const isCod = (o: Order) => o.paymentMethod === 'cod';
 

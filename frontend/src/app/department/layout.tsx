@@ -24,7 +24,13 @@ export default function DepartmentLayout({ children }: { children: React.ReactNo
     }
   }, [hasHydrated, isAuthenticated, user, pathname, router]);
 
-  if (!hasHydrated || !isAuthenticated) {
+  if (!hasHydrated) {
+    // Render the page background colour instead of nothing — prevents a white
+    // flash on slow phones while Zustand reads the auth state from localStorage.
+    return <div className="min-h-screen bg-gray-50" />;
+  }
+
+  if (!isAuthenticated) {
     return null;
   }
 
