@@ -124,7 +124,10 @@ export default function PackingDetailPage() {
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <Phone className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-            <span>{order.shippingAddress.phone}</span>
+            <span>
+              {order.shippingAddress.phone}
+              {order.shippingAddress.alternatePhone && ` / ${order.shippingAddress.alternatePhone}`}
+            </span>
           </div>
           <div className="flex items-start gap-2 text-sm text-gray-600">
             <MapPin className="h-3.5 w-3.5 text-gray-400 shrink-0 mt-0.5" />

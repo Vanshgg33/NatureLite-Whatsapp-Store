@@ -27,6 +27,10 @@ export class ShippingAddressDto {
   phone: string;
 
   @IsString()
+  @IsOptional()
+  alternatePhone?: string;
+
+  @IsString()
   @IsNotEmpty()
   street: string;
 
@@ -103,6 +107,10 @@ export class CreateOrderDto {
   @IsOptional()
   @MaxLength(128)
   idempotencyKey?: string;
+
+  @IsString()
+  @IsOptional()
+  source?: string;
 }
 
 export class UpdateOrderStatusDto {
@@ -324,6 +332,10 @@ export class GuestCreateOrderDto {
   @IsOptional()
   @MaxLength(128)
   idempotencyKey?: string;
+
+  @IsString()
+  @IsOptional()
+  source?: string;
 }
 
 export class UpdateOrderDto {

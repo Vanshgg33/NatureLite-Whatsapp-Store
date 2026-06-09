@@ -169,6 +169,7 @@ export interface OrderItem {
 export interface ShippingAddress {
   name: string;
   phone: string;
+  alternatePhone?: string;
   street: string;
   city: string;
   state: string;
@@ -216,6 +217,7 @@ export interface Order {
   user: User | string;
   items: OrderItem[];
   shippingAddress: ShippingAddress;
+  source?: string;
   status: OrderStatus;
   paymentStatus: PaymentStatus;
   paymentMethod: PaymentMethod;
@@ -782,6 +784,7 @@ export interface CreateOrderDto {
   notes?: string;
   walletAmount?: number;
   idempotencyKey?: string;
+  source?: string;
 }
 
 export interface GuestCreateOrderDto {
@@ -795,6 +798,7 @@ export interface GuestCreateOrderDto {
   name?: string;
   walletAmount?: number;
   idempotencyKey?: string;
+  source?: string;
 }
 
 export interface ReorderDto {

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -72,7 +72,7 @@ class GeminiRateLimitError extends Error {
 }
 
 @Injectable()
-export class AdminChatbotService {
+export class AdminChatbotService implements OnApplicationBootstrap {
   private readonly logger = new Logger(AdminChatbotService.name);
 
   constructor(
@@ -669,18 +669,33 @@ export class AdminChatbotService {
 
   // ─── Scheduled daily report ───────────────────────────────────────────────────
 
-  @Cron(CronExpression.EVERY_DAY_AT_9AM)
-  async scheduledDailyReport(): Promise<void> {
+  async onApplicationBootstrap(): Promise<void> {
     const adminEmail = process.env.ADMIN_REPORT_EMAIL;
-    if (!adminEmail) return;
+    if (adminEmail) {
+      try {
+        const repeatableJobs = await this.adminQueue.getRepeatableJobs();
+        for (const job of repeatableJobs) {
+          if (job.name === ADMIN_JOBS.DAILY_BRIEFING) {
+            await this.adminQueue.removeRepeatableByKey(job.key);
+          }
+        }
 
-    const dateKey = new Date().toISOString().slice(0, 10);
-    await this.adminQueue.add(
-      ADMIN_JOBS.DAILY_BRIEFING,
-      { adminEmail },
-      { ...DEFAULT_JOB_OPTIONS, attempts: 2, jobId: `admin-briefing-${dateKey}` },
-    );
-    this.logger.log(`Daily briefing job enqueued for ${adminEmail}`);
+        await this.adminQueue.add(
+          ADMIN_JOBS.DAILY_BRIEFING,
+          { adminEmail },
+          {
+            repeat: {
+              pattern: '0 9 * * *', // Daily at 9:00 AM
+              tz: 'Asia/Kolkata',
+            },
+            jobId: 'repeatable-daily-briefing',
+          },
+        );
+        this.logger.log(`Repeatable daily briefing job scheduled for ${adminEmail} at 9 AM IST`);
+      } catch (err) {
+        this.logger.error(`Failed to schedule repeatable daily briefing: ${(err as Error).message}`);
+      }
+    }
   }
 
   async _executeDailyBriefing(data: { adminEmail: string }): Promise<void> {

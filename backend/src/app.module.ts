@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerStorageRedisService } from 'nestjs-throttler-storage-redis';
 import { ScheduleModule } from '@nestjs/schedule';
 import { BullModule } from '@nestjs/bullmq';
 import { APP_GUARD, APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
@@ -92,10 +93,24 @@ import { HealthController } from './health.controller';
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ([{
-        ttl: configService.get<number>('throttle.ttl') || 60,
-        limit: configService.get<number>('throttle.limit') || 100,
-      }]),
+      useFactory: (configService: ConfigService) => {
+        const host = configService.get<string>('redis.host');
+        const port = configService.get<number>('redis.port');
+        const password = configService.get<string>('redis.password');
+        const username = configService.get<string>('redis.username');
+        const tls = configService.get<boolean>('redis.tls');
+        return [{
+          ttl: configService.get<number>('throttle.ttl') || 60,
+          limit: configService.get<number>('throttle.limit') || 100,
+          storage: new ThrottlerStorageRedisService({
+            host,
+            port,
+            ...(username ? { username } : {}),
+            ...(password ? { password } : {}),
+            ...(tls ? { tls: { rejectUnauthorized: false } } : {}),
+          }),
+        }];
+      },
     }),
 
     AuthModule,

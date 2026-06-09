@@ -2355,6 +2355,7 @@ export class ChatbotService {
         },
         paymentMethod,
         idempotencyKey: this.whatsAppCheckoutIdempotencyKey(message.messageId),
+        source: 'whatsapp',
       });
     } catch (err) {
       // Never let an order-creation failure drop the user into the generic outer

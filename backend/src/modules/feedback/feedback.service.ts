@@ -9,12 +9,14 @@ import {
 } from './dto/feedback.dto';
 import { parseObjectIdOptional, parseObjectId } from '../../common/utils/objectid.util';
 import { OrderRepository } from '../orders/repositories/order.repository';
+import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class FeedbackService {
   constructor(
     private readonly feedbackRepository: FeedbackRepository,
     private readonly orderRepository: OrderRepository,
+    private readonly redisService: RedisService,
   ) {}
 
   async create(userId: string, dto: CreateFeedbackDto): Promise<Feedback> {
@@ -49,7 +51,9 @@ export class FeedbackService {
           ? { verifiedPurchase: true }
           : {},
     };
-    return this.feedbackRepository.create(data as Partial<Feedback>) as Promise<Feedback>;
+    const saved = await this.feedbackRepository.create(data as Partial<Feedback>);
+    this.clearChatbotCache();
+    return saved as Feedback;
   }
 
   async findAll(query: FeedbackQueryDto) {
@@ -82,7 +86,9 @@ export class FeedbackService {
     if (feedback.status === 'pending') {
       feedback.status = 'acknowledged';
     }
-    return feedback.save();
+    const saved = await feedback.save();
+    this.clearChatbotCache();
+    return saved;
   }
 
   async updateStatus(id: string, dto: UpdateFeedbackStatusDto): Promise<Feedback> {
@@ -91,11 +97,16 @@ export class FeedbackService {
     if (!feedback) {
       throw new NotFoundException('Feedback not found');
     }
+    this.clearChatbotCache();
     return feedback as unknown as Feedback;
   }
 
   async findUserFeedback(userId: string) {
     const userObjId = parseObjectId(userId, 'userId');
     return this.feedbackRepository.findUserFeedback(userObjId);
+  }
+
+  private clearChatbotCache(): void {
+    this.redisService.delPattern('chatbot:tool:*').catch(() => {});
   }
 }

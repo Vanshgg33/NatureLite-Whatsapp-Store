@@ -110,6 +110,11 @@ export default function DepartmentOrderViewPage() {
             <span className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-white/10 text-white/70">
               {order.paymentMethod.toUpperCase()}
             </span>
+            {order.source && (
+              <span className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-white/10 text-white/70 capitalize">
+                Source: {order.source}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -296,6 +301,7 @@ export default function DepartmentOrderViewPage() {
                 <div className="flex items-center gap-2 text-sm text-brand-muted font-body">
                   <Phone className="h-3.5 w-3.5 shrink-0 text-gray-400" />
                   {order.shippingAddress.phone}
+                  {order.shippingAddress.alternatePhone && ` / ${order.shippingAddress.alternatePhone}`}
                 </div>
                 <p className="text-sm text-brand-muted font-body leading-relaxed pt-0.5">
                   {order.shippingAddress.street},<br />

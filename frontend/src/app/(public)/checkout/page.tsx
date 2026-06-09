@@ -29,6 +29,7 @@ const checkoutSchema = z.object({
   name: z.string().min(2, 'Name is required'),
   email: z.string().email('Valid email is required'),
   phone: z.string().min(10, 'Valid phone number is required'),
+  alternatePhone: z.string().optional(),
   street: z.string().min(5, 'Street address is required'),
   city: z.string().min(2, 'City is required'),
   state: z.string().min(2, 'State is required'),
@@ -177,6 +178,7 @@ export default function CheckoutPage() {
       const baseShipping = {
         name: data.name,
         phone: data.phone,
+        alternatePhone: data.alternatePhone || undefined,
         street: data.street,
         city: data.city,
         state: data.state,
@@ -490,6 +492,19 @@ export default function CheckoutPage() {
                     />
                     {errors.phone && (
                       <p className="text-xs text-brand-error mt-1">{errors.phone.message}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="font-body text-sm text-brand-text mb-1.5 block">
+                      Alternate Phone (Optional)
+                    </label>
+                    <Input
+                      {...register('alternatePhone')}
+                      className={cn(errors.alternatePhone && 'border-brand-error')}
+                      placeholder="Alternate contact number"
+                    />
+                    {errors.alternatePhone && (
+                      <p className="text-xs text-brand-error mt-1">{errors.alternatePhone.message}</p>
                     )}
                   </div>
                   <div>

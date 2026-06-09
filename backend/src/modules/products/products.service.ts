@@ -13,6 +13,7 @@ import { StoreStockService } from '../store-stock/store-stock.service';
 import { StoresService } from '../stores/stores.service';
 import { ProductRepository } from './repositories/product.repository';
 import { UcmService } from '../ucm/ucm.service';
+import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class ProductsService implements OnModuleInit {
@@ -24,6 +25,7 @@ export class ProductsService implements OnModuleInit {
     private readonly storesService: StoresService,
     @Inject(forwardRef(() => UcmService))
     private readonly ucmService: UcmService,
+    private readonly redisService: RedisService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -101,6 +103,7 @@ export class ProductsService implements OnModuleInit {
     }
 
     void this.ucmService.syncProductById(saved._id.toString(), 'product_created');
+    this.clearChatbotCache();
 
     return saved as Product;
   }
@@ -303,6 +306,7 @@ export class ProductsService implements OnModuleInit {
     });
 
     void this.ucmService.syncProductById(product._id.toString(), 'product_updated');
+    this.clearChatbotCache();
     await this.overlayStoreStock([product as unknown as { _id: Types.ObjectId; stock?: number; variants?: Array<{ sku: string; stock?: number }> }]);
     return product as Product;
   }
@@ -331,6 +335,7 @@ export class ProductsService implements OnModuleInit {
       variantStocks: dto.variantSku ? [{ variantSku: dto.variantSku, stock: dto.stock }] : [],
     });
     void this.ucmService.syncProductById(saved._id.toString(), 'stock_updated');
+    this.clearChatbotCache();
     await this.overlayStoreStock([saved as unknown as { _id: Types.ObjectId; stock?: number; variants?: Array<{ sku: string; stock?: number }> }]);
     return saved as Product;
   }
@@ -358,6 +363,7 @@ export class ProductsService implements OnModuleInit {
     }
 
     void this.ucmService.syncProductById(productId, 'stock_decremented');
+    this.clearChatbotCache();
   }
 
   async incrementTotalSold(productId: string, quantity: number): Promise<void> {
@@ -391,6 +397,7 @@ export class ProductsService implements OnModuleInit {
     if (product) {
       await this.ucmService.archiveDeletedProduct(product, 'product_deleted');
     }
+    this.clearChatbotCache();
   }
 
   async deleteMany(ids: string[]): Promise<{ deletedCount: number }> {
@@ -411,6 +418,7 @@ export class ProductsService implements OnModuleInit {
       { _id: { $in: ids } },
       { $set: { category: catId } },
     ).exec();
+    this.clearChatbotCache();
     return { modifiedCount: result.modifiedCount };
   }
 
@@ -507,6 +515,10 @@ export class ProductsService implements OnModuleInit {
       }
     }
 
+    if (created > 0) {
+      this.clearChatbotCache();
+    }
+
     return { created, skipped, errors };
   }
 
@@ -515,5 +527,11 @@ export class ProductsService implements OnModuleInit {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '');
+  }
+
+  private clearChatbotCache(): void {
+    this.redisService.delPattern('chatbot:tool:*').catch((err) => {
+      this.logger.warn(`Failed to clear chatbot cache: ${err.message}`);
+    });
   }
 }

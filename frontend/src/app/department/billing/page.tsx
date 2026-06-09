@@ -106,14 +106,30 @@ export default function BillingDashboardPage() {
             return (
               <Card key={order._id} className="border-sky-50 shadow-sm">
                 <CardContent className="p-4 space-y-3">
-                  <div className="flex items-start justify-end gap-2">
+                  <div className="flex items-start justify-between gap-2">
+                    {order.source ? (
+                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none capitalize ${
+                        order.source === 'whatsapp' ? 'bg-green-50 text-green-700 border border-green-200' :
+                        order.source === 'website' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                        order.source === 'phone' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                        order.source === 'vayepar' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
+                        'bg-gray-50 text-gray-700 border border-gray-200'
+                      }`}>
+                        {order.source}
+                      </span>
+                    ) : (
+                      <span />
+                    )}
                     <Badge className={getStatusColor(order.status)}>{order.status.replace(/_/g, ' ').toUpperCase()}</Badge>
                   </div>
 
                   <div className="space-y-0.5">
                     <p className="text-sm font-semibold text-gray-800">
                       {order.shippingAddress.name}
-                      <span className="font-normal text-gray-500 text-xs ml-1">· {order.shippingAddress.phone}</span>
+                      <span className="font-normal text-gray-500 text-xs ml-1">
+                        · {order.shippingAddress.phone}
+                        {order.shippingAddress.alternatePhone && ` / ${order.shippingAddress.alternatePhone}`}
+                      </span>
                     </p>
                     <p className="text-xs text-gray-400 line-clamp-2">
                       {order.shippingAddress.street}, {order.shippingAddress.city}, {order.shippingAddress.state} – {order.shippingAddress.pincode}

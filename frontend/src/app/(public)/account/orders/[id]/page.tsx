@@ -579,7 +579,10 @@ export default function OrderDetailPage() {
             </h2>
             <div className="font-body text-sm text-brand-text space-y-1">
               <p className="font-medium">{order.shippingAddress.name}</p>
-              <p>{order.shippingAddress.phone}</p>
+              <p>
+                {order.shippingAddress.phone}
+                {order.shippingAddress.alternatePhone && ` / ${order.shippingAddress.alternatePhone}`}
+              </p>
               <p>{order.shippingAddress.street}</p>
               <p>
                 {order.shippingAddress.city}, {order.shippingAddress.state} -{' '}

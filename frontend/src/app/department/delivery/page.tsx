@@ -190,6 +190,7 @@ function ConfirmDeliveryDialog({
             <div className="flex items-center gap-1.5 text-xs text-gray-700">
               <Phone className="h-3 w-3 text-gray-400" />
               {order.shippingAddress.name} · {order.shippingAddress.phone}
+              {order.shippingAddress.alternatePhone && ` / ${order.shippingAddress.alternatePhone}`}
             </div>
             <div className="flex items-start gap-1.5 text-xs text-gray-500">
               <MapPin className="h-3 w-3 text-gray-400 mt-0.5 shrink-0" />
@@ -564,9 +565,25 @@ export default function DeliveryDashboardPage() {
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div className="space-y-0.5 min-w-0">
-                            <p className="font-semibold text-gray-900 text-sm">{o.orderNumber}</p>
+                            <p className="font-semibold text-gray-900 text-sm flex items-center gap-1.5">
+                              <span>{o.orderNumber}</span>
+                              {o.source && (
+                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium leading-none capitalize ${
+                                  o.source === 'whatsapp' ? 'bg-green-50 text-green-700 border border-green-200' :
+                                  o.source === 'website' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                                  o.source === 'phone' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                                  o.source === 'vayepar' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
+                                  'bg-gray-50 text-gray-700 border border-gray-200'
+                                }`}>
+                                  {o.source}
+                                </span>
+                              )}
+                            </p>
                             <p className="text-sm text-gray-700 truncate">{o.shippingAddress.name}</p>
-                            <p className="text-xs text-gray-500">{o.shippingAddress.phone}</p>
+                            <p className="text-xs text-gray-500">
+                              {o.shippingAddress.phone}
+                              {o.shippingAddress.alternatePhone && ` / ${o.shippingAddress.alternatePhone}`}
+                            </p>
                             <p className="text-xs text-gray-400 truncate">
                               {o.shippingAddress.street}, {o.shippingAddress.city}
                             </p>
@@ -610,14 +627,30 @@ export default function DeliveryDashboardPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs text-gray-400">Order</p>
-                  <p className="font-bold text-gray-900">{order.orderNumber}</p>
+                  <p className="font-bold text-gray-900 flex items-center gap-1.5">
+                    <span>{order.orderNumber}</span>
+                    {order.source && (
+                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium leading-none capitalize ${
+                        order.source === 'whatsapp' ? 'bg-green-50 text-green-700 border border-green-200' :
+                        order.source === 'website' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                        order.source === 'phone' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                        order.source === 'vayepar' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
+                        'bg-gray-50 text-gray-700 border border-gray-200'
+                      }`}>
+                        {order.source}
+                      </span>
+                    )}
+                  </p>
                 </div>
                 <p className="font-bold text-gray-900">{formatCurrency(order.total)}</p>
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-800">
                   {order.shippingAddress.name}{' '}
-                  <span className="text-gray-400 font-normal text-xs">· {order.shippingAddress.phone}</span>
+                  <span className="text-gray-400 font-normal text-xs">
+                    · {order.shippingAddress.phone}
+                    {order.shippingAddress.alternatePhone && ` / ${order.shippingAddress.alternatePhone}`}
+                  </span>
                 </p>
                 <p className="text-xs text-gray-500 mt-0.5">
                   {order.shippingAddress.street}, {order.shippingAddress.city}, {order.shippingAddress.state} – {order.shippingAddress.pincode}

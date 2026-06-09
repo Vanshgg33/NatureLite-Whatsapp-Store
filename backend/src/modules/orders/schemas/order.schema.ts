@@ -51,6 +51,9 @@ export class ShippingAddress {
   @Prop({ required: true })
   phone: string;
 
+  @Prop()
+  alternatePhone?: string;
+
   @Prop({ required: true })
   street: string;
 
@@ -104,6 +107,9 @@ export class Order {
 
   @Prop({ type: ShippingAddressSchema, required: true })
   shippingAddress: ShippingAddress;
+
+  @Prop({ default: 'website', index: true })
+  source: string;
 
   @Prop({ default: 'placed', index: true })
   status: OrderStatus;

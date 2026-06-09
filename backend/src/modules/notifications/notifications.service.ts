@@ -6,6 +6,7 @@ import { MessageLogRepository } from '../whatsapp/repositories/message-log.repos
 import { Order } from '../orders/schemas/order.schema';
 import type { OrderStatus } from '../../common/constants/order-status';
 import { QUEUE_NOTIFICATIONS, NOTIFICATION_JOBS, DEFAULT_JOB_OPTIONS } from '../queues/queues.constants';
+import { RedisService } from '../redis/redis.service';
 
 interface NotificationPayload {
   phone: string;
@@ -23,7 +24,6 @@ interface NotificationPayload {
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
-  private readonly sentNotifications = new Set<string>();
   private readonly recentEvents = new Map<string, number>();
   private static readonly RECENT_EVENT_TTL_MS = 5 * 60 * 1000;
 
@@ -31,6 +31,7 @@ export class NotificationsService {
     private readonly messageLogRepository: MessageLogRepository,
     private whatsappService: WhatsAppService,
     @InjectQueue(QUEUE_NOTIFICATIONS) private readonly notifQueue: Queue,
+    private readonly redisService: RedisService,
   ) {}
 
   private serializeOrder(order: Order | any): Record<string, any> {
@@ -713,8 +714,20 @@ export class NotificationsService {
   }
 
   private async isDuplicate(key: string): Promise<boolean> {
-    if (this.sentNotifications.has(key)) {
-      return true;
+    try {
+      const lockKey = `lock:notif:${key}`;
+      const acquired = await this.redisService.client.set(
+        lockKey,
+        '1',
+        'EX',
+        60, // 60 seconds lock to prevent concurrent races
+        'NX',
+      );
+      if (!acquired) {
+        return true;
+      }
+    } catch (err) {
+      this.logger.warn(`Redis deduplication check failed: ${(err as Error).message}`);
     }
 
     const existing = await this.messageLogRepository.findOneByIdempotencyKey(key);
@@ -722,11 +735,7 @@ export class NotificationsService {
   }
 
   private markAsSent(key: string): void {
-    this.sentNotifications.add(key);
-
-    setTimeout(() => {
-      this.sentNotifications.delete(key);
-    }, 60 * 60 * 1000);
+    // No-op: Redis locks are atomically set in isDuplicate
   }
 
   private isRecentlySent(input: { entityId: string; type: string }): boolean {

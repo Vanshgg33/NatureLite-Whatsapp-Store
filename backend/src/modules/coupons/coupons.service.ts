@@ -10,6 +10,7 @@ import {
   CouponQueryDto,
 } from './dto/coupon.dto';
 import { PaginatedResult } from '../../common/types/pagination.types';
+import { RedisService } from '../redis/redis.service';
 
 export interface CouponValidationResult {
   valid: boolean;
@@ -21,20 +22,25 @@ export interface CouponValidationResult {
 
 @Injectable()
 export class CouponsService {
-  constructor(private readonly couponRepository: CouponRepository) {}
+  constructor(
+    private readonly couponRepository: CouponRepository,
+    private readonly redisService: RedisService,
+  ) {}
 
   async create(dto: CreateCouponDto): Promise<Coupon> {
     const existingCoupon = await this.couponRepository.findOneByCode(dto.code.toUpperCase());
     if (existingCoupon) {
       throw new BadRequestException('Coupon with this code already exists');
     }
-    return this.couponRepository.create({
+    const saved = await this.couponRepository.create({
       ...dto,
       code: dto.code.toUpperCase(),
       allowedUsers: parseObjectIdArray(dto.allowedUsers, 'allowedUsers'),
       allowedCategories: parseObjectIdArray(dto.allowedCategories, 'allowedCategories'),
       allowedProducts: parseObjectIdArray(dto.allowedProducts, 'allowedProducts'),
     } as Partial<Coupon>);
+    this.clearChatbotCache();
+    return saved;
   }
 
   async findAll(query: CouponQueryDto): Promise<PaginatedResult<Coupon>> {
@@ -186,6 +192,7 @@ export class CouponsService {
     if (!coupon) {
       throw new NotFoundException('Coupon not found');
     }
+    this.clearChatbotCache();
     return coupon;
   }
 
@@ -196,9 +203,14 @@ export class CouponsService {
     if (result.deletedCount === 0) {
       throw new NotFoundException('Coupon not found');
     }
+    this.clearChatbotCache();
   }
 
   async getActiveCoupons(): Promise<Coupon[]> {
     return this.couponRepository.findActiveCoupons();
+  }
+
+  private clearChatbotCache(): void {
+    this.redisService.delPattern('chatbot:tool:*').catch(() => {});
   }
 }

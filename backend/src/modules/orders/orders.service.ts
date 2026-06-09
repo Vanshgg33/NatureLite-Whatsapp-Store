@@ -28,6 +28,7 @@ import { UcmService } from '../ucm/ucm.service';
 import { AdminService } from '../admin/admin.service';
 import { MediaService } from '../media/media.service';
 import { UpdateUserDto } from '../users/dto/user.dto';
+import { RedisService } from '../redis/redis.service';
 import {
   CreateOrderDto,
   UpdateOrderStatusDto,
@@ -113,6 +114,7 @@ export class OrdersService implements OnModuleInit {
     private readonly ucmService: UcmService,
     private readonly adminService: AdminService,
     private readonly mediaService: MediaService,
+    private readonly redisService: RedisService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -399,6 +401,7 @@ export class OrdersService implements OnModuleInit {
         user: userObjId,
         items: orderItems,
         shippingAddress: dto.shippingAddress,
+        source: dto.source || 'website',
         paymentMethod: dto.paymentMethod,
         subtotal,
         discount,
@@ -566,6 +569,7 @@ export class OrdersService implements OnModuleInit {
       }
 
       this.logger.log(`event_order_placed order=${savedOrder._id.toString()} user=${userId}`);
+      this.clearChatbotCache();
 
       return savedOrder;
     } catch (error) {
@@ -650,6 +654,7 @@ export class OrdersService implements OnModuleInit {
       notes: dto.notes,
       walletAmount: dto.walletAmount,
       idempotencyKey: dto.idempotencyKey,
+      source: dto.source,
     };
 
     return this.create(user._id.toString(), createDto);
@@ -729,6 +734,7 @@ export class OrdersService implements OnModuleInit {
         `Failed to send payment confirmation for ${orderId}: ${err instanceof Error ? err.message : 'unknown'}`,
       );
     }
+    this.clearChatbotCache();
   }
 
   async recordRefundOnOrder(orderId: string, refundAmount: number): Promise<void> {
@@ -747,6 +753,7 @@ export class OrdersService implements OnModuleInit {
       message: `Refund of ₹${refundAmount} initiated`,
     });
     await order.save();
+    this.clearChatbotCache();
   }
 
   private static readonly VALID_TRANSITIONS: Record<string, string[]> = {
@@ -874,6 +881,7 @@ export class OrdersService implements OnModuleInit {
       }
     }
 
+    this.clearChatbotCache();
     return savedOrder;
   }
 
@@ -932,6 +940,7 @@ export class OrdersService implements OnModuleInit {
         .catch((err) => this.logger.warn(`Failed to send packed notification for ${saved.orderNumber}: ${err.message}`));
     }
 
+    this.clearChatbotCache();
     return saved;
   }
 
@@ -1555,6 +1564,7 @@ export class OrdersService implements OnModuleInit {
 
     if (released > 0) {
       this.logger.log(`abandoned_prepaid_released count=${released}`);
+      this.clearChatbotCache();
     }
   }
 
@@ -1582,5 +1592,11 @@ export class OrdersService implements OnModuleInit {
 
     await this.notificationsService.sendInvoiceDocument(order.orderNumber, phone, order.invoiceUrl);
     return { sent: true };
+  }
+
+  private clearChatbotCache(): void {
+    this.redisService.delPattern('chatbot:tool:*').catch((err) => {
+      this.logger.warn(`Failed to clear chatbot cache: ${err.message}`);
+    });
   }
 }

@@ -189,7 +189,7 @@ export default (): Configuration => ({
         port: parseInt(parsed.port || '6379', 10),
         username: parsed.username || 'default',
         password: parsed.password || undefined,
-        tls: parsed.protocol === 'rediss:' || process.env.REDIS_TLS === 'true',
+        tls: parsed.protocol === 'rediss:',
       };
     }
     return {

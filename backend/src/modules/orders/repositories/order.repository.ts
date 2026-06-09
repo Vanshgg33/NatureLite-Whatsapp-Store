@@ -93,7 +93,7 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
       filter.status = status;
     }
     if (paymentStatus) filter.paymentStatus = paymentStatus;
-    const searchOr = buildSearchOrFilter(search, ['orderNumber', 'shippingAddress.name', 'shippingAddress.phone']);
+    const searchOr = buildSearchOrFilter(search, ['orderNumber', 'shippingAddress.name', 'shippingAddress.phone', 'shippingAddress.alternatePhone']);
     if (searchOr.length) filter.$or = searchOr;
     const createdAtFilter = buildCreatedAtFilter(startDate, endDate);
     if (createdAtFilter) filter.createdAt = createdAtFilter;
@@ -156,10 +156,14 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
     if (startDate || endDate) {
       matchStage.createdAt = {};
       if (startDate) {
-        (matchStage.createdAt as Record<string, Date>).$gte = startDate;
+        const s = new Date(startDate);
+        s.setUTCHours(0, 0, 0, 0);
+        (matchStage.createdAt as Record<string, Date>).$gte = s;
       }
       if (endDate) {
-        (matchStage.createdAt as Record<string, Date>).$lte = endDate;
+        const e = new Date(endDate);
+        e.setUTCHours(23, 59, 59, 999);
+        (matchStage.createdAt as Record<string, Date>).$lte = e;
       }
     }
     const pipeline: PipelineStage[] = [

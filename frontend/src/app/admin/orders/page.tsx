@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Eye, Plus, Trash2, ShoppingCart, MessageCircle, Globe, Download, Send, Loader2, Edit, Phone } from 'lucide-react';
+import { Search, Eye, Plus, Trash2, ShoppingCart, MessageCircle, Globe, Download, Send, Loader2, Edit, Phone, Receipt } from 'lucide-react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -123,7 +123,7 @@ export default function OrdersPage() {
 
   // Create order dialog
   const [showCreate, setShowCreate] = useState(false);
-  const [source, setSource] = useState<'whatsapp' | 'website' | 'phone'>('whatsapp');
+  const [source, setSource] = useState<'whatsapp' | 'website' | 'phone' | 'vayepar'>('whatsapp');
   const [custName, setCustName] = useState('');
   const [custPhone, setCustPhone] = useState('');
   const [addrStreet, setAddrStreet] = useState('');
@@ -179,8 +179,9 @@ export default function OrdersPage() {
         phone: custPhone.trim(),
         name: custName.trim(),
         notes: notes.trim()
-          ? `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : 'Phone'}] ${notes.trim()}`
-          : `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : 'Phone'}] Order created by admin`,
+          ? `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : source === 'phone' ? 'Phone' : 'Vayepar'}] ${notes.trim()}`
+          : `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : source === 'phone' ? 'Phone' : 'Vayepar'}] Order created by admin`,
+        source,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
@@ -452,7 +453,18 @@ export default function OrdersPage() {
                               <p className="text-xs text-muted-foreground mt-0.5 leading-tight">
                                 {order.shippingAddress.city}, {order.shippingAddress.state} – {order.shippingAddress.pincode}
                               </p>
-                              <p className="text-[10px] text-muted-foreground/60 mt-0.5">{order.orderNumber}</p>
+                              <p className="text-[10px] text-muted-foreground/60 mt-0.5 flex items-center gap-1.5">
+                                <span>{order.orderNumber}</span>
+                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium leading-none ${
+                                  order.source === 'whatsapp' ? 'bg-green-50 text-green-700 border border-green-200' :
+                                  order.source === 'website' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                                  order.source === 'phone' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                                  order.source === 'vayepar' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
+                                  'bg-gray-50 text-gray-700 border border-gray-200'
+                                }`}>
+                                  {order.source ? order.source.toUpperCase() : 'WEBSITE'}
+                                </span>
+                              </p>
                             </div>
                           </TableCell>
                           <TableCell>{order.items.length} items</TableCell>
@@ -559,7 +571,7 @@ export default function OrdersPage() {
             {/* Source picker */}
             <div>
               <label className="text-sm font-medium block mb-2">Order Source</label>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <button
                   type="button"
                   onClick={() => setSource('whatsapp')}
@@ -595,6 +607,18 @@ export default function OrdersPage() {
                 >
                   <Phone className="h-4 w-4" />
                   Phone
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSource('vayepar')}
+                  className={`flex items-center justify-center gap-2 rounded-lg border-2 py-3 text-sm font-medium transition-colors ${
+                    source === 'vayepar'
+                      ? 'border-purple-500 bg-purple-50 text-purple-700'
+                      : 'border-muted bg-background text-muted-foreground hover:border-muted-foreground/40'
+                  }`}
+                >
+                  <Receipt className="h-4 w-4" />
+                  Vyapar
                 </button>
               </div>
             </div>

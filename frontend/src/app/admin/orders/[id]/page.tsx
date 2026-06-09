@@ -74,6 +74,11 @@ export default function AdminOrderDetailPage() {
             Payment: {order.paymentStatus}
           </Badge>
           <Badge variant="outline">{order.paymentMethod.toUpperCase()}</Badge>
+          {order.source && (
+            <Badge variant="secondary" className="capitalize">
+              Source: {order.source}
+            </Badge>
+          )}
         </div>
 
         <div className="grid gap-6 md:grid-cols-[2fr,1.5fr]">

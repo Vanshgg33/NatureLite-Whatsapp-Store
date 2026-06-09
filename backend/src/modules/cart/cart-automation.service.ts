@@ -8,6 +8,7 @@ import { OrdersService } from '../orders/orders.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SettingsService } from '../settings/settings.service';
 import { QUEUE_CART_AUTOMATION, CART_JOBS, DEFAULT_JOB_OPTIONS } from '../queues/queues.constants';
+import { RedisService } from '../redis/redis.service';
 
 type PopulatedCartUser = {
   _id: Types.ObjectId;
@@ -27,13 +28,30 @@ export class CartAutomationService {
     private readonly notificationsService: NotificationsService,
     private readonly settingsService: SettingsService,
     @InjectQueue(QUEUE_CART_AUTOMATION) private readonly cartQueue: Queue,
+    private readonly redisService: RedisService,
   ) {}
 
   // Every 2 hours: fetch abandoned carts, enqueue one job per cart
   @Cron('0 */2 * * *')
   async runAbandonedCartReminders(): Promise<void> {
-    if (this.isRunning) return;
-    this.isRunning = true;
+    try {
+      const lockKey = 'lock:cron:runAbandonedCartReminders';
+      const acquired = await this.redisService.client.set(
+        lockKey,
+        '1',
+        'EX',
+        600, // 10 minutes lock
+        'NX',
+      );
+      if (!acquired) {
+        this.logger.debug('Abandoned cart reminders cron is already running on another instance');
+        return;
+      }
+    } catch (err) {
+      this.logger.warn(`Failed to acquire Redis lock for cron: ${(err as Error).message}`);
+      if (this.isRunning) return;
+      this.isRunning = true;
+    }
 
     try {
       const waSettings = await this.settingsService.getWhatsAppSettings();
@@ -43,7 +61,10 @@ export class CartAutomationService {
           ? waSettings.abandonedCartReminderDelayMinutes
           : 60;
 
-      if (!remindersEnabled) return;
+      if (!remindersEnabled) {
+        this.isRunning = false;
+        return;
+      }
 
       const carts = await this.cartService.getAbandonedCarts(delayMinutes, 200);
       let enqueued = 0;
