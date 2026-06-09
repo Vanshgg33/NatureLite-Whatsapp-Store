@@ -114,14 +114,16 @@ function PhotoUploadBox({ label, hint, required, url, uploading, onFile, onClear
         </button>
       )}
 
-      {/* Disabled when a photo is already captured to prevent stray taps from re-opening the camera */}
+      {/* capture="environment" is intentionally omitted — it forces Chrome Android to launch
+          the native camera as a separate Activity, which kills the browser renderer on low-memory
+          phones and causes a full page reload. Without capture, Chrome opens an in-process file
+          picker (bottom sheet) where the user can still tap "Camera", keeping the renderer alive. */}
       <input
         key={inputKey}
         ref={inputRef}
         type="file"
         className="hidden"
         accept="image/*"
-        capture="environment"
         disabled={uploading || !!url}
         onChange={handleChange}
       />
