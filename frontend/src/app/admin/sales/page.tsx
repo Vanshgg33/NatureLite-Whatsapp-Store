@@ -1692,7 +1692,7 @@ export default function SalesPage() {
                   paymentProofUrl: paymentMethod === 'upi' ? upiProofUrl || undefined : undefined,
                   notes: notes || undefined,
                   reminderMessage: reminderMessage || undefined,
-                  reminderDueAt: reminderMessage && reminderDueAt ? reminderDueAt : undefined,
+                  reminderDueAt: reminderDueAt || undefined,
                 };
                 resetForm();
                 setShowLogSale(false);

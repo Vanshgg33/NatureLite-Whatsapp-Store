@@ -351,11 +351,21 @@ export class AnalyticsService {
         { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$total' } } },
       ]),
       storeSaleModel.aggregate([
-        { $match: { createdAt: { $gte: today } } },
+        {
+          $addFields: {
+            effectiveDate: { $ifNull: ['$dueDate', '$createdAt'] },
+          },
+        },
+        { $match: { effectiveDate: { $gte: today } } },
         { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$total' } } },
       ]),
       storeSaleModel.aggregate([
-        { $match: { createdAt: { $gte: thisMonth } } },
+        {
+          $addFields: {
+            effectiveDate: { $ifNull: ['$dueDate', '$createdAt'] },
+          },
+        },
+        { $match: { effectiveDate: { $gte: thisMonth } } },
         { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$total' } } },
       ]),
       this.userRepository.countDocuments(),
@@ -578,11 +588,16 @@ export class AnalyticsService {
         },
       ]),
       this.storeSaleRepository.getModel().aggregate([
-        { $match: { createdAt: { $gte: startDate } } },
+        {
+          $addFields: {
+            effectiveDate: { $ifNull: ['$dueDate', '$createdAt'] },
+          },
+        },
+        { $match: { effectiveDate: { $gte: startDate } } },
         {
           $group: {
             _id: {
-              $dateToString: { format: '%Y-%m-%d', date: '$createdAt' },
+              $dateToString: { format: '%Y-%m-%d', date: '$effectiveDate' },
             },
             revenue: { $sum: '$total' },
             sales: { $sum: 1 },
@@ -835,11 +850,21 @@ export class AnalyticsService {
     const storeStockModel = this.storeStockRepository.getModel();
     const [todaySales, monthSales] = await Promise.all([
       storeSaleModel.aggregate([
-        { $match: { store: storeObjId, createdAt: { $gte: today } } },
+        {
+          $addFields: {
+            effectiveDate: { $ifNull: ['$dueDate', '$createdAt'] },
+          },
+        },
+        { $match: { store: storeObjId, effectiveDate: { $gte: today } } },
         { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$total' } } },
       ]),
       storeSaleModel.aggregate([
-        { $match: { store: storeObjId, createdAt: { $gte: thisMonth } } },
+        {
+          $addFields: {
+            effectiveDate: { $ifNull: ['$dueDate', '$createdAt'] },
+          },
+        },
+        { $match: { store: storeObjId, effectiveDate: { $gte: thisMonth } } },
         { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$total' } } },
       ]),
     ]);
@@ -867,7 +892,12 @@ export class AnalyticsService {
     today.setHours(0, 0, 0, 0);
 
     return this.storeSaleRepository.getModel().aggregate([
-      { $match: { createdAt: { $gte: today } } },
+      {
+        $addFields: {
+          effectiveDate: { $ifNull: ['$dueDate', '$createdAt'] },
+        },
+      },
+      { $match: { effectiveDate: { $gte: today } } },
       {
         $group: {
           _id: '$store',
@@ -978,9 +1008,14 @@ export class AnalyticsService {
     const storeObjId = parseObjectId(storeId, 'storeId');
     return this.storeSaleRepository.getModel().aggregate([
       {
+        $addFields: {
+          effectiveDate: { $ifNull: ['$dueDate', '$createdAt'] },
+        },
+      },
+      {
         $match: {
           store: storeObjId,
-          createdAt: { $gte: startDate, $lte: endDate },
+          effectiveDate: { $gte: startDate, $lte: endDate },
         },
       },
       { $unwind: '$items' },
@@ -1003,7 +1038,12 @@ export class AnalyticsService {
     limit: number = 10,
   ): Promise<any[]> {
     return this.storeSaleRepository.getModel().aggregate([
-      { $match: { createdAt: { $gte: startDate, $lte: endDate } } },
+      {
+        $addFields: {
+          effectiveDate: { $ifNull: ['$dueDate', '$createdAt'] },
+        },
+      },
+      { $match: { effectiveDate: { $gte: startDate, $lte: endDate } } },
       { $unwind: '$items' },
       {
         $group: {
@@ -1032,18 +1072,28 @@ export class AnalyticsService {
       const [thisMonth, lastMonth] = await Promise.all([
         storeSaleModel.aggregate([
           {
+            $addFields: {
+              effectiveDate: { $ifNull: ['$dueDate', '$createdAt'] },
+            },
+          },
+          {
             $match: {
               store: store._id,
-              createdAt: { $gte: thisMonthStart },
+              effectiveDate: { $gte: thisMonthStart },
             },
           },
           { $group: { _id: null, revenue: { $sum: '$total' }, count: { $sum: 1 } } },
         ]),
         storeSaleModel.aggregate([
           {
+            $addFields: {
+              effectiveDate: { $ifNull: ['$dueDate', '$createdAt'] },
+            },
+          },
+          {
             $match: {
               store: store._id,
-              createdAt: { $gte: lastMonthStart, $lt: thisMonthStart },
+              effectiveDate: { $gte: lastMonthStart, $lt: thisMonthStart },
             },
           },
           { $group: { _id: null, revenue: { $sum: '$total' }, count: { $sum: 1 } } },

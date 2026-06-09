@@ -11,7 +11,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Types, Connection } from 'mongoose';
 import * as crypto from 'crypto';
-import { Order, OrderDocument, OrderItem, OrderStatus } from './schemas/order.schema';
+import { Order, OrderDocument, OrderItem, OrderStatus, PaymentStatus, PaymentMethod } from './schemas/order.schema';
 import { OrderRepository } from './repositories/order.repository';
 import { CartService } from '../cart/cart.service';
 import { ProductsService } from '../products/products.service';
@@ -39,6 +39,7 @@ import {
   ReorderDto,
   UpdateDeliveryWorkflowDto,
   GuestCreateOrderDto,
+  UpdateOrderDto,
 } from './dto/order.dto';
 import type { DeliveryWorkflowMetadata, DeliveryWorkflowStep, OrderMetadata, TimelineMetadata } from '../../common/types/order-types';
 import { PaginatedResult } from '../../common/types/pagination.types';
@@ -1144,6 +1145,51 @@ export class OrdersService implements OnModuleInit {
     if (dto.trackingUrl) order.trackingUrl = dto.trackingUrl;
     if (dto.expectedDeliveryDate) {
       order.expectedDeliveryDate = new Date(dto.expectedDeliveryDate);
+    }
+
+    return order.save();
+  }
+
+  async updateOrder(id: string, dto: UpdateOrderDto): Promise<Order> {
+    const idObj = parseObjectId(id, 'id');
+    const order = await this.orderRepository.findById(idObj);
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    if (dto.status && order.status !== dto.status) {
+      order.status = dto.status as OrderStatus;
+      this.pushTimelineEntry(order, {
+        status: order.status,
+        message: `Order status updated to ${dto.status} via admin edit`,
+      });
+
+      if (dto.status === 'out_for_delivery') {
+        order.outForDeliveryAt = new Date();
+      } else if (dto.status === 'delivered') {
+        order.deliveredAt = new Date();
+      }
+    }
+
+    if (dto.paymentStatus) {
+      order.paymentStatus = dto.paymentStatus as PaymentStatus;
+    }
+    if (dto.paymentMethod) {
+      order.paymentMethod = dto.paymentMethod as PaymentMethod;
+    }
+    if (dto.notes !== undefined) {
+      order.notes = dto.notes;
+    }
+    if (dto.adminNotes !== undefined) {
+      order.adminNotes = dto.adminNotes;
+    }
+
+    if (dto.shippingAddress) {
+      order.shippingAddress = {
+        ...((order.shippingAddress as any).toObject?.() || order.shippingAddress),
+        ...dto.shippingAddress,
+      };
     }
 
     return order.save();

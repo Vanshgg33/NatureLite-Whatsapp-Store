@@ -79,9 +79,14 @@ export class StoreSaleRepository extends BaseRepository<StoreSaleDocument> {
     const storeObjId = parseObjectId(storeId, 'storeId');
     const pipeline: PipelineStage[] = [
       {
+        $addFields: {
+          effectiveDate: { $ifNull: ['$dueDate', '$createdAt'] },
+        },
+      },
+      {
         $match: {
           store: storeObjId,
-          createdAt: { $gte: startDate, $lte: endDate },
+          effectiveDate: { $gte: startDate, $lte: endDate },
           $or: [{ voidedAt: { $exists: false } }, { voidedAt: null }],
         },
       },
@@ -135,8 +140,13 @@ export class StoreSaleRepository extends BaseRepository<StoreSaleDocument> {
 
     const pipeline: PipelineStage[] = [
       {
+        $addFields: {
+          effectiveDate: { $ifNull: ['$dueDate', '$createdAt'] },
+        },
+      },
+      {
         $match: {
-          createdAt: { $gte: startDate },
+          effectiveDate: { $gte: startDate },
           $or: [{ voidedAt: { $exists: false } }, { voidedAt: null }],
         },
       },
@@ -144,7 +154,7 @@ export class StoreSaleRepository extends BaseRepository<StoreSaleDocument> {
         $group: {
           _id: {
             store: '$store',
-            date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+            date: { $dateToString: { format: '%Y-%m-%d', date: '$effectiveDate' } },
           },
           revenue: { $sum: '$total' },
           sales: { $sum: 1 },
@@ -211,10 +221,31 @@ export class StoreSaleRepository extends BaseRepository<StoreSaleDocument> {
   }): Record<string, unknown> {
     const filter: Record<string, unknown> = {};
     if (opts.saleType) filter.saleType = opts.saleType;
-    const createdAtFilter = buildCreatedAtFilter(opts.startDate, opts.endDate);
-    if (createdAtFilter) filter.createdAt = createdAtFilter;
+    const dateFilter = buildCreatedAtFilter(opts.startDate, opts.endDate);
+    if (dateFilter) {
+      filter.$or = [
+        {
+          dueDate: { ...dateFilter, $exists: true, $ne: null },
+        },
+        {
+          $or: [{ dueDate: { $exists: false } }, { dueDate: null }],
+          createdAt: dateFilter,
+        },
+      ];
+    }
     const searchOr = buildSearchOrFilter(opts.search, ['saleNumber', 'customerName', 'customerPhone']);
-    if (searchOr.length) filter.$or = searchOr;
+    if (searchOr.length) {
+      if (filter.$or) {
+        const existingOr = filter.$or;
+        delete filter.$or;
+        filter.$and = [
+          { $or: existingOr },
+          { $or: searchOr },
+        ];
+      } else {
+        filter.$or = searchOr;
+      }
+    }
     return filter;
   }
 }

@@ -23,6 +23,7 @@ import {
   UpdateDeliveryWorkflowDto,
   GuestCreateOrderDto,
   AssignDeliveryDto,
+  UpdateOrderDto,
 } from './dto/order.dto';
 import { Order } from './schemas/order.schema';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -270,6 +271,16 @@ export class OrdersController {
     @Body() dto: UpdateShippingDto,
   ): Promise<Order> {
     return this.ordersService.updateShipping(id, dto);
+  }
+
+  @Put(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  async updateOrder(
+    @Param('id') id: string,
+    @Body() dto: UpdateOrderDto,
+  ): Promise<Order> {
+    return this.ordersService.updateOrder(id, dto);
   }
 
   @Put(':id/priority-tags')

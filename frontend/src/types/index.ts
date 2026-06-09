@@ -802,6 +802,15 @@ export interface ReorderDto {
   shippingAddress?: ShippingAddress;
 }
 
+export interface UpdateOrderDto {
+  status?: string;
+  paymentStatus?: string;
+  paymentMethod?: string;
+  notes?: string;
+  adminNotes?: string;
+  shippingAddress?: Partial<ShippingAddress>;
+}
+
 // ==================== ADDRESS DTO ====================
 export interface AddAddressDto {
   label: string;

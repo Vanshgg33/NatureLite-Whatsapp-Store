@@ -1133,17 +1133,39 @@ export class AdminChatbotService {
         const { from, to } = this.resolveRange(step.params);
         const limit = Number(step.params?.limit ?? 20);
         const [sales, totalAgg] = await Promise.all([
-          this.storeSaleRepository.getModel().find({ createdAt: { $gte: from, $lte: to }, $or: [{ voidedAt: { $exists: false } }, { voidedAt: null }] })
-            .populate('store', 'name code').sort({ createdAt: -1 }).limit(limit).exec(),
+          this.storeSaleRepository.getModel().find({
+            $and: [
+              {
+                $or: [
+                  { dueDate: { $exists: true, $ne: null, $gte: from, $lte: to } },
+                  { $or: [{ dueDate: { $exists: false } }, { dueDate: null }], createdAt: { $gte: from, $lte: to } },
+                ]
+              },
+              {
+                $or: [{ voidedAt: { $exists: false } }, { voidedAt: null }]
+              }
+            ]
+          }).populate('store', 'name code').sort({ createdAt: -1 }).limit(limit).exec(),
           this.storeSaleRepository.getModel().aggregate([
-            { $match: { createdAt: { $gte: from, $lte: to }, $or: [{ voidedAt: { $exists: false } }, { voidedAt: null }] } },
+            {
+              $addFields: {
+                effectiveDate: { $ifNull: ['$dueDate', '$createdAt'] },
+              },
+            },
+            {
+              $match: {
+                effectiveDate: { $gte: from, $lte: to },
+                $or: [{ voidedAt: { $exists: false } }, { voidedAt: null }],
+              },
+            },
             { $group: { _id: null, totalRevenue: { $sum: '$total' }, count: { $sum: 1 }, walkIn: { $sum: { $cond: [{ $eq: ['$saleType', 'walk_in'] }, 1, 0] } }, delivery: { $sum: { $cond: [{ $eq: ['$saleType', 'delivery'] }, 1, 0] } } } },
           ]).exec(),
         ]);
         const agg = totalAgg[0] || { totalRevenue: 0, count: 0, walkIn: 0, delivery: 0 };
         const recentLines = sales.map((s: any) => {
           const store = (s.store as any)?.name || 'Unknown Store';
-          return `- **#${s.saleNumber}** | ${store} | ${s.saleType} | ₹${s.total.toLocaleString('en-IN')} | ${s.customerName || 'Walk-in'} | ${s.paymentMethod} | ${new Date(s.createdAt).toLocaleDateString('en-IN')}`;
+          const displayDate = s.dueDate || s.createdAt;
+          return `- **#${s.saleNumber}** | ${store} | ${s.saleType} | ₹${s.total.toLocaleString('en-IN')} | ${s.customerName || 'Walk-in'} | ${s.paymentMethod} | ${new Date(displayDate).toLocaleDateString('en-IN')}`;
         }).join('\n');
         return `[RAG: get_store_sales (${from.toLocaleDateString('en-IN')} – ${to.toLocaleDateString('en-IN')})]\n**${agg.count}** sales | ₹${(agg.totalRevenue || 0).toLocaleString('en-IN')} revenue | Walk-in: ${agg.walkIn} | Delivery: ${agg.delivery}\n\n${recentLines || 'No store sales in this period.'}`;
       }

@@ -96,6 +96,9 @@ export class StoreSale {
   @Prop()
   voidedReason?: string;
 
+  @Prop()
+  dueDate?: Date;
+
   @Prop({ type: Object, default: {} })
   metadata: Record<string, unknown>;
 

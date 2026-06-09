@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Eye, Plus, Trash2, ShoppingCart, MessageCircle, Globe, Download, Send, Loader2 } from 'lucide-react';
+import { Search, Eye, Plus, Trash2, ShoppingCart, MessageCircle, Globe, Download, Send, Loader2, Edit, Phone } from 'lucide-react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -57,6 +57,8 @@ type ProductRow = {
   variantSku?: string;
   variantName?: string;
   price: number;
+  stock: number;
+  trackStock: boolean;
 };
 
 function flattenProductRows(products: Product[]): ProductRow[] {
@@ -65,10 +67,24 @@ function flattenProductRows(products: Product[]): ProductRow[] {
     const activeVariants = (p.variants ?? []).filter((v) => v.isActive);
     if (activeVariants.length > 0) {
       for (const v of activeVariants) {
-        rows.push({ productId: p._id, name: p.name, variantSku: v.sku, variantName: v.name, price: v.price });
+        rows.push({
+          productId: p._id,
+          name: p.name,
+          variantSku: v.sku,
+          variantName: v.name,
+          price: v.price,
+          stock: v.stock ?? 0,
+          trackStock: p.trackStock !== false,
+        });
       }
     } else {
-      rows.push({ productId: p._id, name: p.name, price: p.price });
+      rows.push({
+        productId: p._id,
+        name: p.name,
+        price: p.price,
+        stock: p.stock ?? 0,
+        trackStock: p.trackStock !== false,
+      });
     }
   }
   return rows;
@@ -82,14 +98,32 @@ export default function OrdersPage() {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
   const [status, setStatus] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [page, setPage] = useState(1);
 
   const [billLoadingId, setBillLoadingId] = useState<string | null>(null);
   const [sendLoadingId, setSendLoadingId] = useState<string | null>(null);
 
+  // Edit order state
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [editStatus, setEditStatus] = useState('');
+  const [editPaymentStatus, setEditPaymentStatus] = useState('');
+  const [editPaymentMethod, setEditPaymentMethod] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [editAdminNotes, setEditAdminNotes] = useState('');
+  const [editShipName, setEditShipName] = useState('');
+  const [editShipPhone, setEditShipPhone] = useState('');
+  const [editShipStreet, setEditShipStreet] = useState('');
+  const [editShipLandmark, setEditShipLandmark] = useState('');
+  const [editShipCity, setEditShipCity] = useState('');
+  const [editShipState, setEditShipState] = useState('');
+  const [editShipPincode, setEditShipPincode] = useState('');
+  const [editError, setEditError] = useState('');
+
   // Create order dialog
   const [showCreate, setShowCreate] = useState(false);
-  const [source, setSource] = useState<'whatsapp' | 'website'>('whatsapp');
+  const [source, setSource] = useState<'whatsapp' | 'website' | 'phone'>('whatsapp');
   const [custName, setCustName] = useState('');
   const [custPhone, setCustPhone] = useState('');
   const [addrStreet, setAddrStreet] = useState('');
@@ -106,8 +140,18 @@ export default function OrdersPage() {
   const [createError, setCreateError] = useState('');
 
   const { data: ordersData, isLoading, isFetching } = useQuery({
-    queryKey: ['orders', page, debouncedSearch, status],
-    queryFn: () => api.getOrders({ page, limit: 20, search: debouncedSearch, status: (status || undefined) as OrderStatus | undefined, sortBy: 'updatedAt', sortOrder: 'desc' }),
+    queryKey: ['orders', page, debouncedSearch, status, startDate, endDate],
+    queryFn: () =>
+      api.getOrders({
+        page,
+        limit: 20,
+        search: debouncedSearch,
+        status: (status || undefined) as OrderStatus | undefined,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+        sortBy: 'updatedAt',
+        sortOrder: 'desc',
+      }),
     placeholderData: (prev) => prev,
   });
 
@@ -135,8 +179,8 @@ export default function OrdersPage() {
         phone: custPhone.trim(),
         name: custName.trim(),
         notes: notes.trim()
-          ? `[${source === 'whatsapp' ? 'WhatsApp' : 'Website'}] ${notes.trim()}`
-          : `[${source === 'whatsapp' ? 'WhatsApp' : 'Website'}] Order created by admin`,
+          ? `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : 'Phone'}] ${notes.trim()}`
+          : `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : 'Phone'}] Order created by admin`,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
@@ -231,6 +275,60 @@ export default function OrdersPage() {
     addrPincode.trim().length === 6 &&
     cart.length > 0;
 
+  const updateOrderMutation = useMutation({
+    mutationFn: (data: { id: string; payload: any }) => api.updateOrder(data.id, data.payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      toast({ title: 'Order updated', description: 'The order details have been successfully updated.' });
+      setEditingOrder(null);
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Failed to update order';
+      setEditError(msg);
+    },
+  });
+
+  function startEditing(order: Order) {
+    setEditingOrder(order);
+    setEditStatus(order.status || '');
+    setEditPaymentStatus(order.paymentStatus || '');
+    setEditPaymentMethod(order.paymentMethod || '');
+    setEditNotes(order.notes || '');
+    setEditAdminNotes(order.adminNotes || '');
+    setEditShipName(order.shippingAddress?.name || '');
+    setEditShipPhone(order.shippingAddress?.phone || '');
+    setEditShipStreet(order.shippingAddress?.street || '');
+    setEditShipLandmark(order.shippingAddress?.landmark || '');
+    setEditShipCity(order.shippingAddress?.city || '');
+    setEditShipState(order.shippingAddress?.state || '');
+    setEditShipPincode(order.shippingAddress?.pincode || '');
+    setEditError('');
+  }
+
+  function handleSaveEdit() {
+    if (!editingOrder) return;
+    setEditError('');
+    updateOrderMutation.mutate({
+      id: editingOrder._id,
+      payload: {
+        status: editStatus,
+        paymentStatus: editPaymentStatus,
+        paymentMethod: editPaymentMethod,
+        notes: editNotes,
+        adminNotes: editAdminNotes,
+        shippingAddress: {
+          name: editShipName.trim(),
+          phone: editShipPhone.trim(),
+          street: editShipStreet.trim(),
+          landmark: editShipLandmark.trim() || undefined,
+          city: editShipCity.trim(),
+          state: editShipState.trim(),
+          pincode: editShipPincode.trim(),
+        },
+      },
+    });
+  }
+
   return (
     <div>
       <Header title="Orders" description="Manage customer orders" />
@@ -246,7 +344,7 @@ export default function OrdersPage() {
 
         <Card>
           <CardContent className="p-4 sm:pt-6 sm:px-6 sm:pb-6">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
               <div className="relative flex-1 min-w-0 max-w-full sm:max-w-sm">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                 <Input
@@ -258,17 +356,57 @@ export default function OrdersPage() {
                 />
               </div>
 
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                {statusOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">Status:</span>
+                  <select
+                    value={status}
+                    onChange={(e) => { setStatus(e.target.value); setPage(1); }}
+                    className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none"
+                  >
+                    {statusOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">From:</span>
+                  <Input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+                    className="h-10 w-[140px] sm:w-[160px] text-sm text-foreground"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">To:</span>
+                  <Input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+                    className="h-10 w-[140px] sm:w-[160px] text-sm text-foreground"
+                  />
+                </div>
+
+                {(startDate || endDate) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setStartDate('');
+                      setEndDate('');
+                      setPage(1);
+                    }}
+                    className="h-10 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Clear Dates
+                  </Button>
+                )}
+              </div>
             </div>
 
             {isFetching && !isLoading && (
@@ -357,6 +495,14 @@ export default function OrdersPage() {
                               >
                                 {sendLoadingId === order._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                               </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Edit order"
+                                onClick={() => startEditing(order)}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
                               <Link href={`/admin/orders/${order._id}`}>
                                 <Button variant="ghost" size="icon" aria-label="View order">
                                   <Eye className="h-4 w-4" />
@@ -413,7 +559,7 @@ export default function OrdersPage() {
             {/* Source picker */}
             <div>
               <label className="text-sm font-medium block mb-2">Order Source</label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <button
                   type="button"
                   onClick={() => setSource('whatsapp')}
@@ -437,6 +583,18 @@ export default function OrdersPage() {
                 >
                   <Globe className="h-4 w-4" />
                   Website
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSource('phone')}
+                  className={`flex items-center justify-center gap-2 rounded-lg border-2 py-3 text-sm font-medium transition-colors ${
+                    source === 'phone'
+                      ? 'border-amber-500 bg-amber-50 text-amber-700'
+                      : 'border-muted bg-background text-muted-foreground hover:border-muted-foreground/40'
+                  }`}
+                >
+                  <Phone className="h-4 w-4" />
+                  Phone
                 </button>
               </div>
             </div>
@@ -546,6 +704,11 @@ export default function OrdersPage() {
                           {row.name}
                           {row.variantName ? ` · ${row.variantName}` : ''}
                           {row.variantSku ? ` (${row.variantSku})` : ''}
+                          {row.trackStock && (
+                            <span className={`ml-2 text-xs ${row.stock > 0 ? 'text-green-600' : 'text-red-500 font-medium'}`}>
+                              ({row.stock > 0 ? `${row.stock} in stock` : 'Out of stock'})
+                            </span>
+                          )}
                         </span>
                         <span className="text-muted-foreground shrink-0 ml-2">
                           ₹{row.price.toLocaleString()}
@@ -641,6 +804,192 @@ export default function OrdersPage() {
               disabled={!canSubmit || createOrderMutation.isPending}
             >
               {createOrderMutation.isPending ? 'Creating...' : 'Create Order'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Order Dialog */}
+      <Dialog open={editingOrder !== null} onOpenChange={(open) => { if (!open) setEditingOrder(null); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Order {editingOrder?.orderNumber}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-5 py-2">
+            {/* Status options */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-sm font-medium block mb-1">Order Status</label>
+                <select
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value)}
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                >
+                  <option value="placed">Placed</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="preparing">Preparing</option>
+                  <option value="out_for_delivery">Out for Delivery</option>
+                  <option value="delivered">Delivered</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="returned">Returned</option>
+                  <option value="refunded">Refunded</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium block mb-1">Payment Status</label>
+                <select
+                  value={editPaymentStatus}
+                  onChange={(e) => setEditPaymentStatus(e.target.value)}
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                >
+                  <option value="pending">Pending</option>
+                  <option value="paid">Paid</option>
+                  <option value="failed">Failed</option>
+                  <option value="refunded">Refunded</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium block mb-1">Payment Method</label>
+                <select
+                  value={editPaymentMethod}
+                  onChange={(e) => setEditPaymentMethod(e.target.value)}
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                >
+                  <option value="cod">Cash on Delivery (COD)</option>
+                  <option value="prepaid">Prepaid</option>
+                  <option value="upi">UPI</option>
+                  <option value="card">Card</option>
+                  <option value="netbanking">Net Banking</option>
+                  <option value="wallet">Wallet</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium block mb-1">Customer Notes</label>
+                <Textarea
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  placeholder="Notes from customer..."
+                  rows={3}
+                  className="resize-none"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1">Admin Notes</label>
+                <Textarea
+                  value={editAdminNotes}
+                  onChange={(e) => setEditAdminNotes(e.target.value)}
+                  placeholder="Internal notes..."
+                  rows={3}
+                  className="resize-none"
+                />
+              </div>
+            </div>
+
+            {/* Shipping Address */}
+            <div className="space-y-3 border rounded-lg p-3 bg-muted/30">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Shipping Address</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Full Name *</label>
+                  <Input
+                    value={editShipName}
+                    onChange={(e) => setEditShipName(e.target.value)}
+                    placeholder="Recipient Name"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Phone Number *</label>
+                  <Input
+                    value={editShipPhone}
+                    onChange={(e) => setEditShipPhone(e.target.value)}
+                    placeholder="10-digit mobile"
+                    maxLength={10}
+                    inputMode="numeric"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Street / House No. *</label>
+                <Input
+                  value={editShipStreet}
+                  onChange={(e) => setEditShipStreet(e.target.value)}
+                  placeholder="Street details"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Landmark</label>
+                  <Input
+                    value={editShipLandmark}
+                    onChange={(e) => setEditShipLandmark(e.target.value)}
+                    placeholder="Landmark"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">City *</label>
+                  <Input
+                    value={editShipCity}
+                    onChange={(e) => setEditShipCity(e.target.value)}
+                    placeholder="City"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">State *</label>
+                  <Input
+                    value={editShipState}
+                    onChange={(e) => setEditShipState(e.target.value)}
+                    placeholder="State"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Pincode *</label>
+                  <Input
+                    value={editShipPincode}
+                    onChange={(e) => setEditShipPincode(e.target.value)}
+                    placeholder="6-digit pincode"
+                    maxLength={6}
+                    inputMode="numeric"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {editError && (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                {editError}
+              </p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingOrder(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveEdit}
+              disabled={
+                !editShipName.trim() ||
+                editShipPhone.trim().length < 10 ||
+                !editShipStreet.trim() ||
+                !editShipCity.trim() ||
+                !editShipState.trim() ||
+                editShipPincode.trim().length !== 6 ||
+                updateOrderMutation.isPending
+              }
+            >
+              {updateOrderMutation.isPending ? 'Saving...' : 'Save Changes'}
             </Button>
           </DialogFooter>
         </DialogContent>

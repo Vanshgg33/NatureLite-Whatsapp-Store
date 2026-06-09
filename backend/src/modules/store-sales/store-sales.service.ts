@@ -103,17 +103,19 @@ export class StoreSalesService {
       images: dto.images || [],
       notes: dto.notes,
       loggedBy: new Types.ObjectId(loggedBy),
+      dueDate: dto.reminderDueAt ? new Date(dto.reminderDueAt) : undefined,
     };
 
     const sale = await this.storeSaleRepository.create(saleData as Partial<StoreSale>);
 
-    if (dto.reminderMessage && dto.reminderDueAt) {
+    if (dto.reminderDueAt) {
       const dueAt = new Date(dto.reminderDueAt);
       if (!isNaN(dueAt.getTime())) {
+        const msg = dto.reminderMessage || `Sale #${sale.saleNumber} due`;
         await this.remindersService.createForSale(
           sale._id.toString(),
           dto.storeId,
-          dto.reminderMessage,
+          msg,
           dueAt,
           loggedBy,
         );

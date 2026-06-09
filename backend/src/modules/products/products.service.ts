@@ -376,7 +376,9 @@ export class ProductsService implements OnModuleInit {
   }
 
   async searchProducts(searchTerm: string, limit: number = 20): Promise<Product[]> {
-    return this.productRepository.searchByText(searchTerm, limit) as Promise<Product[]>;
+    const products = await this.productRepository.searchByText(searchTerm, limit) as Product[];
+    await this.overlayStoreStock(products as unknown as Array<{ _id: Types.ObjectId; stock?: number; variants?: Array<{ sku: string; stock?: number }> }>);
+    return products;
   }
 
   async delete(id: string): Promise<void> {

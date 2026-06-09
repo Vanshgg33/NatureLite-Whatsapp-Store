@@ -106,11 +106,7 @@ export default function BillingDashboardPage() {
             return (
               <Card key={order._id} className="border-sky-50 shadow-sm">
                 <CardContent className="p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-xs text-gray-400">Order</p>
-                      <p className="font-bold text-gray-900 text-base">{order.orderNumber}</p>
-                    </div>
+                  <div className="flex items-start justify-end gap-2">
                     <Badge className={getStatusColor(order.status)}>{order.status.replace(/_/g, ' ').toUpperCase()}</Badge>
                   </div>
 

@@ -325,3 +325,30 @@ export class GuestCreateOrderDto {
   @MaxLength(128)
   idempotencyKey?: string;
 }
+
+export class UpdateOrderDto {
+  @IsString()
+  @IsOptional()
+  status?: string;
+
+  @IsString()
+  @IsOptional()
+  paymentStatus?: string;
+
+  @IsString()
+  @IsOptional()
+  paymentMethod?: string;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
+  @IsString()
+  @IsOptional()
+  adminNotes?: string;
+
+  @ValidateNested()
+  @Type(() => ShippingAddressDto)
+  @IsOptional()
+  shippingAddress?: ShippingAddressDto;
+}

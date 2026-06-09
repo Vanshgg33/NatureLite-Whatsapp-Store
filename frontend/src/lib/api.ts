@@ -16,6 +16,7 @@ import {
   CreateCouponDto,
   UpdateOrderStatusDto,
   UpdateShippingDto,
+  UpdateOrderDto,
   OrderStatus,
   PaymentStatus,
   RevenueDataPoint,
@@ -757,6 +758,11 @@ class ApiClient {
 
   async updateOrderStatus(id: string, data: UpdateOrderStatusDto): Promise<Order> {
     const response = await this.client.put<ApiResponse<Order>>(`/orders/${id}/status`, data);
+    return response.data.data;
+  }
+
+  async updateOrder(id: string, data: UpdateOrderDto): Promise<Order> {
+    const response = await this.client.put<ApiResponse<Order>>(`/orders/${id}`, data);
     return response.data.data;
   }
 
