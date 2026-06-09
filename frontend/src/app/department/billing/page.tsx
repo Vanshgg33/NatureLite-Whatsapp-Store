@@ -31,7 +31,7 @@ export default function BillingDashboardPage() {
   const { data: deliveryStaff = [] } = useQuery<AdminUser[]>({
     queryKey: ['delivery-staff'],
     queryFn: () => api.getDeliveryStaff(),
-    staleTime: 60_000,
+    staleTime: 10 * 60 * 1000,
   });
 
   const activeRiders = useMemo(() => deliveryStaff.filter((s) => s.isActive), [deliveryStaff]);

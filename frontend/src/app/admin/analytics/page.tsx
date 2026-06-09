@@ -854,8 +854,7 @@ export default function AnalyticsPage() {
               filename={`Analytics-Report-${periodLabels[days] || `${days}d`}.pdf`}
               subject="Analytics Report"
               disabled={downloadingPdf}
-              className="bg-gradient-to-r from-[#92400E] to-[#D97706] text-white hover:opacity-90 shadow-md border-0 rounded-full px-5 py-2 font-semibold text-sm h-auto"
-              style={{ transition: 'opacity 0.1s' }}
+              className="bg-gradient-to-r from-[#92400E] to-[#D97706] text-white hover:opacity-90 shadow-md border-0 rounded-full px-5 py-2 font-semibold text-sm h-auto transition-opacity duration-100"
               variant="default"
               size="default"
             />
