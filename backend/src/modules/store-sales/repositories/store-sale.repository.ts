@@ -63,7 +63,11 @@ export class StoreSaleRepository extends BaseRepository<StoreSaleDocument> {
       .findById(idObj)
       .populate('store', 'name code')
       .populate('loggedBy', 'name')
-      .populate('items.product', 'name sku images')
+      .populate({
+        path: 'items.product',
+        select: 'name sku images hsnCode gstPercentage compareAtPrice category',
+        populate: { path: 'category', select: 'gstPercentage' },
+      })
       .exec();
   }
 

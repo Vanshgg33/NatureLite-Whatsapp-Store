@@ -120,6 +120,14 @@ export class UpdateOrderStatusDto {
   @IsString()
   @IsOptional()
   assignedTo?: string;
+
+  @IsString()
+  @IsOptional()
+  assignedToName?: string;
+
+  @IsString()
+  @IsOptional()
+  assignedToPhone?: string;
 }
 
 export class UpdatePaymentStatusDto {

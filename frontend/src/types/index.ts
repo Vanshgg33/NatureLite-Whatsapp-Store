@@ -52,6 +52,7 @@ export interface Category {
   parent?: string;
   sortOrder: number;
   isActive: boolean;
+  gstPercentage?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -647,6 +648,7 @@ export interface CreateCategoryDto {
   parent?: string;
   sortOrder?: number;
   isActive?: boolean;
+  gstPercentage?: number;
 }
 
 export interface CreateCouponDto {
@@ -672,6 +674,8 @@ export interface UpdateOrderStatusDto {
   message?: string;
   updatedBy?: string;
   assignedTo?: string;
+  assignedToName?: string;
+  assignedToPhone?: string;
 }
 
 export interface UpdateShippingDto {
@@ -992,7 +996,6 @@ export interface StoreSale {
   customerAddress?: string;
   subtotal: number;
   discount: number;
-  gstRate?: number;
   total: number;
   paymentMethod: string;
   paymentProofUrl?: string;
@@ -1057,7 +1060,6 @@ export interface CreateStoreSaleDto {
   customerPhone?: string;
   customerAddress?: string;
   discount?: number;
-  gstRate?: number;
   paymentMethod?: string;
   paymentProofUrl?: string;
   images?: string[];
@@ -1074,7 +1076,6 @@ export interface UpdateStoreSaleDto {
   customerPhone?: string;
   customerAddress?: string;
   discount?: number;
-  gstRate?: number;
   paymentMethod?: string;
   paymentProofUrl?: string;
   images?: string[];

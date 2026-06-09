@@ -54,6 +54,7 @@ export default function CategoriesPage() {
     sortOrder: 0,
     isActive: true,
     image: '',
+    gstPercentage: 0,
   });
 
   const { data, isLoading } = useQuery({
@@ -95,6 +96,7 @@ export default function CategoriesPage() {
       sortOrder: 0,
       isActive: true,
       image: '',
+      gstPercentage: 0,
     });
     setIsDialogOpen(true);
   };
@@ -108,6 +110,7 @@ export default function CategoriesPage() {
       sortOrder: category.sortOrder,
       isActive: category.isActive,
       image: category.image || '',
+      gstPercentage: category.gstPercentage ?? 0,
     });
     setIsDialogOpen(true);
   };
@@ -194,6 +197,7 @@ export default function CategoriesPage() {
                   <TableHead>Image</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Parent</TableHead>
+                  <TableHead>GST</TableHead>
                   <TableHead>Order</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -220,6 +224,7 @@ export default function CategoriesPage() {
                         {category.name}
                       </TableCell>
                       <TableCell>-</TableCell>
+                      <TableCell>{category.gstPercentage != null ? `${category.gstPercentage}%` : '-'}</TableCell>
                       <TableCell>{category.sortOrder}</TableCell>
                       <TableCell>
                         <Badge
@@ -264,6 +269,7 @@ export default function CategoriesPage() {
                           └ {sub.name}
                         </TableCell>
                         <TableCell>{category.name}</TableCell>
+                        <TableCell>{sub.gstPercentage != null ? `${sub.gstPercentage}%` : '-'}</TableCell>
                         <TableCell>{sub.sortOrder}</TableCell>
                         <TableCell>
                           <Badge
@@ -394,6 +400,27 @@ export default function CategoriesPage() {
                     }))
                   }
                 />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="gstPercentage">GST Rate</Label>
+                <Select
+                  value={String(formData.gstPercentage)}
+                  onValueChange={(v) =>
+                    setFormData((prev) => ({ ...prev, gstPercentage: Number(v) }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">No GST (0%)</SelectItem>
+                    <SelectItem value="5">5% GST</SelectItem>
+                    <SelectItem value="12">12% GST</SelectItem>
+                    <SelectItem value="18">18% GST</SelectItem>
+                    <SelectItem value="28">28% GST</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Applied to all products in this category when generating bills.</p>
               </div>
               <div className="flex items-center space-x-2">
                 <Switch

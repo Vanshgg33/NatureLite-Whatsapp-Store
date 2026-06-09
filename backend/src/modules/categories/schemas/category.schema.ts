@@ -28,6 +28,9 @@ export class Category {
   @Prop({ default: true })
   isActive: boolean;
 
+  @Prop({ default: 0 })
+  gstPercentage: number;
+
   @Prop({ type: Object, default: {} })
   metadata: Record<string, unknown>;
 

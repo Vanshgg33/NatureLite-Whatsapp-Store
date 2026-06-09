@@ -62,9 +62,6 @@ export class StoreSale {
   @Prop({ default: 0 })
   discount: number;
 
-  @Prop({ default: 0 })
-  gstRate: number;
-
   @Prop({ required: true })
   total: number;
 

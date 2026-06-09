@@ -848,13 +848,15 @@ export class OrdersService implements OnModuleInit {
           ? this.adminService.findById(deliveryUserId.toString()).catch(() => null)
           : Promise.resolve(null);
         deliveryPersonPromise
-          .then((deliveryUser) =>
-            this.notificationsService.sendOutForDeliveryNotification(
+          .then((deliveryUser) => {
+            const name = dto.assignedToName || deliveryUser?.name;
+            const phone2 = dto.assignedToPhone || deliveryUser?.phone;
+            return this.notificationsService.sendOutForDeliveryNotification(
               orderObj,
               phone,
-              deliveryUser ? { name: deliveryUser.name, phone: deliveryUser.phone } : undefined,
-            ),
-          )
+              name ? { name, phone: phone2 } : undefined,
+            );
+          })
           .catch((err) =>
             this.logger.warn(`Failed to send out-for-delivery WhatsApp for ${savedOrder.orderNumber}: ${err.message}`),
           );

@@ -84,7 +84,7 @@ function billItemGst(item: SaleItem, fallbackRate = 0): number {
   const prod = typeof item.product === 'object' && item.product
     ? item.product as { gstPercentage?: number }
     : null;
-  const rate = prod?.gstPercentage || fallbackRate;
+  const rate = prod?.gstPercentage ?? fallbackRate;
   if (!rate) return 0;
   return item.total - item.total / (1 + rate / 100);
 }
@@ -112,17 +112,18 @@ function BillDialogContent({ sale }: { sale: StoreSale; storeName: string }) {
   const placeOfSupply = `${BILL_SELLER.stateCode}-${BILL_SELLER.state}`;
   const total = sale.total ?? 0;
 
-  type BillProd = { gstPercentage?: number; hsnCode?: string; compareAtPrice?: number };
+  type BillProd = { gstPercentage?: number; hsnCode?: string; compareAtPrice?: number; category?: { gstPercentage?: number } };
   const getBillProd = (item: SaleItem): BillProd | null =>
     typeof item.product === 'object' && item.product ? item.product as BillProd : null;
+  const getEffectiveGst = (prod: BillProd | null) =>
+    prod?.gstPercentage ?? prod?.category?.gstPercentage ?? 0;
 
-  const saleGstRate = sale.gstRate ?? 0;
   const taxGroups = new Map<number, { taxable: number; cgst: number; sgst: number }>();
   for (const item of sale.items) {
     const prod = getBillProd(item);
-    const gstRate = prod?.gstPercentage || saleGstRate;
+    const gstRate = getEffectiveGst(prod);
     if (gstRate > 0) {
-      const gstAmt = billItemGst(item, saleGstRate);
+      const gstAmt = billItemGst(item, gstRate);
       const taxable = item.total - gstAmt;
       const half = gstAmt / 2;
       const prev = taxGroups.get(gstRate) ?? { taxable: 0, cgst: 0, sgst: 0 };
@@ -210,7 +211,7 @@ function BillDialogContent({ sale }: { sale: StoreSale; storeName: string }) {
           {sale.items.map((item: SaleItem, idx: number) => {
             const prod = getBillProd(item);
             const hsn = prod?.hsnCode ?? '';
-            const gstAmt = billItemGst(item, saleGstRate);
+            const gstAmt = billItemGst(item, getEffectiveGst(prod));
             const taxableAmt = item.total - gstAmt;
             const pricePerUnit = item.quantity > 0 ? taxableAmt / item.quantity : 0;
             const cgst = gstAmt / 2;
@@ -368,7 +369,6 @@ export default function SalesPage() {
   const [customerAddress, setCustomerAddress] = useState('');
   const [discount, setDiscount] = useState('0');
   const [discountIsPercent, setDiscountIsPercent] = useState(false);
-  const [gstRate, setGstRate] = useState('0');
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [notes, setNotes] = useState('');
   const [productDropdownOpen, setProductDropdownOpen] = useState(false);
@@ -393,7 +393,6 @@ export default function SalesPage() {
   const [editCustomerAddress, setEditCustomerAddress] = useState('');
   const [editDiscount, setEditDiscount] = useState('0');
   const [editDiscountIsPercent, setEditDiscountIsPercent] = useState(false);
-  const [editGstRate, setEditGstRate] = useState('0');
   const [editPaymentMethod, setEditPaymentMethod] = useState('cash');
   const [editPaymentProofUrl, setEditPaymentProofUrl] = useState<string | null>(null);
   const [editNotes, setEditNotes] = useState('');
@@ -442,7 +441,7 @@ export default function SalesPage() {
       setEditCustomerPhone(editingSale.customerPhone || '');
       setEditCustomerAddress(editingSale.customerAddress || '');
       setEditDiscount(String(editingSale.discount ?? 0));
-      setEditGstRate(String(editingSale.gstRate ?? 0));
+      setEditDiscountIsPercent(false);
       setEditPaymentMethod(editingSale.paymentMethod || 'cash');
       setEditPaymentProofUrl(editingSale.paymentProofUrl || null);
       setEditNotes(editingSale.notes || '');
@@ -597,7 +596,6 @@ export default function SalesPage() {
           ? [addrStreet, addrLandmark, addrCity, addrState, addrPincode ? `PIN-${addrPincode}` : ''].filter(Boolean).join(', ') || undefined
           : customerAddress || undefined,
         discount: discountAmount,
-        gstRate: parseFloat(gstRate) || 0,
         paymentMethod,
         paymentProofUrl: paymentMethod === 'upi' ? upiProofUrl || undefined : undefined,
         notes: notes || undefined,
@@ -633,7 +631,6 @@ export default function SalesPage() {
             ? editSubtotal * (Math.min(parseFloat(editDiscount) || 0, 100) / 100)
             : (parseFloat(editDiscount) || 0);
         })(),
-        gstRate: parseFloat(editGstRate) || 0,
         paymentMethod: editPaymentMethod,
         paymentProofUrl: editPaymentMethod === 'upi' ? editPaymentProofUrl || undefined : undefined,
         images: editImages,
@@ -730,7 +727,6 @@ export default function SalesPage() {
     setCustomerAddress('');
     setDiscount('0');
     setDiscountIsPercent(false);
-    setGstRate('0');
     setPaymentMethod('cash');
     setNotes('');
     setUpiProofUrl(null);
@@ -810,17 +806,18 @@ export default function SalesPage() {
     const total = sale.total ?? 0;
     const logoUrl = window.location.origin + '/images/logo.png';
 
-    type PrintProd = { gstPercentage?: number; hsnCode?: string; compareAtPrice?: number };
+    type PrintProd = { gstPercentage?: number; hsnCode?: string; compareAtPrice?: number; category?: { gstPercentage?: number } };
     const getPrintProd = (item: SaleItem): PrintProd | null =>
       typeof item.product === 'object' && item.product ? item.product as PrintProd : null;
+    const getPrintGst = (prod: PrintProd | null) =>
+      prod?.gstPercentage ?? prod?.category?.gstPercentage ?? 0;
 
-    const printGstRate = sale.gstRate ?? 0;
     const taxGroups = new Map<number, { taxable: number; cgst: number; sgst: number }>();
     for (const item of sale.items) {
       const prod = getPrintProd(item);
-      const gstRate = prod?.gstPercentage || printGstRate;
+      const gstRate = getPrintGst(prod);
       if (gstRate > 0) {
-        const gstAmt = billItemGst(item, printGstRate);
+        const gstAmt = billItemGst(item, gstRate);
         const taxable = item.total - gstAmt;
         const half = gstAmt / 2;
         const prev = taxGroups.get(gstRate) ?? { taxable: 0, cgst: 0, sgst: 0 };
@@ -835,7 +832,7 @@ export default function SalesPage() {
     const itemsHtml = sale.items.map((it: SaleItem, idx: number) => {
       const prod = getPrintProd(it);
       const hsn = prod?.hsnCode ?? '';
-      const gstAmt = billItemGst(it, printGstRate);
+      const gstAmt = billItemGst(it, getPrintGst(prod));
       const taxableAmt = it.total - gstAmt;
       const pricePerUnit = it.quantity > 0 ? taxableAmt / it.quantity : 0;
       const cgst = gstAmt / 2;
@@ -1662,24 +1659,6 @@ export default function SalesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium">GST Rate</label>
-                <Select value={gstRate} onValueChange={setGstRate}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0">No GST (0%)</SelectItem>
-                    <SelectItem value="5">5% GST</SelectItem>
-                    <SelectItem value="12">12% GST</SelectItem>
-                    <SelectItem value="18">18% GST</SelectItem>
-                    <SelectItem value="28">28% GST</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
             {/* Reminder (optional) – shows on dashboard 1hr before due time */}
             <div className="space-y-2 border-t pt-4">
               <label className="text-sm font-medium flex items-center gap-2">
@@ -1987,24 +1966,6 @@ export default function SalesPage() {
                 <div>
                   <label className="text-sm font-medium">Notes</label>
                   <Input value={editNotes} onChange={(e) => setEditNotes(e.target.value)} placeholder="Any notes..." />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium">GST Rate</label>
-                  <Select value={editGstRate} onValueChange={setEditGstRate}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="0">No GST (0%)</SelectItem>
-                      <SelectItem value="5">5% GST</SelectItem>
-                      <SelectItem value="12">12% GST</SelectItem>
-                      <SelectItem value="18">18% GST</SelectItem>
-                      <SelectItem value="28">28% GST</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
               </div>
 

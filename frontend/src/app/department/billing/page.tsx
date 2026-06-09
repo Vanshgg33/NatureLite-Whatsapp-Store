@@ -38,12 +38,16 @@ export default function BillingDashboardPage() {
   const orders = useMemo(() => data?.items ?? [], [data]) as Order[];
 
   const markBilled = useMutation({
-    mutationFn: ({ orderId, riderId }: { orderId: string; riderId: string }) =>
-      api.updateOrderStatus(orderId, {
+    mutationFn: ({ orderId, riderId }: { orderId: string; riderId: string }) => {
+      const rider = activeRiders.find((r) => r._id === riderId);
+      return api.updateOrderStatus(orderId, {
         status: 'out_for_delivery',
         updatedBy: user?.id,
         assignedTo: riderId,
-      }),
+        assignedToName: rider?.name,
+        assignedToPhone: rider?.phone,
+      });
+    },
     onMutate: async ({ orderId }) => {
       await queryClient.cancelQueries({ queryKey: ['department', 'billing', 'orders'] });
       const prev = queryClient.getQueryData(['department', 'billing', 'orders']);

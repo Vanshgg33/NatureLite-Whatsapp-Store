@@ -4,6 +4,8 @@ import {
   IsOptional,
   IsBoolean,
   IsNumber,
+  Min,
+  Max,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -35,6 +37,13 @@ export class CreateCategoryDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  @Max(100)
+  @Type(() => Number)
+  gstPercentage?: number;
 }
 
 export class UpdateCategoryDto {
@@ -65,6 +74,13 @@ export class UpdateCategoryDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  @Max(100)
+  @Type(() => Number)
+  gstPercentage?: number;
 }
 
 export class CategoryQueryDto {
