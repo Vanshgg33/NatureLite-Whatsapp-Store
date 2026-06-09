@@ -28,7 +28,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import type { Store, StoreSale, SaleItem, Product } from '@/types';
+import type { Store, StoreSale, SaleItem, Product, PaginatedResponse } from '@/types';
 
 const saleTypeBadge: Record<string, { label: string; className: string }> = {
   walk_in: { label: 'Walk-in', className: 'bg-blue-100 text-blue-800' },
@@ -132,11 +132,12 @@ function BillDialogContent({ sale }: { sale: StoreSale; storeName: string }) {
   }
   const taxRows = Array.from(taxGroups.entries()).sort((a, b) => b[0] - a[0]);
 
-  const amountRows: { label: string; val: string; bold?: boolean }[] = [
-    { label: 'Sub Total', val: billINR(total) },
+  const subtotalAmt = sale.subtotal ?? total;
+  const discountAmt = sale.discount ?? 0;
+  const amountRows: { label: string; val: string; bold?: boolean; negative?: boolean }[] = [
+    { label: 'Sub Total', val: billINR(subtotalAmt) },
+    ...(discountAmt > 0 ? [{ label: 'Discount', val: billINR(discountAmt), negative: true }] : []),
     { label: 'Total', val: billINR(total), bold: true },
-    { label: 'Advance', val: billINR(total) },
-    { label: 'Balance', val: billINR(0) },
   ];
 
   return (
@@ -281,10 +282,10 @@ function BillDialogContent({ sale }: { sale: StoreSale; storeName: string }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {amountRows.map(({ label, val, bold }) => (
+                  {amountRows.map(({ label, val, bold, negative }) => (
                     <tr key={label}>
-                      <td style={{ ...BILL_TD, textAlign: 'left', fontWeight: bold ? 700 : 400 }}>{label}</td>
-                      <td style={{ ...BILL_TD, textAlign: 'right', fontWeight: bold ? 700 : 400 }}>₹ {val}</td>
+                      <td style={{ ...BILL_TD, textAlign: 'left', fontWeight: bold ? 700 : 400, color: negative ? '#dc2626' : undefined }}>{label}</td>
+                      <td style={{ ...BILL_TD, textAlign: 'right', fontWeight: bold ? 700 : 400, color: negative ? '#dc2626' : undefined }}>{negative ? '- ' : ''}₹ {val}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -489,6 +490,25 @@ export default function SalesPage() {
   });
   const rawProducts = (allProductsData?.items ?? []) as Product[];
 
+  // Use 'store-stock' prefix so IMS invalidateQueries({ queryKey: ['store-stock'] }) propagates here automatically
+  const { data: logSaleStockData } = useQuery({
+    queryKey: ['store-stock', effectiveLogSaleStore, 'dialog'],
+    queryFn: () => api.getStoreStock(effectiveLogSaleStore, { limit: 500 }),
+    enabled: showLogSale && !!effectiveLogSaleStore,
+    staleTime: 0,
+  });
+  const storeStockMap = new Map<string, number>();
+  (logSaleStockData?.items ?? []).forEach((item) => {
+    const pid = typeof item.product === 'object' ? (item.product as { _id: string })._id : item.product;
+    if (item.variantStocks?.length > 0) {
+      item.variantStocks.forEach((vs) => {
+        storeStockMap.set(`${pid}:${vs.variantSku}`, vs.stock ?? 0);
+      });
+    }
+    storeStockMap.set(pid, item.stock ?? 0);
+  });
+  const stockLoaded = logSaleStockData !== undefined;
+
   type AddableRow = {
     productId: string;
     productName: string;
@@ -503,6 +523,7 @@ export default function SalesPage() {
     const hasVariants = product.variants && product.variants.length > 0;
     if (hasVariants) {
       product.variants.filter((v) => v.isActive).forEach((variant) => {
+        const storeStock = stockLoaded ? (storeStockMap.get(`${product._id}:${variant.sku}`) ?? 0) : variant.stock;
         addableRows.push({
           productId: product._id,
           productName: product.name,
@@ -510,10 +531,11 @@ export default function SalesPage() {
           variantSku: variant.sku,
           variantName: variant.name,
           price: variant.price,
-          stock: variant.stock,
+          stock: storeStock,
         });
       });
     } else {
+      const storeStock = stockLoaded ? (storeStockMap.get(product._id) ?? 0) : product.stock;
       addableRows.push({
         productId: product._id,
         productName: product.name,
@@ -521,11 +543,16 @@ export default function SalesPage() {
         variantSku: undefined,
         variantName: undefined,
         price: product.price,
-        stock: product.stock,
+        stock: storeStock,
       });
     }
   });
-  const productResults = addableRows;
+  // In-stock products first (sorted by descending stock), out-of-stock at bottom
+  const productResults = [...addableRows].sort((a, b) => {
+    if (a.stock > 0 && b.stock <= 0) return -1;
+    if (a.stock <= 0 && b.stock > 0) return 1;
+    return b.stock - a.stock;
+  });
 
   const editStoreId = editingSaleStoreId || (editingSale
     ? (typeof editingSale.store === 'object' ? (editingSale.store as { _id: string })._id : editingSale.store)
@@ -581,33 +608,25 @@ export default function SalesPage() {
   });
 
   const logSaleMutation = useMutation({
-    mutationFn: () =>
-      api.logSale({
-        storeId: effectiveLogSaleStore,
-        saleType,
-        items: cartItems.map((item) => ({
-          productId: item.productId,
-          variantSku: item.variantSku,
-          quantity: item.quantity,
-        })),
-        customerName: customerName || undefined,
-        customerPhone: customerPhone || undefined,
-        customerAddress: saleType === 'delivery'
-          ? [addrStreet, addrLandmark, addrCity, addrState, addrPincode ? `PIN-${addrPincode}` : ''].filter(Boolean).join(', ') || undefined
-          : customerAddress || undefined,
-        discount: discountAmount,
-        paymentMethod,
-        paymentProofUrl: paymentMethod === 'upi' ? upiProofUrl || undefined : undefined,
-        notes: notes || undefined,
-        reminderMessage: reminderMessage || undefined,
-        reminderDueAt: reminderMessage && reminderDueAt ? reminderDueAt : undefined,
-      }),
-    onSuccess: () => {
+    mutationFn: (data: Parameters<typeof api.logSale>[0]) => api.logSale(data),
+    onSuccess: (sale) => {
+      // Instantly prepend to every cached page of the sales list so it appears immediately
+      queryClient.setQueriesData<PaginatedResponse<StoreSale>>(
+        { queryKey: ['store-sales'], exact: false },
+        (old) => {
+          if (!old) return old;
+          return { ...old, items: [sale, ...old.items], total: old.total + 1 };
+        },
+      );
+      // Background refetch to sync accurate order/pagination
       queryClient.invalidateQueries({ queryKey: ['store-sales'] });
       queryClient.invalidateQueries({ queryKey: ['store-stock'] });
       queryClient.invalidateQueries({ queryKey: ['due-reminders'] });
-      resetForm();
-      setShowLogSale(false);
+      toast({ title: 'Sale logged', description: `Sale ${sale.saleNumber} recorded successfully.` });
+    },
+    onError: (err) => {
+      const msg = (err as any)?.response?.data?.message || (err instanceof Error ? err.message : 'Please try again.');
+      toast({ title: 'Failed to log sale', description: msg, variant: 'destructive' });
     },
   });
 
@@ -643,6 +662,10 @@ export default function SalesPage() {
       queryClient.invalidateQueries({ queryKey: ['sale', editingSaleId] });
       setEditingSaleId(null);
       setEditingSaleStoreId(null);
+    },
+    onError: (err) => {
+      const msg = (err as any)?.response?.data?.message || (err instanceof Error ? err.message : 'Please try again.');
+      toast({ title: 'Failed to update sale', description: msg, variant: 'destructive' });
     },
   });
 
@@ -865,6 +888,12 @@ export default function SalesPage() {
     const fmtTimeStr = new Date(sale.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase();
     const saleTypeLabel = BILL_SALE_TYPE_LABELS[sale.saleType] ?? sale.saleType;
 
+    const printSubtotal = sale.subtotal ?? total;
+    const printDiscount = sale.discount ?? 0;
+    const printDiscountRow = printDiscount > 0
+      ? `<tr><td style="${td};text-align:left;color:#dc2626">Discount</td><td style="${td};text-align:right;color:#dc2626">- &#8377; ${billINR(printDiscount)}</td></tr>`
+      : '';
+
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Sale Order - ${sale.saleNumber}</title>
 <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a1a;font-size:11px}
 @media print{body{background:white}.np{display:none!important}.inv{box-shadow:none!important;margin:0!important;max-width:100%!important;border-radius:0!important}@page{size:A4 portrait;margin:6mm 8mm}}</style></head>
@@ -953,10 +982,9 @@ export default function SalesPage() {
         <table style="width:100%;border-collapse:collapse">
           <thead><tr><th colspan="2" style="background:#e8f5ee;color:#1a6b3c;padding:5px 8px;font-size:10px;font-weight:700;border:1px solid #c8c8c8;text-align:left">Amounts</th></tr></thead>
           <tbody>
-            <tr><td style="${td};text-align:left">Sub Total</td><td style="${td};text-align:right">&#8377; ${billINR(total)}</td></tr>
+            <tr><td style="${td};text-align:left">Sub Total</td><td style="${td};text-align:right">&#8377; ${billINR(printSubtotal)}</td></tr>
+            ${printDiscountRow}
             <tr><td style="${td};text-align:left;font-weight:700">Total</td><td style="${td};text-align:right;font-weight:700">&#8377; ${billINR(total)}</td></tr>
-            <tr><td style="${td};text-align:left">Advance</td><td style="${td};text-align:right">&#8377; ${billINR(total)}</td></tr>
-            <tr><td style="${td};text-align:left">Balance</td><td style="${td};text-align:right">&#8377; ${billINR(0)}</td></tr>
           </tbody>
         </table>
       </td>
@@ -1470,27 +1498,49 @@ export default function SalesPage() {
                       No products found.
                     </p>
                   ) : (
-                    productResults.map((row: AddableRow) => (
-                      <button
-                        key={`${row.productId}-${row.variantSku ?? 'main'}`}
-                        type="button"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          addToCart(row);
-                          setProductSearch('');
-                        }}
-                        className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-muted/60 text-sm text-left border-b last:border-b-0"
-                      >
-                        <span>
-                          {row.productName}
-                          {row.variantName ? ` · ${row.variantName}` : ''}
-                          {row.variantSku ? ` (${row.variantSku})` : row.productSku ? ` (${row.productSku})` : ''}
-                        </span>
-                        <span className="text-muted-foreground shrink-0 ml-2">
-                          ₹{row.price.toLocaleString()} · {row.stock} in stock
-                        </span>
-                      </button>
-                    ))
+                    (() => {
+                      const firstOutIdx = productResults.findIndex((r) => r.stock <= 0);
+                      return productResults.map((row: AddableRow, idx: number) => {
+                        const outOfStock = row.stock <= 0;
+                        const showDivider = firstOutIdx !== -1 && idx === firstOutIdx;
+                        return (
+                          <div key={`${row.productId}-${row.variantSku ?? 'main'}`}>
+                            {showDivider && (
+                              <div className="px-3 py-1 text-xs font-semibold text-gray-400 bg-gray-50 border-b uppercase tracking-wide">
+                                Out of Stock
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              disabled={outOfStock}
+                              onMouseDown={(e) => {
+                                if (outOfStock) return;
+                                e.preventDefault();
+                                addToCart(row);
+                                setProductSearch('');
+                              }}
+                              className={`w-full flex items-center justify-between px-3 py-2.5 text-sm text-left border-b last:border-b-0 ${outOfStock ? 'opacity-40 cursor-not-allowed bg-gray-50' : 'hover:bg-green-50 bg-white'}`}
+                            >
+                              <span className="flex items-center gap-2">
+                                {!outOfStock && <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />}
+                                <span>
+                                  {row.productName}
+                                  {row.variantName ? ` · ${row.variantName}` : ''}
+                                  {row.variantSku ? ` (${row.variantSku})` : row.productSku ? ` (${row.productSku})` : ''}
+                                </span>
+                              </span>
+                              {outOfStock ? (
+                                <span className="text-red-400 text-xs font-medium shrink-0 ml-2">Out of Stock</span>
+                              ) : (
+                                <span className="text-green-600 text-xs font-medium shrink-0 ml-2">
+                                  ₹{row.price.toLocaleString()} · {row.stock} left
+                                </span>
+                              )}
+                            </button>
+                          </div>
+                        );
+                      });
+                    })()
                   )}
                 </div>
               )}
@@ -1712,10 +1762,34 @@ export default function SalesPage() {
               Cancel
             </Button>
             <Button
-              onClick={() => logSaleMutation.mutate()}
-              disabled={cartItems.length === 0 || !effectiveLogSaleStore || logSaleMutation.isPending}
+              onClick={() => {
+                const data = {
+                  storeId: effectiveLogSaleStore,
+                  saleType,
+                  items: cartItems.map((item) => ({
+                    productId: item.productId,
+                    variantSku: item.variantSku,
+                    quantity: item.quantity,
+                  })),
+                  customerName: customerName || undefined,
+                  customerPhone: customerPhone || undefined,
+                  customerAddress: saleType === 'delivery'
+                    ? [addrStreet, addrLandmark, addrCity, addrState, addrPincode ? `PIN-${addrPincode}` : ''].filter(Boolean).join(', ') || undefined
+                    : customerAddress || undefined,
+                  discount: discountAmount,
+                  paymentMethod,
+                  paymentProofUrl: paymentMethod === 'upi' ? upiProofUrl || undefined : undefined,
+                  notes: notes || undefined,
+                  reminderMessage: reminderMessage || undefined,
+                  reminderDueAt: reminderMessage && reminderDueAt ? reminderDueAt : undefined,
+                };
+                resetForm();
+                setShowLogSale(false);
+                logSaleMutation.mutate(data);
+              }}
+              disabled={cartItems.length === 0 || !effectiveLogSaleStore}
             >
-              {logSaleMutation.isPending ? 'Logging...' : 'Log Sale'}
+              Log Sale
             </Button>
           </DialogFooter>
         </DialogContent>

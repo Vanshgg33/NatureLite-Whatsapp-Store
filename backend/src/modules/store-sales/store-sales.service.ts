@@ -320,14 +320,13 @@ export class StoreSalesService {
 
   async storeSaleInvoice(id: string, pdfBase64: string, filename: string): Promise<{ url: string }> {
     const idObj = parseObjectId(id, 'id');
-    const sale = await this.storeSaleRepository.findById(idObj);
-    if (!sale) throw new NotFoundException('Sale not found');
+    const exists = await this.storeSaleRepository.findById(idObj);
+    if (!exists) throw new NotFoundException('Sale not found');
 
     const buffer = Buffer.from(pdfBase64, 'base64');
     const result = await this.mediaService.uploadPdfBuffer(buffer, 'invoices/sales', filename);
 
-    (sale as any).invoiceUrl = result.secureUrl;
-    await (sale as any).save();
+    await this.storeSaleRepository.findByIdAndUpdate(id, { $set: { invoiceUrl: result.secureUrl } });
     return { url: result.secureUrl };
   }
 
