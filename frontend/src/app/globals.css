@@ -167,7 +167,9 @@
   body {
     @apply bg-background text-foreground antialiased;
   }
-  /* Eliminate 300ms tap delay and prevent double-tap zoom on all interactive elements */
+
+  /* ── INSTANT BUTTON RESPONSE (site-wide) ───────────────────────────── */
+  /* Eliminate 300ms tap delay and prevent double-tap zoom */
   a,
   button,
   input,
@@ -179,6 +181,33 @@
   [role="menuitem"],
   [role="option"] {
     touch-action: manipulation;
+  }
+
+  /* All buttons get cursor-pointer and fast transitions by default */
+  button,
+  [role="button"] {
+    cursor: pointer;
+  }
+
+  /* Subtle press-down scale for instant tactile feedback on click.
+     Applied to all buttons that don't have a custom active style.
+     Excludes disabled state. */
+  button:not(:disabled):not([data-no-press]),
+  [role="button"]:not([aria-disabled="true"]) {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  button:not(:disabled):not([data-no-press]):active,
+  [role="button"]:not([aria-disabled="true"]):active {
+    transform: scale(0.97);
+    transition: transform 80ms ease !important;
+  }
+
+  /* Speed up hover transitions on all buttons to 100ms max */
+  button:not([class*="transition-"]),
+  [role="button"]:not([class*="transition-"]) {
+    transition-duration: 100ms;
   }
 }
 

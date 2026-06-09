@@ -145,7 +145,8 @@ export default function AdminLoginPage() {
               <Button
                 type="submit"
                 disabled={loading}
-                className="w-full h-12 rounded-full bg-brand-green hover:bg-brand-green-light text-white font-medium text-base transition-all duration-200 shadow-sm hover:shadow-md"
+                className="w-full h-12 rounded-full bg-brand-green hover:bg-brand-green-light text-white font-medium text-base shadow-sm hover:shadow-md"
+              style={{ transition: 'background-color 0.1s, opacity 0.1s, box-shadow 0.15s' }}
               >
                 {loading ? (
                   <span className="flex items-center gap-2">
@@ -173,7 +174,8 @@ export default function AdminLoginPage() {
                 <button
                   type="button"
                   onClick={() => router.push('/department-login')}
-                  className="inline-flex items-center gap-1 text-xs text-brand-muted hover:text-brand-charcoal transition-colors"
+                  className="inline-flex items-center gap-1 text-xs text-brand-muted hover:text-brand-charcoal"
+                  style={{ transition: 'color 0.1s' }}
                 >
                   <Users className="w-3.5 h-3.5" />
                   Staff / department login

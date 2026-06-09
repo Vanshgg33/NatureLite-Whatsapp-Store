@@ -88,7 +88,7 @@ export class EmailService {
         </div>
         <div style="padding:20px">
           <p>Hi ${order.shippingAddress?.name || 'Customer'},</p>
-          <p>Thank you for your order! Your order <strong>#${order.orderNumber}</strong> has been confirmed.</p>
+          <p>Thank you for your order! Here are the items you ordered:</p>
 
           <h3 style="color:#8B5A2B">Order Summary</h3>
           <table style="width:100%;border-collapse:collapse">
@@ -123,7 +123,8 @@ export class EmailService {
       </div>
     `;
 
-    await this.send(customerEmail, `Order Confirmed - #${order.orderNumber}`, html);
+    const emailName = order.shippingAddress?.name || 'Customer';
+    await this.send(customerEmail, `Your order is confirmed, ${emailName}!`, html);
   }
 
   async sendShippingUpdate(order: any, customerEmail: string): Promise<void> {
@@ -143,7 +144,7 @@ export class EmailService {
         </div>
         <div style="padding:20px">
           <p>Hi ${order.shippingAddress?.name || 'Customer'},</p>
-          <p>Your order <strong>#${order.orderNumber}</strong> is on its way — our delivery team is handling it.</p>
+          <p>Great news! Your items are on their way — our delivery team is handling it.</p>
 
           ${order.awbNumber ? `<div style="padding:16px;background:#f5f0e8;border-radius:8px;margin:16px 0">
             <p style="margin:0"><strong>Tracking Number:</strong> ${order.awbNumber}</p>
@@ -157,7 +158,8 @@ export class EmailService {
       </div>
     `;
 
-    await this.send(customerEmail, `Out for delivery - #${order.orderNumber}`, html);
+    const shippingName = order.shippingAddress?.name || 'Customer';
+    await this.send(customerEmail, `Your items are on their way, ${shippingName}!`, html);
   }
 
   async sendDeliveryConfirmation(order: any, customerEmail: string): Promise<void> {
@@ -177,14 +179,15 @@ export class EmailService {
         </div>
         <div style="padding:20px">
           <p>Hi ${order.shippingAddress?.name || 'Customer'},</p>
-          <p>Your order <strong>#${order.orderNumber}</strong> has been delivered successfully.</p>
+          <p>Your items have been delivered successfully. We hope you love them! 🎉</p>
           <p>We hope you enjoy your purchase! If you have any feedback, we'd love to hear from you.</p>
           <p style="color:#666;font-size:12px">If you have any issues with your order, please contact our support team.</p>
         </div>
       </div>
     `;
 
-    await this.send(customerEmail, `Order Delivered - #${order.orderNumber}`, html);
+    const deliveredName = order.shippingAddress?.name || 'Customer';
+    await this.send(customerEmail, `Delivered! Thanks for shopping, ${deliveredName}!`, html);
   }
 
   async sendAdminReport(to: string, subject: string, html: string): Promise<void> {
@@ -641,7 +644,7 @@ export class EmailService {
         </div>
         <div style="padding:20px">
           <p>Hi ${order.shippingAddress?.name || 'Customer'},</p>
-          <p>Your order <strong>#${order.orderNumber}</strong> has been cancelled.</p>
+          <p>Your order has been cancelled.</p>
           ${order.cancelReason ? `<p><strong>Reason:</strong> ${order.cancelReason}</p>` : ''}
           ${order.paymentStatus === 'paid' ? '<p>Your refund will be processed within 5-7 business days.</p>' : ''}
           <p style="color:#666;font-size:12px">If you have any questions, reply to this email.</p>
@@ -649,7 +652,8 @@ export class EmailService {
       </div>
     `;
 
-    await this.send(customerEmail, `Order Cancelled - #${order.orderNumber}`, html);
+    const cancelledName = order.shippingAddress?.name || 'Customer';
+    await this.send(customerEmail, `Your order has been cancelled, ${cancelledName}`, html);
   }
 
   private serializeOrder(order: any): Record<string, any> {

@@ -165,7 +165,18 @@ export default function DashboardPage() {
 
   const dismissReminderMutation = useMutation({
     mutationFn: (id: string) => api.dismissReminder(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['due-reminders'] }),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['due-reminders'] });
+      const snapshot = queryClient.getQueryData<Reminder[]>(['due-reminders']);
+      queryClient.setQueryData(['due-reminders'], (old: Reminder[] | undefined) =>
+        (old || []).filter((r) => r._id !== id)
+      );
+      return { snapshot };
+    },
+    onError: (_err, _id, context: any) => {
+      if (context?.snapshot) queryClient.setQueryData(['due-reminders'], context.snapshot);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['due-reminders'] }),
   });
 
   const periodStats = useMemo(() => {
@@ -373,7 +384,7 @@ export default function DashboardPage() {
               key={stat.title}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.08 }}
+              transition={{ duration: 0.15 }}
             >
               <Card className="rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-300 border-transparent hover:border-brand-green/10 overflow-hidden relative">
                 <div className="absolute bottom-0 left-0 right-0 h-[3px]" style={{ background: stat.stripe }} />
@@ -392,7 +403,7 @@ export default function DashboardPage() {
         </div>
 
         {/* KPI strip */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <Card className="rounded-2xl shadow-sm bg-gradient-to-r from-brand-green/5 via-white to-brand-mustard/5 overflow-hidden">
             <CardContent className="grid grid-cols-2 md:grid-cols-4 divide-x py-5 px-0">
               {isStoreAdmin ? (
@@ -450,7 +461,7 @@ export default function DashboardPage() {
         {/* Store Admin: Recent Sales + Low Stock + Sales Type Donut */}
         {isStoreAdmin && (
           <div className="grid gap-6 lg:grid-cols-3">
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="lg:col-span-2">
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="lg:col-span-2">
               <Card className="rounded-2xl shadow-sm h-full">
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle className="text-lg font-semibold">Recent Sales</CardTitle>
@@ -497,7 +508,7 @@ export default function DashboardPage() {
             </motion.div>
 
             {/* Sales type donut */}
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
               <div className="space-y-4">
                 <Card className="rounded-2xl shadow-sm">
                   <CardHeader className="pb-2">
@@ -579,7 +590,7 @@ export default function DashboardPage() {
         {/* Superadmin: Revenue Area + Orders Bar */}
         {!isStoreAdmin && (
           <div className="grid gap-6 lg:grid-cols-2">
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
               <Card className="rounded-2xl shadow-sm">
                 <CardHeader className="flex flex-row items-center justify-between">
                   <div>
@@ -628,7 +639,7 @@ export default function DashboardPage() {
               </Card>
             </motion.div>
 
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
               <Card className="rounded-2xl shadow-sm">
                 <CardHeader className="flex flex-row items-center justify-between">
                   <div>
@@ -673,7 +684,7 @@ export default function DashboardPage() {
         {/* Superadmin: Order Status + Recent Orders + Low Stock */}
         {!isStoreAdmin && (
           <div className="grid gap-6 lg:grid-cols-3">
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="lg:col-span-1 space-y-5">
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="lg:col-span-1 space-y-5">
               <Card className="rounded-2xl shadow-sm">
                 <CardHeader>
                   <CardTitle className="text-lg font-semibold">Order Status</CardTitle>
@@ -731,7 +742,7 @@ export default function DashboardPage() {
               )}
             </motion.div>
 
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }} className="lg:col-span-2">
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="lg:col-span-2">
               <Card className="rounded-2xl shadow-sm h-full">
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle className="text-lg font-semibold">Recent Orders</CardTitle>
@@ -799,7 +810,7 @@ export default function DashboardPage() {
         {!isStoreAdmin && (
           <div className="grid gap-6 lg:grid-cols-3">
             {/* Stores Revenue Today */}
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
               <Card className="rounded-2xl shadow-sm h-full">
                 <CardHeader className="flex flex-row items-center gap-2 pb-3">
                   <div className="h-8 w-8 rounded-lg bg-brand-green/10 flex items-center justify-center">
@@ -842,7 +853,7 @@ export default function DashboardPage() {
             </motion.div>
 
             {/* Top Selling Products */}
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.65 }}>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
               <Card className="rounded-2xl shadow-sm h-full">
                 <CardHeader className="flex flex-row items-center gap-2 pb-3">
                   <div className="h-8 w-8 rounded-lg bg-brand-mustard/10 flex items-center justify-center">
@@ -880,7 +891,7 @@ export default function DashboardPage() {
             </motion.div>
 
             {/* Month vs Last Month */}
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }}>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
               <Card className="rounded-2xl shadow-sm h-full">
                 <CardHeader className="flex flex-row items-center gap-2 pb-3">
                   <div className="h-8 w-8 rounded-lg bg-blue-50 flex items-center justify-center">

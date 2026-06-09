@@ -92,14 +92,16 @@ export function StickyCartBar() {
               )}
               <Link
                 href={hasItems ? '/cart' : '/products'}
-                className="inline-flex items-center justify-center px-5 py-2.5 bg-brand-charcoal text-white text-sm font-semibold rounded-full hover:bg-brand-brown transition-colors"
+                className="inline-flex items-center justify-center px-5 py-2.5 bg-brand-charcoal text-white text-sm font-semibold rounded-full hover:bg-brand-brown"
+                style={{ transition: 'background-color 0.1s' }}
               >
                 {hasItems ? 'View cart' : 'Shop now'}
               </Link>
               {hasItems && (
                 <Link
                   href="/checkout"
-                  className="inline-flex items-center justify-center px-5 py-2.5 bg-brand-mustard text-white text-sm font-semibold rounded-full hover:opacity-90 transition-opacity"
+                  className="inline-flex items-center justify-center px-5 py-2.5 bg-brand-mustard text-white text-sm font-semibold rounded-full hover:opacity-90"
+                  style={{ transition: 'opacity 0.1s' }}
                 >
                   Checkout
                 </Link>

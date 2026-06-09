@@ -11,10 +11,19 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 
 export default function AdminLoginsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [deleteConfirmUser, setDeleteConfirmUser] = useState<AdminUser | null>(null);
 
   const { data: users, isLoading } = useQuery({
     queryKey: ['admin-users'],
@@ -437,11 +446,7 @@ export default function AdminLoginsPage() {
                             size="icon"
                             className="h-8 w-8 text-red-600"
                             title="Delete login"
-                            onClick={() => {
-                              if (window.confirm('Delete this login? This cannot be undone.')) {
-                                deleteUser.mutate(user._id);
-                              }
-                            }}
+                            onClick={() => setDeleteConfirmUser(user)}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -456,6 +461,32 @@ export default function AdminLoginsPage() {
           )}
         </div>
       </div>
+
+      <Dialog open={!!deleteConfirmUser} onOpenChange={(open) => { if (!open) setDeleteConfirmUser(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Login</DialogTitle>
+            <DialogDescription>
+              Delete login for <strong>{deleteConfirmUser?.name}</strong> ({deleteConfirmUser?.email})? This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmUser(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={deleteUser.isPending}
+              onClick={() => {
+                if (deleteConfirmUser) {
+                  deleteUser.mutate(deleteConfirmUser._id);
+                  setDeleteConfirmUser(null);
+                }
+              }}
+            >
+              {deleteUser.isPending ? 'Deleting…' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

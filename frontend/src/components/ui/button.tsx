@@ -4,22 +4,22 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.97]',
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
-        destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
-        outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
-        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
-        ghost: 'hover:bg-accent hover:text-accent-foreground',
-        link: 'text-primary underline-offset-4 hover:underline',
+        default: 'bg-primary text-primary-foreground hover:bg-primary/90 transition-[background-color,opacity] duration-100',
+        destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-[background-color,opacity] duration-100',
+        outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-[background-color,color] duration-100',
+        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-[background-color,opacity] duration-100',
+        ghost: 'hover:bg-accent hover:text-accent-foreground transition-[background-color,color] duration-100',
+        link: 'text-primary underline-offset-4 hover:underline transition-none',
         brand:
-          'bg-brand-mustard text-white hover:bg-brand-mustard-dark rounded-xl font-medium',
+          'bg-brand-mustard text-white hover:bg-brand-mustard-dark rounded-xl font-medium transition-[background-color,transform] duration-100',
         'brand-dark':
-          'bg-brand-charcoal text-white hover:bg-brand-charcoal-dark rounded-full font-medium',
+          'bg-brand-charcoal text-white hover:bg-brand-charcoal-dark rounded-full font-medium transition-[background-color,transform] duration-100',
         'brand-outline':
-          'border-2 border-brand-charcoal text-brand-charcoal hover:bg-brand-charcoal hover:text-white rounded-full font-medium',
+          'border-2 border-brand-charcoal text-brand-charcoal hover:bg-brand-charcoal hover:text-white rounded-full font-medium transition-[background-color,color,transform] duration-100',
       },
       size: {
         default: 'h-10 px-4 py-2',

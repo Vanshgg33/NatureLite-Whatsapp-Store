@@ -827,11 +827,12 @@ export default function AnalyticsPage() {
               <button
                 key={d}
                 onClick={() => setDays(d)}
-                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${
+                className={`px-4 py-1.5 rounded-full text-sm font-medium cursor-pointer ${
                   days === d
                     ? 'bg-brand-green text-white shadow-sm'
                     : 'bg-brand-cream text-brand-charcoal hover:bg-brand-green/10'
                 }`}
+                style={{ transition: 'background-color 0.1s, color 0.1s, box-shadow 0.1s' }}
               >
                 {periodLabels[d] || `${d}d`}
               </button>
@@ -842,7 +843,8 @@ export default function AnalyticsPage() {
             <Button
               onClick={downloadPdfReport}
               disabled={downloadingPdf}
-              className="bg-gradient-to-r from-[#173125] to-[#2F6B47] text-white hover:opacity-90 shadow-md border-0 rounded-full px-5 py-2 flex items-center gap-2 font-semibold text-sm transition-all duration-300"
+              className="bg-gradient-to-r from-[#173125] to-[#2F6B47] text-white hover:opacity-90 shadow-md border-0 rounded-full px-5 py-2 flex items-center gap-2 font-semibold text-sm"
+              style={{ transition: 'opacity 0.1s' }}
             >
               <Download className="h-4 w-4" />
               {downloadingPdf ? 'Generating PDF...' : 'Export Complete PDF Report'}
@@ -852,7 +854,8 @@ export default function AnalyticsPage() {
               filename={`Analytics-Report-${periodLabels[days] || `${days}d`}.pdf`}
               subject="Analytics Report"
               disabled={downloadingPdf}
-              className="bg-gradient-to-r from-[#92400E] to-[#D97706] text-white hover:opacity-90 shadow-md border-0 rounded-full px-5 py-2 font-semibold text-sm transition-all duration-300 h-auto"
+              className="bg-gradient-to-r from-[#92400E] to-[#D97706] text-white hover:opacity-90 shadow-md border-0 rounded-full px-5 py-2 font-semibold text-sm h-auto"
+              style={{ transition: 'opacity 0.1s' }}
               variant="default"
               size="default"
             />

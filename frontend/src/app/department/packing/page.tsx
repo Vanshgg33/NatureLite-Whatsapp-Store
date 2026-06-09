@@ -31,10 +31,17 @@ export default function PackingDashboardPage() {
 
   const markPacked = useMutation({
     mutationFn: (orderId: string) => api.markOrderPacked(orderId),
-    onMutate: async () => {
+    onMutate: async (orderId) => {
       await queryClient.cancelQueries({ queryKey: ['department', 'packing', 'orders'] });
+      // Show the packed animation instantly — don't wait for the server
+      setJustPacked(prev => { const next = new Set(prev); next.add(orderId); return next; });
+      const prev = queryClient.getQueryData(['department', 'packing', 'orders']);
+      return { prev };
     },
-    onError: (err) => {
+    onError: (err, orderId, context: any) => {
+      // Revert the optimistic animation
+      setJustPacked(prev => { const next = new Set(prev); next.delete(orderId); return next; });
+      if (context?.prev) queryClient.setQueryData(['department', 'packing', 'orders'], context.prev);
       toast({
         title: 'Could not update order',
         description: err instanceof Error ? err.message : 'Please try again.',
@@ -42,7 +49,6 @@ export default function PackingDashboardPage() {
       });
     },
     onSuccess: (_data, orderId) => {
-      setJustPacked(prev => { const next = new Set(prev); next.add(orderId); return next; });
       queryClient.invalidateQueries({ queryKey: ['department', 'billing', 'orders'] });
       setTimeout(() => {
         setJustPacked(prev => {

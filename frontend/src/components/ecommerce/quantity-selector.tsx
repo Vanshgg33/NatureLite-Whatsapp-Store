@@ -50,9 +50,10 @@ export function QuantitySelector({
         transition={{ type: 'spring', stiffness: 600, damping: 20 }}
         className={cn(
           classes.button,
-          'flex items-center justify-center rounded-l-xl transition-colors',
+          'flex items-center justify-center rounded-l-xl cursor-pointer',
           'hover:bg-brand-sand disabled:opacity-40 disabled:cursor-not-allowed'
         )}
+        style={{ transition: 'background 0.1s' } as React.CSSProperties}
         aria-label="Decrease quantity"
       >
         <Minus className={cn(classes.icon, 'text-brand-text')} />
@@ -86,9 +87,10 @@ export function QuantitySelector({
         transition={{ type: 'spring', stiffness: 600, damping: 20 }}
         className={cn(
           classes.button,
-          'flex items-center justify-center rounded-r-xl transition-colors',
+          'flex items-center justify-center rounded-r-xl cursor-pointer',
           'hover:bg-brand-sand disabled:opacity-40 disabled:cursor-not-allowed'
         )}
+        style={{ transition: 'background 0.1s' } as React.CSSProperties}
         aria-label="Increase quantity"
       >
         <Plus className={cn(classes.icon, 'text-brand-text')} />

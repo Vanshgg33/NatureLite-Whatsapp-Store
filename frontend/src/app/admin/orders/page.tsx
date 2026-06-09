@@ -105,9 +105,10 @@ export default function OrdersPage() {
   const [productDropdownOpen, setProductDropdownOpen] = useState(false);
   const [createError, setCreateError] = useState('');
 
-  const { data: ordersData, isLoading } = useQuery({
+  const { data: ordersData, isLoading, isFetching } = useQuery({
     queryKey: ['orders', page, debouncedSearch, status],
     queryFn: () => api.getOrders({ page, limit: 20, search: debouncedSearch, status: (status || undefined) as OrderStatus | undefined, sortBy: 'updatedAt', sortOrder: 'desc' }),
+    placeholderData: (prev) => prev,
   });
 
   const { data: productSearchResults = [] } = useQuery({
@@ -270,6 +271,11 @@ export default function OrdersPage() {
               </select>
             </div>
 
+            {isFetching && !isLoading && (
+              <div className="h-0.5 w-full bg-primary/20 rounded-full overflow-hidden mb-2">
+                <div className="h-full bg-primary animate-pulse w-1/2 rounded-full" />
+              </div>
+            )}
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>

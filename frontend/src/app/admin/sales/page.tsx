@@ -495,7 +495,7 @@ export default function SalesPage() {
     queryKey: ['store-stock', effectiveLogSaleStore, 'dialog'],
     queryFn: () => api.getStoreStock(effectiveLogSaleStore, { limit: 500 }),
     enabled: showLogSale && !!effectiveLogSaleStore,
-    staleTime: 0,
+    staleTime: 30_000,
   });
   const storeStockMap = new Map<string, number>();
   (logSaleStockData?.items ?? []).forEach((item) => {

@@ -119,10 +119,11 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
     ...(isSuperadmin ? SUPERADMIN_NAV_GROUPS : []),
   ];
 
-  const handleLogout = async () => {
-    try { await api.logout(); } catch { /* continue */ }
+  const handleLogout = () => {
+    // Redirect instantly — fire API logout in background
     logout();
     router.push('/admin-login');
+    api.logout().catch(() => { /* best-effort */ });
   };
 
   const handleNavClick = () => onMobileClose?.();
@@ -144,6 +145,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
             className="absolute right-3 top-3 md:hidden p-1 text-white/40 hover:text-white/70 transition-colors"
             onClick={onMobileClose}
             aria-label="Close menu"
+            style={{ transition: 'color 0.1s' }}
           >
             <X className="h-4 w-4" />
           </button>
@@ -180,11 +182,12 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
                   href={item.href}
                   onClick={handleNavClick}
                   className={cn(
-                    'flex items-center gap-2.5 text-[13px] py-[7px] transition-all duration-150',
+                    'flex items-center gap-2.5 text-[13px] py-[7px]',
                     isActive
                       ? 'ml-0 mr-2 pl-5 rounded-r-lg border-l-2 border-[#E8A838] bg-[rgba(232,168,56,0.11)] text-[#E8A838] font-medium'
                       : 'mx-2 px-3 rounded-lg text-white/60 hover:text-white/90 hover:bg-white/[0.06]'
                   )}
+                  style={{ transition: 'background-color 0.1s, color 0.1s' }}
                 >
                   <item.icon
                     className={cn(
@@ -217,7 +220,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
         </div>
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-white/45 hover:text-white/75 hover:bg-white/[0.06] text-[13px] transition-colors"
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-white/45 hover:text-white/75 hover:bg-white/[0.06] text-[13px] cursor-pointer"
+          style={{ transition: 'color 0.1s, background-color 0.1s' }}
         >
           <LogOut className="h-3.5 w-3.5" />
           Logout

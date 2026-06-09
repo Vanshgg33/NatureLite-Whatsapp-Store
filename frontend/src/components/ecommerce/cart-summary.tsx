@@ -232,7 +232,8 @@ export function CartSummary({
           </div>
           <button
             onClick={handleRemoveCoupon}
-            className="p-1 hover:bg-brand-green/10 rounded transition-colors"
+            className="p-1 hover:bg-brand-green/10 rounded cursor-pointer"
+            style={{ transition: 'background 0.1s' }}
           >
             <X className="w-4 h-4 text-brand-green" />
           </button>
@@ -339,8 +340,8 @@ export function CartSummary({
 
           <button
             onClick={() => setShowWaModal(true)}
-            className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl font-semibold text-sm transition-all duration-200 hover:-translate-y-0.5"
-            style={{ background: '#25D366', color: '#fff', boxShadow: '0 4px 18px -4px rgba(37,211,102,0.40)' }}
+            className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl font-semibold text-sm cursor-pointer active:scale-[0.97]"
+            style={{ background: '#25D366', color: '#fff', boxShadow: '0 4px 18px -4px rgba(37,211,102,0.40)', transition: 'filter 0.1s, transform 0.1s' }}
           >
             <MessageCircle className="w-4 h-4" />
             Order via WhatsApp

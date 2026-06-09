@@ -3,6 +3,15 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, Search, Package, Tag, X, CheckSquare, Download, Upload, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { useToast } from '@/components/ui/use-toast';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Header } from '@/components/layout/header';
@@ -35,16 +44,21 @@ export default function ProductsPage() {
   const [sortBy, setSortBy] = useState<SortField>('createdAt');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [exporting, setExporting] = useState(false);
+  const [deleteConfirmProduct, setDeleteConfirmProduct] = useState<Product | null>(null);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
-  const { data: rawData, isLoading, isError, error, refetch } = useQuery({
+  const { data: rawData, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['products', page, debouncedSearch, filterCategory, sortBy, sortDir],
     queryFn: () => api.getProducts({ page, limit: 20, search: debouncedSearch, category: filterCategory || undefined, sortBy, sortOrder: sortDir }),
+    placeholderData: (prev) => prev,
   });
 
   const { data: categories } = useQuery({
     queryKey: ['categories'],
     queryFn: () => api.getCategories({ limit: 100 }),
+    staleTime: 10 * 60 * 1000,
   });
 
   const categoryList = useMemo<Category[]>(() => {
@@ -69,7 +83,21 @@ export default function ProductsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.deleteProduct(id),
-    onSuccess: () => {
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['products'] });
+      const queryKey = ['products', page, debouncedSearch, filterCategory, sortBy, sortDir];
+      const snapshot = queryClient.getQueryData(queryKey);
+      queryClient.setQueryData(queryKey, (old: any) => {
+        if (!old) return old;
+        return { ...old, items: (old.items as Product[]).filter((p) => p._id !== id), total: Math.max(0, (old.total ?? 0) - 1) };
+      });
+      return { snapshot, queryKey };
+    },
+    onError: (_err, _id, context: any) => {
+      if (context?.snapshot) queryClient.setQueryData(context.queryKey, context.snapshot);
+      toast({ title: 'Failed to delete product', variant: 'destructive' });
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       setSelected(new Set());
     },
@@ -82,11 +110,11 @@ export default function ProductsPage() {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       setSelected(new Set());
       setBulkCategoryId('');
-      alert(`Category updated for ${data.modifiedCount} product(s).`);
+      toast({ title: `Category updated for ${data.modifiedCount} product(s).` });
     },
     onError: (err: unknown) => {
       const msg = err instanceof Error ? err.message : 'Unknown error';
-      alert(`Failed to update category: ${msg}`);
+      toast({ title: `Failed to update category: ${msg}`, variant: 'destructive' });
     },
   });
 
@@ -95,17 +123,15 @@ export default function ProductsPage() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       setSelected(new Set());
-      alert(`Successfully deleted ${data.deletedCount} product(s).`);
+      toast({ title: `Deleted ${data.deletedCount} product(s).` });
     },
     onError: (err: unknown) => {
       const msg = err instanceof Error ? err.message : 'Unknown error';
-      alert(`Failed to delete products: ${msg}`);
+      toast({ title: `Failed to delete products: ${msg}`, variant: 'destructive' });
     },
   });
 
-  const handleDelete = (product: Product) => {
-    if (confirm(`Delete "${product.name}"?`)) deleteMutation.mutate(product._id);
-  };
+  const handleDelete = (product: Product) => setDeleteConfirmProduct(product);
 
   const handleBulkCategory = () => {
     if (!bulkCategoryId || selected.size === 0) return;
@@ -114,9 +140,7 @@ export default function ProductsPage() {
 
   const handleBulkDelete = () => {
     if (selected.size === 0) return;
-    if (confirm(`Are you sure you want to delete ${selected.size} product(s)? This action cannot be undone.`)) {
-      bulkDeleteMutation.mutate(Array.from(selected));
-    }
+    setShowBulkDeleteConfirm(true);
   };
 
   const handleExport = async () => {
@@ -265,6 +289,11 @@ export default function ProductsPage() {
               )}
             </div>
 
+            {isFetching && !isLoading && (
+              <div className="h-0.5 w-full bg-primary/20 rounded-full overflow-hidden mb-2">
+                <div className="h-full bg-primary animate-pulse w-1/2 rounded-full" />
+              </div>
+            )}
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
@@ -443,6 +472,57 @@ export default function ProductsPage() {
           </CardContent>
         </Card>
       </div>
+      {/* Delete product confirmation */}
+      <Dialog open={!!deleteConfirmProduct} onOpenChange={(open) => { if (!open) setDeleteConfirmProduct(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Product</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete &quot;{deleteConfirmProduct?.name}&quot;? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmProduct(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={deleteMutation.isPending}
+              onClick={() => {
+                if (deleteConfirmProduct) {
+                  deleteMutation.mutate(deleteConfirmProduct._id);
+                  setDeleteConfirmProduct(null);
+                }
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk delete confirmation */}
+      <Dialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete {selected.size} Product{selected.size !== 1 ? 's' : ''}</DialogTitle>
+            <DialogDescription>
+              This will permanently delete {selected.size} product{selected.size !== 1 ? 's' : ''}. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBulkDeleteConfirm(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={bulkDeleteMutation.isPending}
+              onClick={() => {
+                bulkDeleteMutation.mutate(Array.from(selected));
+                setShowBulkDeleteConfirm(false);
+              }}
+            >
+              {bulkDeleteMutation.isPending ? 'Deleting…' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

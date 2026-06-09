@@ -145,6 +145,7 @@ export class NotificationsService {
     if (await this.isDuplicate(idempotencyKey)) return;
     this.markAsSent(idempotencyKey);
 
+    const name = order.shippingAddress?.name || 'there';
     const itemLines = order.items
       .slice(0, 4)
       .map((item) => `• ${item.name}  ×${item.quantity}`)
@@ -155,8 +156,8 @@ export class NotificationsService {
       phone,
       headerText: '✅ Order Confirmed',
       bodyText:
-        `*#${order.orderNumber}*\n\n` +
-        `📦 *Items (${order.items.length})*\n${itemLines}${moreItems}\n\n` +
+        `Hi ${name}! 👋\n\n` +
+        `📦 *Here are the items you ordered (${order.items.length})*\n${itemLines}${moreItems}\n\n` +
         `*Total:  ${this.formatMoneyInr(order.total)}*\n\n` +
         `We've confirmed your order and are preparing it now.`,
       footerText: order.paymentMethod === 'cod' ? 'Cash on delivery' : 'Prepaid',
@@ -185,12 +186,18 @@ export class NotificationsService {
     if (await this.isDuplicate(idempotencyKey)) return;
     this.markAsSent(idempotencyKey);
 
+    const namePacked = order.shippingAddress?.name || 'there';
+    const packedItemLines = (order.items || [])
+      .slice(0, 3)
+      .map((item: any) => `• ${item.name}  ×${item.quantity}`)
+      .join('\n');
+
     await this.whatsappService.sendInteractiveButtons({
       phone,
       headerText: '📦 Order Packed',
       bodyText:
-        `*#${order.orderNumber}*\n\n` +
-        `Your order has been packed and is ready for dispatch. ` +
+        `Hi ${namePacked}! Your order has been packed and is ready for dispatch.\n\n` +
+        (packedItemLines ? `*Items ordered:*\n${packedItemLines}\n\n` : '') +
         `We'll notify you as soon as it's on its way!`,
       buttons: [
         { id: `order_${order._id?.toString()}`, title: '📦 Track order' },
@@ -235,11 +242,13 @@ export class NotificationsService {
     if (deliveryPerson?.phone) deliveryLines.push(`📞 Contact:  *${deliveryPerson.phone}*`);
     const deliveryBlock = deliveryLines.length > 0 ? `\n\n${deliveryLines.join('\n')}` : '';
 
+    const nameOutForDelivery = order.shippingAddress?.name || 'there';
+
     await this.whatsappService.sendInteractiveButtons({
       phone,
       headerText: '🚚 Out for Delivery',
       bodyText:
-        `*#${order.orderNumber}* is on its way! 🎉\n\n` +
+        `Hi ${nameOutForDelivery}! Your order is on its way! 🎉\n\n` +
         `Your order will be delivered today or tomorrow.` +
         deliveryBlock +
         courierBlock,
@@ -275,15 +284,16 @@ export class NotificationsService {
     if (await this.isDuplicate(idempotencyKey)) return;
     this.markAsSent(idempotencyKey);
 
+    const nameAttempt = order.shippingAddress?.name || 'there';
     const messageMap: Record<typeof deliveryStatus, string> = {
       customer_ringing:
-        `We tried to reach you for delivery of *#${order.orderNumber}* but couldn't get through. ` +
+        `Hi ${nameAttempt}, we tried to reach you for delivery but couldn't get through. ` +
         `Our delivery partner will try again shortly.`,
       customer_tomorrow:
-        `We attempted delivery of *#${order.orderNumber}* today but couldn't complete it. ` +
+        `Hi ${nameAttempt}, we attempted your delivery today but couldn't complete it. ` +
         `We'll try again tomorrow — please keep your phone reachable.`,
       customer_cancelled:
-        `Your delivery for *#${order.orderNumber}* was not completed as requested. ` +
+        `Hi ${nameAttempt}, your delivery was not completed as requested. ` +
         `Please contact support if you'd like to reschedule.`,
     };
 
@@ -321,6 +331,7 @@ export class NotificationsService {
     if (await this.isDuplicate(idempotencyKey)) return;
     this.markAsSent(idempotencyKey);
 
+    const namePayment = order.shippingAddress?.name || 'there';
     const itemLines = (order.items || [])
       .slice(0, 4)
       .map((item: any) => `• ${item.name}  ×${item.quantity}`)
@@ -337,8 +348,8 @@ export class NotificationsService {
     billingLines.push(`*Paid:  ${this.formatMoneyInr(order.total)}*`);
 
     const body =
-      `*#${order.orderNumber}*  ·  _payment confirmed_\n\n` +
-      `📦 *Items (${order.items.length})*\n${itemLines}${moreItems}\n\n` +
+      `Hi ${namePayment}! 🎉 _payment confirmed_\n\n` +
+      `📦 *Here are the items you ordered (${order.items.length})*\n${itemLines}${moreItems}\n\n` +
       billingLines.join('\n') +
       `\n\nWe're now preparing your order. 🚀`;
 
@@ -518,8 +529,9 @@ export class NotificationsService {
     const idempotencyKey = `feedback_request_${orderId}`;
     if (await this.isDuplicate(idempotencyKey)) return true;
 
+    const nameFeedback = order.shippingAddress?.name || 'there';
     const message =
-      `*How was order ${order.orderNumber}?* \u2b50\n` +
+      `Hi ${nameFeedback}! How was your recent purchase? \u2b50\n` +
       `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n` +
       `Reply with a rating from 1 to 5:\n` +
       `5 \u2605 Loved it\n` +
@@ -760,19 +772,23 @@ export class NotificationsService {
   }
 
   private formatOrderCreatedMessage(order: Order): string {
+    const name = order.shippingAddress?.name || 'there';
+    const items = (order.items || []).map((i: any) => `${i.name} ×${i.quantity}`).join(', ');
     return [
-      `Order received: ${order.orderNumber}`,
+      `Hi ${name}! 👋 Your order has been received.`,
+      items ? `Items: ${items}` : '',
       `Total: ${this.formatMoneyInr(order.total)}`,
-      `Status: ${this.formatOrderStatusForNotification(order)}`,
-    ].join('\n');
+    ].filter(Boolean).join('\n');
   }
 
   private formatOrderStatusUpdateMessage(order: Order): string {
-    return `Update: Your order ${order.orderNumber} is now ${this.formatOrderStatusForNotification(order)}.`;
+    const name = order.shippingAddress?.name || 'there';
+    return `Hi ${name}, your order is now ${this.formatOrderStatusForNotification(order)}.`;
   }
 
   private formatOrderDeliveredMessage(order: Order): string {
-    return `Delivered: Your order ${order.orderNumber} has been delivered. Thank you for shopping with us.`;
+    const name = order.shippingAddress?.name || 'there';
+    return `Hi ${name}, your order has been delivered. Thank you for shopping with us! 🎉`;
   }
 
   private formatAbandonedCartReminderMessage(input: {

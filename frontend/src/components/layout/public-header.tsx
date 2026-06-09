@@ -40,11 +40,12 @@ function NavIconBtn({
       href={href}
       aria-label={label}
       className={cn(
-        'relative p-2.5 rounded-full transition-all duration-200',
+        'relative p-2.5 rounded-full',
         heroMode
           ? 'text-white/80 hover:text-white hover:bg-white/10'
           : 'text-brand-charcoal/70 hover:text-brand-charcoal hover:bg-brand-cream'
       )}
+      style={{ transition: 'background-color 0.1s, color 0.1s' }}
     >
       {children}
       {badge != null && badge > 0 && (
@@ -171,10 +172,10 @@ export function PublicHeader() {
               ) : (
                 <Link
                   href="/login"
-                  className="hidden sm:flex items-center px-5 py-2 ml-1 rounded-xl text-[13px] font-semibold transition-all duration-200"
+                  className="hidden sm:flex items-center px-5 py-2 ml-1 rounded-xl text-[13px] font-semibold"
                   style={isHeroMode
-                    ? { background: '#a07010', color: '#fff', boxShadow: '0 2px 14px -2px rgba(160,112,16,0.45)' }
-                    : { background: 'hsl(var(--brand-charcoal))', color: '#fff' }
+                    ? { background: '#a07010', color: '#fff', boxShadow: '0 2px 14px -2px rgba(160,112,16,0.45)', transition: 'opacity 0.1s' }
+                    : { background: 'hsl(var(--brand-charcoal))', color: '#fff', transition: 'opacity 0.1s' }
                   }
                 >
                   Sign In
@@ -184,11 +185,12 @@ export function PublicHeader() {
               {/* Mobile toggle */}
               <button
                 className={cn(
-                  'md:hidden ml-0.5 p-2.5 rounded-full transition-all duration-200',
+                  'md:hidden ml-0.5 p-2.5 rounded-full',
                   isHeroMode
                     ? 'text-white/85 hover:text-white hover:bg-white/10'
                     : 'text-brand-charcoal/70 hover:text-brand-charcoal hover:bg-brand-cream'
                 )}
+                style={{ transition: 'background-color 0.1s, color 0.1s' }}
                 onClick={() => setMobileOpen(true)}
                 aria-label="Open menu"
               >
@@ -240,7 +242,8 @@ export function PublicHeader() {
               </Link>
               <button
                 onClick={() => setMobileOpen(false)}
-                className="p-2.5 rounded-full text-brand-charcoal/60 hover:bg-brand-cream transition-colors"
+                className="p-2.5 rounded-full text-brand-charcoal/60 hover:bg-brand-cream"
+                style={{ transition: 'background-color 0.1s' }}
                 aria-label="Close menu"
               >
                 <X className="w-5 h-5" />

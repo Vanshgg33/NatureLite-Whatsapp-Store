@@ -32,7 +32,6 @@ export function PremiumProductCard({
   const [isWishlisted,     setIsWishlisted]     = useState(false);
   const [imageLoaded,      setImageLoaded]      = useState(false);
   const [imageError,       setImageError]       = useState(false);
-  const [isAddingToCart,   setIsAddingToCart]   = useState(false);
   const [showSuccess,      setShowSuccess]      = useState(false);
   const [heartBurst,       setHeartBurst]       = useState(false);
   const [selectedVarIdx,   setSelectedVarIdx]   = useState(0);
@@ -85,27 +84,25 @@ export function PremiumProductCard({
   const isBestSeller = product.totalSold > 50;
   const reviewCount  = product.totalSold || 0;
 
-  const handleAddToCart = async (e: React.MouseEvent) => {
+  const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
-    if (isAddingToCart) return;
-    setIsAddingToCart(true);
+    if (showSuccess) return;
+    // Instantly show success state — optimistic UI, no waiting for server
+    setShowSuccess(true);
     const cartItem: Omit<CartItem, 'quantity'> = {
       productId: product._id, name: product.name, slug: product.slug,
       image: product.images?.[0] || '', price: displayPrice,
       compareAtPrice: displayCompare, gstPercentage: product.gstPercentage || 5,
       ...(selectedVar && { variantSku: selectedVar.sku, variantName: selectedVar.name }),
     };
-    try {
-      await addItem(cartItem, 1);
-      setIsAddingToCart(false); setShowSuccess(true);
-      if (flyAnimation && addToCartBtnRef.current)
-        flyAnimation.triggerFlyAnimation(product.images?.[0] || '', addToCartBtnRef.current.getBoundingClientRect());
-      toast({ title: 'Added to cart', description: `${product.name} added.` });
-      setTimeout(() => setShowSuccess(false), 1500);
-    } catch {
-      setIsAddingToCart(false);
+    if (flyAnimation && addToCartBtnRef.current)
+      flyAnimation.triggerFlyAnimation(product.images?.[0] || '', addToCartBtnRef.current.getBoundingClientRect());
+    toast({ title: 'Added to cart', description: `${product.name} added.` });
+    // Fire-and-forget: sync with server in background
+    addItem(cartItem, 1).catch(() => {
       toast({ title: 'Error', description: 'Failed to add item.', variant: 'destructive' });
-    }
+    });
+    setTimeout(() => setShowSuccess(false), 1500);
   };
 
   const handleWishlist = (e: React.MouseEvent) => {
@@ -223,12 +220,13 @@ export function PremiumProductCard({
               <div className="relative">
                 <button
                   onClick={handleWishlist}
-                  className="absolute top-2 right-2 z-10 flex items-center justify-center rounded-full transition-all duration-200"
+                  className="absolute top-2 right-2 z-10 flex items-center justify-center rounded-full cursor-pointer"
                   style={{
                     width: 28, height: 28,
                     background: isWishlisted ? '#c0392b' : 'rgba(255,255,255,0.92)',
                     color: isWishlisted ? '#fff' : 'rgba(11,28,8,0.55)',
                     boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
+                    transition: 'background 0.1s, color 0.1s',
                   }}
                 >
                   <Heart className={`w-3.5 h-3.5 ${isWishlisted ? 'fill-current' : ''}`} />
@@ -257,7 +255,7 @@ export function PremiumProductCard({
               {onQuickView && (
                 <button
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); onQuickView(product); }}
-                  className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 z-20 transition-all duration-200"
+                  className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 z-20 cursor-pointer"
                   style={{
                     background: 'rgba(11,28,8,0.78)',
                     backdropFilter: 'blur(8px)',
@@ -268,6 +266,7 @@ export function PremiumProductCard({
                     borderRadius: 99,
                     opacity: isHovered ? 1 : 0,
                     transform: `translateX(-50%) translateY(${isHovered ? '0px' : '6px'})`,
+                    transition: 'opacity 0.2s, transform 0.2s',
                     whiteSpace: 'nowrap',
                   }}
                 >
@@ -342,7 +341,7 @@ export function PremiumProductCard({
                           color: isSelected ? '#fff' : isOOS ? 'rgba(46,66,37,0.22)' : 'rgba(46,66,37,0.65)',
                           border: `1px solid ${isSelected ? '#0b1c08' : isOOS ? 'rgba(46,66,37,0.12)' : 'rgba(46,66,37,0.28)'}`,
                           textDecoration: isOOS ? 'line-through' : 'none',
-                          transition: 'all 0.15s',
+                          transition: 'background 0.1s, color 0.1s, border-color 0.1s',
                         }}
                       >
                         {label}
@@ -365,7 +364,8 @@ export function PremiumProductCard({
                         e.preventDefault(); e.stopPropagation();
                         updateQuantity(product._id, quantityInCart - 1, selectedVar?.sku);
                       }}
-                      className="w-1/3 h-full flex items-center justify-center hover:bg-gray-50 text-[#0b1c08] font-bold text-lg transition-colors"
+                      className="w-1/3 h-full flex items-center justify-center hover:bg-gray-50 text-[#0b1c08] font-bold text-lg cursor-pointer"
+                      style={{ transition: 'background 0.1s' }}
                       title="Decrease quantity"
                     >
                       −
@@ -378,7 +378,8 @@ export function PremiumProductCard({
                         e.preventDefault(); e.stopPropagation();
                         updateQuantity(product._id, quantityInCart + 1, selectedVar?.sku);
                       }}
-                      className="w-1/3 h-full flex items-center justify-center hover:bg-gray-50 text-[#0b1c08] font-bold text-lg transition-colors"
+                      className="w-1/3 h-full flex items-center justify-center hover:bg-gray-50 text-[#0b1c08] font-bold text-lg cursor-pointer"
+                      style={{ transition: 'background 0.1s' }}
                       title="Increase quantity"
                     >
                       +
@@ -388,12 +389,10 @@ export function PremiumProductCard({
                   <button
                     ref={addToCartBtnRef}
                     onClick={handleAddToCart}
-                    disabled={isAddingToCart}
-                    className="w-full h-10 flex items-center justify-center gap-1.5 font-bold text-xs text-[#0b1c08] border border-[#0b1c08] rounded-xl bg-white hover:bg-gray-50 transition-colors"
+                    className="w-full h-10 flex items-center justify-center gap-1.5 font-bold text-xs text-[#0b1c08] border border-[#0b1c08] rounded-xl bg-white hover:bg-gray-50 cursor-pointer active:scale-[0.97]"
+                    style={{ transition: 'background 0.1s, transform 0.1s' }}
                   >
-                    {isAddingToCart ? (
-                      <div className="w-3.5 h-3.5 rounded-full border-2 border-[#0b1c08] border-t-transparent animate-spin" />
-                    ) : showSuccess ? (
+                    {showSuccess ? (
                       <>✔ Added!</>
                     ) : (
                       <>+ Add to Cart</>
@@ -503,15 +502,13 @@ export function PremiumProductCard({
                 <button
                   ref={addToCartBtnRef}
                   onClick={handleAddToCart}
-                  disabled={isAddingToCart || showSuccess}
                   className={cn(
-                    "w-full py-3 rounded-2xl font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-90",
+                    "w-full py-3 rounded-2xl font-medium flex items-center justify-center gap-2 cursor-pointer active:scale-[0.97]",
                     showSuccess ? "bg-brand-green text-white" : "bg-brand-charcoal text-white hover:bg-brand-green"
                   )}
+                  style={{ transition: 'background-color 0.1s, transform 0.1s' }}
                 >
-                  {isAddingToCart ? (
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : showSuccess ? (
+                  {showSuccess ? (
                     <><Check className="w-5 h-5" /> Added!</>
                   ) : (
                     <><ShoppingBag className="w-5 h-5" /> Add to Cart</>
