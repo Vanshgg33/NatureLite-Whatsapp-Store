@@ -45,6 +45,7 @@ import {
   StoreSale,
   CreateStoreSaleDto,
   UpdateStoreSaleDto,
+  DropdownSettings,
   SetStoreStockDto,
   StoreRevenueToday,
   StoreStockSummary,
@@ -731,8 +732,8 @@ class ApiClient {
     return response.data.data;
   }
 
-  async markOrderPacked(id: string): Promise<Order> {
-    const response = await this.client.put<ApiResponse<Order>>(`/orders/${id}/mark-packed`);
+  async markOrderPacked(id: string, packedByName?: string): Promise<Order> {
+    const response = await this.client.put<ApiResponse<Order>>(`/orders/${id}/mark-packed`, { packedByName });
     return response.data.data;
   }
 
@@ -909,6 +910,19 @@ class ApiClient {
   async updateSettings(key: string, updates: Partial<StoreSettings | WhatsAppSettings | CatalogSettings | AppearanceSettings | BannerSettings> | Record<string, unknown>): Promise<StoreSettings | WhatsAppSettings | CatalogSettings | AppearanceSettings | BannerSettings | Record<string, unknown>> {
     const response = await this.client.put<ApiResponse<StoreSettings | WhatsAppSettings | CatalogSettings | AppearanceSettings | BannerSettings>>(`/settings/${key}/update`, updates);
     return response.data.data;
+  }
+
+  async getDropdownSettings(): Promise<DropdownSettings> {
+    try {
+      const response = await this.client.get<ApiResponse<{ key: string; value: DropdownSettings }>>('/settings/dropdowns');
+      return response.data.data?.value ?? { cities: [], states: [], deliveryTypes: [], paymentTypes: [] };
+    } catch {
+      return { cities: [], states: [], deliveryTypes: [], paymentTypes: [] };
+    }
+  }
+
+  async saveDropdownSettings(data: DropdownSettings): Promise<void> {
+    await this.client.put('/settings/dropdowns', { value: data, category: 'dropdowns' });
   }
 
   // ==================== UCM / CATALOG ====================

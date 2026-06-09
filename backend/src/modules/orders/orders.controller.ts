@@ -168,8 +168,8 @@ export class OrdersController {
     @Body() dto: AssignDeliveryDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<Order> {
-    if (user.departmentType === 'packing' || user.departmentType === 'delivery') {
-      throw new ForbiddenException('Only billing staff or superadmin can assign delivery.');
+    if (user.departmentType === 'delivery') {
+      throw new ForbiddenException('Delivery staff cannot assign delivery.');
     }
     return this.ordersService.assignDelivery(id, dto.deliveryUserId, user.sub);
   }
@@ -179,9 +179,10 @@ export class OrdersController {
   @Roles('admin', 'superadmin')
   async markPacked(
     @Param('id') id: string,
+    @Body() body: { packedByName?: string },
     @CurrentUser() user: JwtPayload,
   ): Promise<Order> {
-    return this.ordersService.markPacked(id, user.sub, user.departmentType);
+    return this.ordersService.markPacked(id, user.sub, user.departmentType, body?.packedByName);
   }
 
   @Put(':id/payment-status')

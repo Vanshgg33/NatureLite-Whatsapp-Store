@@ -367,6 +367,7 @@ export default function SalesPage() {
   const debouncedProductSearch = useDebouncedValue(productSearch, 300);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [customerAlternatePhone, setCustomerAlternatePhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
   const [discount, setDiscount] = useState('0');
   const [discountIsPercent, setDiscountIsPercent] = useState(false);
@@ -391,6 +392,7 @@ export default function SalesPage() {
   const [editCartItems, setEditCartItems] = useState<CartLineItem[]>([]);
   const [editCustomerName, setEditCustomerName] = useState('');
   const [editCustomerPhone, setEditCustomerPhone] = useState('');
+  const [editCustomerAlternatePhone, setEditCustomerAlternatePhone] = useState('');
   const [editCustomerAddress, setEditCustomerAddress] = useState('');
   const [editDiscount, setEditDiscount] = useState('0');
   const [editDiscountIsPercent, setEditDiscountIsPercent] = useState(false);
@@ -423,6 +425,14 @@ export default function SalesPage() {
     }
   }, [stores, selectedStoreId, isSuperadmin]);
 
+  const { data: dropdownSettings } = useQuery({
+    queryKey: ['dropdown-settings'],
+    queryFn: () => api.getDropdownSettings(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const cityOptions = dropdownSettings?.cities ?? [];
+  const stateOptions = dropdownSettings?.states ?? [];
+
   useEffect(() => {
     if (showLogSale) {
       setLogSaleStoreId(isSuperadmin ? selectedStoreId : (user?.storeId || selectedStoreId));
@@ -440,6 +450,7 @@ export default function SalesPage() {
       setEditSaleType(editingSale.saleType as 'walk_in' | 'delivery' | 'website');
       setEditCustomerName(editingSale.customerName || '');
       setEditCustomerPhone(editingSale.customerPhone || '');
+      setEditCustomerAlternatePhone(editingSale.customerAlternatePhone || '');
       setEditCustomerAddress(editingSale.customerAddress || '');
       setEditDiscount(String(editingSale.discount ?? 0));
       setEditDiscountIsPercent(false);
@@ -643,6 +654,7 @@ export default function SalesPage() {
         })),
         customerName: editCustomerName || undefined,
         customerPhone: editCustomerPhone || undefined,
+        customerAlternatePhone: editCustomerAlternatePhone || undefined,
         customerAddress: editCustomerAddress || undefined,
         discount: (() => {
           const editSubtotal = editCartItems.reduce((s, i) => s + i.price * i.quantity, 0);
@@ -747,6 +759,7 @@ export default function SalesPage() {
     setProductSearch('');
     setCustomerName('');
     setCustomerPhone('');
+    setCustomerAlternatePhone('');
     setCustomerAddress('');
     setDiscount('0');
     setDiscountIsPercent(false);
@@ -758,7 +771,7 @@ export default function SalesPage() {
     setAddrStreet('');
     setAddrLandmark('');
     setAddrCity('');
-    setAddrState('Maharashtra');
+    setAddrState(stateOptions[0] ?? 'Maharashtra');
     setAddrPincode('');
   };
 
@@ -1368,33 +1381,61 @@ export default function SalesPage() {
               <div>
                 <label className="text-sm font-medium">Store</label>
                 <p className="text-xs text-muted-foreground mb-2">Select which store this sale is for</p>
-                <Select
-                  value={logSaleStoreId}
-                  onValueChange={(v) => {
-                    setLogSaleStoreId(v);
-                    setCartItems([]);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select store" />
-                  </SelectTrigger>
+                <Select value={logSaleStoreId} onValueChange={(v) => { setLogSaleStoreId(v); setCartItems([]); }}>
+                  <SelectTrigger><SelectValue placeholder="Select store" /></SelectTrigger>
                   <SelectContent>
                     {stores.filter((s) => s._id).map((store) => (
-                      <SelectItem key={store._id} value={store._id}>
-                        {store.name}
-                      </SelectItem>
+                      <SelectItem key={store._id} value={store._id}>{store.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
             )}
+
+            {/* Step 1: Customer Info */}
+            <div className="space-y-3 rounded-lg border p-4 bg-muted/10">
+              <p className="text-sm font-semibold">Customer Info</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium">Name <span className="text-red-500">*</span></label>
+                  <Input
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="Customer name"
+                    className={!customerName.trim() ? 'border-orange-200' : ''}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium">Phone <span className="text-red-500">*</span></label>
+                  <Input
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    placeholder="10-digit mobile"
+                    maxLength={10}
+                    className={customerPhone && !/^[6-9]\d{9}$/.test(customerPhone) ? 'border-red-300' : ''}
+                  />
+                  {customerPhone && !/^[6-9]\d{9}$/.test(customerPhone) && (
+                    <p className="text-xs text-red-500 mt-0.5">Valid 10-digit mobile required</p>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium">Alternate Phone <span className="text-muted-foreground font-normal">(optional)</span></label>
+                <Input
+                  value={customerAlternatePhone}
+                  onChange={(e) => setCustomerAlternatePhone(e.target.value)}
+                  placeholder="Alternate number"
+                  maxLength={10}
+                />
+              </div>
+            </div>
+
+            {/* Sale Type + Payment */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-sm font-medium">Sale Type</label>
                 <Select value={saleType} onValueChange={(v: 'walk_in' | 'delivery') => setSaleType(v)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="walk_in">Walk-in</SelectItem>
                     <SelectItem value="delivery">Delivery</SelectItem>
@@ -1404,9 +1445,7 @@ export default function SalesPage() {
               <div>
                 <label className="text-sm font-medium">Payment Method</label>
                 <Select value={paymentMethod} onValueChange={(v) => { setPaymentMethod(v); if (v !== 'upi') setUpiProofUrl(null); }}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="cash">Cash</SelectItem>
                     <SelectItem value="upi">UPI</SelectItem>
@@ -1416,59 +1455,24 @@ export default function SalesPage() {
               </div>
             </div>
 
-            {/* UPI payment proof – camera or upload */}
             {paymentMethod === 'upi' && (
               <div className="space-y-2">
                 <label className="text-sm font-medium">UPI payment proof (optional)</label>
                 <p className="text-xs text-muted-foreground">Take a photo of the payment screen or upload a screenshot</p>
                 <div className="flex flex-wrap gap-2">
-                  <input
-                    ref={cameraInputRef}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="hidden"
-                    onChange={handleUpiProofFile}
-                  />
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleUpiProofFile}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => cameraInputRef.current?.click()}
-                    disabled={upiProofUploading}
-                  >
-                    <Camera className="h-4 w-4 mr-2" />
-                    {upiProofUploading ? 'Uploading...' : 'Take photo'}
+                  <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleUpiProofFile} />
+                  <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleUpiProofFile} />
+                  <Button type="button" variant="outline" size="sm" onClick={() => cameraInputRef.current?.click()} disabled={upiProofUploading}>
+                    <Camera className="h-4 w-4 mr-2" />{upiProofUploading ? 'Uploading...' : 'Take photo'}
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={upiProofUploading}
-                  >
-                    <Upload className="h-4 w-4 mr-2" />
-                    {upiProofUploading ? 'Uploading...' : 'Upload image'}
+                  <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={upiProofUploading}>
+                    <Upload className="h-4 w-4 mr-2" />{upiProofUploading ? 'Uploading...' : 'Upload image'}
                   </Button>
                 </div>
                 {upiProofUrl && (
                   <div className="relative inline-block mt-2">
                     <img src={upiProofUrl} alt="Payment proof" className="h-24 w-auto rounded-lg border object-cover" />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-muted"
-                      onClick={() => setUpiProofUrl(null)}
-                      aria-label="Remove"
-                    >
+                    <Button type="button" variant="ghost" size="icon" className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-muted" onClick={() => setUpiProofUrl(null)} aria-label="Remove">
                       <X className="h-3 w-3" />
                     </Button>
                   </div>
@@ -1476,7 +1480,7 @@ export default function SalesPage() {
               </div>
             )}
 
-            {/* Product dropdown – only in-stock products */}
+            {/* Step 2: Products */}
             <div>
               <label className="text-sm font-medium">Add Products</label>
               <div className="relative">
@@ -1494,9 +1498,7 @@ export default function SalesPage() {
               {productDropdownOpen && (
                 <div className="mt-1 border rounded-md max-h-48 overflow-y-auto bg-white shadow-lg z-10">
                   {productResults.length === 0 ? (
-                    <p className="px-3 py-4 text-sm text-muted-foreground text-center">
-                      No products found.
-                    </p>
+                    <p className="px-3 py-4 text-sm text-muted-foreground text-center">No products found.</p>
                   ) : (
                     (() => {
                       const firstOutIdx = productResults.findIndex((r) => r.stock <= 0);
@@ -1506,35 +1508,22 @@ export default function SalesPage() {
                         return (
                           <div key={`${row.productId}-${row.variantSku ?? 'main'}`}>
                             {showDivider && (
-                              <div className="px-3 py-1 text-xs font-semibold text-gray-400 bg-gray-50 border-b uppercase tracking-wide">
-                                Out of Stock
-                              </div>
+                              <div className="px-3 py-1 text-xs font-semibold text-gray-400 bg-gray-50 border-b uppercase tracking-wide">Out of Stock</div>
                             )}
                             <button
                               type="button"
                               disabled={outOfStock}
-                              onMouseDown={(e) => {
-                                if (outOfStock) return;
-                                e.preventDefault();
-                                addToCart(row);
-                                setProductSearch('');
-                              }}
+                              onMouseDown={(e) => { if (outOfStock) return; e.preventDefault(); addToCart(row); setProductSearch(''); }}
                               className={`w-full flex items-center justify-between px-3 py-2.5 text-sm text-left border-b last:border-b-0 ${outOfStock ? 'opacity-40 cursor-not-allowed bg-gray-50' : 'hover:bg-green-50 bg-white'}`}
                             >
                               <span className="flex items-center gap-2">
                                 {!outOfStock && <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />}
-                                <span>
-                                  {row.productName}
-                                  {row.variantName ? ` · ${row.variantName}` : ''}
-                                  {row.variantSku ? ` (${row.variantSku})` : row.productSku ? ` (${row.productSku})` : ''}
-                                </span>
+                                <span>{row.productName}{row.variantName ? ` · ${row.variantName}` : ''}{row.variantSku ? ` (${row.variantSku})` : row.productSku ? ` (${row.productSku})` : ''}</span>
                               </span>
                               {outOfStock ? (
                                 <span className="text-red-400 text-xs font-medium shrink-0 ml-2">Out of Stock</span>
                               ) : (
-                                <span className="text-green-600 text-xs font-medium shrink-0 ml-2">
-                                  ₹{row.price.toLocaleString()} · {row.stock} left
-                                </span>
+                                <span className="text-green-600 text-xs font-medium shrink-0 ml-2">₹{row.price.toLocaleString()} · {row.stock} left</span>
                               )}
                             </button>
                           </div>
@@ -1546,7 +1535,6 @@ export default function SalesPage() {
               )}
             </div>
 
-            {/* Cart Items */}
             {cartItems.length > 0 && (
               <div className="border rounded-lg divide-y">
                 {cartItems.map((item, idx) => (
@@ -1564,22 +1552,12 @@ export default function SalesPage() {
                         onChange={(e) => {
                           const val = parseInt(e.target.value, 10) || 1;
                           const cap = item.maxStock ?? 999;
-                          setCartItems(
-                            cartItems.map((ci, i) =>
-                              i === idx ? { ...ci, quantity: Math.min(Math.max(1, val), cap) } : ci,
-                            ),
-                          );
+                          setCartItems(cartItems.map((ci, i) => i === idx ? { ...ci, quantity: Math.min(Math.max(1, val), cap) } : ci));
                         }}
                         className="w-16 h-8 text-center"
                       />
-                      <span className="text-sm font-medium w-20 text-right">
-                        ₹{(item.price * item.quantity).toLocaleString()}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setCartItems(cartItems.filter((_, i) => i !== idx))}
-                      >
+                      <span className="text-sm font-medium w-20 text-right">₹{(item.price * item.quantity).toLocaleString()}</span>
+                      <Button variant="ghost" size="sm" onClick={() => setCartItems(cartItems.filter((_, i) => i !== idx))}>
                         <Trash2 className="h-4 w-4 text-red-500" />
                       </Button>
                     </div>
@@ -1588,89 +1566,53 @@ export default function SalesPage() {
               </div>
             )}
 
-            {/* Customer Info */}
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium">Customer Name <span className="text-muted-foreground font-normal">(Optional)</span></label>
-                  <Input
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    placeholder="Customer name"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Customer Phone <span className="text-muted-foreground font-normal">(Optional)</span></label>
-                  <Input
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    placeholder="Phone number"
-                  />
-                </div>
-              </div>
-
-              {saleType === 'delivery' ? (
-                <div className="space-y-3 border rounded-lg p-3 bg-muted/30">
-                  <label className="text-sm font-medium block">
-                    Delivery Address <span className="text-muted-foreground font-normal">(Optional)</span>
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="col-span-2">
-                      <label className="text-xs text-muted-foreground mb-1 block">Street / House No.</label>
-                      <Input
-                        value={addrStreet}
-                        onChange={(e) => setAddrStreet(e.target.value)}
-                        placeholder="e.g. 12, Nehru Nagar, Near Bus Stand"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">Landmark</label>
-                      <Input
-                        value={addrLandmark}
-                        onChange={(e) => setAddrLandmark(e.target.value)}
-                        placeholder="e.g. Near temple"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">City</label>
-                      <Input
-                        value={addrCity}
-                        onChange={(e) => setAddrCity(e.target.value)}
-                        placeholder="e.g. Hinganghat"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">State</label>
-                      <Input
-                        value={addrState}
-                        onChange={(e) => setAddrState(e.target.value)}
-                        placeholder="e.g. Maharashtra"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">Pincode</label>
-                      <Input
-                        value={addrPincode}
-                        onChange={(e) => setAddrPincode(e.target.value)}
-                        placeholder="e.g. 442301"
-                        maxLength={6}
-                      />
-                    </div>
+            {/* Address */}
+            {saleType === 'delivery' ? (
+              <div className="space-y-3 border rounded-lg p-3 bg-muted/30">
+                <label className="text-sm font-medium block">Delivery Address <span className="text-red-500">*</span></label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="text-xs text-muted-foreground mb-1 block">Street / House No.</label>
+                    <Input value={addrStreet} onChange={(e) => setAddrStreet(e.target.value)} placeholder="e.g. 12, Nehru Nagar, Near Bus Stand" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Landmark</label>
+                    <Input value={addrLandmark} onChange={(e) => setAddrLandmark(e.target.value)} placeholder="e.g. Near temple" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">City <span className="text-red-500">*</span></label>
+                    {cityOptions.length > 0 ? (
+                      <Select value={addrCity} onValueChange={setAddrCity}>
+                        <SelectTrigger className={!addrCity ? 'border-orange-200' : ''}><SelectValue placeholder="Select city" /></SelectTrigger>
+                        <SelectContent>{cityOptions.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                      </Select>
+                    ) : (
+                      <Input value={addrCity} onChange={(e) => setAddrCity(e.target.value)} placeholder="e.g. Hinganghat" className={!addrCity ? 'border-orange-200' : ''} />
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">State <span className="text-red-500">*</span></label>
+                    {stateOptions.length > 0 ? (
+                      <Select value={addrState} onValueChange={setAddrState}>
+                        <SelectTrigger className={!addrState ? 'border-orange-200' : ''}><SelectValue placeholder="Select state" /></SelectTrigger>
+                        <SelectContent>{stateOptions.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                      </Select>
+                    ) : (
+                      <Input value={addrState} onChange={(e) => setAddrState(e.target.value)} placeholder="e.g. Maharashtra" />
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Pincode</label>
+                    <Input value={addrPincode} onChange={(e) => setAddrPincode(e.target.value)} placeholder="e.g. 442301" maxLength={6} />
                   </div>
                 </div>
-              ) : (
-                <div>
-                  <label className="text-sm font-medium">Customer Address <span className="text-muted-foreground font-normal">(Optional)</span></label>
-                  <Textarea
-                    value={customerAddress}
-                    onChange={(e) => setCustomerAddress(e.target.value)}
-                    placeholder="Street, city, pincode..."
-                    rows={2}
-                    className="resize-none"
-                  />
-                </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div>
+                <label className="text-sm font-medium">Customer Address <span className="text-muted-foreground font-normal">(Optional)</span></label>
+                <Textarea value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} placeholder="Street, city, pincode..." rows={2} className="resize-none" />
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -1678,38 +1620,21 @@ export default function SalesPage() {
                   <label className="text-sm font-medium">Discount</label>
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs text-muted-foreground">₹</span>
-                    <Switch
-                      checked={discountIsPercent}
-                      onCheckedChange={setDiscountIsPercent}
-                    />
+                    <Switch checked={discountIsPercent} onCheckedChange={setDiscountIsPercent} />
                     <span className="text-xs text-muted-foreground">%</span>
                   </div>
                 </div>
                 <div className="relative">
-                  <Input
-                    type="number"
-                    min="0"
-                    max={discountIsPercent ? 100 : undefined}
-                    value={discount}
-                    onChange={(e) => setDiscount(e.target.value)}
-                    className="pr-7"
-                  />
-                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
-                    {discountIsPercent ? '%' : '₹'}
-                  </span>
+                  <Input type="number" min="0" max={discountIsPercent ? 100 : undefined} value={discount} onChange={(e) => setDiscount(e.target.value)} className="pr-7" />
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">{discountIsPercent ? '%' : '₹'}</span>
                 </div>
               </div>
               <div>
                 <label className="text-sm font-medium">Notes</label>
-                <Input
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Any notes..."
-                />
+                <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any notes..." />
               </div>
             </div>
 
-            {/* Reminder (optional) – shows on dashboard 1hr before due time */}
             <div className="space-y-2 border-t pt-4">
               <label className="text-sm font-medium flex items-center gap-2">
                 <Bell className="h-4 w-4" />
@@ -1717,25 +1642,14 @@ export default function SalesPage() {
               </label>
               <p className="text-xs text-muted-foreground">e.g. &quot;This order should be delivered by 3 p.m.&quot; — Shows on dashboard when due within 24 hours.</p>
               <div className="grid gap-3 sm:grid-cols-2">
-                <Input
-                  value={reminderMessage}
-                  onChange={(e) => setReminderMessage(e.target.value)}
-                  placeholder="e.g. Deliver by 3 p.m."
-                  className="sm:col-span-2"
-                />
+                <Input value={reminderMessage} onChange={(e) => setReminderMessage(e.target.value)} placeholder="e.g. Deliver by 3 p.m." className="sm:col-span-2" />
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1">Due date & time</label>
-                  <Input
-                    type="datetime-local"
-                    value={reminderDueAt}
-                    onChange={(e) => setReminderDueAt(e.target.value)}
-                    min={new Date().toISOString().slice(0, 16)}
-                  />
+                  <Input type="datetime-local" value={reminderDueAt} onChange={(e) => setReminderDueAt(e.target.value)} min={new Date().toISOString().slice(0, 16)} />
                 </div>
               </div>
             </div>
 
-            {/* Totals */}
             {cartItems.length > 0 && (
               <div className="bg-gray-50 rounded-lg p-4 space-y-2">
                 <div className="flex justify-between text-sm">
@@ -1744,9 +1658,7 @@ export default function SalesPage() {
                 </div>
                 {discountAmount > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">
-                      Discount{discountIsPercent ? ` (${parseFloat(discount) || 0}%)` : ''}
-                    </span>
+                    <span className="text-gray-600">Discount{discountIsPercent ? ` (${parseFloat(discount) || 0}%)` : ''}</span>
                     <span className="text-red-600">-₹{discountAmount.toLocaleString()}</span>
                   </div>
                 )}
@@ -1758,9 +1670,7 @@ export default function SalesPage() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { resetForm(); setShowLogSale(false); }}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => { resetForm(); setShowLogSale(false); }}>Cancel</Button>
             <Button
               onClick={() => {
                 const data = {
@@ -1773,6 +1683,7 @@ export default function SalesPage() {
                   })),
                   customerName: customerName || undefined,
                   customerPhone: customerPhone || undefined,
+                  customerAlternatePhone: customerAlternatePhone || undefined,
                   customerAddress: saleType === 'delivery'
                     ? [addrStreet, addrLandmark, addrCity, addrState, addrPincode ? `PIN-${addrPincode}` : ''].filter(Boolean).join(', ') || undefined
                     : customerAddress || undefined,
@@ -1787,7 +1698,13 @@ export default function SalesPage() {
                 setShowLogSale(false);
                 logSaleMutation.mutate(data);
               }}
-              disabled={cartItems.length === 0 || !effectiveLogSaleStore}
+              disabled={
+                cartItems.length === 0 ||
+                !effectiveLogSaleStore ||
+                !customerName.trim() ||
+                !/^[6-9]\d{9}$/.test(customerPhone) ||
+                (saleType === 'delivery' && (!addrCity.trim() || !addrState.trim()))
+              }
             >
               Log Sale
             </Button>
@@ -2001,8 +1918,12 @@ export default function SalesPage() {
                   </div>
                   <div>
                     <label className="text-sm font-medium">Customer Phone</label>
-                    <Input value={editCustomerPhone} onChange={(e) => setEditCustomerPhone(e.target.value)} />
+                    <Input value={editCustomerPhone} onChange={(e) => setEditCustomerPhone(e.target.value)} maxLength={10} />
                   </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Alternate Phone <span className="text-muted-foreground font-normal text-xs">(optional)</span></label>
+                  <Input value={editCustomerAlternatePhone} onChange={(e) => setEditCustomerAlternatePhone(e.target.value)} placeholder="Alternate number" maxLength={10} />
                 </div>
                 <div>
                   <label className="text-sm font-medium">Customer Address</label>

@@ -183,6 +183,9 @@ export class Order {
   packedBy?: string;
 
   @Prop()
+  packedByName?: string;
+
+  @Prop()
   billedAt?: Date;
 
   @Prop()

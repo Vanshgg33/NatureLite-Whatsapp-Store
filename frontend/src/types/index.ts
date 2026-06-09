@@ -240,6 +240,7 @@ export interface Order {
   deliveredAt?: string;
   packedAt?: string;
   packedBy?: string;
+  packedByName?: string;
   billedAt?: string;
   billedBy?: string;
   outForDeliveryAt?: string;
@@ -993,6 +994,7 @@ export interface StoreSale {
   items: SaleItem[];
   customerName?: string;
   customerPhone?: string;
+  customerAlternatePhone?: string;
   customerAddress?: string;
   subtotal: number;
   discount: number;
@@ -1052,12 +1054,20 @@ export interface TopCustomer {
   lastPurchase: string;
 }
 
+export interface DropdownSettings {
+  cities: string[];
+  states: string[];
+  deliveryTypes: string[];
+  paymentTypes: string[];
+}
+
 export interface CreateStoreSaleDto {
   storeId: string;
   saleType: 'walk_in' | 'delivery';
   items: { productId: string; variantSku?: string; quantity: number }[];
   customerName?: string;
   customerPhone?: string;
+  customerAlternatePhone?: string;
   customerAddress?: string;
   discount?: number;
   paymentMethod?: string;
@@ -1074,6 +1084,7 @@ export interface UpdateStoreSaleDto {
   items?: { productId: string; variantSku?: string; quantity: number }[];
   customerName?: string;
   customerPhone?: string;
+  customerAlternatePhone?: string;
   customerAddress?: string;
   discount?: number;
   paymentMethod?: string;

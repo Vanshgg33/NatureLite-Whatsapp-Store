@@ -776,9 +776,12 @@ export class OrdersService implements OnModuleInit {
     }
 
     if (departmentType) {
-      if (departmentType === 'packing') {
+      if (
+        departmentType === 'packing' &&
+        (dto.status !== 'out_for_delivery' || order.status !== 'preparing')
+      ) {
         throw new BadRequestException(
-          'Packing staff must use “Mark packed” on the packing dashboard, not manual status changes.',
+          'Packing staff can only send packed orders out for delivery.',
         );
       }
       if (
@@ -880,6 +883,7 @@ export class OrdersService implements OnModuleInit {
     id: string,
     updatedBy: string,
     departmentType?: 'packing' | 'billing' | 'delivery',
+    packedByName?: string,
   ): Promise<Order> {
     if (departmentType && departmentType !== 'packing') {
       throw new BadRequestException('Only packing staff can mark an order as packed.');
@@ -907,9 +911,14 @@ export class OrdersService implements OnModuleInit {
     if (updatedBy) {
       order.packedBy = updatedBy;
     }
+    if (packedByName) {
+      order.packedByName = packedByName;
+    }
     this.pushTimelineEntry(order, {
       status: 'preparing',
-      message: 'Packed — ready for billing / dispatch',
+      message: packedByName
+        ? `Packed by ${packedByName} — ready for dispatch`
+        : 'Packed — ready for billing / dispatch',
       updatedBy,
     });
     const saved = await order.save();

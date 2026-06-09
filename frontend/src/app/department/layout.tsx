@@ -18,7 +18,7 @@ export default function DepartmentLayout({ children }: { children: React.ReactNo
     // Prevent department users from accessing another department's page
     if (user?.departmentType) {
       const ownPath = `/department/${user.departmentType}`;
-      if (pathname !== ownPath && !pathname.startsWith('/department/order')) {
+      if (pathname !== ownPath && !pathname.startsWith(ownPath + '/') && !pathname.startsWith('/department/order')) {
         router.replace(ownPath);
       }
     }

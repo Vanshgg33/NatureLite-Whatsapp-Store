@@ -38,6 +38,10 @@ export class CreateStoreSaleDto {
 
   @IsString()
   @IsOptional()
+  customerAlternatePhone?: string;
+
+  @IsString()
+  @IsOptional()
   customerAddress?: string;
 
   @IsNumber()
@@ -93,6 +97,10 @@ export class UpdateStoreSaleDto {
   @IsString()
   @IsOptional()
   customerPhone?: string;
+
+  @IsString()
+  @IsOptional()
+  customerAlternatePhone?: string;
 
   @IsString()
   @IsOptional()

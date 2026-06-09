@@ -54,6 +54,9 @@ export class StoreSale {
   customerPhone?: string;
 
   @Prop()
+  customerAlternatePhone?: string;
+
+  @Prop()
   customerAddress?: string;
 
   @Prop({ required: true })
