@@ -260,6 +260,34 @@ class ApiClient {
     );
   }
 
+  // Proactively refreshes the access token and persists the new token to
+  // localStorage. Call this before opening a file/camera picker on Android so
+  // that a fresh token is stored before the renderer can be killed.
+  async refreshAccessToken(): Promise<boolean> {
+    try {
+      let refreshTokenToSend: string | undefined;
+      if (typeof window !== 'undefined') {
+        try {
+          const storage = localStorage.getItem('admin-auth-storage');
+          if (storage) {
+            const parsed = JSON.parse(storage);
+            if (parsed?.state?.refreshToken) refreshTokenToSend = parsed.state.refreshToken;
+          }
+        } catch { /* ignore */ }
+      }
+      const payload = refreshTokenToSend ? { refreshToken: refreshTokenToSend } : {};
+      const res = await axios.post(`${API_URL}/auth/refresh`, payload, { withCredentials: true });
+      const newTokens = res.data?.data;
+      if (newTokens && typeof window !== 'undefined') {
+        const { useAdminAuthStore } = await import('./admin-store');
+        useAdminAuthStore.getState().setTokens(newTokens.accessToken, newTokens.refreshToken);
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // ==================== AUTH ====================
   async login(email: string, password: string): Promise<AuthResponse> {
     const response = await this.client.post<ApiResponse<AuthResponse>>('/auth/admin/login', {

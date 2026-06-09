@@ -46,9 +46,10 @@ interface PhotoUploadBoxProps {
   uploading: boolean;
   onFile: (file: File) => void;
   onClear: () => void;
+  onBeforeOpen?: () => Promise<void>;
 }
 
-function PhotoUploadBox({ label, hint, required, url, uploading, onFile, onClear }: PhotoUploadBoxProps) {
+function PhotoUploadBox({ label, hint, required, url, uploading, onFile, onClear, onBeforeOpen }: PhotoUploadBoxProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   // Incrementing the key forces the input to remount after each selection,
   // clearing any stale browser state that could retrigger the camera on Android.
@@ -58,6 +59,15 @@ function PhotoUploadBox({ label, hint, required, url, uploading, onFile, onClear
     const file = e.target.files?.[0];
     if (file) onFile(file);
     setInputKey((k) => k + 1);
+  };
+
+  const handleOpen = async () => {
+    // Refresh the access token before the file picker opens. On low-memory
+    // Android devices the camera can kill the browser renderer; refreshing now
+    // ensures a fresh token is written to localStorage so the page reload that
+    // follows can re-authenticate without a redirect to the login screen.
+    try { await onBeforeOpen?.(); } catch { /* best-effort */ }
+    inputRef.current?.click();
   };
 
   return (
@@ -94,7 +104,7 @@ function PhotoUploadBox({ label, hint, required, url, uploading, onFile, onClear
         <button
           type="button"
           disabled={uploading}
-          onClick={() => inputRef.current?.click()}
+          onClick={handleOpen}
           className="w-full min-h-[120px] rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 flex flex-col items-center justify-center gap-2 active:bg-gray-100 transition-colors disabled:opacity-60"
         >
           {uploading ? (
@@ -689,6 +699,7 @@ export default function DeliveryDashboardPage() {
                   uploading={uploadingDelivery}
                   onFile={(f) => uploadPhoto(f, 'delivery-proof', setDeliveryProofUrl, setUploadingDelivery)}
                   onClear={() => setDeliveryProofUrl(undefined)}
+                  onBeforeOpen={() => api.refreshAccessToken().then(() => {})}
                 />
 
                 {orderIsCod && (
@@ -700,6 +711,7 @@ export default function DeliveryDashboardPage() {
                     uploading={uploadingPayment}
                     onFile={(f) => uploadPhoto(f, 'delivery-payments', setPaymentProofUrl, setUploadingPayment)}
                     onClear={() => setPaymentProofUrl(undefined)}
+                    onBeforeOpen={() => api.refreshAccessToken().then(() => {})}
                   />
                 )}
 
