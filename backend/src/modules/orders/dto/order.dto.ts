@@ -43,8 +43,8 @@ export class ShippingAddressDto {
   state: string;
 
   @IsString()
-  @IsNotEmpty()
-  pincode: string;
+  @IsOptional()
+  pincode?: string;
 
   @IsString()
   @IsOptional()

@@ -63,8 +63,8 @@ export class ShippingAddress {
   @Prop({ required: true })
   state: string;
 
-  @Prop({ required: true })
-  pincode: string;
+  @Prop()
+  pincode?: string;
 
   @Prop()
   landmark?: string;

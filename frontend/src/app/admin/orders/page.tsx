@@ -127,6 +127,7 @@ export default function OrdersPage() {
   const [orderType, setOrderType] = useState<'b2b' | 'other_cities' | 'transport' | ''>('');
   const [custName, setCustName] = useState('');
   const [custPhone, setCustPhone] = useState('');
+  const [custAltPhone, setCustAltPhone] = useState('');
   const [addrStreet, setAddrStreet] = useState('');
   const [addrLandmark, setAddrLandmark] = useState('');
   const [selectedStore, setSelectedStore] = useState('');
@@ -171,11 +172,12 @@ export default function OrdersPage() {
         shippingAddress: {
           name: custName.trim(),
           phone: custPhone.trim(),
+          alternatePhone: custAltPhone.trim() || undefined,
           street: addrStreet.trim(),
           landmark: addrLandmark.trim() || undefined,
           city: addrCity.trim(),
           state: addrState.trim(),
-          pincode: addrPincode.trim(),
+          pincode: addrPincode.trim() || undefined,
         },
         paymentMethod,
         phone: custPhone.trim(),
@@ -202,6 +204,7 @@ export default function OrdersPage() {
     setOrderType('');
     setCustName('');
     setCustPhone('');
+    setCustAltPhone('');
     setAddrStreet('');
     setAddrLandmark('');
     setSelectedStore('');
@@ -278,7 +281,6 @@ export default function OrdersPage() {
     custPhone.trim().length >= 10 &&
     addrStreet.trim() &&
     addrCity.trim() &&
-    addrPincode.trim().length === 6 &&
     cart.length > 0;
 
   const updateOrderMutation = useMutation({
@@ -687,6 +689,16 @@ export default function OrdersPage() {
                     inputMode="numeric"
                   />
                 </div>
+                <div className="col-span-2">
+                  <label className="text-xs text-muted-foreground mb-1 block">Alternate Phone</label>
+                  <Input
+                    value={custAltPhone}
+                    onChange={(e) => setCustAltPhone(e.target.value)}
+                    placeholder="Optional alternate number"
+                    maxLength={10}
+                    inputMode="numeric"
+                  />
+                </div>
               </div>
 
 <div className="space-y-3 border rounded-lg p-3 bg-muted/30">
@@ -727,11 +739,11 @@ export default function OrdersPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Pincode *</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">Pincode</label>
                     <Input
                       value={addrPincode}
                       onChange={(e) => setAddrPincode(e.target.value)}
-                      placeholder="6-digit pincode"
+                      placeholder="6-digit pincode (optional)"
                       maxLength={6}
                       inputMode="numeric"
                     />

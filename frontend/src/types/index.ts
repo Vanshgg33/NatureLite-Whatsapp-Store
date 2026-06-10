@@ -173,7 +173,7 @@ export interface ShippingAddress {
   street: string;
   city: string;
   state: string;
-  pincode: string;
+  pincode?: string;
   landmark?: string;
 }
 
