@@ -821,6 +821,32 @@ class ApiClient {
     return response.data.data;
   }
 
+  // ==================== DELIVERY COLLECTIONS ====================
+  async getDeliveryLedgerSummary(startDate?: string, endDate?: string): Promise<import('@/types').DeliveryLedgerSummary> {
+    const response = await this.client.get('/delivery-collections/summary', { params: { startDate, endDate } });
+    return response.data.data;
+  }
+
+  async getDeliveryLedger(params: { startDate?: string; endDate?: string; deliveryUserId?: string }): Promise<import('@/types').DeliveryLedgerRow[]> {
+    const response = await this.client.get('/delivery-collections/ledger', { params });
+    return response.data.data;
+  }
+
+  async getDeliveryBreakdown(deliveryUserId: string, startDate?: string, endDate?: string): Promise<Order[]> {
+    const response = await this.client.get('/delivery-collections/breakdown', { params: { deliveryUserId, startDate, endDate } });
+    return response.data.data;
+  }
+
+  async getDeliveryPendingOrders(deliveryUserId: string): Promise<Order[]> {
+    const response = await this.client.get('/delivery-collections/pending', { params: { deliveryUserId } });
+    return response.data.data;
+  }
+
+  async settleDeliveryCollection(orderIds: string[], note?: string): Promise<{ settled: number }> {
+    const response = await this.client.post('/delivery-collections/settle', { orderIds, note });
+    return response.data.data;
+  }
+
   // ==================== USERS ====================
   async getUsers(params: {
     page?: number;

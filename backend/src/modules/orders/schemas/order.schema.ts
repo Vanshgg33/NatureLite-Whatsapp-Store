@@ -215,6 +215,15 @@ export class Order {
   @Prop()
   amountCollected?: number;
 
+  @Prop({ default: 'pending', enum: ['pending', 'settled'] })
+  collectionStatus: string;
+
+  @Prop()
+  settledAt?: Date;
+
+  @Prop()
+  settledBy?: string;
+
   @Prop()
   cancelledAt?: Date;
 

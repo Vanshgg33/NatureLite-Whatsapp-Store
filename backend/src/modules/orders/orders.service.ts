@@ -1032,6 +1032,9 @@ export class OrdersService implements OnModuleInit {
       if (dto.amountCollected !== undefined) {
         order.amountCollected = dto.amountCollected;
       }
+      if (dto.amountCollected && dto.amountCollected > 0) {
+        order.collectionStatus = 'pending';
+      }
     }
 
     this.pushTimelineEntry(order, {

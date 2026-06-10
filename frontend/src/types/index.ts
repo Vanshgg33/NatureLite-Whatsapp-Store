@@ -254,10 +254,30 @@ export interface Order {
   deliveryProofUrl?: string;
   paymentProofUrl?: string;
   amountCollected?: number;
+  collectionStatus?: 'pending' | 'settled';
+  settledAt?: string;
+  settledBy?: string;
   assignedDeliveryUserId?: string;
   invoiceUrl?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface DeliveryLedgerRow {
+  deliveryUserId: string;
+  name: string;
+  email?: string;
+  totalOrders: number;
+  totalCashCollected: number;
+  totalUpiCollected: number;
+  pendingCashInPeriod: number;
+  totalOutstandingAllTime: number;
+}
+
+export interface DeliveryLedgerSummary {
+  totalCashToday: number;
+  totalUpiToday: number;
+  totalOutstandingAllTime: number;
 }
 
 // ==================== COUPON TYPES ====================

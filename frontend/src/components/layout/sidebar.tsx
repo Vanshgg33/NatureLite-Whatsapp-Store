@@ -29,6 +29,7 @@ import {
   X,
   Sparkles,
   List,
+  Banknote,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -59,6 +60,7 @@ const BASE_NAV_GROUPS: NavGroup[] = [
     items: [
       { name: 'Sales Log', href: '/admin/sales', icon: Receipt },
       { name: 'Orders', href: '/admin/orders', icon: ShoppingCart },
+      { name: 'Cash Ledger', href: '/admin/delivery-collections', icon: Banknote },
     ],
   },
   {
