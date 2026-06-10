@@ -51,7 +51,7 @@ export function ProductCard({
       image: product.images?.[0] || '/images/products/placeholder.jpg',
       price: product.price,
       compareAtPrice: product.compareAtPrice,
-      gstPercentage: product.gstPercentage,
+      gstPercentage: product.gstPercentage ?? 0,
     };
 
     addItem(cartItem);
