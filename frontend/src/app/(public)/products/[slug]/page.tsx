@@ -187,7 +187,7 @@ export default function ProductDetailPage() {
       image: product.images[0] || '/images/products/placeholder.jpg',
       price: currentPrice,
       compareAtPrice: comparePrice,
-      gstPercentage: product.gstPercentage,
+      gstPercentage: product.gstPercentage ?? 0,
       variantSku: selectedVariant || undefined,
       variantName: selectedVariantData?.name,
     };
