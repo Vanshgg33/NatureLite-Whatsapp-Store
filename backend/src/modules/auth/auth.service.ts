@@ -457,6 +457,9 @@ export class AuthService {
       if (!admin || !admin.isActive) {
         return null;
       }
+      // Always sync departmentType from DB so stale JWTs (issued before the field
+      // was set, or after it changed) still get the correct per-user order filter.
+      return { ...payload, departmentType: admin.departmentType };
     }
 
     return payload;

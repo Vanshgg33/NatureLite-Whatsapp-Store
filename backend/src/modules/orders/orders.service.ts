@@ -989,7 +989,7 @@ export class OrdersService implements OnModuleInit {
       if (!order.assignedDeliveryUserId) {
         throw new ForbiddenException('This order has not been assigned to any delivery staff yet.');
       }
-      if (order.assignedDeliveryUserId !== updatedBy) {
+      if (order.assignedDeliveryUserId.toString() !== updatedBy) {
         throw new ForbiddenException('This order is assigned to a different delivery person.');
       }
     }

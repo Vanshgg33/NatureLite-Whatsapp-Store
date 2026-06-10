@@ -87,14 +87,22 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
     } else if (forDelivery) {
       filter.status = 'out_for_delivery';
       if (deliveryUserId) {
-        filter.assignedDeliveryUserId = deliveryUserId;
+        filter.assignedDeliveryUserId = deliveryUserId.toString();
       }
     } else if (status) {
       filter.status = status;
     }
     if (paymentStatus) filter.paymentStatus = paymentStatus;
     const searchOr = buildSearchOrFilter(search, ['orderNumber', 'shippingAddress.name', 'shippingAddress.phone', 'shippingAddress.alternatePhone']);
-    if (searchOr.length) filter.$or = searchOr;
+    if (searchOr.length) {
+      if (filter.$or) {
+        // Preserve the department-scoped $or (packing) and AND it with the search $or
+        filter.$and = [{ $or: filter.$or as unknown[] }, { $or: searchOr }];
+        delete filter.$or;
+      } else {
+        filter.$or = searchOr;
+      }
+    }
     const createdAtFilter = buildCreatedAtFilter(startDate, endDate);
     if (createdAtFilter) filter.createdAt = createdAtFilter;
     const skip = (page - 1) * limit;

@@ -119,8 +119,8 @@ export class OrdersController {
     }
 
     if (user.departmentType === 'delivery') {
-      const assigned = (order as any).assignedDeliveryUserId as string | undefined;
-      if (!assigned || assigned !== user.sub) {
+      const assigned = (order as any).assignedDeliveryUserId;
+      if (!assigned || assigned.toString() !== user.sub) {
         throw new ForbiddenException('This order is not assigned to you.');
       }
     }
@@ -140,8 +140,8 @@ export class OrdersController {
     }
 
     if (user.departmentType === 'delivery') {
-      const assigned = (order as any).assignedDeliveryUserId as string | undefined;
-      if (!assigned || assigned !== user.sub) {
+      const assigned = (order as any).assignedDeliveryUserId;
+      if (!assigned || assigned.toString() !== user.sub) {
         throw new ForbiddenException('This order is not assigned to you.');
       }
     }
