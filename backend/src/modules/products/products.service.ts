@@ -431,7 +431,7 @@ export class ProductsService implements OnModuleInit {
     const headers = [
       'name', 'sku', 'price', 'compareAtPrice', 'specialOfferPrice', 'specialOfferLabel',
       'stock', 'category', 'shortDescription', 'tags', 'isActive', 'isFeatured',
-      'gstPercentage', 'hsnCode', 'videoUrl', 'seoTitle', 'seoDescription', 'seoKeywords', 'canonicalUrl',
+      'hsnCode', 'videoUrl', 'seoTitle', 'seoDescription', 'seoKeywords', 'canonicalUrl',
     ];
 
     const escape = (v: unknown) => {
@@ -445,7 +445,7 @@ export class ProductsService implements OnModuleInit {
       p.specialOfferLabel ?? '', p.stock,
       typeof p.category === 'object' ? (p.category as unknown as { name?: string }).name ?? '' : '',
       p.shortDescription ?? '', (p.tags ?? []).join('|'), p.isActive, p.isFeatured,
-      p.gstPercentage, p.hsnCode ?? '', p.videoUrl ?? '',
+      p.hsnCode ?? '', p.videoUrl ?? '',
       p.seo?.title ?? '', p.seo?.description ?? '', p.seo?.keywords ?? '', p.seo?.canonicalUrl ?? '',
     ].map(escape).join(','));
 
@@ -494,7 +494,6 @@ export class ProductsService implements OnModuleInit {
           tags: row.tags ? row.tags.split('|').map((t) => t.trim()).filter(Boolean) : [],
           isActive: row.isActive !== 'false',
           isFeatured: row.isFeatured === 'true',
-          gstPercentage: (() => { const v = parseFloat(row.gstPercentage); return isNaN(v) ? 0 : v; })(),
           hsnCode: row.hsnCode || undefined,
           videoUrl: row.videoUrl || undefined,
           category: categoryId,

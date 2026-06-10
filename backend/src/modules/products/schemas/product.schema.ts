@@ -112,9 +112,6 @@ export class Product {
     height: number;
   };
 
-  @Prop({ default: 0 })
-  gstPercentage: number;
-
   @Prop()
   hsnCode?: string;
 

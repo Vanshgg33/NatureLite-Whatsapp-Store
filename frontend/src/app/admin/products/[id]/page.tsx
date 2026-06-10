@@ -55,7 +55,7 @@ export default function EditProductPage() {
     price: '', compareAtPrice: '', sku: '',
     specialOfferPrice: '', specialOfferLabel: '', specialOfferActive: false,
     stock: '0', trackStock: true, lowStockThreshold: '5',
-    isActive: true, isFeatured: false, gstPercentage: '18', hsnCode: '', tags: '',
+    isActive: true, isFeatured: false, hsnCode: '', tags: '',
     videoUrl: '',
     seoTitle: '', seoDescription: '', seoKeywords: '', canonicalUrl: '',
     batchNumber: '', batchDate: '', batchYieldKg: '', batchMilkLitres: '',
@@ -125,7 +125,6 @@ export default function EditProductPage() {
       lowStockThreshold: product.lowStockThreshold.toString(),
       isActive: product.isActive,
       isFeatured: product.isFeatured,
-      gstPercentage: product.gstPercentage.toString(),
       hsnCode: product.hsnCode || '',
       tags: product.tags.join(', '),
       videoUrl: product.videoUrl || '',
@@ -274,7 +273,6 @@ export default function EditProductPage() {
       lowStockThreshold: parseInt(formData.lowStockThreshold),
       isActive: formData.isActive,
       isFeatured: formData.isFeatured,
-      gstPercentage: parseFloat(formData.gstPercentage),
       hsnCode: formData.hsnCode || undefined,
       images,
       imageAlts,
@@ -489,10 +487,6 @@ export default function EditProductPage() {
                   {skuError && <p className="text-sm text-red-500">{skuError}</p>}
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>GST %</Label>
-                    <Input type="number" min="0" max="100" value={formData.gstPercentage} onChange={(e) => set('gstPercentage', e.target.value)} />
-                  </div>
                   <div className="space-y-2">
                     <Label>HSN Code</Label>
                     <Input value={formData.hsnCode} onChange={(e) => set('hsnCode', e.target.value)} />

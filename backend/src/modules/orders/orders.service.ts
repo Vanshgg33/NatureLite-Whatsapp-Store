@@ -222,7 +222,7 @@ export class OrdersService implements OnModuleInit {
             price: resolvedPrice,
             total: resolvedPrice * item.quantity,
             image: product.images[0],
-            gstAmount: (resolvedPrice * item.quantity * product.gstPercentage) / 100,
+            gstAmount: (resolvedPrice * item.quantity * ((product.category as any)?.gstPercentage ?? 0)) / 100,
           };
 
           orderItems.push(orderItem);
@@ -260,7 +260,7 @@ export class OrdersService implements OnModuleInit {
             price,
             total: price * item.quantity,
             image: product.images[0],
-            gstAmount: (price * item.quantity * product.gstPercentage) / 100,
+            gstAmount: (price * item.quantity * ((product.category as any)?.gstPercentage ?? 0)) / 100,
           };
 
           orderItems.push(orderItem);

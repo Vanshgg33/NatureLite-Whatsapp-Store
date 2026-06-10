@@ -80,11 +80,7 @@ function billToWords(n: number): string {
   return (w(int).trim() || 'Zero') + ' Rupees' + (dec2 ? ' and ' + w(dec2).trim() + ' Paise' : '') + ' Only';
 }
 
-function billItemGst(item: SaleItem, fallbackRate = 0): number {
-  const prod = typeof item.product === 'object' && item.product
-    ? item.product as { gstPercentage?: number }
-    : null;
-  const rate = prod?.gstPercentage ?? fallbackRate;
+function billItemGst(item: SaleItem, rate = 0): number {
   if (!rate) return 0;
   return item.total - item.total / (1 + rate / 100);
 }
@@ -112,11 +108,11 @@ function BillDialogContent({ sale }: { sale: StoreSale; storeName: string }) {
   const placeOfSupply = `${BILL_SELLER.stateCode}-${BILL_SELLER.state}`;
   const total = sale.total ?? 0;
 
-  type BillProd = { gstPercentage?: number; hsnCode?: string; compareAtPrice?: number; category?: { gstPercentage?: number } };
+  type BillProd = { hsnCode?: string; compareAtPrice?: number; category?: { gstPercentage?: number } };
   const getBillProd = (item: SaleItem): BillProd | null =>
     typeof item.product === 'object' && item.product ? item.product as BillProd : null;
   const getEffectiveGst = (prod: BillProd | null) =>
-    prod?.gstPercentage ?? prod?.category?.gstPercentage ?? 0;
+    prod?.category?.gstPercentage ?? 0;
 
   const taxGroups = new Map<number, { taxable: number; cgst: number; sgst: number }>();
   for (const item of sale.items) {
@@ -842,11 +838,11 @@ export default function SalesPage() {
     const total = sale.total ?? 0;
     const logoUrl = window.location.origin + '/images/logo.png';
 
-    type PrintProd = { gstPercentage?: number; hsnCode?: string; compareAtPrice?: number; category?: { gstPercentage?: number } };
+    type PrintProd = { hsnCode?: string; compareAtPrice?: number; category?: { gstPercentage?: number } };
     const getPrintProd = (item: SaleItem): PrintProd | null =>
       typeof item.product === 'object' && item.product ? item.product as PrintProd : null;
     const getPrintGst = (prod: PrintProd | null) =>
-      prod?.gstPercentage ?? prod?.category?.gstPercentage ?? 0;
+      prod?.category?.gstPercentage ?? 0;
 
     const taxGroups = new Map<number, { taxable: number; cgst: number; sgst: number }>();
     for (const item of sale.items) {

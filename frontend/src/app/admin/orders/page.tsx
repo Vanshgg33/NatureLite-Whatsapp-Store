@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Eye, Plus, Trash2, ShoppingCart, MessageCircle, Globe, Download, Send, Loader2, Edit, Phone, Receipt } from 'lucide-react';
+import { Search, Eye, Plus, Trash2, ShoppingCart, MessageCircle, Globe, Download, Send, Loader2, Edit, Phone, Receipt, Building2, Truck } from 'lucide-react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -123,13 +123,14 @@ export default function OrdersPage() {
 
   // Create order dialog
   const [showCreate, setShowCreate] = useState(false);
-  const [source, setSource] = useState<'whatsapp' | 'website' | 'phone' | 'vayepar'>('whatsapp');
+  const [source, setSource] = useState<'whatsapp' | 'website' | 'phone' | 'vayepar' | 'b2b' | 'transport'>('whatsapp');
   const [custName, setCustName] = useState('');
   const [custPhone, setCustPhone] = useState('');
   const [addrStreet, setAddrStreet] = useState('');
   const [addrLandmark, setAddrLandmark] = useState('');
+  const [selectedStore, setSelectedStore] = useState('');
   const [addrCity, setAddrCity] = useState('');
-  const [addrState, setAddrState] = useState('Maharashtra');
+  const [addrState, setAddrState] = useState('Chhattisgarh');
   const [addrPincode, setAddrPincode] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cod' | 'upi' | 'card' | 'netbanking'>('cod');
   const [notes, setNotes] = useState('');
@@ -179,8 +180,8 @@ export default function OrdersPage() {
         phone: custPhone.trim(),
         name: custName.trim(),
         notes: notes.trim()
-          ? `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : source === 'phone' ? 'Phone' : 'Vayepar'}] ${notes.trim()}`
-          : `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : source === 'phone' ? 'Phone' : 'Vayepar'}] Order created by admin`,
+          ? `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : source === 'phone' ? 'Phone' : source === 'b2b' ? 'B2B' : source === 'transport' ? 'Transport' : 'Vayepar'}] ${notes.trim()}`
+          : `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : source === 'phone' ? 'Phone' : source === 'b2b' ? 'B2B' : source === 'transport' ? 'Transport' : 'Vayepar'}] Order created by admin`,
         source,
       }),
     onSuccess: () => {
@@ -200,8 +201,9 @@ export default function OrdersPage() {
     setCustPhone('');
     setAddrStreet('');
     setAddrLandmark('');
+    setSelectedStore('');
     setAddrCity('');
-    setAddrState('Maharashtra');
+    setAddrState('Chhattisgarh');
     setAddrPincode('');
     setPaymentMethod('cod');
     setNotes('');
@@ -336,7 +338,27 @@ export default function OrdersPage() {
 
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         {/* Top bar with Create Order button */}
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">Store City:</span>
+            <select
+              className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+              value={selectedStore}
+              onChange={(e) => {
+                const city = e.target.value;
+                setSelectedStore(city);
+                if (city === 'Raipur') { setAddrCity('Raipur'); setAddrState('Chhattisgarh'); }
+                else if (city === 'Bhilai') { setAddrCity('Bhilai'); setAddrState('Chhattisgarh'); }
+                else if (city === 'Durg') { setAddrCity('Durg'); setAddrState('Chhattisgarh'); }
+                else { setAddrCity(''); setAddrState('Chhattisgarh'); }
+              }}
+            >
+              <option value="">Select City</option>
+              <option value="Raipur">Raipur</option>
+              <option value="Bhilai">Bhilai</option>
+              <option value="Durg">Durg</option>
+            </select>
+          </div>
           <Button onClick={() => setShowCreate(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Create Order
@@ -455,15 +477,23 @@ export default function OrdersPage() {
                               </p>
                               <p className="text-[10px] text-muted-foreground/60 mt-0.5 flex items-center gap-1.5">
                                 <span>{order.orderNumber}</span>
-                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium leading-none ${
-                                  order.source === 'whatsapp' ? 'bg-green-50 text-green-700 border border-green-200' :
-                                  order.source === 'website' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                                  order.source === 'phone' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                                  order.source === 'vayepar' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
-                                  'bg-gray-50 text-gray-700 border border-gray-200'
-                                }`}>
-                                  {order.source ? order.source.toUpperCase() : 'WEBSITE'}
-                                </span>
+                                {(() => {
+                                  const src = order.source ?? 'website';
+                                  const map: Record<string, { label: string; icon: React.ReactNode; cls: string }> = {
+                                    whatsapp:  { label: 'WhatsApp',  icon: <MessageCircle className="h-2.5 w-2.5" />, cls: 'bg-green-50 text-green-700 border-green-200' },
+                                    website:   { label: 'Website',   icon: <Globe className="h-2.5 w-2.5" />,         cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+                                    phone:     { label: 'Phone',     icon: <Phone className="h-2.5 w-2.5" />,          cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+                                    vayepar:   { label: 'Vyapar',    icon: <Receipt className="h-2.5 w-2.5" />,        cls: 'bg-purple-50 text-purple-700 border-purple-200' },
+                                    b2b:       { label: 'B2B',       icon: <Building2 className="h-2.5 w-2.5" />,      cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+                                    transport: { label: 'Transport', icon: <Truck className="h-2.5 w-2.5" />,          cls: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+                                  };
+                                  const s = map[src] ?? map.website;
+                                  return (
+                                    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium leading-none border ${s.cls}`}>
+                                      {s.icon}{s.label}
+                                    </span>
+                                  );
+                                })()}
                               </p>
                             </div>
                           </TableCell>
@@ -571,55 +601,27 @@ export default function OrdersPage() {
             {/* Source picker */}
             <div>
               <label className="text-sm font-medium block mb-2">Order Source</label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setSource('whatsapp')}
-                  className={`flex items-center justify-center gap-2 rounded-lg border-2 py-3 text-sm font-medium transition-colors ${
-                    source === 'whatsapp'
-                      ? 'border-green-500 bg-green-50 text-green-700'
-                      : 'border-muted bg-background text-muted-foreground hover:border-muted-foreground/40'
-                  }`}
-                >
-                  <MessageCircle className="h-4 w-4" />
-                  WhatsApp
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSource('website')}
-                  className={`flex items-center justify-center gap-2 rounded-lg border-2 py-3 text-sm font-medium transition-colors ${
-                    source === 'website'
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-muted bg-background text-muted-foreground hover:border-muted-foreground/40'
-                  }`}
-                >
-                  <Globe className="h-4 w-4" />
-                  Website
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSource('phone')}
-                  className={`flex items-center justify-center gap-2 rounded-lg border-2 py-3 text-sm font-medium transition-colors ${
-                    source === 'phone'
-                      ? 'border-amber-500 bg-amber-50 text-amber-700'
-                      : 'border-muted bg-background text-muted-foreground hover:border-muted-foreground/40'
-                  }`}
-                >
-                  <Phone className="h-4 w-4" />
-                  Phone
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSource('vayepar')}
-                  className={`flex items-center justify-center gap-2 rounded-lg border-2 py-3 text-sm font-medium transition-colors ${
-                    source === 'vayepar'
-                      ? 'border-purple-500 bg-purple-50 text-purple-700'
-                      : 'border-muted bg-background text-muted-foreground hover:border-muted-foreground/40'
-                  }`}
-                >
-                  <Receipt className="h-4 w-4" />
-                  Vyapar
-                </button>
+              <div className="grid grid-cols-3 gap-3">
+                {([
+                  { val: 'whatsapp', label: 'WhatsApp', icon: <MessageCircle className="h-4 w-4" />, active: 'border-green-500 bg-green-50 text-green-700' },
+                  { val: 'website',  label: 'Website',  icon: <Globe className="h-4 w-4" />,         active: 'border-blue-500 bg-blue-50 text-blue-700' },
+                  { val: 'phone',    label: 'Phone',    icon: <Phone className="h-4 w-4" />,          active: 'border-amber-500 bg-amber-50 text-amber-700' },
+                  { val: 'vayepar',  label: 'Vyapar',   icon: <Receipt className="h-4 w-4" />,        active: 'border-purple-500 bg-purple-50 text-purple-700' },
+                  { val: 'b2b',      label: 'B2B',      icon: <Building2 className="h-4 w-4" />,      active: 'border-orange-500 bg-orange-50 text-orange-700' },
+                  { val: 'transport',label: 'Transport', icon: <Truck className="h-4 w-4" />,          active: 'border-cyan-500 bg-cyan-50 text-cyan-700' },
+                ] as const).map(({ val, label, icon, active }) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setSource(val)}
+                    className={`flex items-center justify-center gap-2 rounded-lg border-2 py-3 text-sm font-medium transition-colors ${
+                      source === val ? active : 'border-muted bg-background text-muted-foreground hover:border-muted-foreground/40'
+                    }`}
+                  >
+                    {icon}
+                    {label}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -647,7 +649,7 @@ export default function OrdersPage() {
                 </div>
               </div>
 
-              <div className="space-y-3 border rounded-lg p-3 bg-muted/30">
+<div className="space-y-3 border rounded-lg p-3 bg-muted/30">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Shipping Address</p>
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Street / House No. *</label>
@@ -717,28 +719,42 @@ export default function OrdersPage() {
                   {productRows.length === 0 ? (
                     <p className="px-3 py-4 text-sm text-muted-foreground text-center">No products found</p>
                   ) : (
-                    productRows.map((row) => (
-                      <button
-                        key={`${row.productId}-${row.variantSku ?? 'main'}`}
-                        type="button"
-                        onMouseDown={(e) => { e.preventDefault(); addToCart(row); }}
-                        className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-muted/60 text-sm text-left border-b last:border-b-0"
-                      >
-                        <span>
-                          {row.name}
-                          {row.variantName ? ` · ${row.variantName}` : ''}
-                          {row.variantSku ? ` (${row.variantSku})` : ''}
-                          {row.trackStock && (
-                            <span className={`ml-2 text-xs ${row.stock > 0 ? 'text-green-600' : 'text-red-500 font-medium'}`}>
-                              ({row.stock > 0 ? `${row.stock} in stock` : 'Out of stock'})
-                            </span>
-                          )}
-                        </span>
-                        <span className="text-muted-foreground shrink-0 ml-2">
-                          ₹{row.price.toLocaleString()}
-                        </span>
-                      </button>
-                    ))
+                    (() => {
+                      const firstOutIdx = productRows.findIndex((r) => r.trackStock && r.stock <= 0);
+                      return productRows.map((row, idx) => {
+                        const outOfStock = row.trackStock && row.stock <= 0;
+                        const showDivider = firstOutIdx !== -1 && idx === firstOutIdx;
+                        return (
+                          <div key={`${row.productId}-${row.variantSku ?? 'main'}`}>
+                            {showDivider && (
+                              <div className="px-3 py-1 text-xs font-semibold text-gray-400 bg-gray-50 border-b uppercase tracking-wide">Out of Stock</div>
+                            )}
+                            <button
+                              type="button"
+                              disabled={outOfStock}
+                              onMouseDown={(e) => { if (outOfStock) return; e.preventDefault(); addToCart(row); setProductSearch(''); }}
+                              className={`w-full flex items-center justify-between px-3 py-2.5 text-sm text-left border-b last:border-b-0 ${outOfStock ? 'opacity-40 cursor-not-allowed bg-gray-50' : 'hover:bg-green-50 bg-white'}`}
+                            >
+                              <span className="flex items-center gap-2">
+                                {!outOfStock && <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />}
+                                <span>
+                                  {row.name}
+                                  {row.variantName ? ` · ${row.variantName}` : ''}
+                                  {row.variantSku ? ` (${row.variantSku})` : ''}
+                                </span>
+                              </span>
+                              {outOfStock ? (
+                                <span className="text-red-400 text-xs font-medium shrink-0 ml-2">Out of Stock</span>
+                              ) : (
+                                <span className="text-green-600 text-xs font-medium shrink-0 ml-2">
+                                  ₹{row.price.toLocaleString()}{row.trackStock ? ` · ${row.stock} left` : ''}
+                                </span>
+                              )}
+                            </button>
+                          </div>
+                        );
+                      });
+                    })()
                   )}
                 </div>
               )}

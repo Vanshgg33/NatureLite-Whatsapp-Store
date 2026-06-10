@@ -116,7 +116,6 @@ export interface Product {
   tags: string[];
   weight?: number;
   dimensions?: ProductDimensions;
-  gstPercentage: number;
   hsnCode?: string;
   seo?: {
     title?: string;
@@ -155,7 +154,7 @@ export interface Product {
 
 // ==================== ORDER TYPES ====================
 export interface OrderItem {
-  product: (Product & { hsnCode?: string; gstPercentage?: number }) | string;
+  product: Product | string;
   name: string;
   variantSku?: string;
   variantName?: string;
@@ -630,7 +629,6 @@ export interface CreateProductDto {
   tags?: string[];
   weight?: number;
   dimensions?: ProductDimensions;
-  gstPercentage?: number;
   hsnCode?: string;
   batchInfo?: {
     batchNumber?: string;

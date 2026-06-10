@@ -120,15 +120,15 @@ export class ProductRepository extends BaseRepository<ProductDocument> {
   }
 
   async findByIdWithCategory(id: Types.ObjectId): Promise<ProductDocument | null> {
-    return this.model.findById(id).exec();
+    return this.model.findById(id).populate('category', 'gstPercentage').exec();
   }
 
   async findOneBySlugWithCategory(slug: string): Promise<ProductDocument | null> {
-    return this.model.findOne({ slug }).exec();
+    return this.model.findOne({ slug }).populate('category', 'gstPercentage').exec();
   }
 
   async findOneBySkuWithCategory(sku: string): Promise<ProductDocument | null> {
-    return this.model.findOne({ sku }).exec();
+    return this.model.findOne({ sku }).populate('category', 'gstPercentage').exec();
   }
 
   async findByCategoryId(categoryId: Types.ObjectId): Promise<ProductDocument[]> {

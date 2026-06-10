@@ -2,28 +2,10 @@
 
 import { useParams, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { useRef, useState, useEffect } from 'react';
-import { Printer, Download, X } from 'lucide-react';
+import { useRef, useState, useEffect, Suspense } from 'react';
 import { api } from '@/lib/api';
 import type { Order, OrderItem } from '@/types';
-
-const SELLER = {
-  name: 'NATURE LITE FOODS',
-  legal: '(SUHIKA PVT LTD)',
-  addr: 'B7, GROUND FLOOR, SECTOR-1, AVANTI VIHAR, RAIPUR-492001 (NEAR ATM CHOWK)',
-  phone: '8817200740',
-  email: 'naturelite2021@gmail.com',
-  gstin: '22ABJCS3598L1ZR',
-  state: 'Chhattisgarh',
-  stateCode: '22',
-};
-
-const BANK = {
-  name: 'ICICI BANK LIMITED, RAIPUR DUMARTARAI',
-  account: '429705000519',
-  ifsc: 'ICIC0004297',
-  holder: 'SUHIKA PVT LTD',
-};
+import InvoiceLayout, { INR, fmtDate, fmtTime, type InvoiceData } from '@/components/InvoiceLayout';
 
 const STATE_CODES: Record<string, string> = {
   'Andhra Pradesh': '37', 'Arunachal Pradesh': '12', 'Assam': '18',
@@ -38,52 +20,22 @@ const STATE_CODES: Record<string, string> = {
   'West Bengal': '19', 'Delhi': '07',
 };
 
-const INR = (n: number, dec = 3) =>
-  new Intl.NumberFormat('en-IN', { minimumFractionDigits: dec, maximumFractionDigits: dec }).format(n);
-
-const fmtDate = (d: string | Date) =>
-  new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(d));
-
-const fmtTime = (d: string | Date) =>
-  new Date(d).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase();
-
-function toWords(n: number): string {
-  const o = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
-    'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-  const t = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-  function w(x: number): string {
-    if (!x) return '';
-    if (x < 20) return o[x] + ' ';
-    if (x < 100) return t[Math.floor(x / 10)] + (x % 10 ? ' ' + o[x % 10] : '') + ' ';
-    if (x < 1000) return o[Math.floor(x / 100)] + ' Hundred ' + w(x % 100);
-    if (x < 100000) return w(Math.floor(x / 1000)) + 'Thousand ' + w(x % 1000);
-    if (x < 10000000) return w(Math.floor(x / 100000)) + 'Lakh ' + w(x % 100000);
-    return w(Math.floor(x / 10000000)) + 'Crore ' + w(x % 10000000);
-  }
-  let int = Math.floor(n);
-  let dec = Math.floor((n - int) * 100);
-  if (dec >= 100) { int += 1; dec = 0; }
-  return (w(int).trim() || 'Zero') + ' Rupees' + (dec ? ' and ' + w(dec).trim() + ' Paise' : '') + ' Only';
-}
+const SELLER_STATE = 'Chhattisgarh';
+const SELLER_STATE_CODE = '22';
 
 function getProduct(item: OrderItem) {
   return typeof item.product === 'object' ? item.product : null;
 }
 
-const G = '#1a6b3c';
-const LG = '#e8f5ee';
-const BD = '#c8c8c8';
+function itemGst(item: OrderItem): number {
+  const prod = getProduct(item);
+  const category = prod && typeof prod.category === 'object' ? prod.category : null;
+  const rate = category?.gstPercentage ?? 0;
+  if (!rate) return 0;
+  return item.total - item.total / (1 + rate / 100);
+}
 
-const TH: React.CSSProperties = {
-  background: G, color: '#fff', padding: '6px 4px', fontSize: 9.5,
-  fontWeight: 700, border: `1px solid ${BD}`, textAlign: 'center',
-};
-const TD: React.CSSProperties = {
-  padding: '5px 4px', fontSize: 10, border: `1px solid ${BD}`,
-  verticalAlign: 'middle', textAlign: 'center',
-};
-
-export default function InvoicePage() {
+function OrderInvoiceInner() {
   const { orderId } = useParams<{ orderId: string }>();
   const searchParams = useSearchParams();
   const captureMode = searchParams.get('mode') === 'capture';
@@ -124,7 +76,6 @@ export default function InvoicePage() {
     }
   };
 
-  // When opened in capture mode (from admin panel), auto-generate PDF and post back
   useEffect(() => {
     if (!captureMode || !order || !invoiceRef.current) return;
     const timer = setTimeout(async () => {
@@ -153,6 +104,8 @@ export default function InvoicePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [captureMode, order]);
 
+  const G = '#1a6b3c';
+
   if (isLoading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#f3f4f6' }}>
@@ -173,20 +126,21 @@ export default function InvoicePage() {
   const fyStart = fy.getMonth() >= 3 ? fy.getFullYear() : fy.getFullYear() - 1;
   const invoiceNo = `NLF-${String(fyStart).slice(2)}-${String(fyStart + 1).slice(2)}/${order.orderNumber}`;
   const stateCode = addr.state ? (STATE_CODES[addr.state] ?? '') : '';
-  const placeOfSupply = addr.state ? `${stateCode ? stateCode + '-' : ''}${addr.state}` : `${SELLER.stateCode}-${SELLER.state}`;
+  const placeOfSupply = addr.state ? `${stateCode ? stateCode + '-' : ''}${addr.state}` : `${SELLER_STATE_CODE}-${SELLER_STATE}`;
   const shippingCharge = order.shippingCharge ?? 0;
   const total = order.total ?? 0;
   const isPaid = order.paymentStatus === 'paid';
   const advance = isPaid ? total : 0;
   const balance = total - advance;
 
-  // Build per-rate tax groups
+  // Build tax groups using fresh GST computation (same as sales invoice)
   const taxGroups = new Map<number, { taxable: number; cgst: number; sgst: number }>();
   for (const item of order.items) {
     const prod = getProduct(item);
-    const gstRate = prod?.gstPercentage ?? 0;
+    const category = prod && typeof prod.category === 'object' ? prod.category : null;
+    const gstRate = category?.gstPercentage ?? 0;
     if (gstRate > 0) {
-      const gstAmt = item.gstAmount ?? 0;
+      const gstAmt = itemGst(item);
       const taxable = item.total - gstAmt;
       const half = gstAmt / 2;
       const prev = taxGroups.get(gstRate) ?? { taxable: 0, cgst: 0, sgst: 0 };
@@ -200,273 +154,91 @@ export default function InvoicePage() {
     const prev = taxGroups.get(SHIP_GST) ?? { taxable: 0, cgst: 0, sgst: 0 };
     taxGroups.set(SHIP_GST, { taxable: prev.taxable + shipTaxable, cgst: prev.cgst + shipHalf, sgst: prev.sgst + shipHalf });
   }
-  const taxRows = Array.from(taxGroups.entries()).sort((a, b) => b[0] - a[0]);
 
   const shipTaxable = shippingCharge > 0 ? shippingCharge / 1.18 : 0;
   const shipHalf = shipTaxable * 0.09;
 
-  const amountRows: { label: string; val: string; bold?: boolean }[] = [
-    { label: 'Sub Total', val: INR(total) },
-    { label: 'Total', val: INR(total), bold: true },
-    { label: 'Advance', val: INR(advance) },
-    { label: 'Balance', val: INR(balance) },
+  const invoiceItems = [
+    ...order.items.map((item) => {
+      const prod = getProduct(item);
+      const gstAmt = itemGst(item);
+      const taxableAmt = item.total - gstAmt;
+      const pricePerUnit = item.quantity > 0 ? taxableAmt / item.quantity : 0;
+      return {
+        name: item.name,
+        variantName: item.variantName,
+        hsn: prod?.hsnCode ?? '',
+        mrp: prod?.compareAtPrice ?? item.price,
+        quantity: item.quantity,
+        sellingPrice: item.price,
+        pricePerUnit,
+        taxableAmt,
+        cgst: gstAmt / 2,
+        sgst: gstAmt / 2,
+        total: item.total,
+      };
+    }),
+    ...(shippingCharge > 0 ? [{
+      name: 'Shipping Charge',
+      hsn: '996511',
+      mrp: shippingCharge,
+      quantity: 1,
+      sellingPrice: shippingCharge,
+      pricePerUnit: shipTaxable,
+      taxableAmt: shipTaxable,
+      cgst: shipHalf,
+      sgst: shipHalf,
+      total: shippingCharge,
+    }] : []),
   ];
 
+  const data: InvoiceData = {
+    docLabel: 'Sale Order',
+    docNumber: order.orderNumber,
+    createdAt: order.createdAt,
+    orderFrom: {
+      name: addr.name ?? '–',
+      phone: addr.phone,
+      state: placeOfSupply,
+    },
+    shipTo: [addr.street, addr.landmark, addr.city, addr.state, addr.pincode ? `PIN-${addr.pincode}` : ''].filter(Boolean).join(', '),
+    detailRows: [
+      { key: 'Order No.:', value: invoiceNo },
+      { key: 'Date:', value: fmtDate(order.createdAt) },
+      { key: 'Time:', value: fmtTime(order.createdAt) },
+      { key: 'Place of Supply:', value: placeOfSupply },
+      { key: 'Due Date:', value: fmtDate(order.createdAt), bold: true },
+    ],
+    items: invoiceItems,
+    taxRows: Array.from(taxGroups.entries()).sort((a, b) => b[0] - a[0]).map(([rate, { taxable, cgst, sgst }]) => ({ rate, taxable, cgst, sgst })),
+    amountRows: [
+      { label: 'Sub Total', val: INR(total) },
+      { label: 'Total', val: INR(total), bold: true },
+      { label: 'Advance', val: INR(advance) },
+      { label: 'Balance', val: INR(balance) },
+    ],
+    total,
+  };
+
   return (
-    <>
-      <style>{`
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: #f0f2f5; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @media print {
-          body { background: white; }
-          .no-print { display: none !important; }
-          .inv-page { box-shadow: none !important; margin: 0 !important; max-width: 100% !important; border-radius: 0 !important; }
-          @page { size: A4 portrait; margin: 6mm 8mm; }
-        }
-      `}</style>
+    <InvoiceLayout
+      data={data}
+      invoiceRef={invoiceRef}
+      onPrint={handlePrint}
+      onDownload={handleDownload}
+      downloading={downloading}
+    />
+  );
+}
 
-      {/* Toolbar */}
-      <div className="no-print" style={{ position: 'sticky', top: 0, zIndex: 50, background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 4px rgba(0,0,0,.06)' }}>
-        <div style={{ fontWeight: 700, color: G, fontSize: 14 }}>Sale Order — {order.orderNumber}</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: 6, background: LG, color: G, border: `1px solid ${BD}`, borderRadius: 6, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-            <Printer size={14} /> Print
-          </button>
-          <button onClick={handleDownload} disabled={downloading} style={{ display: 'flex', alignItems: 'center', gap: 6, background: G, color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: downloading ? 'default' : 'pointer', opacity: downloading ? 0.7 : 1 }}>
-            <Download size={14} /> {downloading ? 'Generating…' : 'Download PDF'}
-          </button>
-          <button onClick={() => window.close()} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#fff', color: '#666', border: '1px solid #e5e7eb', borderRadius: 6, padding: '7px 12px', fontSize: 13, cursor: 'pointer' }}>
-            <X size={14} />
-          </button>
-        </div>
+export default function InvoicePage() {
+  return (
+    <Suspense fallback={
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#f3f4f6' }}>
+        <div style={{ color: '#666', fontSize: 13 }}>Loading…</div>
       </div>
-
-      <div style={{ padding: '24px 16px 40px', minHeight: '100vh' }}>
-        <div
-          ref={invoiceRef}
-          className="inv-page"
-          style={{
-            maxWidth: 800, margin: '0 auto', background: '#fff',
-            borderRadius: 4, boxShadow: '0 4px 20px rgba(0,0,0,.10)',
-            fontFamily: "'Segoe UI', Arial, sans-serif", color: '#1a1a1a', fontSize: 11,
-            border: `1px solid ${BD}`,
-          }}
-        >
-
-          {/* Title */}
-          <div style={{ textAlign: 'center', padding: '10px 0 8px', fontSize: 15, fontWeight: 700, letterSpacing: 0.5 }}>
-            Sale Order
-          </div>
-
-          {/* Company Header: logo left, info right */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', padding: '0 16px 12px', gap: 12, borderBottom: `1px solid ${BD}` }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/images/logo.png" alt="Nature Lite Foods" style={{ width: 72, height: 72, objectFit: 'contain', flexShrink: 0 }} />
-            <div style={{ flex: 1 }} />
-            <div style={{ textAlign: 'right', fontSize: 10.5, lineHeight: 1.6 }}>
-              <div style={{ fontWeight: 800, fontSize: 13 }}>{SELLER.name} {SELLER.legal}</div>
-              <div>{SELLER.name}, {SELLER.addr}</div>
-              <div>Phone no.: {SELLER.phone} Email: {SELLER.email}</div>
-              <div>GSTIN: {SELLER.gstin}, State: {SELLER.stateCode}-{SELLER.state}</div>
-            </div>
-          </div>
-
-          {/* Three-panel header */}
-          <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${BD}` }}>
-            <tbody>
-              <tr>
-                <td style={{ width: '33%', background: G, color: '#fff', fontWeight: 700, fontSize: 11, padding: '5px 8px', border: `1px solid ${BD}` }}>Order From</td>
-                <td style={{ width: '34%', background: G, color: '#fff', fontWeight: 700, fontSize: 11, padding: '5px 8px', border: `1px solid ${BD}` }}>Ship To</td>
-                <td style={{ width: '33%', background: G, color: '#fff', fontWeight: 700, fontSize: 11, padding: '5px 8px', border: `1px solid ${BD}`, textAlign: 'right' }}>Order Details</td>
-              </tr>
-              <tr>
-                <td style={{ padding: '8px', border: `1px solid ${BD}`, verticalAlign: 'top', fontSize: 11, lineHeight: 1.7 }}>
-                  <div style={{ fontWeight: 600 }}>{addr.name ?? '–'}</div>
-                  <div>Contact No.: {addr.phone ?? '–'}</div>
-                  <div>State: {placeOfSupply}</div>
-                </td>
-                <td style={{ padding: '8px', border: `1px solid ${BD}`, verticalAlign: 'top', fontSize: 11, lineHeight: 1.7 }}>
-                  {[addr.street, addr.landmark, addr.city, addr.state, addr.pincode ? `PIN-${addr.pincode}` : ''].filter(Boolean).join(', ')}
-                </td>
-                <td style={{ padding: '8px', border: `1px solid ${BD}`, verticalAlign: 'top', fontSize: 11 }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <tbody>
-                      {([
-                        ['Order No.:', invoiceNo, false],
-                        ['Date:', fmtDate(order.createdAt), false],
-                        ['Time:', fmtTime(order.createdAt), false],
-                        ['Place of Supply:', placeOfSupply, false],
-                        ['Due Date:', fmtDate(order.createdAt), true],
-                      ] as [string, string, boolean][]).map(([k, v, bold]) => (
-                        <tr key={k}>
-                          <td style={{ color: '#555', padding: '1px 4px 1px 0', whiteSpace: 'nowrap', fontSize: 10.5 }}>{k}</td>
-                          <td style={{ textAlign: 'right', fontWeight: bold ? 700 : 400, fontSize: 10.5 }}>{v}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          {/* Items Table */}
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                {(['#', 'Item name', 'HSN/\nSAC', 'MRP', 'Quantity', 'Price/\nUnit', 'Taxable\namount', 'CGST', 'SGST', 'Final Rate', 'Amount'] as string[]).map((h, i) => (
-                  <th key={h} style={{ ...TH, textAlign: i === 1 ? 'left' : 'center', whiteSpace: 'pre-line', lineHeight: 1.2 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {order.items.map((item, idx) => {
-                const prod = getProduct(item);
-                const hsn = prod?.hsnCode ?? '';
-                const gstAmt = item.gstAmount ?? 0;
-                const taxableAmt = item.total - gstAmt;
-                const pricePerUnit = item.quantity > 0 ? taxableAmt / item.quantity : 0;
-                const cgst = gstAmt / 2;
-                const sgst = gstAmt / 2;
-                const mrp = prod?.compareAtPrice ?? item.price;
-                return (
-                  <tr key={idx} style={{ background: idx % 2 === 0 ? '#fff' : '#f9fafb' }}>
-                    <td style={{ ...TD, width: '3%' }}>{idx + 1}</td>
-                    <td style={{ ...TD, textAlign: 'left', width: '20%' }}>
-                      {item.name}{item.variantName ? ` ${item.variantName}` : ''}
-                    </td>
-                    <td style={{ ...TD, width: '7%' }}>{hsn}</td>
-                    <td style={{ ...TD, width: '7%' }}>{INR(mrp)}</td>
-                    <td style={{ ...TD, width: '5%' }}>{item.quantity}</td>
-                    <td style={{ ...TD, width: '8%' }}>₹ {INR(pricePerUnit)}</td>
-                    <td style={{ ...TD, width: '9%' }}>₹ {INR(taxableAmt)}</td>
-                    <td style={{ ...TD, width: '7%' }}>₹ {INR(cgst)}</td>
-                    <td style={{ ...TD, width: '7%' }}>₹ {INR(sgst)}</td>
-                    <td style={{ ...TD, width: '8%' }}>
-                      ₹ {INR(item.price)}
-                    </td>
-                    <td style={{ ...TD, width: '8%' }}>
-                      ₹ {INR(item.total)}
-                    </td>
-                  </tr>
-                );
-              })}
-
-              {shippingCharge > 0 && (
-                <tr style={{ background: order.items.length % 2 === 0 ? '#fff' : '#f9fafb' }}>
-                  <td style={{ ...TD, width: '3%' }}>{order.items.length + 1}</td>
-                  <td style={{ ...TD, textAlign: 'left', width: '20%' }}>Shipping Charge</td>
-                  <td style={{ ...TD, width: '7%' }}>996511</td>
-                  <td style={{ ...TD, width: '7%' }}></td>
-                  <td style={{ ...TD, width: '5%' }}>1</td>
-                  <td style={{ ...TD, width: '8%' }}>₹ {INR(shipTaxable)}</td>
-                  <td style={{ ...TD, width: '9%' }}>₹ {INR(shipTaxable)}</td>
-                  <td style={{ ...TD, width: '7%' }}>₹ {INR(shipHalf)}</td>
-                  <td style={{ ...TD, width: '7%' }}>₹ {INR(shipHalf)}</td>
-                  <td style={{ ...TD, width: '8%' }}>₹ {INR(shippingCharge)}</td>
-                  <td style={{ ...TD, width: '8%' }}>₹ {INR(shippingCharge)}</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-
-          {/* Tax Summary | Amounts */}
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <tbody>
-              <tr>
-                {/* Tax table */}
-                <td style={{ width: '55%', padding: 0, border: `1px solid ${BD}`, verticalAlign: 'top' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr>
-                        {(['Tax type', 'Taxable amount', 'Rate', 'Tax amount'] as string[]).map((h, i) => (
-                          <th key={h} style={{ background: LG, color: G, padding: '5px 6px', fontSize: 10, fontWeight: 700, border: `1px solid ${BD}`, textAlign: i === 0 ? 'left' : 'right' }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {taxRows.flatMap(([rate, { taxable, cgst, sgst }]) => [
-                        <tr key={`sgst-${rate}`}>
-                          <td style={{ ...TD, textAlign: 'left' }}>SGST</td>
-                          <td style={{ ...TD, textAlign: 'right' }}>₹ {INR(taxable)}</td>
-                          <td style={{ ...TD, textAlign: 'right' }}>{(rate / 2).toFixed(1)}%</td>
-                          <td style={{ ...TD, textAlign: 'right' }}>₹ {INR(sgst)}</td>
-                        </tr>,
-                        <tr key={`cgst-${rate}`}>
-                          <td style={{ ...TD, textAlign: 'left' }}>CGST</td>
-                          <td style={{ ...TD, textAlign: 'right' }}>₹ {INR(taxable)}</td>
-                          <td style={{ ...TD, textAlign: 'right' }}>{(rate / 2).toFixed(1)}%</td>
-                          <td style={{ ...TD, textAlign: 'right' }}>₹ {INR(cgst)}</td>
-                        </tr>,
-                      ])}
-                    </tbody>
-                  </table>
-                </td>
-
-                {/* Amounts */}
-                <td style={{ width: '45%', padding: 0, border: `1px solid ${BD}`, verticalAlign: 'top' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr>
-                        <th colSpan={2} style={{ background: LG, color: G, padding: '5px 8px', fontSize: 10, fontWeight: 700, border: `1px solid ${BD}`, textAlign: 'left' }}>Amounts</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {amountRows.map(({ label, val, bold }) => (
-                        <tr key={label}>
-                          <td style={{ ...TD, textAlign: 'left', fontWeight: bold ? 700 : 400 }}>{label}</td>
-                          <td style={{ ...TD, textAlign: 'right', fontWeight: bold ? 700 : 400 }}>₹ {val}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          {/* Amount in Words */}
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ background: G, color: '#fff', padding: '5px 8px', fontSize: 10, fontWeight: 700, border: `1px solid ${BD}`, textAlign: 'center' }}>
-                  Order Amount In Words
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td style={{ padding: '6px 10px', fontSize: 11, border: `1px solid ${BD}`, textAlign: 'center' }}>
-                  {toWords(total)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          {/* Bank Details | Terms */}
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <tbody>
-              <tr>
-                <td style={{ width: '50%', padding: 0, border: `1px solid ${BD}`, verticalAlign: 'top' }}>
-                  <div style={{ background: G, color: '#fff', fontWeight: 700, fontSize: 10, padding: '5px 8px' }}>Bank Details</div>
-                  <div style={{ padding: '8px 10px', fontSize: 10.5, lineHeight: 1.8 }}>
-                    <div><strong>Name:</strong> {BANK.name}</div>
-                    <div><strong>Account No.:</strong> {BANK.account}</div>
-                    <div><strong>IFSC code:</strong> {BANK.ifsc}</div>
-                    <div><strong>Account Holder&apos;s Name:</strong> {BANK.holder}</div>
-                  </div>
-                </td>
-                <td style={{ width: '50%', padding: 0, border: `1px solid ${BD}`, verticalAlign: 'top' }}>
-                  <div style={{ background: G, color: '#fff', fontWeight: 700, fontSize: 10, padding: '5px 8px' }}>Terms and conditions</div>
-                  <div style={{ padding: '8px 10px', fontSize: 10.5 }}>Thanks for doing business with us!</div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-        </div>
-      </div>
-    </>
+    }>
+      <OrderInvoiceInner />
+    </Suspense>
   );
 }

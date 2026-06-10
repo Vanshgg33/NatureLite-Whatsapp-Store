@@ -37,7 +37,6 @@ const TARGET_FIELDS: TargetField[] = [
   { key: 'tags', label: 'Tags (pipe-separated)', required: false, aliases: ['tags', 'tag', 'keywords'] },
   { key: 'isActive', label: 'Status (Active)', required: false, aliases: ['active', 'isactive', 'status'] },
   { key: 'isFeatured', label: 'Featured', required: false, aliases: ['featured', 'isfeatured'] },
-  { key: 'gstPercentage', label: 'GST Percentage', required: false, aliases: ['gst', 'tax'] },
   { key: 'hsnCode', label: 'HSN Code', required: false, aliases: ['hsn', 'hsncode'] },
   { key: 'videoUrl', label: 'Video URL', required: false, aliases: ['video', 'videourl'] },
 ];
@@ -45,7 +44,7 @@ const TARGET_FIELDS: TargetField[] = [
 const ALL_COLS = [
   'name*', 'sku*', 'price*', 'compareAtPrice', 'specialOfferPrice', 'specialOfferLabel',
   'stock', 'shortDescription', 'tags (pipe-separated)', 'isActive (true/false)',
-  'isFeatured (true/false)', 'gstPercentage', 'hsnCode', 'videoUrl',
+  'isFeatured (true/false)', 'hsnCode', 'videoUrl',
 ];
 
 function parseCsv(text: string): Record<string, string>[] {

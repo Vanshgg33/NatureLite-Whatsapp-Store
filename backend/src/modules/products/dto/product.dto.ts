@@ -252,11 +252,6 @@ export class CreateProductDto {
   @IsOptional()
   dimensions?: ProductDimensionsDto;
 
-  @IsNumber()
-  @IsOptional()
-  @Min(0)
-  gstPercentage?: number;
-
   @IsString()
   @IsOptional()
   hsnCode?: string;
@@ -406,11 +401,6 @@ export class UpdateProductDto {
   @Type(() => ProductDimensionsDto)
   @IsOptional()
   dimensions?: ProductDimensionsDto;
-
-  @IsNumber()
-  @IsOptional()
-  @Min(0)
-  gstPercentage?: number;
 
   @IsString()
   @IsOptional()

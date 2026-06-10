@@ -124,7 +124,7 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
     return this.model
       .findById(id)
       .populate('user', 'phone name email addresses')
-      .populate('items.product', 'name slug images hsnCode gstPercentage')
+      .populate({ path: 'items.product', select: 'name slug images hsnCode category', populate: { path: 'category', select: 'gstPercentage' } })
       .exec();
   }
 
