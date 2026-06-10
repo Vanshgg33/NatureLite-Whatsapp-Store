@@ -91,7 +91,7 @@ function BreakdownDialog({
 
   const handleSettle = () => {
     if (selected.size === 0) return;
-    settle.mutate([...selected]);
+    settle.mutate(Array.from(selected));
   };
 
   return (
