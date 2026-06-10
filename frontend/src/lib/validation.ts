@@ -21,7 +21,6 @@ export interface ProductFormData {
   sku: string;
   stock: string;
   lowStockThreshold: string;
-  gstPercentage: string;
   hsnCode: string;
   tags: string;
 }
@@ -80,12 +79,6 @@ export function validateProduct(data: ProductFormData): ValidationResult {
   const lowStockThreshold = parseInt(data.lowStockThreshold);
   if (isNaN(lowStockThreshold) || lowStockThreshold < 0) {
     errors.push({ field: 'lowStockThreshold', message: 'Low stock threshold must be 0 or greater' });
-  }
-
-  // GST percentage validation
-  const gstPercentage = parseFloat(data.gstPercentage);
-  if (isNaN(gstPercentage) || gstPercentage < 0 || gstPercentage > 100) {
-    errors.push({ field: 'gstPercentage', message: 'GST percentage must be between 0 and 100' });
   }
 
   return {

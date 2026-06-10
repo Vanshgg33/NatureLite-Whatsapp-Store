@@ -116,6 +116,7 @@ export interface Product {
   tags: string[];
   weight?: number;
   dimensions?: ProductDimensions;
+  gstPercentage?: number;
   hsnCode?: string;
   seo?: {
     title?: string;

@@ -48,7 +48,7 @@ export default function NewProductPage() {
     price: '', compareAtPrice: '', sku: '',
     specialOfferPrice: '', specialOfferLabel: '', specialOfferActive: false,
     stock: '0', trackStock: true, lowStockThreshold: '5',
-    isActive: true, isFeatured: false, gstPercentage: '18', hsnCode: '', tags: '',
+    isActive: true, isFeatured: false, hsnCode: '', tags: '',
     videoUrl: '',
     seoTitle: '', seoDescription: '', seoKeywords: '', canonicalUrl: '',
   });
@@ -183,7 +183,6 @@ export default function NewProductPage() {
       lowStockThreshold: parseInt(formData.lowStockThreshold),
       isActive: formData.isActive,
       isFeatured: formData.isFeatured,
-      gstPercentage: parseFloat(formData.gstPercentage),
       hsnCode: formData.hsnCode || undefined,
       images,
       imageAlts,
@@ -335,10 +334,6 @@ export default function NewProductPage() {
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="gstPercentage">GST %</Label>
-                    <Input id="gstPercentage" type="number" min="0" max="100" value={formData.gstPercentage} onChange={(e) => set('gstPercentage', e.target.value)} />
-                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="hsnCode">HSN Code</Label>
                     <Input id="hsnCode" value={formData.hsnCode} onChange={(e) => set('hsnCode', e.target.value)} placeholder="HSN/SAC Code" />
