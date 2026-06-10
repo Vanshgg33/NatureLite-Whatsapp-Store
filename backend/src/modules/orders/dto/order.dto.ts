@@ -111,6 +111,10 @@ export class CreateOrderDto {
   @IsString()
   @IsOptional()
   source?: string;
+
+  @IsString()
+  @IsOptional()
+  orderType?: string;
 }
 
 export class UpdateOrderStatusDto {

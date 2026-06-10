@@ -111,6 +111,9 @@ export class Order {
   @Prop({ default: 'website', index: true })
   source: string;
 
+  @Prop({ index: true })
+  orderType?: string;
+
   @Prop({ default: 'placed', index: true })
   status: OrderStatus;
 

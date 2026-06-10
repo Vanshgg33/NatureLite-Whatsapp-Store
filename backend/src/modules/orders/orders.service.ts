@@ -402,6 +402,7 @@ export class OrdersService implements OnModuleInit {
         items: orderItems,
         shippingAddress: dto.shippingAddress,
         source: dto.source || 'website',
+        orderType: (dto as any).orderType,
         paymentMethod: dto.paymentMethod,
         subtotal,
         discount,
@@ -655,6 +656,7 @@ export class OrdersService implements OnModuleInit {
       walletAmount: dto.walletAmount,
       idempotencyKey: dto.idempotencyKey,
       source: dto.source,
+      orderType: dto.orderType,
     };
 
     return this.create(user._id.toString(), createDto);

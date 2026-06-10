@@ -218,6 +218,7 @@ export interface Order {
   items: OrderItem[];
   shippingAddress: ShippingAddress;
   source?: string;
+  orderType?: string;
   status: OrderStatus;
   paymentStatus: PaymentStatus;
   paymentMethod: PaymentMethod;
@@ -818,6 +819,7 @@ export interface GuestCreateOrderDto {
   walletAmount?: number;
   idempotencyKey?: string;
   source?: string;
+  orderType?: string;
 }
 
 export interface ReorderDto {

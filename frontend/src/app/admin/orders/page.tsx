@@ -124,6 +124,7 @@ export default function OrdersPage() {
   // Create order dialog
   const [showCreate, setShowCreate] = useState(false);
   const [source, setSource] = useState<'whatsapp' | 'website' | 'phone' | 'vayepar' | 'b2b' | 'transport'>('whatsapp');
+  const [orderType, setOrderType] = useState<'b2b' | 'other_cities' | 'transport' | ''>('');
   const [custName, setCustName] = useState('');
   const [custPhone, setCustPhone] = useState('');
   const [addrStreet, setAddrStreet] = useState('');
@@ -183,6 +184,7 @@ export default function OrdersPage() {
           ? `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : source === 'phone' ? 'Phone' : source === 'b2b' ? 'B2B' : source === 'transport' ? 'Transport' : 'Vayepar'}] ${notes.trim()}`
           : `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : source === 'phone' ? 'Phone' : source === 'b2b' ? 'B2B' : source === 'transport' ? 'Transport' : 'Vayepar'}] Order created by admin`,
         source,
+        orderType: orderType || undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
@@ -197,6 +199,7 @@ export default function OrdersPage() {
 
   function resetCreateForm() {
     setSource('whatsapp');
+    setOrderType('');
     setCustName('');
     setCustPhone('');
     setAddrStreet('');
@@ -494,6 +497,19 @@ export default function OrdersPage() {
                                     </span>
                                   );
                                 })()}
+                                {order.orderType && (() => {
+                                  const typeMap: Record<string, { label: string; cls: string }> = {
+                                    b2b:          { label: 'B2B',          cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+                                    other_cities: { label: 'Other Cities', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+                                    transport:    { label: 'Transport',    cls: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+                                  };
+                                  const t = typeMap[order.orderType];
+                                  return t ? (
+                                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium leading-none border ${t.cls}`}>
+                                      {t.label}
+                                    </span>
+                                  ) : null;
+                                })()}
                               </p>
                             </div>
                           </TableCell>
@@ -616,6 +632,30 @@ export default function OrdersPage() {
                     onClick={() => setSource(val)}
                     className={`flex items-center justify-center gap-2 rounded-lg border-2 py-3 text-sm font-medium transition-colors ${
                       source === val ? active : 'border-muted bg-background text-muted-foreground hover:border-muted-foreground/40'
+                    }`}
+                  >
+                    {icon}
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Order Type */}
+            <div>
+              <label className="text-sm font-medium block mb-2">Order Type</label>
+              <div className="grid grid-cols-3 gap-3">
+                {([
+                  { val: 'b2b',         label: 'B2B',          icon: <Building2 className="h-4 w-4" />, active: 'border-orange-500 bg-orange-50 text-orange-700' },
+                  { val: 'other_cities',label: 'Other Cities',  icon: <Globe className="h-4 w-4" />,    active: 'border-blue-500 bg-blue-50 text-blue-700' },
+                  { val: 'transport',   label: 'Transport',     icon: <Truck className="h-4 w-4" />,    active: 'border-cyan-500 bg-cyan-50 text-cyan-700' },
+                ] as const).map(({ val, label, icon, active }) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setOrderType(orderType === val ? '' : val)}
+                    className={`flex items-center justify-center gap-2 rounded-lg border-2 py-3 text-sm font-medium transition-colors ${
+                      orderType === val ? active : 'border-muted bg-background text-muted-foreground hover:border-muted-foreground/40'
                     }`}
                   >
                     {icon}
