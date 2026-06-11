@@ -340,6 +340,10 @@ export class GuestCreateOrderDto {
   @IsString()
   @IsOptional()
   source?: string;
+
+  @IsString()
+  @IsOptional()
+  orderType?: string;
 }
 
 export class UpdateOrderDto {
