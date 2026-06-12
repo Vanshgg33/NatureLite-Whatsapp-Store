@@ -488,8 +488,9 @@ export class AdminChatbotService implements OnApplicationBootstrap {
   // ─── Core RAG pipeline ────────────────────────────────────────────────────────
 
   /**
-   * Full RAG pipeline: validate → expand → intent → tools (parallel) →
-   * re-rank → compress → synthesise → cache → persist.
+   * Full RAG pipeline: expand → cache check → Gemini plans tools →
+   * execute (parallel) → re-rank → compress → synthesise → cache → persist.
+   * Gemini decides which tools to call — no hardcoded topic→tool mapping.
    */
   async runRagPipeline(
     message: string,
@@ -499,7 +500,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
   ): Promise<{ reply: string; contextBlocks: string[]; failedTools: string[] }> {
     const failedTools: string[] = [];
 
-    // ── 1. Normalise query ──────────────────────────────────────────────────────
+    // ── 1. Normalise query + fingerprint ────────────────────────────────────────
     const normalized = normalizeQuery(message);
     const fingerprint = queryFingerprint(normalized);
     this.logger.debug(`Query fingerprint: ${fingerprint}`);
@@ -507,60 +508,57 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     // ── 1b. Expand short/ambiguous queries ──────────────────────────────────────
     const expandedMessage = await this.expandQuery(apiKey, message);
 
-    // ── 2. Understand intent ────────────────────────────────────────────────────
-    let intent: ChatbotIntent | null = null;
-    let intentSource = 'gemini';
+    // ── 2. Semantic reply cache check ───────────────────────────────────────────
+    // Skip cache for email confirmation flows (must always hit live tools)
+    const isEmailFlow = /\byes\b|\bconfirm\b|\bsend\s+it\b|\bgo\s+ahead\b/i.test(message) &&
+      history.some((h) => h.role === 'assistant' && /preview_email_report|READY_TO_SEND/i.test(h.text));
+    const replyCacheKey = `chatbot:reply:${fingerprint}`;
+    if (!isEmailFlow) {
+      const cachedReply = await this.redisService.get(replyCacheKey).catch(() => null);
+      if (cachedReply) {
+        this.logger.debug(`Reply cache HIT: ${fingerprint}`);
+        if (adminId) {
+          const ts = new Date().toISOString();
+          await this.adminChatSessionRepository.appendMessages(adminId, [
+            { id: `${Date.now()}-u`, sender: 'user', text: message, timestamp: ts },
+            { id: `${Date.now()}-a`, sender: 'assistant', text: cachedReply, timestamp: ts },
+          ]).catch(() => {});
+        }
+        return { reply: cachedReply, contextBlocks: [], failedTools: [] };
+      }
+    }
 
-    const intentData = await this.geminiRequest(
+    // ── 3. Gemini plans which tools to call ─────────────────────────────────────
+    let plan: RagStep[] = [];
+    let planSource = 'gemini';
+
+    const planData = await this.geminiRequest(
       apiKey,
       {
-        contents: [{ parts: [{ text: this.buildIntentPrompt(expandedMessage, history) }] }],
-        generationConfig: { temperature: 0.0, responseMimeType: 'application/json', maxOutputTokens: 300 },
+        contents: [{ parts: [{ text: this.buildPlannerPrompt(expandedMessage, history) }] }],
+        generationConfig: { temperature: 0.0, maxOutputTokens: 400, responseMimeType: 'application/json' },
       },
-      'intent',
+      'planner',
     );
 
-    if (intentData) {
+    if (planData) {
       try {
-        let raw = this.extractText(intentData).trim();
+        let raw = this.extractText(planData).trim();
         if (raw.startsWith('```')) raw = raw.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '');
         const parsed = JSON.parse(raw.trim());
-        // Zod-validate the intent JSON — reject malformed AI output
-        const validated = ChatbotIntentSchema.safeParse(parsed);
-        if (validated.success) {
-          intent = validated.data as ChatbotIntent;
-        } else {
-          this.logger.warn(`Intent validation failed: ${validated.error.issues.map((i) => i.message).join(', ')}`);
-        }
+        if (Array.isArray(parsed) && parsed.length > 0) plan = parsed;
       } catch {
-        this.logger.warn('Intent JSON parse failed — text fallback');
+        this.logger.warn('Planner JSON parse failed — keyword fallback');
       }
     }
 
-    if (!intent) {
-      intentSource = 'text-fallback';
-      intent = this.textToIntent(message);
+    if (!plan.length) {
+      planSource = 'keyword-fallback';
+      plan = this.keywordFallbackPlan(message);
     }
 
-    this.logger.log(`Intent (${intentSource}): ${intent.topic}${intent.timePreset ? '/' + intent.timePreset : ''}${intent.filters ? ' filters:' + JSON.stringify(intent.filters) : ''}`);
-
-    // ── 3. Semantic reply cache check ───────────────────────────────────────────
-    const cachedReply = await this.getCachedReply(intent as unknown as ValidatedIntent);
-    if (cachedReply && !intent.emailConfirm) {
-      this.logger.debug(`Semantic cache HIT for intent: ${intent.topic}`);
-      if (adminId) {
-        const ts = new Date().toISOString();
-        await this.adminChatSessionRepository.appendMessages(adminId, [
-          { id: `${Date.now()}-u`, sender: 'user', text: message, timestamp: ts },
-          { id: `${Date.now()}-a`, sender: 'assistant', text: cachedReply, timestamp: ts },
-        ]).catch(() => {});
-      }
-      return { reply: cachedReply, contextBlocks: [], failedTools: [] };
-    }
-
-    // ── 4. Map intent → tools (parallel retrieval) ──────────────────────────────
-    const finalPlan = this.deduplicatePlan(this.intentToTools(intent, new Date(), history));
-    this.logger.log(`Tools: ${finalPlan.map((s) => s.tool).join(', ')}`);
+    const finalPlan = this.deduplicatePlan(plan);
+    this.logger.log(`Plan (${planSource}): ${finalPlan.map((s) => s.tool).join(', ')}`);
 
     const toolResults = await Promise.all(
       finalPlan.map(async (step, index) => {
@@ -614,9 +612,10 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       : baseReply;
 
     // ── 8. Cache synthesised reply (skip action tools like send_email) ───────────
-    const isActionTopic = intent.emailConfirm || intent.emailTo;
-    if (aiReply && !isActionTopic) {
-      await this.setCachedReply(intent as unknown as ValidatedIntent, finalReply).catch(() => {});
+    const ACTION_TOOLS = new Set(['send_email_report', 'preview_email_report']);
+    const isActionPlan = finalPlan.some((s) => ACTION_TOOLS.has(s.tool));
+    if (aiReply && !isActionPlan && !isEmailFlow) {
+      await this.redisService.set(replyCacheKey, finalReply, SYNTHESIS_CACHE_TTL_SECONDS).catch(() => {});
     }
 
     // ── 9. Persist conversation history ──────────────────────────────────────────
@@ -1022,7 +1021,10 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         const formatted = items.length > 0
           ? items.map((p: any) => `- **${p.name}** (SKU: ${p.sku}) | Stock: **${p.totalStock}** | Threshold: ${p.lowStockThreshold || THRESHOLD}`).join('\n')
           : `No low stock products found${searchTerm ? ` matching "${searchTerm}"` : ''}.`;
-        return `[RAG: ${label}]\n${formatted}`;
+        const header = items.length > 0
+          ? `**${items.length}** products low on stock${searchTerm ? ` matching "${searchTerm}"` : ''} (sorted by lowest stock):`
+          : '';
+        return `[RAG: ${label}]\n${header}${header ? '\n\n' : ''}${formatted}`;
       }
 
       case 'search_products': {
@@ -1272,7 +1274,13 @@ export class AdminChatbotService implements OnApplicationBootstrap {
 
         const filtered = statusFilter ? rows.filter(r => r.statusKey === statusFilter) : rows;
         const formatted = filtered.map(r => r.line).join('\n') || `No ${statusFilter || ''} coupons found.`;
-        return `[RAG: get_coupon_list${statusFilter ? ` (${statusFilter})` : ''}]\n${formatted}`;
+        const activeCnt = rows.filter(r => r.statusKey === 'active').length;
+        const expiredCnt = rows.filter(r => r.statusKey === 'expired').length;
+        const upcomingCnt = rows.filter(r => r.statusKey === 'upcoming').length;
+        const summary = statusFilter
+          ? `**${filtered.length}** ${statusFilter} coupons`
+          : `**${rows.length}** coupons total — ✅ ${activeCnt} active | ⏳ ${upcomingCnt} upcoming | ❌ ${expiredCnt} expired`;
+        return `[RAG: get_coupon_list${statusFilter ? ` (${statusFilter})` : ''}]\n${summary}\n\n${formatted}`;
       }
 
       case 'get_analytics_period': {
@@ -1655,8 +1663,14 @@ JSON schema (omit null fields):
     "feedbackType": "complaint|suggestion|review",
     "couponStatus": "active|expired|upcoming|inactive",
     "minSpent": number,
-    "outOfStock": true
+    "outOfStock": true,
+    "inStock": true
   },
+  NOTE on inventory filters:
+  - "inStock": true → user wants products that ARE available (use for "which items are in stock / available")
+  - "outOfStock": true → user wants products with zero stock
+  - NEITHER flag (default) → user wants LOW STOCK products (running low, need restock)
+  CRITICAL: "low in stock", "low stock", "running low", "need to restock" → OMIT both inStock and outOfStock
   "action": "list|count|summary|trend|compare|search",
   "emailTo": "email address",
   "emailReportType": "dashboard|orders|revenue|analytics|monthly|weekly|customers|feedback|coupons|store_sales|abandoned|payments|low_stock|ims",
@@ -1681,12 +1695,19 @@ Examples:
 "active coupons" → {"topic":"coupons","filters":{"couponStatus":"active"},"action":"list"}
 "out of stock items" → {"topic":"inventory","filters":{"outOfStock":true},"action":"list"}
 "low stock" → {"topic":"inventory","action":"list"}
+"which oil products low in stock" → {"topic":"inventory","filters":{"productName":"oil"},"action":"list"}
+"oil products running low" → {"topic":"inventory","filters":{"productName":"oil"},"action":"list"}
+"ghee low stock" → {"topic":"inventory","filters":{"productName":"ghee"},"action":"list"}
 "which ghee items are in stock" → {"topic":"inventory","filters":{"inStock":true,"productName":"ghee"},"action":"list"}
 "what ghee is available" → {"topic":"inventory","filters":{"inStock":true,"productName":"ghee"},"action":"list"}
 "show available oil products" → {"topic":"inventory","filters":{"inStock":true,"productName":"oil"},"action":"list"}
 "compare this week vs last" → {"topic":"revenue","action":"compare"}
 "customers" → {"topic":"customers","action":"list"}
+"total customers" → {"topic":"customers","action":"count"}
+"how many customers do I have" → {"topic":"customers","action":"count"}
 "customers who spent over 5000" → {"topic":"customers","filters":{"minSpent":5000},"action":"list"}
+"compare this month vs last month" → {"topic":"revenue","timePreset":"this_month","action":"compare"}
+"compare this week vs last week" → {"topic":"revenue","timePreset":"this_week","action":"compare"}
 "abandoned carts" → {"topic":"abandoned_carts","action":"list"}
 "abandoned carts with ghee" → {"topic":"abandoned_carts","filters":{"productName":"ghee"},"action":"list"}
 "best selling oil" → {"topic":"top_products","filters":{"productName":"oil"},"action":"list"}
@@ -1760,13 +1781,22 @@ Query: """${message}"""`;
           { tool: 'search_recent_orders', params },
         ];
       }
-      case 'revenue':
-        if (intent.action === 'compare') return [{ tool: 'compare_periods', params: { days: 7 } }];
+      case 'revenue': {
+        if (intent.action === 'compare') {
+          // "compare this month vs last month" → 30 days; "this week vs last" → 7 days
+          const compareDays = (intent.timePreset === 'this_month' || intent.timePreset === 'last_30_days') ? 30 : 7;
+          return [{ tool: 'compare_periods', params: { days: compareDays } }];
+        }
         // Default to last 30 days so "today only" queries don't silently return ₹0
         return [{ tool: 'get_revenue_trend', params: from ? { from, to } : { days: 30 } }];
+      }
       case 'customers':
         if (f.customerName) return [{ tool: 'search_customers', params: { searchTerm: f.customerName, limit: 10 } }];
+        if (f.customerPhone) return [{ tool: 'search_customers', params: { searchTerm: f.customerPhone, limit: 5 } }];
         if (f.minSpent) return [{ tool: 'get_top_customers_online', params: { minSpent: f.minSpent, limit: 20 } }];
+        if (intent.action === 'count' || intent.action === 'summary')
+          // "total customers" → dashboard has totalCustomers count + new customers breakdown
+          return [{ tool: 'get_dashboard_summary', params: {} }, { tool: 'get_new_customers', params: { days: 30 } }];
         if (intent.action === 'list') return [{ tool: 'get_top_customers_online', params: { limit: 10 } }];
         return [{ tool: 'get_new_customers', params: from ? { from, to } : { days: 7 } }];
       case 'inventory':
@@ -1856,11 +1886,16 @@ Query: """${message}"""`;
       return { topic: 'revenue', timePreset, action: 'trend' };
     }
     if (/out[\s-]of[\s-]stock|zero.stock/.test(m)) return { topic: 'inventory', filters: { outOfStock: true } };
-    if (/in.stock|available|in.availability|has.stock|stocked/.test(m)) {
+    // "low in stock" / "low stock" must match BEFORE the generic "in stock" check
+    if (/low[\s-]in[\s-]stock|low[\s-]stock|running[\s-]low|need[\s-]restock/.test(m)) {
+      const prodM = m.match(/\b(ghee|oil|seeds?|spice|flour|atta|nuts?|dry.fruit)\b/i);
+      return { topic: 'inventory', filters: { ...(prodM ? { productName: prodM[1] } : {}) } };
+    }
+    if (/\bin[\s-]stock\b|available|in.availability|has.stock|stocked/.test(m)) {
       const prodM = m.match(/\b(ghee|oil|seeds?|spice|flour|atta|nuts?|dry.fruit)\b/i);
       return { topic: 'inventory', filters: { inStock: true, ...(prodM ? { productName: prodM[1] } : {}) } };
     }
-    if (/stock|inventory|low.stock/.test(m)) return { topic: 'inventory' };
+    if (/stock|inventory/.test(m)) return { topic: 'inventory' };
     if (/feedback|review|rating|complaint/.test(m)) {
       const filters: ChatbotIntent['filters'] = {};
       if (/1.star|terrible|worst/.test(m)) filters.maxRating = 1;
@@ -2022,21 +2057,39 @@ TOOLS:
 
 EMAIL RULE: preview_email_report first, send_email_report only when history shows user said yes/confirm/send it/go ahead.
 
-EXAMPLES (these show the date-resolution pattern):
-"today's orders" → [{"tool":"search_recent_orders","params":{"from":"${todayStart}","to":"${todayEnd}","limit":20}}]
+TOOL SELECTION RULES:
+• "how many orders" / "total orders" / "show orders" → ALWAYS include get_orders_by_status (all-time counts) + search_recent_orders
+• "low in stock" / "running low" / "need restock" → search_low_stock_products (NOT search_in_stock_products)
+• "in stock" / "available" / "which X is available" → search_in_stock_products
+• "out of stock" / "zero stock" → search_out_of_stock_products
+• "total customers" / "how many customers" → get_dashboard_summary (has totalCustomers field)
+• "revenue" with no date → get_revenue_trend with days:30
+• "compare X vs Y" weeks → compare_periods days:7; months → compare_periods days:30
+• Specific customer name/phone → get_customer_orders; otherwise get_top_customers_online
+• "payments" / "failed payments" → get_payment_failures
+• For any date-relative query, resolve dates to ISO strings before passing as params
+
+EXAMPLES:
+"today's orders" → [{"tool":"get_orders_by_status","params":{}},{"tool":"search_recent_orders","params":{"from":"${todayStart}","to":"${todayEnd}","limit":20}}]
+"how many orders do I have" → [{"tool":"get_orders_by_status","params":{}},{"tool":"search_recent_orders","params":{"limit":10}}]
+"show orders" → [{"tool":"get_orders_by_status","params":{}},{"tool":"search_recent_orders","params":{"limit":10}}]
 "yesterday revenue" → [{"tool":"get_revenue_trend","params":{"from":"${yesterdayStr}T00:00:00.000Z","to":"${yesterdayStr}T23:59:59.000Z"}}]
-"this week's sales" → [{"tool":"get_revenue_trend","params":{"from":"${weekAgoStr}T00:00:00.000Z","to":"${todayEnd}"}}]
-"last 30 days" → [{"tool":"get_analytics_period","params":{"from":"${monthAgoStr}T00:00:00.000Z","to":"${todayEnd}","days":30}}]
+"this week's revenue" → [{"tool":"get_revenue_trend","params":{"from":"${weekAgoStr}T00:00:00.000Z","to":"${todayEnd}"}}]
+"last 30 days analytics" → [{"tool":"get_analytics_period","params":{"from":"${monthAgoStr}T00:00:00.000Z","to":"${todayEnd}","days":30}}]
 "orders in May 2025" → [{"tool":"search_orders_by_date_range","params":{"from":"2025-05-01T00:00:00.000Z","to":"2025-05-31T23:59:59.000Z","limit":20}}]
 "this week vs last week" → [{"tool":"compare_periods","params":{"days":7}}]
+"this month vs last month" → [{"tool":"compare_periods","params":{"days":30}}]
+"which oil products low in stock" → [{"tool":"search_low_stock_products","params":{"searchTerm":"oil"}}]
+"ghee low stock" → [{"tool":"search_low_stock_products","params":{"searchTerm":"ghee"}}]
+"which ghee is available" → [{"tool":"search_in_stock_products","params":{"searchTerm":"ghee"}}]
 "out of stock" → [{"tool":"search_out_of_stock_products","params":{}}]
-"which items are out of stock" → [{"tool":"search_out_of_stock_products","params":{}}]
 "out of stock ghee" → [{"tool":"search_out_of_stock_products","params":{"searchTerm":"ghee"}}]
 "low stock" → [{"tool":"search_low_stock_products","params":{}}]
-"ghee low stock" → [{"tool":"search_low_stock_products","params":{"searchTerm":"ghee"}}]
+"total customers" → [{"tool":"get_dashboard_summary","params":{}}]
 "best selling oil" → [{"tool":"get_top_selling_products","params":{"searchTerm":"oil","limit":8}}]
 "Rahul's orders" → [{"tool":"get_customer_orders","params":{"name":"Rahul","limit":10}}]
 "COD orders today" → [{"tool":"search_recent_orders","params":{"paymentMethod":"cod","from":"${todayStart}","to":"${todayEnd}","limit":20}}]
+"cancelled orders" → [{"tool":"get_orders_by_status","params":{}},{"tool":"search_recent_orders","params":{"status":"cancelled","limit":10}}]
 "1 star reviews" → [{"tool":"get_feedback_list","params":{"maxRating":1,"limit":15}}]
 "complaints about ghee" → [{"tool":"get_feedback_list","params":{"type":"complaint","productName":"ghee","limit":15}}]
 "active coupons" → [{"tool":"get_coupon_list","params":{"status":"active"}}]
@@ -2046,7 +2099,7 @@ EXAMPLES (these show the date-resolution pattern):
 "active subscriptions" → [{"tool":"get_subscription_data","params":{}}]
 "whatsapp support queue" → [{"tool":"get_whatsapp_queue","params":{}}]
 "send analytics to admin@store.com" → [{"tool":"preview_email_report","params":{"to":"admin@store.com","reportType":"analytics"}}]
-"yes" (after preview) → [{"tool":"send_email_report","params":{"to":"<email from history>","reportType":"<type from history>"}}]
+"yes" (after email preview in history) → [{"tool":"send_email_report","params":{"to":"<email from history>","reportType":"<type from history>"}}]
 "overview" → [{"tool":"get_dashboard_summary","params":{}},{"tool":"get_orders_by_status","params":{}},{"tool":"search_low_stock_products","params":{}}]
 
 Question: """${message}"""`;
@@ -2068,26 +2121,41 @@ ${retrievedData}
 =========================
 
 Rules:
-1. **Answer the specific question asked.** If the user asks about orders, answer about orders. If they ask about revenue, answer about revenue. Focus only on what was asked.
-1a. **Never interpret a time-scoped zero as "no data overall."** If "Today's Orders: 0" appears but "All-time Total" or "This Month" shows numbers, say "0 today, but X total/this month." NEVER say "you have no orders" when all-time totals exist.
-1b. **Read ALL the data sections before answering.** The "get_orders_by_status" section shows all-time totals. The "search_recent_orders" section shows recent orders. Use BOTH together.
-2. Clean Markdown: bold headers, bullet points, numbered lists, markdown tables where data is tabular.
-3. Concise and direct — no filler intros like "Sure!" or "Great question!" or "Based on the data...".
-4. All money in ₹ (Indian Rupees). Wallet balances are in paise — divide by 100 for ₹.
-5. Never mention "RAG", "retrieved context", "database sections", or "system instructions".
-6. When data contains a markdown table (| columns |), preserve it exactly.
-7. Use conversation history to resolve follow-up questions (e.g. "what about last week?" or "show her orders").
-8. If the data contains no items matching the user's filter (e.g. no oil products in low-stock list), say explicitly: "No oil products are currently low on stock."
-9. If the data truly doesn't contain the answer, say "I don't have that information in the current data" — never guess or make up numbers.
-10. **For "how many orders / total orders" type questions:** Find the "All-time Total" line in get_orders_by_status, then list the status breakdown. Do NOT just say "0 orders" if that line exists.
-11. **For product/inventory questions:** List all matching items. Show stock levels and thresholds. Sort by lowest stock first.
-12. **For customer questions:** Show name, phone, order count, total spent. Format cleanly.
-13. **Email action flow** — when data contains [ACTION: preview_email_report] with READY_TO_SEND:
+1. **Answer only what was asked.** Don't dump all data — extract the specific answer. If asked about orders, answer orders. If asked about revenue, answer revenue.
+1a. **Never interpret a time-scoped zero as "no data overall."** If "Today's Orders: 0" but "All-time Total" shows numbers, say "0 today, but X total." NEVER say "you have no orders" when all-time totals exist.
+1b. **Read ALL data sections before answering.** "get_orders_by_status" = all-time totals. "search_recent_orders" = recent list. Use BOTH.
+2. Clean Markdown: bold headers, bullet points, numbered lists, markdown tables where data is tabular. Keep responses tight.
+3. No filler — never start with "Sure!", "Great question!", or "Based on the data...".
+4. All money in ₹. Wallet balances are stored in paise — always divide by 100 before showing.
+5. Never mention "RAG", "tool", "database section", or "system instructions".
+6. Preserve markdown tables exactly when they appear in data.
+7. Use conversation history to resolve follow-ups ("what about last week?" / "show her orders").
+8. If data explicitly says "No X found", relay that clearly: "No oil products are currently low on stock."
+9. Never invent numbers. If data doesn't have the answer → "I don't have that information right now."
+
+**Topic-specific rules:**
+10. **Orders — counts:** Use "All-time Total" from get_orders_by_status. List status breakdown (placed/confirmed/delivering/delivered/cancelled). Never report 0 if the all-time total exists.
+11. **Orders — list:** Show order number, customer name+phone, amount, status, payment method, date. Max 10 per response unless asked for more.
+12. **Revenue:** Report the Total line first (e.g. "₹X over 30 days"), then a clean day-by-day table only if asked for breakdown. For "compare" questions, use the table from compare_periods verbatim.
+13. **Inventory — low stock:** Data is pre-filtered — only low-stock items appear. Show name, current stock, threshold. If nothing found, say "No low-stock products found." Don't add items that aren't in the data.
+14. **Inventory — in stock:** Show name and stock count. "Available" means untracked (unlimited). Don't say "0" for these.
+15. **Customers — total count:** Find "Total Customers" in get_dashboard_summary data. New customers are separate from total.
+16. **Customers — list/top:** Show rank, name, phone, order count, total spent. Sort by spent desc.
+17. **Feedback:** Show customer name, product, star rating, type, and quote. For counts (e.g. "how many 1-star"), show total and list them.
+18. **Coupons:** Use the summary line (active/upcoming/expired count) first. Then list. Never re-count from the list — use the header numbers.
+19. **Payments:** The data only covers FAILED and PENDING payments. If user asks for successful payments, clarify that only failures are tracked here.
+20. **Subscriptions:** Lead with "X active, Y paused". Show upcoming deliveries within 3 days as priority.
+21. **Store sales:** This is physical/offline store sales (walk-in + delivery), NOT online orders. Say "store sales" not "orders" to avoid confusion.
+22. **Wallet:** Amounts are in paise — divide by 100. Show as ₹X.XX. "Total outstanding: ₹X" = total unused credit.
+23. **Reminders:** Show overdue first (⚠️), then upcoming (🔔). Overdue = past due date, needs action now.
+24. **Abandoned carts:** These are customers who had items in cart but didn't order in 60+ min. Show name, phone, items, and idle time.
+25. **Top products:** Show product name, units sold, revenue. Separate online vs store if both shown.
+26. **Email action flow** — when data contains [ACTION: preview_email_report] with READY_TO_SEND:
     > 📧 Ready to send **{report label}** to **{email}**
     > Preview: {first few lines of summary}
     > Reply **yes** to send, or **cancel** to abort.
-14. When data contains [ACTION: send_email_report] with SUCCESS → "✅ **{report} sent** to {email}."
-15. When data contains [ACTION: send_email_report] with ERROR → "❌ Could not send email — {error reason}."
+27. When data contains [ACTION: send_email_report] with SUCCESS → "✅ **{report} sent** to {email}."
+28. When data contains [ACTION: send_email_report] with ERROR → "❌ Could not send email — {error reason}."
 
 Question: """${message}"""`;
   }
