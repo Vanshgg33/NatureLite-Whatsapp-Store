@@ -4,10 +4,12 @@ import {
   Get,
   Delete,
   Body,
+  Param,
   UseGuards,
   HttpCode,
   HttpStatus,
   Res,
+  NotFoundException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { AdminChatbotService, HistoryItem } from './admin-chatbot.service';
@@ -67,6 +69,29 @@ export class AdminChatbotController {
     const safeHistory = this.validateHistory(history);
     await this.chatbotService.streamChat(message, safeHistory, user.sub, res);
     res.end();
+  }
+
+  // ── Async chat via BullMQ ─────────────────────────────────────────────────────
+  @Post('enqueue')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  async enqueueChat(
+    @Body('message') message: string,
+    @Body('history') history: HistoryItem[] = [],
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ jobId: string }> {
+    const safeHistory = this.validateHistory(history);
+    return this.chatbotService.enqueueChat(message, safeHistory, user.sub);
+  }
+
+  @Get('job/:jobId')
+  @HttpCode(HttpStatus.OK)
+  async getChatJobResult(
+    @Param('jobId') jobId: string,
+  ): Promise<{ status: 'pending' | 'done' | 'failed'; reply?: string }> {
+    if (!jobId) throw new NotFoundException('jobId required');
+    return this.chatbotService.getChatJobResult(jobId);
   }
 
   // ── Proactive briefing ────────────────────────────────────────────────────────

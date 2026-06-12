@@ -6,7 +6,7 @@ import { Queue } from 'bullmq';
 import { Model } from 'mongoose';
 import { Response } from 'express';
 import { RedisService } from '../redis/redis.service';
-import { QUEUE_ADMIN, ADMIN_JOBS, DEFAULT_JOB_OPTIONS } from '../queues/queues.constants';
+import { QUEUE_ADMIN, ADMIN_JOBS, QUEUE_CHATBOT, CHATBOT_JOBS, DEFAULT_JOB_OPTIONS } from '../queues/queues.constants';
 import { ProductRepository } from '../products/repositories/product.repository';
 import { ChatSessionRepository } from '../chatbot/repositories/chat-session.repository';
 import { AuditLogRepository } from '../audit/repositories/audit-log.repository';
@@ -25,13 +25,29 @@ import { AdminChatSessionRepository } from './repositories/admin-chat-session.re
 import { Subscription } from '../subscriptions/schemas/subscription.schema';
 import { EmailService } from '../email/email.service';
 import { parseDateRange, dateRangeToDays } from '../../common/utils/date-parse.util';
+import {
+  ChatbotIntentSchema,
+  ChatRequestSchema,
+  type ValidatedIntent,
+  normalizeQuery,
+  queryFingerprint,
+  intentCacheKey,
+  rerankContextBlocks,
+  compressContext,
+  SYNTHESIS_FEW_SHOTS,
+} from './admin-chatbot.rag';
 
 type RagStep = { tool: string; params?: Record<string, unknown> };
 type GeminiResponse = { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
 export type HistoryItem = { role: 'user' | 'assistant'; text: string };
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash';
-const MAX_CONTEXT_CHARS = 12_000;
+const MAX_CONTEXT_CHARS = 14_000;
+
+/** TTL for synthesised AI responses in Redis (keyed by intent fingerprint). */
+const SYNTHESIS_CACHE_TTL_SECONDS = 90;
+/** TTL for identical raw message → reply pairs. */
+const REPLY_CACHE_TTL_SECONDS = 60;
 
 /** Structured understanding of what the admin asked — produced by Gemini or
  *  the text fallback before any DB calls are made. */
@@ -95,6 +111,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     @InjectModel(Subscription.name) private readonly subscriptionModel: Model<any>,
     private readonly redisService: RedisService,
     @InjectQueue(QUEUE_ADMIN) private readonly adminQueue: Queue,
+    @InjectQueue(QUEUE_CHATBOT) private readonly chatbotQueue: Queue,
   ) {}
 
   // ─── Gemini helpers ───────────────────────────────────────────────────────────
@@ -411,6 +428,209 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     return reply;
   }
 
+  // ─── Input validation ─────────────────────────────────────────────────────────
+
+  validateChatRequest(message: string, history: unknown): { message: string; history: HistoryItem[] } {
+    const result = ChatRequestSchema.safeParse({ message, history });
+    if (!result.success) {
+      throw new Error(result.error.issues.map((i) => i.message).join('; '));
+    }
+    return result.data;
+  }
+
+  // ─── Query expansion (RAG concept) ───────────────────────────────────────────
+
+  /**
+   * Ask Gemini to expand/clarify a short or ambiguous query into a more precise
+   * one before intent extraction.  Returns the original if Gemini is unavailable.
+   * Cost: 1 cheap intent-class call (~50 tokens in, ~30 tokens out).
+   */
+  private async expandQuery(apiKey: string, query: string): Promise<string> {
+    if (query.length > 80) return query; // already detailed enough
+    try {
+      const data = await this.geminiRequest(
+        apiKey,
+        {
+          contents: [{
+            parts: [{
+              text: `You are an e-commerce analytics query optimizer. Expand this short admin query into a single clear question. Return ONLY the expanded query, nothing else.\n\nShort query: "${query}"\nExpanded query:`,
+            }],
+          }],
+          generationConfig: { temperature: 0.0, maxOutputTokens: 80 },
+        },
+        'expand',
+      );
+      const expanded = this.extractText(data).trim().replace(/^["']|["']$/g, '');
+      if (expanded && expanded.length > query.length) {
+        this.logger.debug(`Query expanded: "${query}" → "${expanded}"`);
+        return expanded;
+      }
+    } catch { /* fall through */ }
+    return query;
+  }
+
+  // ─── Semantic reply cache ─────────────────────────────────────────────────────
+
+  /**
+   * Try to serve a cached AI reply for this intent.
+   * Key: intent fingerprint (topic + filters + timePreset) — independent of exact wording.
+   */
+  private async getCachedReply(intent: ValidatedIntent): Promise<string | null> {
+    const key = `${intentCacheKey(intent)}:reply`;
+    return this.redisService.get(key);
+  }
+
+  private async setCachedReply(intent: ValidatedIntent, reply: string): Promise<void> {
+    const key = `${intentCacheKey(intent)}:reply`;
+    await this.redisService.set(key, reply, SYNTHESIS_CACHE_TTL_SECONDS);
+  }
+
+  // ─── Core RAG pipeline ────────────────────────────────────────────────────────
+
+  /**
+   * Full RAG pipeline: validate → expand → intent → tools (parallel) →
+   * re-rank → compress → synthesise → cache → persist.
+   */
+  async runRagPipeline(
+    message: string,
+    history: HistoryItem[],
+    adminId: string | undefined,
+    apiKey: string,
+  ): Promise<{ reply: string; contextBlocks: string[]; failedTools: string[] }> {
+    const failedTools: string[] = [];
+
+    // ── 1. Normalise query ──────────────────────────────────────────────────────
+    const normalized = normalizeQuery(message);
+    const fingerprint = queryFingerprint(normalized);
+    this.logger.debug(`Query fingerprint: ${fingerprint}`);
+
+    // ── 1b. Expand short/ambiguous queries ──────────────────────────────────────
+    const expandedMessage = await this.expandQuery(apiKey, message);
+
+    // ── 2. Understand intent ────────────────────────────────────────────────────
+    let intent: ChatbotIntent | null = null;
+    let intentSource = 'gemini';
+
+    const intentData = await this.geminiRequest(
+      apiKey,
+      {
+        contents: [{ parts: [{ text: this.buildIntentPrompt(expandedMessage, history) }] }],
+        generationConfig: { temperature: 0.0, responseMimeType: 'application/json', maxOutputTokens: 300 },
+      },
+      'intent',
+    );
+
+    if (intentData) {
+      try {
+        let raw = this.extractText(intentData).trim();
+        if (raw.startsWith('```')) raw = raw.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '');
+        const parsed = JSON.parse(raw.trim());
+        // Zod-validate the intent JSON — reject malformed AI output
+        const validated = ChatbotIntentSchema.safeParse(parsed);
+        if (validated.success) {
+          intent = validated.data as ChatbotIntent;
+        } else {
+          this.logger.warn(`Intent validation failed: ${validated.error.issues.map((i) => i.message).join(', ')}`);
+        }
+      } catch {
+        this.logger.warn('Intent JSON parse failed — text fallback');
+      }
+    }
+
+    if (!intent) {
+      intentSource = 'text-fallback';
+      intent = this.textToIntent(message);
+    }
+
+    this.logger.log(`Intent (${intentSource}): ${intent.topic}${intent.timePreset ? '/' + intent.timePreset : ''}${intent.filters ? ' filters:' + JSON.stringify(intent.filters) : ''}`);
+
+    // ── 3. Semantic reply cache check ───────────────────────────────────────────
+    const cachedReply = await this.getCachedReply(intent as unknown as ValidatedIntent);
+    if (cachedReply && !intent.emailConfirm) {
+      this.logger.debug(`Semantic cache HIT for intent: ${intent.topic}`);
+      if (adminId) {
+        const ts = new Date().toISOString();
+        await this.adminChatSessionRepository.appendMessages(adminId, [
+          { id: `${Date.now()}-u`, sender: 'user', text: message, timestamp: ts },
+          { id: `${Date.now()}-a`, sender: 'assistant', text: cachedReply, timestamp: ts },
+        ]).catch(() => {});
+      }
+      return { reply: cachedReply, contextBlocks: [], failedTools: [] };
+    }
+
+    // ── 4. Map intent → tools (parallel retrieval) ──────────────────────────────
+    const finalPlan = this.deduplicatePlan(this.intentToTools(intent, new Date(), history));
+    this.logger.log(`Tools: ${finalPlan.map((s) => s.tool).join(', ')}`);
+
+    const toolResults = await Promise.all(
+      finalPlan.map(async (step, index) => {
+        try {
+          const block = await this.executeTool(step);
+          return { index, block };
+        } catch (err) {
+          this.logger.error(`Tool "${step.tool}" failed: ${(err as Error).message}`);
+          failedTools.push(step.tool);
+          return { index, block: null };
+        }
+      }),
+    );
+
+    const rawBlocks = toolResults
+      .sort((a, b) => a.index - b.index)
+      .map((r) => r.block)
+      .filter((b): b is string => b !== null);
+
+    if (rawBlocks.length === 0) {
+      return {
+        reply: `⚠️ **Could not load data.**\n\nAll queries failed (${failedTools.join(', ')}). Check DB connection.`,
+        contextBlocks: [],
+        failedTools,
+      };
+    }
+
+    // ── 5. Re-rank by relevance to the normalised query ─────────────────────────
+    const rankedBlocks = rerankContextBlocks(rawBlocks, normalized);
+
+    // ── 6. Compress context to fit budget ───────────────────────────────────────
+    const compressedBlocks = compressContext(rankedBlocks, normalized, MAX_CONTEXT_CHARS);
+    const retrievedText = compressedBlocks.join('\n\n').slice(0, MAX_CONTEXT_CHARS);
+
+    // ── 7. Synthesise ────────────────────────────────────────────────────────────
+    const synthesisData = await this.geminiRequest(
+      apiKey,
+      {
+        contents: [{ parts: [{ text: this.buildSynthesisPrompt(message, retrievedText, history) }] }],
+        generationConfig: { temperature: 0.2, maxOutputTokens: 1500 },
+      },
+      'synthesis',
+      true,
+    );
+    const aiReply = this.extractText(synthesisData);
+
+    const rawFallback = this.formatRawDataFallback(rawBlocks, failedTools, message);
+    const baseReply = aiReply || rawFallback;
+    const finalReply = failedTools.length > 0
+      ? `${baseReply}\n\n> ⚠️ *Partial data — could not load: ${failedTools.join(', ')}*`
+      : baseReply;
+
+    // ── 8. Cache synthesised reply (skip action tools like send_email) ───────────
+    const isActionTopic = intent.emailConfirm || intent.emailTo;
+    if (aiReply && !isActionTopic) {
+      await this.setCachedReply(intent as unknown as ValidatedIntent, finalReply).catch(() => {});
+    }
+
+    // ── 9. Persist conversation history ──────────────────────────────────────────
+    if (adminId) {
+      const ts = new Date().toISOString();
+      await this.adminChatSessionRepository.appendMessages(adminId, [
+        { id: `${Date.now()}-u`, sender: 'user', text: message, timestamp: ts },
+        { id: `${Date.now()}-a`, sender: 'assistant', text: finalReply, timestamp: ts },
+      ]).catch(() => {});
+    }
+
+    return { reply: finalReply, contextBlocks: rawBlocks, failedTools };
+  }
+
   // ─── Main chat entry point ────────────────────────────────────────────────────
 
   async chat(message: string, history: HistoryItem[] = [], adminId?: string): Promise<{ reply: string }> {
@@ -418,111 +638,93 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     if (!apiKey)
       return { reply: `⚠️ **AI assistant not configured.**\n\nAdd \`GEMINI_API_KEY\` to the backend \`.env\` file.` };
 
-    const safeMessage = this.sanitizeMessage(message);
-    if (!safeMessage) return { reply: 'Please type a question.' };
-
-    const failedTools: string[] = [];
+    // Validate input with Zod
+    let safe: { message: string; history: HistoryItem[] };
+    try {
+      safe = this.validateChatRequest(message, history);
+    } catch (e) {
+      return { reply: `⚠️ ${(e as Error).message}` };
+    }
 
     try {
-      // ── Understand intent (Gemini first, text fallback if unavailable) ────────
-      let intent: ChatbotIntent | null = null;
-      let intentSource = 'gemini';
-
-      const intentData = await this.geminiRequest(
-        apiKey,
-        {
-          contents: [{ parts: [{ text: this.buildIntentPrompt(safeMessage, history) }] }],
-          generationConfig: { temperature: 0.0, responseMimeType: 'application/json', maxOutputTokens: 300 },
-        },
-        'intent',
-      );
-
-      if (intentData) {
-        try {
-          let raw = this.extractText(intentData).trim();
-          if (raw.startsWith('```')) raw = raw.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '');
-          const parsed = JSON.parse(raw.trim());
-          if (parsed?.topic) intent = parsed as ChatbotIntent;
-        } catch {
-          this.logger.warn('Intent JSON parse failed — text fallback');
-        }
-      }
-
-      if (!intent) {
-        intentSource = 'text-fallback';
-        intent = this.textToIntent(safeMessage);
-      }
-
-      this.logger.log(`Intent (${intentSource}): ${intent.topic}${intent.timePreset ? '/' + intent.timePreset : ''}${intent.filters ? ' filters:' + JSON.stringify(intent.filters) : ''}`);
-
-      // ── Map intent → DB tools ──────────────────────────────────────────────────
-      const finalPlan = this.deduplicatePlan(this.intentToTools(intent, new Date(), history));
-      this.logger.log(`Tools: ${finalPlan.map((s) => s.tool).join(', ')}`);
-
-      // ── Retrieve ──────────────────────────────────────────────────────────────
-      const toolResults = await Promise.all(
-        finalPlan.map(async (step, index) => {
-          try {
-            const block = await this.executeTool(step);
-            return { index, block };
-          } catch (err) {
-            this.logger.error(`Tool "${step.tool}" failed: ${(err as Error).message}`);
-            failedTools.push(step.tool);
-            return { index, block: null };
-          }
-        }),
-      );
-
-      const contextBlocks = toolResults
-        .sort((a, b) => a.index - b.index)
-        .map((r) => r.block)
-        .filter((b): b is string => b !== null);
-
-      if (contextBlocks.length === 0) {
-        return { reply: `⚠️ **Could not load data.**\n\nAll queries failed (${failedTools.join(', ')}). Check DB connection.` };
-      }
-
-      // ── Synthesise ────────────────────────────────────────────────────────────
-      const retrievedText = contextBlocks.join('\n\n').slice(0, MAX_CONTEXT_CHARS);
-      const synthesisData = await this.geminiRequest(
-        apiKey,
-        {
-          contents: [{ parts: [{ text: this.buildSynthesisPrompt(safeMessage, retrievedText, history) }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 1500 },
-        },
-        'synthesis',
-        true, // throw GeminiRateLimitError if 429 persists
-      );
-      const aiReply = this.extractText(synthesisData);
-
-      if (!aiReply) return { reply: this.formatRawDataFallback(contextBlocks, failedTools, safeMessage) };
-
-      const finalReply = failedTools.length > 0
-        ? `${aiReply}\n\n> ⚠️ *Partial data — could not load: ${failedTools.join(', ')}*`
-        : aiReply;
-
-      // ── Persist messages ──────────────────────────────────────────────────────
-      if (adminId) {
-        const ts = new Date().toISOString();
-        await this.adminChatSessionRepository.appendMessages(adminId, [
-          { id: `${Date.now()}-u`, sender: 'user', text: safeMessage, timestamp: ts },
-          { id: `${Date.now()}-a`, sender: 'assistant', text: finalReply, timestamp: ts },
-        ]).catch(() => {});
-      }
-
-      return { reply: finalReply };
-
+      const { reply } = await this.runRagPipeline(safe.message, safe.history, adminId, apiKey);
+      return { reply };
     } catch (err) {
       if (err instanceof GeminiRateLimitError) {
         return {
           reply:
             `> ⚠️ **Gemini API rate limit reached.**\n\n` +
-            `The AI is temporarily unavailable due to too many requests. Please wait a minute and try again.\n\n` +
-            `_Your data was retrieved from the database — only the AI summary step failed._`,
+            `The AI is temporarily unavailable. Please wait a minute and try again.\n\n` +
+            `_Your data was retrieved — only the AI summary step failed._`,
         };
       }
-      this.logger.error(`Unexpected error: ${(err as Error).message}`, (err as Error).stack);
+      this.logger.error(`chat() error: ${(err as Error).message}`, (err as Error).stack);
       return { reply: `⚠️ **Something went wrong on the server.**\n\nPlease try again.` };
+    }
+  }
+
+  // ─── BullMQ async chat (non-streaming) ───────────────────────────────────────
+
+  /**
+   * Queue a chat job for async processing. Returns a jobId the client can use to
+   * poll `GET /admin/chatbot/result/:jobId` for the reply.
+   * Rate-limited to 50 Gemini calls/min via the chatbot queue's limiter.
+   */
+  async enqueueChat(
+    message: string,
+    history: HistoryItem[],
+    adminId: string | undefined,
+  ): Promise<{ jobId: string }> {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
+
+    let safe: { message: string; history: HistoryItem[] };
+    try {
+      safe = this.validateChatRequest(message, history);
+    } catch (e) {
+      throw new Error(`Validation failed: ${(e as Error).message}`);
+    }
+
+    const job = await this.chatbotQueue.add(
+      CHATBOT_JOBS.CHAT_QUERY,
+      { message: safe.message, history: safe.history, adminId },
+      {
+        ...DEFAULT_JOB_OPTIONS,
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 3000 },
+        removeOnComplete: { count: 500, age: 3600 },
+        removeOnFail: { count: 200 },
+        jobId: `chat-${adminId ?? 'anon'}-${Date.now()}`,
+      },
+    );
+    return { jobId: job.id! };
+  }
+
+  /** Retrieve the result of an async chat job from Redis. */
+  async getChatJobResult(jobId: string): Promise<{ status: 'pending' | 'done' | 'failed'; reply?: string }> {
+    const job = await this.chatbotQueue.getJob(jobId);
+    if (!job) return { status: 'failed', reply: 'Job not found.' };
+    const state = await job.getState();
+    if (state === 'completed') {
+      const result = job.returnvalue as { reply: string } | undefined;
+      return { status: 'done', reply: result?.reply ?? '(empty)' };
+    }
+    if (state === 'failed') return { status: 'failed', reply: job.failedReason ?? 'Unknown error' };
+    return { status: 'pending' };
+  }
+
+  /** Called by the BullMQ processor to execute an async chat job. */
+  async _executeChatQuery(data: { message: string; history: HistoryItem[]; adminId?: string }): Promise<{ reply: string }> {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return { reply: '⚠️ GEMINI_API_KEY not configured.' };
+    try {
+      const { reply } = await this.runRagPipeline(data.message, data.history, data.adminId, apiKey);
+      return { reply };
+    } catch (err) {
+      if (err instanceof GeminiRateLimitError) {
+        return { reply: '> ⚠️ Gemini rate limit reached. Please retry in a minute.' };
+      }
+      throw err;
     }
   }
 
@@ -541,67 +743,32 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       return;
     }
 
-    const safeMessage = this.sanitizeMessage(message);
-    const failedTools: string[] = [];
+    // Validate input
+    let safe: { message: string; history: HistoryItem[] };
+    try {
+      safe = this.validateChatRequest(message, history);
+    } catch (e) {
+      res.write(`data: ${JSON.stringify({ delta: `⚠️ ${(e as Error).message}` })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      return;
+    }
 
     try {
-      // Understand intent, then map to tools (same flow as non-streaming chat)
-      let intent: ChatbotIntent | null = null;
-      const intentData = await this.geminiRequest(
+      // Run full RAG pipeline (persistence skipped — we handle it after streaming)
+      const { reply: fullReply, contextBlocks, failedTools } = await this.runRagPipeline(
+        safe.message,
+        safe.history,
+        undefined, // skip persistence inside pipeline
         apiKey,
-        {
-          contents: [{ parts: [{ text: this.buildIntentPrompt(safeMessage, history) }] }],
-          generationConfig: { temperature: 0.0, responseMimeType: 'application/json', maxOutputTokens: 300 },
-        },
-        'intent-stream',
       );
-      if (intentData) {
-        try {
-          let raw = this.extractText(intentData).trim();
-          if (raw.startsWith('```')) raw = raw.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '');
-          const parsed = JSON.parse(raw.trim());
-          if (parsed?.topic) intent = parsed as ChatbotIntent;
-        } catch { /* text fallback */ }
-      }
-      if (!intent) intent = this.textToIntent(safeMessage);
 
-      const finalPlan = this.deduplicatePlan(this.intentToTools(intent, new Date(), history));
-      this.logger.log(`Intent-stream: ${intent.topic} → ${finalPlan.map((s) => s.tool).join(', ')}`);
-
-      const toolResults = await Promise.all(
-        finalPlan.map(async (step, index) => {
-          try { return { index, block: await this.executeTool(step) }; }
-          catch { failedTools.push(step.tool); return { index, block: null }; }
-        }),
-      );
-      const contextBlocks = toolResults.sort((a, b) => a.index - b.index).map((r) => r.block).filter((b): b is string => b !== null);
-
-      if (contextBlocks.length === 0) {
-        res.write(`data: ${JSON.stringify({ delta: '⚠️ Could not load data. Check database connection.' })}\n\n`);
+      if (!fullReply || fullReply.startsWith('⚠️ **Could not load')) {
+        res.write(`data: ${JSON.stringify({ delta: fullReply || '⚠️ Could not load data. Check database connection.' })}\n\n`);
         res.write('data: [DONE]\n\n');
         return;
       }
 
-      const retrievedText = contextBlocks.join('\n\n').slice(0, MAX_CONTEXT_CHARS);
-
-      // Synthesise with regular generateContent (reliable in Node.js)
-      const synthesisData = await this.geminiRequest(
-        apiKey,
-        {
-          contents: [{ parts: [{ text: this.buildSynthesisPrompt(safeMessage, retrievedText, history) }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 1500 },
-        },
-        'synthesis-stream',
-        true, // throw GeminiRateLimitError if 429 persists
-      );
-
-      let fullReply = this.extractText(synthesisData);
-      if (!fullReply) fullReply = this.formatRawDataFallback(contextBlocks, failedTools, safeMessage);
-
-      if (failedTools.length > 0)
-        fullReply += `\n\n> ⚠️ *Partial data — could not load: ${failedTools.join(', ')}*`;
-
-      // Stream word-by-word so the frontend renders progressively
+      // Stream word-by-word
       const tokens = fullReply.split(/(\s+)/);
       for (const token of tokens) {
         if (token) {
@@ -611,11 +778,11 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       }
       res.write('data: [DONE]\n\n');
 
-      // Persist
-      if (adminId && fullReply) {
+      // Persist after streaming completes
+      if (adminId) {
         const ts = new Date().toISOString();
         await this.adminChatSessionRepository.appendMessages(adminId, [
-          { id: `${Date.now()}-u`, sender: 'user', text: safeMessage, timestamp: ts },
+          { id: `${Date.now()}-u`, sender: 'user', text: safe.message, timestamp: ts },
           { id: `${Date.now()}-a`, sender: 'assistant', text: fullReply, timestamp: ts },
         ]).catch(() => {});
       }
@@ -624,8 +791,8 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       if (err instanceof GeminiRateLimitError) {
         const msg =
           '> ⚠️ **Gemini API rate limit reached.**\n\n' +
-          'The AI is temporarily unavailable due to too many requests. Please wait a minute and try again.\n\n' +
-          '_Your data was retrieved from the database — only the AI summary step failed._';
+          'The AI is temporarily unavailable. Please wait a minute and try again.\n\n' +
+          '_Your data was retrieved — only the AI summary step failed._';
         for (const token of msg.split(/(\s+)/)) {
           if (token) res.write(`data: ${JSON.stringify({ delta: token })}\n\n`);
         }
@@ -787,11 +954,11 @@ export class AdminChatbotService implements OnApplicationBootstrap {
           `- **#${o.orderNumber}** | ${o.user?.name ?? 'Guest'} | ₹${(o.total || 0).toLocaleString('en-IN')} | \`${o.status}\``
         ).join('\n');
         const formatted = [
-          `**Today:** ${stats.todayOrders || 0} orders | ₹${(stats.todayRevenue || 0).toLocaleString('en-IN')} revenue`,
-          `**This Month:** ${stats.monthOrders || 0} orders | ₹${(stats.monthRevenue || 0).toLocaleString('en-IN')} revenue`,
+          `**Today's Orders:** ${stats.todayOrders || 0} | ₹${(stats.todayRevenue || 0).toLocaleString('en-IN')} revenue (0 means no orders placed yet today, not the all-time total)`,
+          `**This Month's Orders:** ${stats.monthOrders || 0} | ₹${(stats.monthRevenue || 0).toLocaleString('en-IN')} revenue`,
           `**Total Customers:** ${stats.totalCustomers || 0}`,
           `**Pending Fulfillment:** ${stats.pendingOrders || 0} orders`,
-          recentLines ? `\n**Recent Orders:**\n${recentLines}` : '',
+          recentLines ? `\n**5 Most Recent Orders:**\n${recentLines}` : '',
         ].filter(Boolean).join('\n');
         return `[RAG: get_dashboard_summary]\n${formatted}`;
       }
@@ -1496,22 +1663,42 @@ JSON schema (omit null fields):
   "emailConfirm": true
 }
 
+IMPORTANT RULE: Only set "timePreset" when the user EXPLICITLY mentions a time period ("today", "this week", etc.). If no time period is mentioned, OMIT timePreset entirely.
+
 Examples:
+"show orders" → {"topic":"orders","action":"list"}
+"how many orders do I have" → {"topic":"orders","action":"count"}
+"total orders" → {"topic":"orders","action":"count"}
 "which orders came today" → {"topic":"orders","timePreset":"today","action":"list"}
 "yesterday revenue" → {"topic":"revenue","timePreset":"yesterday","action":"trend"}
+"revenue" → {"topic":"revenue","action":"trend"}
+"how much money did I make" → {"topic":"revenue","action":"trend"}
 "cancelled orders this week" → {"topic":"orders","timePreset":"this_week","filters":{"status":"cancelled"},"action":"list"}
+"cancelled orders" → {"topic":"orders","filters":{"status":"cancelled"},"action":"list"}
 "Rahul ki orders" → {"topic":"orders","filters":{"customerName":"Rahul"},"action":"list"}
 "1 star reviews" → {"topic":"feedback","filters":{"maxRating":1},"action":"list"}
 "complaints about ghee" → {"topic":"feedback","filters":{"feedbackType":"complaint","productName":"ghee"},"action":"list"}
 "active coupons" → {"topic":"coupons","filters":{"couponStatus":"active"},"action":"list"}
 "out of stock items" → {"topic":"inventory","filters":{"outOfStock":true},"action":"list"}
+"low stock" → {"topic":"inventory","action":"list"}
 "which ghee items are in stock" → {"topic":"inventory","filters":{"inStock":true,"productName":"ghee"},"action":"list"}
 "what ghee is available" → {"topic":"inventory","filters":{"inStock":true,"productName":"ghee"},"action":"list"}
 "show available oil products" → {"topic":"inventory","filters":{"inStock":true,"productName":"oil"},"action":"list"}
 "compare this week vs last" → {"topic":"revenue","action":"compare"}
+"customers" → {"topic":"customers","action":"list"}
 "customers who spent over 5000" → {"topic":"customers","filters":{"minSpent":5000},"action":"list"}
+"abandoned carts" → {"topic":"abandoned_carts","action":"list"}
 "abandoned carts with ghee" → {"topic":"abandoned_carts","filters":{"productName":"ghee"},"action":"list"}
 "best selling oil" → {"topic":"top_products","filters":{"productName":"oil"},"action":"list"}
+"top products" → {"topic":"top_products","action":"list"}
+"payments" → {"topic":"payments","action":"list"}
+"failed payments" → {"topic":"payments","action":"list"}
+"coupons" → {"topic":"coupons","action":"list"}
+"subscriptions" → {"topic":"subscriptions","action":"list"}
+"wallet" → {"topic":"wallet","action":"list"}
+"reminders" → {"topic":"reminders","action":"list"}
+"feedback" → {"topic":"feedback","action":"list"}
+"store sales" → {"topic":"store_sales","action":"list"}
 "send analytics to admin@store.com" → {"topic":"email","emailTo":"admin@store.com","emailReportType":"analytics"}
 "yes" (after email preview) → {"topic":"email","emailConfirm":true}
 "overview" → {"topic":"overview","action":"summary"}
@@ -1567,11 +1754,16 @@ Query: """${message}"""`;
         if (to) params.to = to;
         if (f.status) params.status = f.status;
         if (f.paymentMethod) params.paymentMethod = f.paymentMethod;
-        return [{ tool: 'search_recent_orders', params }];
+        // Always include all-time order counts so a narrow date range never shows "0 orders"
+        return [
+          { tool: 'get_orders_by_status', params: {} },
+          { tool: 'search_recent_orders', params },
+        ];
       }
       case 'revenue':
         if (intent.action === 'compare') return [{ tool: 'compare_periods', params: { days: 7 } }];
-        return [{ tool: 'get_revenue_trend', params: from ? { from, to } : {} }];
+        // Default to last 30 days so "today only" queries don't silently return ₹0
+        return [{ tool: 'get_revenue_trend', params: from ? { from, to } : { days: 30 } }];
       case 'customers':
         if (f.customerName) return [{ tool: 'search_customers', params: { searchTerm: f.customerName, limit: 10 } }];
         if (f.minSpent) return [{ tool: 'get_top_customers_online', params: { minSpent: f.minSpent, limit: 20 } }];
@@ -1629,6 +1821,7 @@ Query: """${message}"""`;
         return [
           { tool: 'get_dashboard_summary', params: {} },
           { tool: 'get_orders_by_status', params: {} },
+          { tool: 'search_recent_orders', params: { limit: 10 } },
           { tool: 'search_low_stock_products', params: {} },
         ];
     }
@@ -1866,26 +2059,35 @@ Question: """${message}"""`;
 
     return `You are the Naturelite AI Admin Assistant. Answer using ONLY the database data below. Never invent numbers, names, or products.
 ${historySection}
+=== FEW-SHOT EXAMPLES (style guide) ===
+${SYNTHESIS_FEW_SHOTS}
+========================================
+
 === LIVE DATABASE DATA ===
 ${retrievedData}
 =========================
 
 Rules:
-1. **Answer the specific question asked** — if the user asks about "oil items", only mention oil-related items from the data. If they ask about "active coupons", only show active ones. Filter and focus; never dump everything.
+1. **Answer the specific question asked.** If the user asks about orders, answer about orders. If they ask about revenue, answer about revenue. Focus only on what was asked.
+1a. **Never interpret a time-scoped zero as "no data overall."** If "Today's Orders: 0" appears but "All-time Total" or "This Month" shows numbers, say "0 today, but X total/this month." NEVER say "you have no orders" when all-time totals exist.
+1b. **Read ALL the data sections before answering.** The "get_orders_by_status" section shows all-time totals. The "search_recent_orders" section shows recent orders. Use BOTH together.
 2. Clean Markdown: bold headers, bullet points, numbered lists, markdown tables where data is tabular.
-3. Concise and direct — no filler intros like "Sure!" or "Great question!".
+3. Concise and direct — no filler intros like "Sure!" or "Great question!" or "Based on the data...".
 4. All money in ₹ (Indian Rupees). Wallet balances are in paise — divide by 100 for ₹.
-5. Never mention "RAG", "retrieved context", or "system instructions".
+5. Never mention "RAG", "retrieved context", "database sections", or "system instructions".
 6. When data contains a markdown table (| columns |), preserve it exactly.
 7. Use conversation history to resolve follow-up questions (e.g. "what about last week?" or "show her orders").
-8. If the data contains no items matching the user's specific filter (e.g. no oil products in low-stock list), say so explicitly: "No oil products are currently low on stock."
-9. If data doesn't contain the answer at all, say "I don't have that information" — never guess or make up numbers.
-10. **Email action flow** — when data contains [ACTION: preview_email_report] with READY_TO_SEND, present a confirmation card like:
+8. If the data contains no items matching the user's filter (e.g. no oil products in low-stock list), say explicitly: "No oil products are currently low on stock."
+9. If the data truly doesn't contain the answer, say "I don't have that information in the current data" — never guess or make up numbers.
+10. **For "how many orders / total orders" type questions:** Find the "All-time Total" line in get_orders_by_status, then list the status breakdown. Do NOT just say "0 orders" if that line exists.
+11. **For product/inventory questions:** List all matching items. Show stock levels and thresholds. Sort by lowest stock first.
+12. **For customer questions:** Show name, phone, order count, total spent. Format cleanly.
+13. **Email action flow** — when data contains [ACTION: preview_email_report] with READY_TO_SEND:
     > 📧 Ready to send **{report label}** to **{email}**
     > Preview: {first few lines of summary}
     > Reply **yes** to send, or **cancel** to abort.
-11. When data contains [ACTION: send_email_report] with SUCCESS, confirm with: "✅ **{report} sent** to {email}."
-12. When data contains [ACTION: send_email_report] with ERROR, show: "❌ Could not send email — {error reason}."
+14. When data contains [ACTION: send_email_report] with SUCCESS → "✅ **{report} sent** to {email}."
+15. When data contains [ACTION: send_email_report] with ERROR → "❌ Could not send email — {error reason}."
 
 Question: """${message}"""`;
   }

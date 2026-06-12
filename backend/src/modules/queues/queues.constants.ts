@@ -45,6 +45,12 @@ export const ADMIN_JOBS = {
   DAILY_BRIEFING: 'daily-briefing',
 } as const;
 
+export const QUEUE_CHATBOT = 'chatbot';
+
+export const CHATBOT_JOBS = {
+  CHAT_QUERY: 'chat-query',
+} as const;
+
 export const CART_JOBS = {
   SEND_REMINDER: 'send-reminder',
 } as const;
