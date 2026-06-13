@@ -260,10 +260,13 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         plan.push({ tool: 'search_recent_orders', params: { limit: 10, status: 'placed' } });
     }
 
-    if (/recent[\s-]order|latest[\s-]order|new[\s-]order|last[\s-]order|show[\s-]order|list[\s-]order|all[\s-]order|delivered[\s-]order|cancelled[\s-]order/.test(m)) {
+    if (/recent[\s-]order|latest[\s-]order|new[\s-]order|last[\s-]order|show[\s-]order|list[\s-]order|all[\s-]order|delivered[\s-]order|cancelled[\s-]order|orders?\s+by|orders?\s+from|orders?\s+placed/.test(m)) {
       const statusMatch = m.match(/\b(placed|confirmed|preparing|delivered|cancelled|out[\s_-]for[\s_-]delivery)\b/);
+      const customerMatch = m.match(/(?:by|from|for|placed\s+by)\s+([a-z][a-z\s]{1,25})(?:\s|$)/i);
+      const orderNumMatch = m.match(/(?:#|order[\s-]?(?:no\.?|number|num|#)?)\s*([A-Z0-9-]{4,})/i);
+      const customerSearch = customerMatch ? customerMatch[1].trim() : '';
       if (!plan.some((s) => s.tool === 'search_recent_orders'))
-        plan.push({ tool: 'search_recent_orders', params: { limit: 10, ...dateParams, ...(statusMatch ? { status: statusMatch[1] } : {}) } });
+        plan.push({ tool: 'search_recent_orders', params: { limit: 10, ...dateParams, ...(statusMatch ? { status: statusMatch[1] } : {}), ...(customerSearch ? { customerSearch } : {}), ...(orderNumMatch ? { orderNumber: orderNumMatch[1] } : {}) } });
     }
 
     if (/orders?\s+between|orders?\s+from|orders?\s+in\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|date[\s-]range/.test(m))
@@ -328,7 +331,19 @@ export class AdminChatbotService implements OnApplicationBootstrap {
 
     if (/find[\s-]customer|search[\s-]customer|customer[\s-]info|customer[\s-]detail|look[\s-]up|lookup/.test(m)) {
       const phoneMatch = m.match(/\b(\d{10,12})\b/);
-      plan.push({ tool: 'search_customers', params: { searchTerm: phoneMatch ? phoneMatch[1] : '', limit: 10 } });
+      const nameMatch = m.match(/(?:customer|find|search|lookup|look\s*up|info|detail)\s+(?:for\s+|named?\s+|called\s+)?([a-z][a-z\s]{1,25})(?:\s|$)/i);
+      const searchTerm = phoneMatch ? phoneMatch[1] : (nameMatch ? nameMatch[1].trim() : '');
+      if (searchTerm) plan.push({ tool: 'search_customers', params: { searchTerm, limit: 10 } });
+    }
+
+    if (/tell[\s-]me[\s-]about|who[\s-]is|customer[\s-]profile|profile[\s-]of/.test(m)) {
+      const phoneMatch = m.match(/\b(\d{10,12})\b/);
+      const nameMatch = m.match(/(?:about|who\s+is|profile\s+of|for)\s+([a-z][a-z\s]{1,25})(?:\s|$)/i);
+      const searchTerm = phoneMatch ? phoneMatch[1] : (nameMatch ? nameMatch[1].trim() : '');
+      if (searchTerm) {
+        plan.push({ tool: 'search_customers', params: { searchTerm, limit: 5 } });
+        plan.push({ tool: 'get_customer_orders', params: { ...(phoneMatch ? { phone: searchTerm } : { name: searchTerm }), limit: 10 } });
+      }
     }
 
     if (/store[\s-]sale|walk[\s-]in|physical[\s-]store|store[\s-]revenue|offline/.test(m))
@@ -600,7 +615,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       apiKey,
       {
         contents: [{ parts: [{ text: this.buildSynthesisPrompt(message, retrievedText, history) }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 1500 },
+        generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
       },
       'synthesis',
       true,
@@ -1033,10 +1048,10 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         const term = String(step.params?.searchTerm ?? '').trim();
         const items = await this.productRepository.searchByText(term);
         const formatted = items.slice(0, 10).map((p: any) => {
-          const variants = p.variants?.map((v: any) => `${v.sku}: ${v.stock}`).join(', ') ?? '';
-          return `- **${p.name}** (SKU: ${p.sku}) | Stock: **${p.stock}** ${variants ? `[Variants: ${variants}]` : ''} | Price: ₹${p.price} | Active: ${p.isActive}`;
+          const variants = p.variants?.map((v: any) => `${v.name || v.sku}: ${v.stock} units @ ₹${v.price || p.price}`).join(', ') ?? '';
+          return `- **${p.name}** (SKU: ${p.sku || 'N/A'}) | Stock: **${p.stock}** | Price: ₹${p.price}${p.mrp && p.mrp > p.price ? ` (MRP ₹${p.mrp})` : ''} | ${p.isActive ? 'Active' : 'Inactive'}${variants ? ` | Variants: [${variants}]` : ''}`;
         }).join('\n') || 'No matching products found.';
-        return `[RAG: search_products ("${term}")]\n${formatted}`;
+        return `[RAG: search_products ("${term}")]\n**${items.length}** result(s)\n${formatted}`;
       }
 
       case 'get_login_audit_logs': {
@@ -1157,7 +1172,12 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         const customerSearch = String(step.params?.customerSearch ?? '').trim();
         const paymentMethod = String(step.params?.paymentMethod ?? '').trim().toLowerCase();
 
+        const orderNumber = String(step.params?.orderNumber ?? '').trim();
+
         const filter: Record<string, unknown> = {};
+        if (orderNumber) {
+          filter.orderNumber = { $regex: orderNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+        }
         if (status) filter.status = status;
         if (step.params?.from && step.params?.to) {
           const fromD = new Date(step.params.from as string);
@@ -1180,11 +1200,14 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         }
 
         const orders = await this.orderRepository.getModel().find(filter).sort({ createdAt: -1 }).limit(limit).populate('user', 'name phone').exec();
-        const formatted = orders.map((o: any) =>
-          `- **#${o.orderNumber}** | ${o.user?.name ?? 'Guest'} (${o.user?.phone ?? ''}) | ₹${o.total} | \`${o.status}\` | ${o.paymentMethod} | ${o.createdAt ? new Date(o.createdAt).toLocaleString('en-IN') : 'N/A'}`
-        ).join('\n') || 'No orders found.';
+        const formatted = orders.map((o: any) => {
+          const itemsStr = o.items?.length
+            ? o.items.map((i: any) => `${i.name}${i.variantName ? ` (${i.variantName})` : ''} ×${i.quantity}`).join(', ')
+            : 'no items';
+          return `- **#${o.orderNumber}** | ${o.user?.name ?? 'Guest'} (${o.user?.phone ?? ''}) | ₹${o.total} | \`${o.status}\` | ${o.paymentMethod} (${o.paymentStatus}) | ${o.createdAt ? new Date(o.createdAt).toLocaleString('en-IN') : 'N/A'} | Items: ${itemsStr}`;
+        }).join('\n') || 'No orders found.';
         const desc = [status, customerSearch ? `customer: ${customerSearch}` : '', paymentMethod].filter(Boolean).join(', ');
-        return `[RAG: search_recent_orders${desc ? ` (${desc})` : ''}]\n${formatted}`;
+        return `[RAG: search_recent_orders${desc ? ` (${desc})` : ''}]\n**${orders.length}** order(s)\n${formatted}`;
       }
 
       case 'search_orders_by_date_range': {
@@ -1195,7 +1218,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
           .sort({ createdAt: -1 }).limit(limit).populate('user', 'name phone').exec();
         const totalRevenue = orders.reduce((s: number, o: any) => s + (o.total || 0), 0);
         const formatted = orders.map((o: any) =>
-          `- **#${o.orderNumber}** | ${o.user?.name ?? 'Guest'} | ₹${o.total} | \`${o.status}\` | ${o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-IN') : 'N/A'}`
+          `- **#${o.orderNumber}** | ${o.user?.name ?? 'Guest'} (${(o.user as any)?.phone ?? 'N/A'}) | ₹${o.total} | \`${o.status}\` | ${o.paymentMethod} (${o.paymentStatus}) | ${o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-IN') : 'N/A'}`
         ).join('\n') || 'No orders in this range.';
         return `[RAG: search_orders_by_date_range (${from.toLocaleDateString('en-IN')} – ${to.toLocaleDateString('en-IN')})]\n**${orders.length}** orders | Total: ₹${totalRevenue.toLocaleString('en-IN')}\n\n${formatted}`;
       }
@@ -1208,10 +1231,12 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         const customers = await this.userRepository.getModel()
           .find({ $or: [{ name: { $regex: escaped, $options: 'i' } }, { phone: { $regex: escaped, $options: 'i' } }, { email: { $regex: escaped, $options: 'i' } }] })
           .sort({ totalSpent: -1 }).limit(limit).exec();
-        const formatted = customers.map((c: any) =>
-          `- **${c.name || 'Unnamed'}** | ${c.phone || 'N/A'} | Orders: ${c.totalOrders} | Spent: ₹${(c.totalSpent || 0).toLocaleString('en-IN')} | ${c.isBlocked ? 'Blocked' : c.isActive ? 'Active' : 'Inactive'} | Joined: ${c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-IN') : 'N/A'}`
-        ).join('\n') || 'No matching customers.';
-        return `[RAG: search_customers ("${term}")]\n${formatted}`;
+        const formatted = customers.map((c: any) => {
+          const addr = c.addresses?.find((a: any) => a.isDefault) || c.addresses?.[0];
+          const addrStr = addr ? `${addr.city}, ${addr.state}` : 'No address';
+          return `- **${c.name || 'Unnamed'}** | ${c.phone || 'N/A'}${c.email ? ` | ${c.email}` : ''} | Orders: ${c.totalOrders} | Spent: ₹${(c.totalSpent || 0).toLocaleString('en-IN')} | ${c.isBlocked ? '🚫 Blocked' : c.isActive ? 'Active' : 'Inactive'} | ${addrStr} | Joined: ${c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-IN') : 'N/A'}${c.tags?.length ? ` | Tags: ${c.tags.join(', ')}` : ''}${c.notes ? ` | Notes: ${c.notes}` : ''}`;
+        }).join('\n') || 'No matching customers.';
+        return `[RAG: search_customers ("${term}")]\n**${customers.length}** match(es) found:\n${formatted}`;
       }
 
       case 'get_top_customers_online': {
@@ -1240,10 +1265,27 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         }
         if (!user) return `[RAG: get_customer_orders]\nNo customer found for ${phone ? `phone "${phone}"` : `name "${name}"`}.`;
         const orders = await this.orderRepository.getModel().find({ user: user._id }).sort({ createdAt: -1 }).limit(limit).exec();
-        const formatted = orders.map((o: any) =>
-          `- **#${o.orderNumber}** | ₹${o.total} | \`${o.status}\` | ${o.paymentMethod} (${o.paymentStatus}) | ${o.createdAt ? new Date(o.createdAt).toLocaleString('en-IN') : 'N/A'}`
-        ).join('\n') || 'No orders found.';
-        return `[RAG: get_customer_orders — ${user.name || phone}]\n**${user.name}** | ${user.phone} | Orders: ${user.totalOrders} | Spent: ₹${(user.totalSpent || 0).toLocaleString('en-IN')}\n\n${formatted}`;
+
+        const defaultAddr = user.addresses?.find((a: any) => a.isDefault) || user.addresses?.[0];
+        const addrStr = defaultAddr ? `${defaultAddr.street}, ${defaultAddr.city}, ${defaultAddr.state}${defaultAddr.pincode ? ' ' + defaultAddr.pincode : ''}` : 'No saved address';
+        const profileLines = [
+          `**${user.name || 'Unnamed'}** | 📞 ${user.phone || 'N/A'}${user.email ? ` | 📧 ${user.email}` : ''}`,
+          `Status: ${user.isBlocked ? '🚫 Blocked' + (user.blockedReason ? ` (${user.blockedReason})` : '') : user.isActive ? '✅ Active' : '⚪ Inactive'}`,
+          `Total Orders: ${user.totalOrders} | Total Spent: ₹${(user.totalSpent || 0).toLocaleString('en-IN')}`,
+          `Address: ${addrStr}`,
+          user.lastOrderAt ? `Last Order: ${new Date(user.lastOrderAt).toLocaleDateString('en-IN')}` : null,
+          user.tags?.length ? `Tags: ${user.tags.join(', ')}` : null,
+          user.notes ? `Notes: ${user.notes}` : null,
+        ].filter(Boolean).join('\n');
+
+        const formatted = orders.map((o: any) => {
+          const itemsStr = o.items?.length
+            ? o.items.map((i: any) => `    • ${i.name}${i.variantName ? ` (${i.variantName})` : ''} ×${i.quantity} @ ₹${i.price}`).join('\n')
+            : '    • (no items)';
+          return `- **#${o.orderNumber}** | ₹${o.total} | \`${o.status}\` | ${o.paymentMethod} (${o.paymentStatus}) | ${o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-IN') : 'N/A'}\n${itemsStr}`;
+        }).join('\n') || 'No orders found.';
+
+        return `[RAG: get_customer_orders — ${user.name || phone}]\n${profileLines}\n\n**Recent Orders (${orders.length}):**\n${formatted}`;
       }
 
       case 'get_revenue_trend': {
@@ -1353,7 +1395,9 @@ export class AdminChatbotService implements OnApplicationBootstrap {
           this.userRepository.getModel().countDocuments({ createdAt: { $gte: since } }),
           this.userRepository.getModel().find({ createdAt: { $gte: since } }).sort({ createdAt: -1 }).limit(20).exec(),
         ]);
-        const formatted = customers.map((c: any) => `- **${c.name || 'Unnamed'}** | ${c.phone || 'N/A'} | ${c.createdAt ? new Date(c.createdAt).toLocaleString('en-IN') : 'N/A'}`).join('\n') || 'None.';
+        const formatted = customers.map((c: any) =>
+          `- **${c.name || 'Unnamed'}** | ${c.phone || 'N/A'}${c.email ? ` | ${c.email}` : ''} | Joined: ${c.createdAt ? new Date(c.createdAt).toLocaleString('en-IN') : 'N/A'} | Orders: ${c.totalOrders || 0} | Spent: ₹${(c.totalSpent || 0).toLocaleString('en-IN')}`
+        ).join('\n') || 'None.';
         return `[RAG: get_new_customers]\nTotal New: **${count}**\n\n${formatted}`;
       }
 
@@ -1446,11 +1490,16 @@ export class AdminChatbotService implements OnApplicationBootstrap {
           const items = s.items.map((i: any) => `${i.name} x${i.quantity}`).join(', ');
           return `- **${user?.name || user?.phone || 'N/A'}** (${user?.phone || 'N/A'}) | ${s.frequency} | [${items}] | ₹${s.totalAmount}/delivery | Next: ${new Date(s.nextDeliveryDate).toLocaleDateString('en-IN')}`;
         }).join('\n') || 'None.';
+        const pausedLines = paused.slice(0, 10).map((s: any) => {
+          const user = s.user as any;
+          const items = s.items.map((i: any) => `${i.name} x${i.quantity}`).join(', ');
+          return `- **${user?.name || user?.phone || 'N/A'}** (${user?.phone || 'N/A'}) | ${s.frequency} | [${items}] | ₹${s.totalAmount}/delivery | ⏸ Paused`;
+        }).join('\n') || 'None.';
         const upcomingLines = upcoming.map((s: any) => {
           const user = s.user as any;
           return `- **${user?.name || user?.phone || 'N/A'}** | Next: ${new Date(s.nextDeliveryDate).toLocaleDateString('en-IN')} | ₹${s.totalAmount}`;
         }).join('\n') || 'None.';
-        return `[RAG: get_subscription_data]\n**Active:** ${active.length} | **Paused:** ${paused.length}\n\n**Active Subscriptions (first 20):**\n${activeLines}\n\n**Upcoming Deliveries (3 days):**\n${upcomingLines}`;
+        return `[RAG: get_subscription_data]\n**Active:** ${active.length} | **Paused:** ${paused.length}\n\n**Active Subscriptions (first 20):**\n${activeLines}\n\n**Paused Subscriptions:**\n${pausedLines}\n\n**Upcoming Deliveries (3 days):**\n${upcomingLines}`;
       }
 
       case 'get_whatsapp_queue': {
@@ -2070,11 +2119,12 @@ TOOLS:
 1. {"tool":"get_dashboard_summary","params":{}}
 2. {"tool":"search_out_of_stock_products","params":{"searchTerm":"string"}} — finds products with stock = 0 (completely out); use for "out of stock" queries
 3. {"tool":"search_low_stock_products","params":{"searchTerm":"string"}} — finds products with stock ≤ threshold (running low); searchTerm narrows by product type ("oil", "ghee")
-4. {"tool":"search_products","params":{"searchTerm":"string"}}
+3b. {"tool":"search_in_stock_products","params":{"searchTerm":"string"}} — finds products with stock > 0 or untracked; use for "available", "in stock", "which X can I sell" queries
+4. {"tool":"search_products","params":{"searchTerm":"string"}} — general product search by name/SKU
 5. {"tool":"get_login_audit_logs","params":{"limit":20}}
 6. {"tool":"search_abandoned_carts","params":{"limit":30,"productSearch":"string"}}
 7. {"tool":"get_top_selling_products","params":{"limit":8,"from":"ISO","to":"ISO","searchTerm":"string"}}
-8. {"tool":"search_recent_orders","params":{"limit":10,"status":"string","from":"ISO","to":"ISO","customerSearch":"string","paymentMethod":"string"}}
+8. {"tool":"search_recent_orders","params":{"limit":10,"status":"string","from":"ISO","to":"ISO","customerSearch":"string","paymentMethod":"string","orderNumber":"string"}} — orderNumber param for direct order lookup (e.g. "ORD-2025-001")
 9. {"tool":"search_orders_by_date_range","params":{"from":"ISO","to":"ISO","limit":20}}
 10. {"tool":"search_customers","params":{"searchTerm":"string","limit":10}}
 11. {"tool":"get_top_customers_online","params":{"limit":10,"minSpent":0}}
@@ -2100,12 +2150,17 @@ EMAIL RULE: preview_email_report first, send_email_report only when history show
 TOOL SELECTION RULES:
 • "how many orders" / "total orders" / "show orders" → ALWAYS include get_orders_by_status (all-time counts) + search_recent_orders
 • "low in stock" / "running low" / "need restock" → search_low_stock_products (NOT search_in_stock_products)
-• "in stock" / "available" / "which X is available" → search_in_stock_products
+• "in stock" / "available" / "which X is available" / "can I sell X" → search_in_stock_products (tool 3b)
 • "out of stock" / "zero stock" → search_out_of_stock_products
+• "show order #ORD-xxx" / "order number XXX" / "status of order XXX" → search_recent_orders with orderNumber param, limit:1
 • "total customers" / "how many customers" → get_dashboard_summary (has totalCustomers field)
+• "new customers today/this week/this month" → get_new_customers with from date (NOT get_dashboard_summary)
 • "revenue" with no date → get_revenue_trend with days:30
 • "compare X vs Y" weeks → compare_periods days:7; months → compare_periods days:30
-• Specific customer name/phone → get_customer_orders; otherwise get_top_customers_online
+• "tell me about [name]" / "customer profile/info/details for [name/phone]" / "who is [name]" → search_customers (searchTerm=name/phone) + get_customer_orders (both tools)
+• "orders by [customer] today/this week" / "[customer]'s orders on [date]" → search_recent_orders with customerSearch + date range (NOT get_customer_orders)
+• Specific customer name/phone for orders history only → get_customer_orders only
+• otherwise → get_top_customers_online
 • "payments" / "failed payments" → get_payment_failures
 • For any date-relative query, resolve dates to ISO strings before passing as params
 
@@ -2122,12 +2177,24 @@ EXAMPLES:
 "which oil products low in stock" → [{"tool":"search_low_stock_products","params":{"searchTerm":"oil"}}]
 "ghee low stock" → [{"tool":"search_low_stock_products","params":{"searchTerm":"ghee"}}]
 "which ghee is available" → [{"tool":"search_in_stock_products","params":{"searchTerm":"ghee"}}]
+"show order ORD-2025-001" → [{"tool":"search_recent_orders","params":{"orderNumber":"ORD-2025-001","limit":1}}]
+"status of order #1234" → [{"tool":"search_recent_orders","params":{"orderNumber":"1234","limit":1}}]
 "out of stock" → [{"tool":"search_out_of_stock_products","params":{}}]
 "out of stock ghee" → [{"tool":"search_out_of_stock_products","params":{"searchTerm":"ghee"}}]
 "low stock" → [{"tool":"search_low_stock_products","params":{}}]
 "total customers" → [{"tool":"get_dashboard_summary","params":{}}]
+"new customers today" → [{"tool":"get_new_customers","params":{"from":"${todayStart}","to":"${todayEnd}"}}]
+"new customers this week" → [{"tool":"get_new_customers","params":{"from":"${weekAgoStr}T00:00:00.000Z","to":"${todayEnd}"}}]
+"orders by Rahul today" → [{"tool":"search_recent_orders","params":{"customerSearch":"Rahul","from":"${todayStart}","to":"${todayEnd}","limit":20}}]
+"COD orders by Priya this week" → [{"tool":"search_recent_orders","params":{"customerSearch":"Priya","paymentMethod":"cod","from":"${weekAgoStr}T00:00:00.000Z","to":"${todayEnd}","limit":20}}]
+"active subscriptions" → [{"tool":"get_subscription_data","params":{}}]
+"paused subscriptions" → [{"tool":"get_subscription_data","params":{}}]
 "best selling oil" → [{"tool":"get_top_selling_products","params":{"searchTerm":"oil","limit":8}}]
 "Rahul's orders" → [{"tool":"get_customer_orders","params":{"name":"Rahul","limit":10}}]
+"tell me about Rahul" → [{"tool":"search_customers","params":{"searchTerm":"Rahul","limit":5}},{"tool":"get_customer_orders","params":{"name":"Rahul","limit":10}}]
+"customer profile for 9876543210" → [{"tool":"search_customers","params":{"searchTerm":"9876543210","limit":5}},{"tool":"get_customer_orders","params":{"phone":"9876543210","limit":10}}]
+"who is Priya" → [{"tool":"search_customers","params":{"searchTerm":"Priya","limit":5}},{"tool":"get_customer_orders","params":{"name":"Priya","limit":10}}]
+"details about customer Amit" → [{"tool":"search_customers","params":{"searchTerm":"Amit","limit":5}},{"tool":"get_customer_orders","params":{"name":"Amit","limit":10}}]
 "COD orders today" → [{"tool":"search_recent_orders","params":{"paymentMethod":"cod","from":"${todayStart}","to":"${todayEnd}","limit":20}}]
 "cancelled orders" → [{"tool":"get_orders_by_status","params":{}},{"tool":"search_recent_orders","params":{"status":"cancelled","limit":10}}]
 "1 star reviews" → [{"tool":"get_feedback_list","params":{"maxRating":1,"limit":15}}]
@@ -2175,12 +2242,14 @@ Rules:
 
 **Topic-specific rules:**
 10. **Orders — counts:** Use "All-time Total" from get_orders_by_status. List status breakdown (placed/confirmed/delivering/delivered/cancelled). Never report 0 if the all-time total exists.
-11. **Orders — list:** Show order number, customer name+phone, amount, status, payment method, date. Max 10 per response unless asked for more.
+11. **Orders — list:** Show order number, customer name+phone, amount, status, payment method+status, date, and items if present. Max 10 per response unless asked for more.
 12. **Revenue:** Report the Total line first (e.g. "₹X over 30 days"), then a clean day-by-day table only if asked for breakdown. For "compare" questions, use the table from compare_periods verbatim.
 13. **Inventory — low stock:** Data is pre-filtered — only low-stock items appear. Show name, current stock, threshold. If nothing found, say "No low-stock products found." Don't add items that aren't in the data.
 14. **Inventory — in stock:** Show name and stock count. "Available" means untracked (unlimited). Don't say "0" for these.
 15. **Customers — total count:** Find "Total Customers" in get_dashboard_summary data. New customers are separate from total.
-16. **Customers — list/top:** Show rank, name, phone, order count, total spent. Sort by spent desc.
+16. **Customers — specific profile:** Lead with full profile (name, phone, email, status, total orders, total spent, address). Then list recent orders with their items. Use ALL profile fields present in the data — don't omit email, address, tags, or notes.
+16b. **Customers — list/top:** Show rank, name, phone, order count, total spent. Sort by spent desc.
+16c. **Customers — search results:** If multiple matches found, list all with name, phone, orders, spent. Let admin clarify which one.
 17. **Feedback:** Show customer name, product, star rating, type, and quote. For counts (e.g. "how many 1-star"), show total and list them.
 18. **Coupons:** Use the summary line (active/upcoming/expired count) first. Then list. Never re-count from the list — use the header numbers.
 19. **Payments:** The data only covers FAILED and PENDING payments. If user asks for successful payments, clarify that only failures are tracked here.

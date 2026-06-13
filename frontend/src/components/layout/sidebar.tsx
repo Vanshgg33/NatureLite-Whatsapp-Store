@@ -28,7 +28,6 @@ import {
   Cog,
   X,
   Sparkles,
-  List,
   Banknote,
   type LucideIcon,
 } from 'lucide-react';
@@ -97,7 +96,6 @@ const SUPERADMIN_NAV_GROUPS: NavGroup[] = [
       { name: 'Campaigns', href: '/admin/campaigns', icon: Megaphone },
       { name: 'Feedback', href: '/admin/feedback', icon: MessageSquare },
       { name: 'Appearance', href: '/admin/appearance', icon: Palette },
-      { name: 'Dropdowns', href: '/admin/dropdowns', icon: List },
       { name: 'Settings', href: '/admin/settings', icon: Settings },
     ],
   },

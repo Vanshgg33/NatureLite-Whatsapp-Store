@@ -135,9 +135,9 @@ export function scoreContextBlock(block: string, normalizedQuery: string): numbe
     if (blockLower.includes(token)) hits++;
   }
 
-  // Boost blocks that are small (focused results are more relevant than dumps)
-  const lengthPenalty = Math.min(1, 800 / Math.max(block.length, 100));
-  return (hits / queryTokens.size) * 0.7 + lengthPenalty * 0.3;
+  // Slight preference for focused blocks, but don't heavily penalize rich data blocks
+  const lengthPenalty = Math.min(1, 2000 / Math.max(block.length, 100));
+  return (hits / queryTokens.size) * 0.85 + lengthPenalty * 0.15;
 }
 
 /**
