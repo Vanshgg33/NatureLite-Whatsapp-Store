@@ -169,13 +169,13 @@ export class WhatsAppController implements OnModuleDestroy {
     res.status(200).send('OK');
 
     try {
+      const messages = await this.whatsappService.processWebhook(body);
+
       const chatbotEnabled = await this.settingsService.getChatbotEnabled();
       if (!chatbotEnabled) {
-        this.logger.log('Chatbot is disabled — incoming messages will be ignored');
+        this.logger.log('Chatbot is disabled — skipping automated responses');
         return;
       }
-
-      const messages = await this.whatsappService.processWebhook(body);
 
       for (const message of messages) {
         if (!this.rateLimiter.isAllowed(message.phone)) {

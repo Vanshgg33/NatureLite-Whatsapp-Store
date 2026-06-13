@@ -291,6 +291,16 @@ export class WhatsAppService implements OnModuleInit {
               await this.logMessage(whatsappMessage, 'inbound');
             }
 
+            if (whatsappMessage.contactName?.trim()) {
+              const existing = await this.usersService.findByPhone(whatsappMessage.phone);
+              if (!existing?.name) {
+                await this.usersService.setNameByPhone(
+                  whatsappMessage.phone,
+                  whatsappMessage.contactName.trim(),
+                );
+              }
+            }
+
             messages.push(whatsappMessage);
           }
         }

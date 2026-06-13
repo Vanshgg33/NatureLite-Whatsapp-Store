@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Send, User, Bot, Pencil, Check, X, MessageCircle } from 'lucide-react';
 import { Header } from '@/components/layout/header';
@@ -45,6 +45,7 @@ export default function WhatsAppPage() {
   const [newMessage, setNewMessage] = useState('');
   const [isEditingName, setIsEditingName] = useState(false);
   const [editNameDraft, setEditNameDraft] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: conversations = [], isLoading: convoLoading } = useQuery({
     queryKey: ['whatsapp-conversations'],
@@ -56,7 +57,12 @@ export default function WhatsAppPage() {
     queryKey: ['whatsapp-messages', selectedPhone],
     queryFn: () => api.getWhatsAppMessages(selectedPhone as string, 100),
     enabled: !!selectedPhone,
+    refetchInterval: 10_000,
   });
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, selectedPhone]);
 
   const sendMutation = useMutation({
     mutationFn: ({ phone, message }: { phone: string; message: string }) =>
@@ -271,9 +277,10 @@ export default function WhatsAppPage() {
                   [...messages].reverse().map((msg, i) => {
                     const isOutbound = msg.direction === 'outbound' || msg.direction === 'outgoing';
                     const isInbound = msg.direction === 'inbound' || msg.direction === 'incoming';
+                    const msgKey = (msg as any)._id || (msg as any).whatsappMessageId || i;
                     return (
                       <div
-                        key={i}
+                        key={msgKey}
                         className={cn('flex', isOutbound ? 'justify-end' : 'justify-start')}
                       >
                         <div
@@ -317,6 +324,7 @@ export default function WhatsAppPage() {
                     No messages yet.
                   </div>
                 )}
+                <div ref={messagesEndRef} />
               </div>
 
               {/* Send bar */}
