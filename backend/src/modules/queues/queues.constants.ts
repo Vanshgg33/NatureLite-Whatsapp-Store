@@ -33,6 +33,8 @@ export const NOTIFICATION_JOBS = {
   ORDER_CANCELLED: 'order-cancelled',
   ABANDONED_CART: 'abandoned-cart',
   ABANDONED_CART_DETAILED: 'abandoned-cart-detailed',
+  BROADCAST_TEMPLATE: 'broadcast-template',
+  BROADCAST_MEDIA: 'broadcast-media',
 } as const;
 
 export const ANALYTICS_JOBS = {

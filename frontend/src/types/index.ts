@@ -454,6 +454,19 @@ export interface MessageLog {
   createdAt: string;
 }
 
+// ==================== CAMPAIGNS ====================
+export interface CampaignRecord {
+  _id: string;
+  label: string;
+  type: 'template' | 'media';
+  status: 'queued' | 'sending' | 'done' | 'failed';
+  totalPhones: number;
+  sent: number;
+  skipped: number;
+  createdAt: string;
+  completedAt?: string;
+}
+
 // ==================== SETTINGS TYPES ====================
 export interface StoreSettings {
   name: string;

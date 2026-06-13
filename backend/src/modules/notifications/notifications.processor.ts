@@ -89,6 +89,14 @@ export class NotificationsProcessor extends WorkerHost implements OnApplicationB
         await this.notificationsService._executeSendAbandonedCartReminderDetailed(job.data);
         break;
 
+      case NOTIFICATION_JOBS.BROADCAST_TEMPLATE:
+        await this.notificationsService._executeBroadcastTemplate(job.data);
+        break;
+
+      case NOTIFICATION_JOBS.BROADCAST_MEDIA:
+        await this.notificationsService._executeBroadcastMedia(job.data);
+        break;
+
       default:
         this.logger.warn(`Unknown notification job: ${job.name}`);
     }

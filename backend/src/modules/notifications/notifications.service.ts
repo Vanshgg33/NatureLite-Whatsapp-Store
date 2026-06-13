@@ -1,12 +1,15 @@
 import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
+import { InjectModel } from '@nestjs/mongoose';
 import { Queue } from 'bullmq';
+import { Model } from 'mongoose';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { MessageLogRepository } from '../whatsapp/repositories/message-log.repository';
 import { Order } from '../orders/schemas/order.schema';
 import type { OrderStatus } from '../../common/constants/order-status';
 import { QUEUE_NOTIFICATIONS, NOTIFICATION_JOBS, DEFAULT_JOB_OPTIONS } from '../queues/queues.constants';
 import { RedisService } from '../redis/redis.service';
+import { Campaign, CampaignDocument } from './schemas/campaign.schema';
 
 interface NotificationPayload {
   phone: string;
@@ -32,6 +35,7 @@ export class NotificationsService {
     private whatsappService: WhatsAppService,
     @InjectQueue(QUEUE_NOTIFICATIONS) private readonly notifQueue: Queue,
     private readonly redisService: RedisService,
+    @InjectModel(Campaign.name) private readonly campaignModel: Model<CampaignDocument>,
   ) {}
 
   private serializeOrder(order: Order | any): Record<string, any> {
@@ -585,92 +589,171 @@ export class NotificationsService {
     }
   }
 
-  async sendMediaBroadcast(
-    phones: string[],
-    imageUrl: string,
-    caption?: string,
-  ): Promise<{ queued: number; skipped: number }> {
-    let queued = 0;
-    let skipped = 0;
-    const seenPhones = new Set<string>();
+  // ─── Campaign broadcasts (async via BullMQ) ───────────────────────────────
 
-    for (const phone of phones) {
-      const normalizedPhone = String(phone || '').replace(/[^\d]/g, '');
-      if (!normalizedPhone || seenPhones.has(normalizedPhone)) {
-        skipped++;
-        continue;
-      }
-      seenPhones.add(normalizedPhone);
-
-      const idempotencyKey = `broadcast_media_${normalizedPhone}_${Date.now()}`;
-      try {
-        const messageId = await this.whatsappService.sendMediaMessage({
-          phone: normalizedPhone,
-          mediaType: 'image',
-          mediaUrl: imageUrl,
-          caption,
-          meta: { idempotencyKey },
-        });
-        if (messageId) {
-          queued++;
-        } else {
-          skipped++;
-        }
-      } catch {
-        skipped++;
-      }
+  private normalizePhones(phones: string[]): string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const p of phones) {
+      const n = String(p || '').replace(/[^\d]/g, '');
+      if (n.length >= 8 && !seen.has(n)) { seen.add(n); result.push(n); }
     }
-
-    return { queued, skipped };
+    return result;
   }
 
-  async sendBroadcast(
+  async enqueueBroadcast(
     phones: string[],
     templateName: string,
-    params: string[] = [],
     options: {
       languageCode?: string;
       headerParams?: string[];
       bodyParams?: string[];
       buttonParams?: string[];
     } = {},
-  ): Promise<{ queued: number; skipped: number }> {
-    let queued = 0;
+  ): Promise<{ campaignId: string }> {
+    const normalized = this.normalizePhones(phones);
+    const campaign = await this.campaignModel.create({
+      label: templateName,
+      type: 'template',
+      status: 'queued',
+      totalPhones: normalized.length,
+      phones: normalized,
+      templateName,
+      languageCode: options.languageCode || 'en',
+      headerParams: options.headerParams ?? [],
+      bodyParams: options.bodyParams ?? [],
+      buttonParams: options.buttonParams ?? [],
+    });
+    await this.notifQueue.add(
+      NOTIFICATION_JOBS.BROADCAST_TEMPLATE,
+      { campaignId: campaign._id.toString() },
+      { ...DEFAULT_JOB_OPTIONS, attempts: 1, jobId: `broadcast_tpl_${campaign._id}` },
+    );
+    return { campaignId: campaign._id.toString() };
+  }
+
+  async enqueueMediaBroadcast(
+    phones: string[],
+    imageUrl: string,
+    caption?: string,
+  ): Promise<{ campaignId: string }> {
+    const normalized = this.normalizePhones(phones);
+    const campaign = await this.campaignModel.create({
+      label: 'Image Message',
+      type: 'media',
+      status: 'queued',
+      totalPhones: normalized.length,
+      phones: normalized,
+      imageUrl,
+      caption,
+    });
+    await this.notifQueue.add(
+      NOTIFICATION_JOBS.BROADCAST_MEDIA,
+      { campaignId: campaign._id.toString() },
+      { ...DEFAULT_JOB_OPTIONS, attempts: 1, jobId: `broadcast_media_${campaign._id}` },
+    );
+    return { campaignId: campaign._id.toString() };
+  }
+
+  async listCampaigns(limit = 50): Promise<CampaignDocument[]> {
+    return this.campaignModel
+      .find()
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .select('-phones')
+      .exec();
+  }
+
+  // ─── Execute methods called by processor ─────────────────────────────────
+
+  async _executeBroadcastTemplate(data: { campaignId: string }): Promise<void> {
+    const campaign = await this.campaignModel.findById(data.campaignId).exec();
+    if (!campaign) { this.logger.warn(`Campaign ${data.campaignId} not found`); return; }
+
+    await this.campaignModel.updateOne({ _id: campaign._id }, { $set: { status: 'sending' } }).exec();
+    let sent = 0;
     let skipped = 0;
-    const seenPhones = new Set<string>();
 
-    for (const phone of phones) {
-      const normalizedPhone = String(phone || '').replace(/[^\d]/g, '');
-      if (!normalizedPhone || seenPhones.has(normalizedPhone)) {
-        skipped++;
-        continue;
-      }
-      seenPhones.add(normalizedPhone);
+    try {
+      for (let i = 0; i < campaign.phones.length; i++) {
+        const phone = campaign.phones[i];
+        const idempotencyKey = `broadcast_${campaign._id}_${phone}`;
+        try {
+          const ok = await this.sendNotification({
+            phone,
+            templateName: campaign.templateName,
+            languageCode: campaign.languageCode,
+            headerParams: campaign.headerParams,
+            bodyParams: campaign.bodyParams,
+            buttonParams: campaign.buttonParams,
+            idempotencyKey,
+          });
+          if (ok) sent++; else skipped++;
+        } catch { skipped++; }
 
-      const idempotencyKey = `broadcast_${templateName}_${normalizedPhone}_${Date.now()}`;
-
-      try {
-        const sent = await this.sendNotification({
-          phone: normalizedPhone,
-          templateName,
-          params,
-          languageCode: options.languageCode,
-          headerParams: options.headerParams,
-          bodyParams: options.bodyParams,
-          buttonParams: options.buttonParams,
-          idempotencyKey,
-        });
-        if (sent) {
-          queued++;
-        } else {
-          skipped++;
+        if ((i + 1) % 10 === 0) {
+          await this.campaignModel.updateOne({ _id: campaign._id }, { $set: { sent, skipped } }).exec();
         }
-      } catch {
-        skipped++;
+        if (i < campaign.phones.length - 1) await this.sleep(150);
       }
+      await this.campaignModel.updateOne(
+        { _id: campaign._id },
+        { $set: { status: 'done', sent, skipped, completedAt: new Date() } },
+      ).exec();
+    } catch (err) {
+      this.logger.error(`Broadcast template campaign ${data.campaignId} failed`, err);
+      await this.campaignModel.updateOne(
+        { _id: campaign._id },
+        { $set: { status: 'failed', sent, skipped, completedAt: new Date() } },
+      ).exec();
+      throw err;
     }
+  }
 
-    return { queued, skipped };
+  async _executeBroadcastMedia(data: { campaignId: string }): Promise<void> {
+    const campaign = await this.campaignModel.findById(data.campaignId).exec();
+    if (!campaign) { this.logger.warn(`Campaign ${data.campaignId} not found`); return; }
+
+    await this.campaignModel.updateOne({ _id: campaign._id }, { $set: { status: 'sending' } }).exec();
+    let sent = 0;
+    let skipped = 0;
+
+    try {
+      for (let i = 0; i < campaign.phones.length; i++) {
+        const phone = campaign.phones[i];
+        const idempotencyKey = `broadcast_media_${campaign._id}_${phone}`;
+        try {
+          const messageId = await this.whatsappService.sendMediaMessage({
+            phone,
+            mediaType: 'image',
+            mediaUrl: campaign.imageUrl!,
+            caption: campaign.caption,
+            meta: { idempotencyKey },
+          });
+          if (messageId) sent++; else skipped++;
+        } catch { skipped++; }
+
+        if ((i + 1) % 10 === 0) {
+          await this.campaignModel.updateOne({ _id: campaign._id }, { $set: { sent, skipped } }).exec();
+        }
+        if (i < campaign.phones.length - 1) await this.sleep(150);
+      }
+      await this.campaignModel.updateOne(
+        { _id: campaign._id },
+        { $set: { status: 'done', sent, skipped, completedAt: new Date() } },
+      ).exec();
+    } catch (err) {
+      this.logger.error(`Broadcast media campaign ${data.campaignId} failed`, err);
+      await this.campaignModel.updateOne(
+        { _id: campaign._id },
+        { $set: { status: 'failed', sent, skipped, completedAt: new Date() } },
+      ).exec();
+      throw err;
+    }
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private async sendNotification(payload: NotificationPayload): Promise<boolean> {

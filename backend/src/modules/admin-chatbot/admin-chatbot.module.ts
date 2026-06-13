@@ -22,6 +22,7 @@ import { StoreSalesModule } from '../store-sales/store-sales.module';
 import { RemindersModule } from '../reminders/reminders.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { EmailModule } from '../email/email.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { EmailModule } from '../email/email.module';
     RemindersModule,
     WhatsAppModule,
     EmailModule,
+    SettingsModule,
   ],
   controllers: [AdminChatbotController],
   providers: [AdminChatbotService, AdminChatSessionRepository, AdminChatbotProcessor, ChatbotQueueProcessor],

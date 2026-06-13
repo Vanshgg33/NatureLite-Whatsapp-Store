@@ -25,6 +25,7 @@ import { AdminChatSessionRepository } from './repositories/admin-chat-session.re
 import { Subscription } from '../subscriptions/schemas/subscription.schema';
 import { EmailService } from '../email/email.service';
 import { parseDateRange, dateRangeToDays } from '../../common/utils/date-parse.util';
+import { SettingsService } from '../settings/settings.service';
 import {
   ChatbotIntentSchema,
   ChatRequestSchema,
@@ -108,6 +109,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     private readonly messageLogRepository: MessageLogRepository,
     private readonly adminChatSessionRepository: AdminChatSessionRepository,
     private readonly emailService: EmailService,
+    private readonly settingsService: SettingsService,
     @InjectModel(Subscription.name) private readonly subscriptionModel: Model<any>,
     private readonly redisService: RedisService,
     @InjectQueue(QUEUE_ADMIN) private readonly adminQueue: Queue,
@@ -1050,7 +1052,9 @@ export class AdminChatbotService implements OnApplicationBootstrap {
 
       case 'search_abandoned_carts': {
         const limit = Number(step.params?.limit ?? 30);
-        const cutoff = new Date(Date.now() - 60 * 60 * 1000);
+        const whatsappSettings = await this.settingsService.getWhatsAppSettings();
+        const delayMinutes = whatsappSettings.abandonedCartReminderDelayMinutes ?? 60;
+        const cutoff = new Date(Date.now() - delayMinutes * 60 * 1000);
         const abandonedCarts = await this.cartRepository.getModel().aggregate([
           { $match: { 'items.0': { $exists: true }, updatedAt: { $lt: cutoff } } },
           { $lookup: { from: 'users', localField: 'user', foreignField: '_id', pipeline: [{ $project: { name: 1, phone: 1, isBlocked: 1 } }], as: 'userInfo' } },
@@ -1065,6 +1069,37 @@ export class AdminChatbotService implements OnApplicationBootstrap {
           .find({ currentState: { $in: ['cart', 'coupon_prompt', 'coupon_input', 'checkout', 'address_input', 'payment_selection'] }, isExpired: { $ne: true }, lastMessageAt: { $lt: cutoff } })
           .sort({ lastMessageAt: -1 }).limit(20).populate('user', 'name phone').exec();
         const productSearch = String(step.params?.productSearch ?? '').trim().toLowerCase();
+
+        // Collect all phones we need chat history for (parallel fetch)
+        const cartPhones = abandonedCarts
+          .filter((cart: any) => !productSearch || cart.items.some((i: any) => i.name?.toLowerCase().includes(productSearch)))
+          .map((cart: any) => cart.userInfo?.phone as string | undefined)
+          .filter((p): p is string => Boolean(p));
+        const sessionPhones = productSearch ? [] : stuckSessions
+          .filter((s: any) => !coveredPhones.has((s.user as any)?.phone ?? s.phone))
+          .map((s: any) => (s.phone || (s.user as any)?.phone) as string | undefined)
+          .filter((p): p is string => Boolean(p));
+        const allPhones = [...new Set([...cartPhones, ...sessionPhones])];
+
+        const chatSnippetMap = new Map<string, string>();
+        if (allPhones.length > 0) {
+          const results = await Promise.all(
+            allPhones.map(async (phone) => {
+              const msgs = await this.messageLogRepository.findByPhone(phone, 4);
+              if (!msgs.length) return [phone, ''] as [string, string];
+              const lines = [...msgs].reverse().map((m) => {
+                const who = m.direction === 'inbound' ? 'Cust' : 'Store';
+                const text = (m.content?.text || m.content?.caption || (m.content as any)?.buttonText || m.content?.templateName || '[media]').slice(0, 100);
+                return `    ${who}: ${text}`;
+              });
+              return [phone, lines.join('\n')] as [string, string];
+            }),
+          );
+          for (const [phone, snippet] of results) {
+            if (snippet) chatSnippetMap.set(phone, snippet);
+          }
+        }
+
         const cartLines = abandonedCarts
           .filter((cart: any) => !productSearch || cart.items.some((i: any) => i.name?.toLowerCase().includes(productSearch)))
           .map((cart: any) => {
@@ -1072,18 +1107,23 @@ export class AdminChatbotService implements OnApplicationBootstrap {
             const name = cart.userInfo?.name || phone;
             const items = cart.items.map((i: any) => `${i.name} (x${i.quantity})`).join(', ');
             const hrs = Math.round((Date.now() - new Date(cart.updatedAt).getTime()) / 3_600_000);
-            return `- 📱 **${name}** | ${phone} | ₹${(cart.total || 0).toLocaleString('en-IN')} | [${items}] | ~${hrs}h ago`;
+            const snippet = chatSnippetMap.get(phone);
+            const chatPart = snippet ? `\n  Last chat:\n${snippet}` : '';
+            return `- 📱 **${name}** | ${phone} | ₹${(cart.total || 0).toLocaleString('en-IN')} | [${items}] | ~${hrs}h ago${chatPart}`;
           });
         // Sessions don't carry product data — skip them when productSearch is active
         const sessionLines = productSearch ? [] : stuckSessions
           .filter((s: any) => !coveredPhones.has((s.user as any)?.phone ?? s.phone))
           .map((s: any) => {
-            const name = (s.user as any)?.name || s.metadata?.contactName || s.phone || 'Unknown';
+            const phone = s.phone || (s.user as any)?.phone || '';
+            const name = (s.user as any)?.name || s.metadata?.contactName || phone || 'Unknown';
             const mins = Math.round((Date.now() - new Date(s.lastMessageAt ?? s.updatedAt).getTime()) / 60_000);
-            return `- 📱 **${name}** | ${s.phone} | Stuck at \`${s.currentState}\` | ~${mins} min`;
+            const snippet = chatSnippetMap.get(phone);
+            const chatPart = snippet ? `\n  Last chat:\n${snippet}` : '';
+            return `- 📱 **${name}** | ${phone} | Stuck at \`${s.currentState}\` | ~${mins} min${chatPart}`;
           });
         const all = [...cartLines, ...sessionLines];
-        return `[RAG: search_abandoned_carts]\n**${all.length}** customers with items who did not order (60+ min inactive)\n\n${all.join('\n') || 'None found.'}`;
+        return `[RAG: search_abandoned_carts]\n**${all.length}** customers with items who did not order (${delayMinutes}+ min inactive)\n\n${all.join('\n') || 'None found.'}`;
       }
 
       case 'get_top_selling_products': {

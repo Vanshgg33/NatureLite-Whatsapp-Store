@@ -1,7 +1,9 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
@@ -12,7 +14,6 @@ import { Roles } from '../../common/decorators/roles.decorator';
 class BroadcastDto {
   phones: string[];
   templateName: string;
-  params?: string[];
   languageCode?: string;
   headerParams?: string[];
   bodyParams?: string[];
@@ -22,7 +23,6 @@ class BroadcastDto {
 class MediaBroadcastDto {
   phones: string[];
   imageUrl: string;
-  message?: string;
   caption?: string;
 }
 
@@ -35,18 +35,13 @@ export class NotificationsController {
   @Roles('admin', 'superadmin')
   async sendBroadcast(
     @Body() dto: BroadcastDto,
-  ): Promise<{ queued: number; skipped: number }> {
-    return this.notificationsService.sendBroadcast(
-      dto.phones,
-      dto.templateName,
-      dto.params ?? [],
-      {
-        languageCode: dto.languageCode,
-        headerParams: dto.headerParams,
-        bodyParams: dto.bodyParams,
-        buttonParams: dto.buttonParams,
-      },
-    );
+  ): Promise<{ campaignId: string }> {
+    return this.notificationsService.enqueueBroadcast(dto.phones, dto.templateName, {
+      languageCode: dto.languageCode,
+      headerParams: dto.headerParams,
+      bodyParams: dto.bodyParams,
+      buttonParams: dto.buttonParams,
+    });
   }
 
   @Post('broadcast/media')
@@ -54,11 +49,17 @@ export class NotificationsController {
   @Roles('admin', 'superadmin')
   async sendMediaBroadcast(
     @Body() dto: MediaBroadcastDto,
-  ): Promise<{ queued: number; skipped: number }> {
-    return this.notificationsService.sendMediaBroadcast(
-      dto.phones,
-      dto.imageUrl,
-      dto.caption ?? dto.message,
-    );
+  ): Promise<{ campaignId: string }> {
+    return this.notificationsService.enqueueMediaBroadcast(dto.phones, dto.imageUrl, dto.caption);
+  }
+
+  @Get('campaigns')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  async listCampaigns(
+    @Query('limit') limit?: string,
+  ): Promise<unknown[]> {
+    const parsed = limit ? parseInt(limit, 10) : 50;
+    return this.notificationsService.listCampaigns(Number.isFinite(parsed) ? parsed : 50);
   }
 }

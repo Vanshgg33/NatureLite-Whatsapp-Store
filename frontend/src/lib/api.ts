@@ -71,6 +71,7 @@ import {
   RawMaterialPrefill,
   RawMaterialDailyItem,
   StockSnapshotItem,
+  CampaignRecord,
 } from '@/types';
 
 // Backend API base URL. Set via NEXT_PUBLIC_API_URL in environment.
@@ -1230,18 +1231,16 @@ class ApiClient {
   async sendBroadcast(
     phones: string[],
     templateName: string,
-    params: string[],
     options?: {
       languageCode?: string;
       headerParams?: string[];
       bodyParams?: string[];
       buttonParams?: string[];
     }
-  ): Promise<{ queued: number; skipped: number }> {
-    const response = await this.client.post<ApiResponse<{ queued: number; skipped: number }>>('/notifications/broadcast', {
+  ): Promise<{ campaignId: string }> {
+    const response = await this.client.post<ApiResponse<{ campaignId: string }>>('/notifications/broadcast', {
       phones,
       templateName,
-      params,
       ...options,
     });
     return response.data.data;
@@ -1250,17 +1249,18 @@ class ApiClient {
   async sendMediaBroadcast(
     phones: string[],
     imageUrl: string,
-    message?: string,
-    options?: {
-      caption?: string;
-    }
-  ): Promise<{ queued: number; skipped: number }> {
-    const response = await this.client.post<ApiResponse<{ queued: number; skipped: number }>>('/notifications/broadcast/media', {
+    caption?: string,
+  ): Promise<{ campaignId: string }> {
+    const response = await this.client.post<ApiResponse<{ campaignId: string }>>('/notifications/broadcast/media', {
       phones,
       imageUrl,
-      message,
-      ...options,
+      caption,
     });
+    return response.data.data;
+  }
+
+  async getCampaigns(limit = 50): Promise<CampaignRecord[]> {
+    const response = await this.client.get<ApiResponse<CampaignRecord[]>>(`/notifications/campaigns?limit=${limit}`);
     return response.data.data;
   }
 

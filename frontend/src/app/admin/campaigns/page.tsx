@@ -1,10 +1,10 @@
 'use client';
 
 import { useMemo, useState, useRef } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2, Megaphone, Phone, Send, Users, Image as ImageIcon,
-  Upload, X, Search, ChevronDown, Link as LinkIcon, RefreshCw,
+  Upload, X, Search, LinkIcon, RefreshCw, Clock, AlertCircle,
 } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { Input } from '@/components/ui/input';
@@ -13,17 +13,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
-import { User } from '@/types';
+import { User, CampaignRecord } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface BroadcastResult {
-  queued: number;
-  skipped: number;
-  sentAt: string;
-  label: string;
-  targetCount: number;
-}
 
 type MessageType = 'template' | 'media';
 type ImageInputMethod = 'upload' | 'url';
@@ -49,9 +41,19 @@ const parsePhones = (value: string) => {
 const fmtTime = (iso: string) =>
   new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
+function StatusBadge({ status }: { status: CampaignRecord['status'] }) {
+  if (status === 'done') return <Badge className="text-xs bg-green-100 text-green-800 border-green-200">Done</Badge>;
+  if (status === 'sending') return <Badge className="text-xs bg-blue-100 text-blue-800 border-blue-200 animate-pulse">Sending…</Badge>;
+  if (status === 'failed') return <Badge className="text-xs bg-red-100 text-red-800 border-red-200">Failed</Badge>;
+  return <Badge variant="outline" className="text-xs">Queued</Badge>;
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CampaignsPage() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
   // Message type
   const [messageType, setMessageType]     = useState<MessageType>('template');
 
@@ -75,11 +77,7 @@ export default function CampaignsPage() {
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
 
-  // History
-  const [history, setHistory]             = useState<BroadcastResult[]>([]);
-
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { toast } = useToast();
 
   // ── Customer list query ──────────────────────────────────────────────────
   const { data: usersData, isFetching: usersLoading, refetch: refetchUsers } = useQuery({
@@ -94,6 +92,18 @@ export default function CampaignsPage() {
     }),
     enabled: recipientFilter !== 'manual',
     staleTime: 30_000,
+  });
+
+  // ── Campaign history from API ────────────────────────────────────────────
+  const { data: campaigns = [], isFetching: campaignsLoading } = useQuery({
+    queryKey: ['campaigns'],
+    queryFn: () => api.getCampaigns(50),
+    // Poll while any campaign is queued/sending so status updates appear
+    refetchInterval: (query) => {
+      const data = query.state.data as CampaignRecord[] | undefined;
+      const hasActive = data?.some((c) => c.status === 'queued' || c.status === 'sending');
+      return hasActive ? 5_000 : false;
+    },
   });
 
   const customers = useMemo(() => {
@@ -119,10 +129,7 @@ export default function CampaignsPage() {
     return Array.from(new Set(fromDb));
   }, [recipientFilter, manualPhones, customersWithPhone, selectedUserIds]);
 
-  const manualParsed = useMemo(
-    () => parsePhones(manualPhones),
-    [manualPhones],
-  );
+  const manualParsed = useMemo(() => parsePhones(manualPhones), [manualPhones]);
 
   // ── Image handling ───────────────────────────────────────────────────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -149,8 +156,6 @@ export default function CampaignsPage() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const resolvedPreview = imageMethod === 'upload' ? imagePreview : imageUrl;
-
   // ── Send ─────────────────────────────────────────────────────────────────
   const broadcastMutation = useMutation({
     mutationFn: async () => {
@@ -165,27 +170,22 @@ export default function CampaignsPage() {
         } else {
           if (!resolvedUrl) throw new Error('Please enter an image URL');
         }
-        return api.sendMediaBroadcast(finalPhones, resolvedUrl, caption || undefined, { caption: caption || undefined });
+        return api.sendMediaBroadcast(finalPhones, resolvedUrl, caption || undefined);
       }
 
       const template = templateName.trim();
       if (!template) throw new Error('Template name is required');
-      return api.sendBroadcast(finalPhones, template, parseList(bodyParams), {
+      return api.sendBroadcast(finalPhones, template, {
         languageCode: languageCode.trim() || 'en',
         headerParams: parseList(headerParams),
         bodyParams: parseList(bodyParams),
         buttonParams: parseList(buttonParams),
       });
     },
-    onSuccess: (data) => {
-      setHistory((prev) => [{
-        ...data,
-        sentAt: new Date().toISOString(),
-        label: messageType === 'template' ? templateName.trim() : '🖼 Image Message',
-        targetCount: finalPhones.length,
-      }, ...prev]);
-      toast({ title: 'Campaign sent', description: `${data.queued} queued · ${data.skipped} skipped` });
-      // reset
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+      toast({ title: 'Campaign queued', description: 'Messages are being sent in the background.' });
+      // reset form
       setManualPhones('');
       setSelectedUserIds(new Set());
       if (messageType === 'template') {
@@ -391,7 +391,7 @@ export default function CampaignsPage() {
             <div className="flex items-center gap-3 pt-2 border-t">
               <Button onClick={() => broadcastMutation.mutate()} disabled={!canSend} size="default">
                 <Send className="mr-2 h-4 w-4" />
-                {broadcastMutation.isPending ? 'Sending…' : `Send to ${finalPhones.length} recipient${finalPhones.length !== 1 ? 's' : ''}`}
+                {broadcastMutation.isPending ? 'Queuing…' : `Send to ${finalPhones.length} recipient${finalPhones.length !== 1 ? 's' : ''}`}
               </Button>
               {finalPhones.length === 0 && (
                 <p className="text-xs text-muted-foreground">Add recipients to enable sending.</p>
@@ -560,30 +560,54 @@ export default function CampaignsPage() {
           </div>
         </div>
 
-        {/* ── History ──────────────────────────────────────────────────── */}
-        {history.length > 0 && (
-          <div className="rounded-xl border bg-card p-6">
-            <h2 className="font-semibold text-base mb-4">Campaign History <span className="text-muted-foreground font-normal text-sm">(this session)</span></h2>
+        {/* ── Campaign History (from DB) ─────────────────────────────────── */}
+        <div className="rounded-xl border bg-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-base">Campaign History</h2>
+            {campaignsLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+          </div>
+
+          {campaigns.length === 0 && !campaignsLoading ? (
+            <p className="text-sm text-muted-foreground text-center py-6">No campaigns sent yet.</p>
+          ) : (
             <div className="space-y-2">
-              {history.map((entry, i) => (
-                <div key={i} className="flex items-center justify-between gap-4 rounded-lg bg-muted/40 px-4 py-3">
+              {campaigns.map((c) => (
+                <div key={c._id} className="flex items-center justify-between gap-4 rounded-lg bg-muted/40 px-4 py-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{entry.label}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium truncate">{c.label}</p>
+                      <StatusBadge status={c.status} />
+                    </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {fmtTime(entry.sentAt)} · {entry.targetCount} target{entry.targetCount !== 1 ? 's' : ''}
+                      {fmtTime(c.createdAt)} · {c.totalPhones} target{c.totalPhones !== 1 ? 's' : ''}
+                      {c.type === 'template' ? ' · template' : ' · image'}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Badge variant="default" className="text-xs">{entry.queued} queued</Badge>
-                    {entry.skipped > 0 && (
-                      <Badge variant="secondary" className="text-xs">{entry.skipped} skipped</Badge>
+                    {c.status === 'queued' && (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3" /> Waiting
+                      </div>
+                    )}
+                    {c.status === 'sending' && (
+                      <p className="text-xs text-muted-foreground">{c.sent + c.skipped} / {c.totalPhones}</p>
+                    )}
+                    {(c.status === 'done' || c.status === 'failed') && (
+                      <>
+                        <Badge variant="default" className="text-xs">{c.sent} sent</Badge>
+                        {c.skipped > 0 && (
+                          <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                            <AlertCircle className="h-2.5 w-2.5" />{c.skipped} skipped
+                          </Badge>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
       </div>
     </div>
