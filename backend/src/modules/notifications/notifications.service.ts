@@ -639,7 +639,7 @@ export class NotificationsService {
   ): Promise<{ campaignId: string }> {
     const normalized = this.normalizePhones(phones);
     const campaign = await this.campaignModel.create({
-      label: 'Image Message',
+      label: caption?.trim() ? `Image: ${caption.trim().slice(0, 60)}` : `Image Campaign ${new Date().toLocaleDateString('en-IN')}`,
       type: 'media',
       status: 'queued',
       totalPhones: normalized.length,

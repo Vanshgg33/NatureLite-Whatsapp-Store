@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 
 const WHATSAPP_NUMBER = '918817200740';
 const DEFAULT_CITY = 'Raipur';
+const SERVICEABLE_PREFIXES = ['492', '490', '491', '495'];
 
 interface OrderItem {
   productId: string;
@@ -43,8 +44,13 @@ export function WhatsAppOrderModal({ items, total, onClose }: Props) {
       setError('Enter a valid 10-digit phone number');
       return;
     }
-    if (pincode.replace(/\D/g, '').length !== 6) {
+    const cleanPincode = pincode.replace(/\D/g, '');
+    if (cleanPincode.length !== 6) {
       setError('Enter a valid 6-digit pincode');
+      return;
+    }
+    if (!SERVICEABLE_PREFIXES.some((p) => cleanPincode.startsWith(p))) {
+      setError('Sorry, we currently deliver only to Raipur, Bhilai, Durg & Bilaspur (Chhattisgarh).');
       return;
     }
 

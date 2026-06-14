@@ -29,12 +29,15 @@ const contactSchema = z.object({
 
 type ContactFormData = z.infer<typeof contactSchema>;
 
+const STORE_WHATSAPP = '918817200740';
+const STORE_PHONE_DISPLAY = '+91 88172 00740';
+
 const contactInfo = [
   {
     icon: Phone,
     title: 'Phone',
-    value: '+91 99999 99999',
-    href: 'tel:+919999999999',
+    value: STORE_PHONE_DISPLAY,
+    href: `tel:+${STORE_WHATSAPP}`,
     description: 'Mon-Sat, 9am-6pm IST',
   },
   {
@@ -47,8 +50,8 @@ const contactInfo = [
   {
     icon: MessageCircle,
     title: 'WhatsApp',
-    value: '+91 99999 99999',
-    href: 'https://wa.me/919999999999',
+    value: STORE_PHONE_DISPLAY,
+    href: `https://wa.me/${STORE_WHATSAPP}`,
     description: 'Quick responses',
   },
   {
@@ -77,19 +80,30 @@ export default function ContactPage() {
   const onSubmit = async (data: ContactFormData) => {
     setIsSubmitting(true);
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const lines = [
+        `*New Contact Form Inquiry*`,
+        ``,
+        `*Name:* ${data.name}`,
+        `*Email:* ${data.email}`,
+        ...(data.phone ? [`*Phone:* ${data.phone}`] : []),
+        `*Subject:* ${data.subject}`,
+        ``,
+        `*Message:*`,
+        data.message,
+      ];
+      const waText = encodeURIComponent(lines.join('\n'));
+      window.open(`https://wa.me/${STORE_WHATSAPP}?text=${waText}`, '_blank');
 
       setIsSubmitted(true);
       reset();
       toast({
-        title: 'Message sent!',
-        description: "We'll get back to you within 24 hours.",
+        title: 'Opening WhatsApp…',
+        description: "Your message is pre-filled — just hit Send.",
       });
-    } catch (error) {
+    } catch {
       toast({
         title: 'Error',
-        description: 'Failed to send message. Please try again.',
+        description: 'Failed to open WhatsApp. Please try again.',
         variant: 'destructive',
       });
     } finally {

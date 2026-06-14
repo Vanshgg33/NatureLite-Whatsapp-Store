@@ -85,7 +85,6 @@ export default function CampaignsPage() {
     queryFn: () => api.getUsers({
       limit: 200,
       search: customerSearch || undefined,
-      isActive: true,
       isBlocked: false,
       sortBy: 'totalOrders',
       sortOrder: 'desc',
@@ -166,7 +165,7 @@ export default function CampaignsPage() {
         if (imageMethod === 'upload') {
           if (!imageFile) throw new Error('Please select an image');
           const result = await api.uploadImage(imageFile, 'campaigns');
-          resolvedUrl = result.url;
+          resolvedUrl = result.secureUrl;
         } else {
           if (!resolvedUrl) throw new Error('Please enter an image URL');
         }
@@ -528,7 +527,7 @@ export default function CampaignsPage() {
                                 ? customersWithPhone.map((u: User) => u._id)
                                 : selectedUserIds,
                             );
-                            if (checked && selectedUserIds.size > 0) {
+                            if (checked) {
                               next.delete(user._id);
                             } else {
                               next.add(user._id);

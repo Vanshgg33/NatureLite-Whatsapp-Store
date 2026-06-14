@@ -33,8 +33,10 @@ export class UserRepository extends BaseRepository<UserDocument> {
     const filter: Record<string, unknown> = {};
     const searchOr = buildSearchOrFilter(search, ['phone', 'name', 'email']);
     if (searchOr.length) filter.$or = searchOr;
-    if (isActive !== undefined) filter.isActive = isActive;
-    if (isBlocked !== undefined) filter.isBlocked = isBlocked;
+    // Use $ne so documents without the field set still match the "positive" case.
+    // { isActive: true } would miss docs where isActive is null/undefined.
+    if (isActive !== undefined) filter.isActive = isActive ? { $ne: false } : false;
+    if (isBlocked !== undefined) filter.isBlocked = isBlocked ? true : { $ne: true };
     const skip = (page - 1) * limit;
     const sort: Record<string, 1 | -1> = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
     const [users, total] = await Promise.all([
