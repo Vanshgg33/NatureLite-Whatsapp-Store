@@ -41,9 +41,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/components/ui/use-toast';
 
 export default function CategoriesPage() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -68,6 +70,10 @@ export default function CategoriesPage() {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       closeDialog();
     },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      toast({ title: `Failed to create category: ${msg}`, variant: 'destructive' });
+    },
   });
 
   const updateMutation = useMutation({
@@ -77,6 +83,10 @@ export default function CategoriesPage() {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       closeDialog();
     },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      toast({ title: `Failed to update category: ${msg}`, variant: 'destructive' });
+    },
   });
 
   const deleteMutation = useMutation({
@@ -84,6 +94,10 @@ export default function CategoriesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       setDeleteConfirm(null);
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      toast({ title: `Failed to delete category: ${msg}`, variant: 'destructive' });
     },
   });
 
@@ -142,7 +156,8 @@ export default function CategoriesPage() {
       const result = await api.uploadImage(file, 'categories');
       setFormData((prev) => ({ ...prev, image: result.secureUrl }));
     } catch (error) {
-      console.error('Upload failed:', error);
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      toast({ title: `Image upload failed: ${msg}`, variant: 'destructive' });
     }
   };
 
