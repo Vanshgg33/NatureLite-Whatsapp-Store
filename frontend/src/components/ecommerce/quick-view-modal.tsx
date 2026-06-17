@@ -78,7 +78,10 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
     }
   };
 
-  const images = product.images?.length > 0 ? product.images : [];
+  const variantImages = selectedVariantData?.images && selectedVariantData.images.length > 0
+    ? selectedVariantData.images
+    : null;
+  const images = variantImages ?? (product.images?.length > 0 ? product.images : []);
 
   return (
     <AnimatePresence>
@@ -266,7 +269,7 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
                         return (
                           <motion.button
                             key={variant.sku}
-                            onClick={() => !isOOS && setSelectedVariant(variant.sku)}
+                            onClick={() => { if (!isOOS) { setSelectedVariant(variant.sku); setSelectedImageIndex(0); } }}
                             disabled={isOOS}
                             whileTap={{ scale: isOOS ? 1 : 0.95 }}
                             className="relative px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200"

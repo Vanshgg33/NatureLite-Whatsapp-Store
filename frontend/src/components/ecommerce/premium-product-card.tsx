@@ -65,7 +65,6 @@ export function PremiumProductCard({
   const { toast }  = useToast();
   const flyAnimation = useAddToCartAnimation();
 
-  const activeVariants = product.variants?.filter((v) => v.isActive && v.stock > 0) ?? [];
   const displayVariants = product.variants?.filter((v) => v.isActive) ?? [];
   const selectedVar  = displayVariants[selectedVarIdx] ?? null;
 
@@ -325,23 +324,27 @@ export function PremiumProductCard({
               </div>
 
               {/* Variant pills - displayed BELOW price */}
-              {displayVariants.length > 1 && (
-                <div className="flex flex-wrap gap-1 mb-3">
-                  {displayVariants.slice(0, 5).map((v, i) => {
-                    const label = v.attributes?.volume ?? v.attributes?.size ?? v.attributes?.weight ?? v.name;
+              {displayVariants.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {displayVariants.slice(0, 6).map((v, i) => {
+                    const raw = v.attributes?.volume ?? v.attributes?.size ?? v.attributes?.weight ?? v.name;
+                    const label = String(raw).length > 10 ? String(raw).slice(0, 10) : String(raw);
                     const isSelected = i === selectedVarIdx;
                     const isOOS = v.stock <= 0;
                     return (
                       <button
                         key={v.sku}
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedVarIdx(i); }}
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (!isOOS) setSelectedVarIdx(i); }}
                         style={{
-                          fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 99, cursor: isOOS ? 'not-allowed' : 'pointer',
-                          background: isSelected ? '#0b1c08' : 'transparent',
-                          color: isSelected ? '#fff' : isOOS ? 'rgba(46,66,37,0.22)' : 'rgba(46,66,37,0.65)',
-                          border: `1px solid ${isSelected ? '#0b1c08' : isOOS ? 'rgba(46,66,37,0.12)' : 'rgba(46,66,37,0.28)'}`,
+                          fontSize: 13, fontWeight: 700, padding: '6px 14px', borderRadius: 8,
+                          cursor: isOOS ? 'not-allowed' : 'pointer',
+                          background: isSelected ? '#0b1c08' : '#fff',
+                          color: isSelected ? '#fff' : isOOS ? 'rgba(46,66,37,0.28)' : '#1a3a14',
+                          border: `2px solid ${isSelected ? '#0b1c08' : isOOS ? 'rgba(46,66,37,0.14)' : 'rgba(46,66,37,0.35)'}`,
                           textDecoration: isOOS ? 'line-through' : 'none',
-                          transition: 'background 0.1s, color 0.1s, border-color 0.1s',
+                          transition: 'background 0.12s, color 0.12s, border-color 0.12s',
+                          letterSpacing: '0.01em',
+                          lineHeight: 1,
                         }}
                       >
                         {label}

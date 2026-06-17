@@ -5,7 +5,6 @@ import { PublicHeader } from '@/components/layout/public-header';
 import { PublicFooter } from '@/components/layout/public-footer';
 import { LoadingProvider } from '@/components/providers/loading-provider';
 import { AddToCartAnimationProvider } from '@/components/ecommerce/add-to-cart-animation';
-import { SocialProofPopup } from '@/components/ecommerce/social-proof-popup';
 import { SiteSettingsProvider } from '@/lib/site-settings-context';
 import { AnnouncementBar } from '@/components/layout/announcement-bar';
 import { PromoBar } from '@/components/layout/promo-bar';
@@ -41,7 +40,6 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
           </div>
           <PincodeChecker />
           <WhatsAppFab />
-          <SocialProofPopup />
         </AddToCartAnimationProvider>
       </LoadingProvider>
     </SiteSettingsProvider>

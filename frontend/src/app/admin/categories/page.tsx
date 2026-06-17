@@ -49,6 +49,7 @@ export default function CategoriesPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -151,13 +152,16 @@ export default function CategoriesPage() {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
+    setIsUploadingImage(true);
     try {
       const result = await api.uploadImage(file, 'categories');
       setFormData((prev) => ({ ...prev, image: result.secureUrl }));
+      toast({ title: 'Image uploaded', description: 'Click Save to apply.' });
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
       toast({ title: `Image upload failed: ${msg}`, variant: 'destructive' });
+    } finally {
+      setIsUploadingImage(false);
     }
   };
 
@@ -387,19 +391,38 @@ export default function CategoriesPage() {
               <div className="grid gap-2">
                 <Label htmlFor="image">Image</Label>
                 <div className="flex items-center gap-4">
-                  {formData.image && (
-                    <img
-                      src={formData.image}
-                      alt="Preview"
-                      className="h-16 w-16 rounded object-cover"
+                  {isUploadingImage ? (
+                    <div className="h-16 w-16 rounded bg-muted flex items-center justify-center flex-shrink-0">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+                    </div>
+                  ) : formData.image ? (
+                    <div className="relative flex-shrink-0">
+                      <img
+                        src={formData.image}
+                        alt="Preview"
+                        className="h-16 w-16 rounded object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setFormData((prev) => ({ ...prev, image: '' }))}
+                        className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive text-white text-xs flex items-center justify-center"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ) : null}
+                  <div className="flex-1">
+                    <Input
+                      id="image"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      disabled={isUploadingImage}
                     />
-                  )}
-                  <Input
-                    id="image"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                  />
+                    {isUploadingImage && (
+                      <p className="text-xs text-muted-foreground mt-1">Uploading image, please wait…</p>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="grid gap-2">
@@ -454,9 +477,11 @@ export default function CategoriesPage() {
               </Button>
               <Button
                 type="submit"
-                disabled={createMutation.isPending || updateMutation.isPending}
+                disabled={createMutation.isPending || updateMutation.isPending || isUploadingImage}
               >
-                {createMutation.isPending || updateMutation.isPending
+                {isUploadingImage
+                  ? 'Uploading image…'
+                  : createMutation.isPending || updateMutation.isPending
                   ? 'Saving...'
                   : editingCategory
                   ? 'Update'

@@ -4,7 +4,7 @@ import { useMemo, useState, useRef, type MouseEvent, type ReactNode } from 'reac
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { PremiumProductCard } from '@/components/ecommerce/premium-product-card';
 import { QuickViewModal } from '@/components/ecommerce/quick-view-modal';
@@ -13,11 +13,180 @@ import { api } from '@/lib/api';
 import { ScrollReveal } from '@/components/ui/scroll-reveal';
 import { Magnetic } from '@/components/ui/magnetic';
 
-const WOOD_PRESSED_SLUGS  = new Set(['wood-pressed-oils', 'wood-pressed-oil', 'cold-pressed-oils', 'cold-pressed-oil']);
-const BILONA_GHEE_SLUGS   = new Set(['bilona-ghee', 'bilona-cow-ghee', 'a2-bilona-ghee', 'ghee']);
-const FLOURS_PULSES_SLUGS = new Set(['flours-and-pulses', 'flours-pulses', 'flour-and-pulses', 'flour-pulses', 'flours', 'pulses', 'atta', 'dal']);
-const SPICES_SLUGS        = new Set(['spices', 'spice', 'masale', 'indian-spices', 'masala']);
-const SWEETENER_SLUGS     = new Set(['natural-sweetener', 'natural-sweeteners', 'sweeteners', 'sweetener', 'jaggery', 'honey', 'mishri']);
+// ─── Category image carousel ──────────────────────────────────────────────────
+
+const CAT_PALETTES = [
+  { bg: 'linear-gradient(145deg,#fef3e2,#fde5b8)', ring: '#f59e0b' },
+  { bg: 'linear-gradient(145deg,#e8f5e2,#c8e6c0)', ring: '#22c55e' },
+  { bg: 'linear-gradient(145deg,#fce8e8,#fbc8c8)', ring: '#ef4444' },
+  { bg: 'linear-gradient(145deg,#e8f0fe,#c5d5fb)', ring: '#6366f1' },
+  { bg: 'linear-gradient(145deg,#fef9e2,#fdf0b0)', ring: '#eab308' },
+  { bg: 'linear-gradient(145deg,#fce8f4,#f9c6e8)', ring: '#ec4899' },
+  { bg: 'linear-gradient(145deg,#e2f6fe,#b8e8fb)', ring: '#0ea5e9' },
+  { bg: 'linear-gradient(145deg,#f0fce8,#d4f5c0)', ring: '#84cc16' },
+];
+
+function CategoryCarousel({
+  categories,
+  selectedCatId,
+  onSelect,
+}: {
+  categories: Category[];
+  selectedCatId: string | null;
+  onSelect: (id: string | null) => void;
+}) {
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  const scroll = (dir: 'left' | 'right') => {
+    rowRef.current?.scrollBy({ left: dir === 'left' ? -340 : 340, behavior: 'smooth' });
+  };
+
+  return (
+    <div className="relative mb-8">
+      {/* Left fade */}
+      <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-12 z-10"
+        style={{ background: 'linear-gradient(to right,#f2ece0 30%,transparent)' }} />
+      {/* Right fade */}
+      <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-12 z-10"
+        style={{ background: 'linear-gradient(to left,#f2ece0 30%,transparent)' }} />
+
+      {/* Left arrow */}
+      <button
+        onClick={() => scroll('left')}
+        aria-label="Scroll left"
+        className="absolute left-1 z-20 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-150 hover:scale-110 active:scale-95 top-[55px]"
+        style={{
+          background: '#fff',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.14)',
+          color: '#1a3a14',
+          border: '1px solid rgba(0,0,0,0.06)',
+        }}
+      >
+        <ChevronLeft className="w-5 h-5" strokeWidth={2.5} />
+      </button>
+
+      {/* Scrollable track */}
+      <div
+        ref={rowRef}
+        className="flex gap-3 sm:gap-4 overflow-x-auto px-8 py-2"
+        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+      >
+        {/* ALL tile */}
+        <button
+          onClick={() => onSelect(null)}
+          className="flex-shrink-0 flex flex-col items-center gap-2.5 group outline-none"
+        >
+          <div
+            className="relative flex items-center justify-center transition-all duration-200 group-hover:-translate-y-2"
+            style={{
+              width: 100, height: 100, borderRadius: 24,
+              background: !selectedCatId
+                ? 'linear-gradient(145deg,#1a5210,#2d7a1e)'
+                : '#fff',
+              boxShadow: !selectedCatId
+                ? '0 8px 28px rgba(26,82,16,0.40), 0 2px 6px rgba(26,82,16,0.20)'
+                : '0 4px 16px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06)',
+              border: !selectedCatId ? 'none' : '1.5px solid rgba(0,0,0,0.07)',
+            }}
+          >
+            <span style={{ fontSize: 40, lineHeight: 1, filter: !selectedCatId ? 'brightness(1.2)' : 'none' }}>🛒</span>
+          </div>
+          <span style={{
+            fontSize: 12.5, fontWeight: !selectedCatId ? 700 : 500,
+            color: !selectedCatId ? '#1a5210' : '#3d3d3d',
+            letterSpacing: '-0.01em', lineHeight: 1,
+          }}>
+            All
+          </span>
+        </button>
+
+        {/* Category tiles */}
+        {categories.map((cat, idx) => {
+          const active = selectedCatId === cat._id;
+          const palette = CAT_PALETTES[idx % CAT_PALETTES.length];
+          return (
+            <button
+              key={cat._id}
+              onClick={() => onSelect(active ? null : cat._id)}
+              className="flex-shrink-0 flex flex-col items-center gap-2.5 group outline-none"
+            >
+              {/* Image card */}
+              <div
+                className="relative overflow-hidden transition-all duration-200 group-hover:-translate-y-2"
+                style={{
+                  width: 100, height: 100, borderRadius: 24,
+                  background: cat.image ? 'transparent' : palette.bg,
+                  boxShadow: active
+                    ? `0 8px 28px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.10), 0 0 0 3px ${palette.ring}`
+                    : '0 4px 16px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06)',
+                  border: active ? 'none' : '1.5px solid rgba(0,0,0,0.07)',
+                }}
+              >
+                {cat.image ? (
+                  <>
+                    {/* Warm bg behind image */}
+                    <div className="absolute inset-0" style={{ background: palette.bg }} />
+                    <Image
+                      src={cat.image}
+                      alt={cat.name}
+                      fill
+                      className="object-cover transition-transform duration-400 group-hover:scale-[1.08]"
+                      sizes="100px"
+                    />
+                    {/* Subtle bottom gradient so name pops if ever overlaid */}
+                    <div className="absolute inset-x-0 bottom-0 h-8 pointer-events-none"
+                      style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.12), transparent)' }} />
+                  </>
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center" style={{ fontSize: 36 }}>
+                    🏪
+                  </div>
+                )}
+
+                {/* Active checkmark badge */}
+                {active && (
+                  <div className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center"
+                    style={{ background: palette.ring, boxShadow: '0 1px 4px rgba(0,0,0,0.20)' }}>
+                    <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                      <path d="M1 4L3.5 6.5L9 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                )}
+              </div>
+
+              {/* Name */}
+              <span style={{
+                fontSize: 12.5, fontWeight: active ? 700 : 500,
+                color: active ? '#111' : '#3d3d3d',
+                textAlign: 'center', lineHeight: 1.25,
+                maxWidth: 104, letterSpacing: '-0.01em',
+              }}>
+                {cat.name}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Right arrow */}
+      <button
+        onClick={() => scroll('right')}
+        aria-label="Scroll right"
+        className="absolute right-1 z-20 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-150 hover:scale-110 active:scale-95 top-[55px]"
+        style={{
+          background: '#fff',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.14)',
+          color: '#1a3a14',
+          border: '1px solid rgba(0,0,0,0.06)',
+        }}
+      >
+        <ChevronRight className="w-5 h-5" strokeWidth={2.5} />
+      </button>
+
+      <style>{`[ref] ::-webkit-scrollbar{display:none}`}</style>
+    </div>
+  );
+}
 
 // ─── 3D Tilt Card ─────────────────────────────────────────────────────────────
 
@@ -169,145 +338,13 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
           <div style={{ width: 48, height: 2.5, background: 'linear-gradient(90deg,#1a5210,#a07010)', margin: '8px auto 0', borderRadius: 2 }} />
         </ScrollReveal>
 
-        {/* ── Category chips ──────────────────────────────────── */}
+        {/* ── Category image carousel ──────────────────────────── */}
         {safeCategories.length > 0 && (
-          <div className="flex flex-wrap gap-2 pb-2 mb-2 justify-start sm:justify-center">
-            <button
-              onClick={() => handleCatChange(null)}
-              className="flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200"
-              style={!selectedCatId
-                ? { background: '#1a5210', color: '#fff', boxShadow: '0 2px 12px -2px rgba(26,82,16,0.40)' }
-                : { background: '#fff', color: '#2e4225', border: '1.5px solid rgba(26,82,16,0.14)' }
-              }
-            >
-              All Products
-            </button>
-            {safeCategories.map((cat) => {
-              const active = selectedCatId === cat._id;
-              if (WOOD_PRESSED_SLUGS.has(cat.slug)) {
-                return (
-                  <button
-                    key={cat._id}
-                    onClick={() => handleCatChange(active ? null : cat._id)}
-                    className="flex-shrink-0 flex items-center gap-1.5 sm:gap-2.5 px-3 sm:pr-5 sm:pl-2 py-2 rounded-2xl text-sm font-semibold transition-all duration-200"
-                    style={active
-                      ? { background: '#78340f', color: '#fef3c7', boxShadow: '0 4px 18px -3px rgba(120,52,15,0.55)', border: '1.5px solid rgba(251,191,36,0.45)' }
-                      : { background: '#fffbf5', color: '#78340f', border: '1.5px solid rgba(120,52,15,0.22)', boxShadow: '0 2px 8px -2px rgba(120,52,15,0.10)' }
-                    }
-                  >
-                    <span className="hidden sm:flex items-center -space-x-2 flex-shrink-0">
-                      <span className="relative w-9 h-9 rounded-xl overflow-hidden ring-2 ring-white flex-shrink-0" style={{ background: '#451a03' }}>
-                        <Image src="/images/wood-press-machine.png" alt="Ghani machine" fill className="object-cover object-center" sizes="36px" />
-                      </span>
-                      <span className="relative w-9 h-9 rounded-xl overflow-hidden ring-2 ring-white flex-shrink-0" style={{ background: '#451a03' }}>
-                        <Image src="/images/wood-pressed-oil-bottle.png" alt="Wood pressed oil" fill className="object-cover object-center" sizes="36px" />
-                      </span>
-                    </span>
-                    <span className="sm:hidden text-base">🫙</span>
-                    <span className="flex flex-col items-start leading-tight">
-                      <span className="text-sm font-bold">{cat.name.trim()}</span>
-                      <span className="hidden sm:block text-[10px] font-medium opacity-60 tracking-wide">Pure · Natural</span>
-                    </span>
-                  </button>
-                );
-              }
-              if (BILONA_GHEE_SLUGS.has(cat.slug)) {
-                return (
-                  <button
-                    key={cat._id}
-                    onClick={() => handleCatChange(active ? null : cat._id)}
-                    className="flex-shrink-0 flex items-center gap-1.5 sm:gap-2.5 px-3 sm:pr-5 sm:pl-2 py-2 rounded-2xl text-sm font-semibold transition-all duration-200"
-                    style={active
-                      ? { background: '#7c2d12', color: '#fef3c7', boxShadow: '0 4px 18px -3px rgba(124,45,18,0.55)', border: '1.5px solid rgba(251,191,36,0.45)' }
-                      : { background: '#fffaf0', color: '#7c2d12', border: '1.5px solid rgba(124,45,18,0.22)', boxShadow: '0 2px 8px -2px rgba(124,45,18,0.10)' }
-                    }
-                  >
-                    <span className="hidden sm:block relative w-9 h-9 rounded-xl overflow-hidden ring-2 ring-white flex-shrink-0" style={{ background: '#7c2d12' }}>
-                      <Image src="/images/bilona-method.png" alt="Bilona method" fill className="object-cover object-left" sizes="36px" />
-                    </span>
-                    <span className="sm:hidden text-base">🧈</span>
-                    <span className="flex flex-col items-start leading-tight">
-                      <span className="text-sm font-bold">{cat.name.trim()}</span>
-                      <span className="hidden sm:block text-[10px] font-medium opacity-60 tracking-wide">Hand-Churned · A2</span>
-                    </span>
-                  </button>
-                );
-              }
-              if (FLOURS_PULSES_SLUGS.has(cat.slug)) {
-                return (
-                  <button
-                    key={cat._id}
-                    onClick={() => handleCatChange(active ? null : cat._id)}
-                    className="flex-shrink-0 flex items-center gap-1.5 sm:gap-2.5 px-3 sm:pr-5 sm:pl-2 py-2 rounded-2xl text-sm font-semibold transition-all duration-200"
-                    style={active
-                      ? { background: '#78400a', color: '#fef3c7', boxShadow: '0 4px 18px -3px rgba(120,64,10,0.55)', border: '1.5px solid rgba(251,191,36,0.45)' }
-                      : { background: '#fffbf0', color: '#78400a', border: '1.5px solid rgba(120,64,10,0.20)', boxShadow: '0 2px 8px -2px rgba(120,64,10,0.10)' }
-                    }
-                  >
-                    <span className="hidden sm:flex items-center justify-center w-9 h-9 rounded-xl flex-shrink-0 ring-2 ring-white" style={{ background: active ? 'rgba(255,255,255,0.15)' : '#fef3c7', fontSize: 20 }}>🌾</span>
-                    <span className="sm:hidden text-base">🌾</span>
-                    <span className="flex flex-col items-start leading-tight">
-                      <span className="text-sm font-bold">{cat.name.trim()}</span>
-                      <span className="hidden sm:block text-[10px] font-medium opacity-60 tracking-wide">Stone-ground · Pure</span>
-                    </span>
-                  </button>
-                );
-              }
-              if (SPICES_SLUGS.has(cat.slug)) {
-                return (
-                  <button
-                    key={cat._id}
-                    onClick={() => handleCatChange(active ? null : cat._id)}
-                    className="flex-shrink-0 flex items-center gap-1.5 sm:gap-2.5 px-3 sm:pr-5 sm:pl-2 py-2 rounded-2xl text-sm font-semibold transition-all duration-200"
-                    style={active
-                      ? { background: '#7f1d1d', color: '#fef2f2', boxShadow: '0 4px 18px -3px rgba(127,29,29,0.55)', border: '1.5px solid rgba(254,202,202,0.45)' }
-                      : { background: '#fff5f5', color: '#7f1d1d', border: '1.5px solid rgba(127,29,29,0.18)', boxShadow: '0 2px 8px -2px rgba(127,29,29,0.10)' }
-                    }
-                  >
-                    <span className="hidden sm:flex items-center justify-center w-9 h-9 rounded-xl flex-shrink-0 ring-2 ring-white" style={{ background: active ? 'rgba(255,255,255,0.15)' : '#fee2e2', fontSize: 20 }}>🌶️</span>
-                    <span className="sm:hidden text-base">🌶️</span>
-                    <span className="flex flex-col items-start leading-tight">
-                      <span className="text-sm font-bold">{cat.name.trim()}</span>
-                      <span className="hidden sm:block text-[10px] font-medium opacity-60 tracking-wide">Farm Fresh · Aromatic</span>
-                    </span>
-                  </button>
-                );
-              }
-              if (SWEETENER_SLUGS.has(cat.slug)) {
-                return (
-                  <button
-                    key={cat._id}
-                    onClick={() => handleCatChange(active ? null : cat._id)}
-                    className="flex-shrink-0 flex items-center gap-1.5 sm:gap-2.5 px-3 sm:pr-5 sm:pl-2 py-2 rounded-2xl text-sm font-semibold transition-all duration-200"
-                    style={active
-                      ? { background: '#92400e', color: '#fffbeb', boxShadow: '0 4px 18px -3px rgba(146,64,14,0.55)', border: '1.5px solid rgba(253,230,138,0.45)' }
-                      : { background: '#fffbeb', color: '#92400e', border: '1.5px solid rgba(146,64,14,0.18)', boxShadow: '0 2px 8px -2px rgba(146,64,14,0.10)' }
-                    }
-                  >
-                    <span className="hidden sm:flex items-center justify-center w-9 h-9 rounded-xl flex-shrink-0 ring-2 ring-white" style={{ background: active ? 'rgba(255,255,255,0.15)' : '#fef3c7', fontSize: 20 }}>🍯</span>
-                    <span className="sm:hidden text-base">🍯</span>
-                    <span className="flex flex-col items-start leading-tight">
-                      <span className="text-sm font-bold">{cat.name.trim()}</span>
-                      <span className="hidden sm:block text-[10px] font-medium opacity-60 tracking-wide">Raw · Unrefined</span>
-                    </span>
-                  </button>
-                );
-              }
-              return (
-                <button
-                  key={cat._id}
-                  onClick={() => handleCatChange(active ? null : cat._id)}
-                  className="flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200"
-                  style={active
-                    ? { background: '#1a5210', color: '#fff', boxShadow: '0 2px 12px -2px rgba(26,82,16,0.40)' }
-                    : { background: '#fff', color: '#2e4225', border: '1.5px solid rgba(26,82,16,0.14)' }
-                  }
-                >
-                  {cat.name}
-                </button>
-              );
-            })}
-          </div>
+          <CategoryCarousel
+            categories={safeCategories}
+            selectedCatId={selectedCatId}
+            onSelect={handleCatChange}
+          />
         )}
 
         {/* ── Sort pills ──────────────────────────────────────── */}
