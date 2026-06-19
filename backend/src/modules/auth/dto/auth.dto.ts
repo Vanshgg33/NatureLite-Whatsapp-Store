@@ -1,4 +1,8 @@
 import { IsString, IsNotEmpty, IsEmail, MinLength, IsOptional, IsEnum, Matches } from 'class-validator';
+import { Transform } from 'class-transformer';
+
+const INDIAN_MOBILE_REGEX = /^[6-9]\d{9}$/;
+const INDIAN_MOBILE_MESSAGE = 'Phone must be a valid 10-digit Indian mobile number';
 
 const PASSWORD_REGEX = /./; // no-op placeholder (not used for customers/admins anymore)
 const PASSWORD_MESSAGE = 'Password does not meet requirements';
@@ -42,8 +46,10 @@ export class AdminRegisterDto {
 }
 
 export class CustomerLoginDto {
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @IsNotEmpty()
+  @Matches(INDIAN_MOBILE_REGEX, { message: INDIAN_MOBILE_MESSAGE })
   phone: string;
 
   @IsString()
@@ -81,8 +87,10 @@ export class CustomerEmailLoginDto {
 }
 
 export class SendOtpDto {
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @IsNotEmpty()
+  @Matches(INDIAN_MOBILE_REGEX, { message: INDIAN_MOBILE_MESSAGE })
   phone: string;
 }
 

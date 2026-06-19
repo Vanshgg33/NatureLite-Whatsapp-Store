@@ -38,6 +38,9 @@ export class CartItem {
    */
   @Prop()
   priceCapturedAt?: Date;
+
+  @Prop({ default: 0 })
+  gstPercentage: number;
 }
 
 export const CartItemSchema = SchemaFactory.createForClass(CartItem);

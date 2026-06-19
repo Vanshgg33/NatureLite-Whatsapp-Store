@@ -28,6 +28,9 @@ export class CouponsService {
   ) {}
 
   async create(dto: CreateCouponDto): Promise<Coupon> {
+    if (dto.discountType === 'percentage' && dto.discountValue > 100) {
+      throw new BadRequestException('Percentage discount cannot exceed 100%');
+    }
     const existingCoupon = await this.couponRepository.findOneByCode(dto.code.toUpperCase());
     if (existingCoupon) {
       throw new BadRequestException('Coupon with this code already exists');
@@ -177,6 +180,9 @@ export class CouponsService {
   }
 
   async update(id: string, dto: UpdateCouponDto): Promise<Coupon> {
+    if (dto.discountType === 'percentage' && dto.discountValue !== undefined && dto.discountValue > 100) {
+      throw new BadRequestException('Percentage discount cannot exceed 100%');
+    }
     const idObj = parseObjectId(id, 'id');
     const updateData: Record<string, unknown> = { ...dto };
     if (dto.allowedUsers) {

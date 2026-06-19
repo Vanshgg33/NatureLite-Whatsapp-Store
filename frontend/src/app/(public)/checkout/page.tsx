@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
@@ -75,8 +75,10 @@ export default function CheckoutPage() {
   const [mounted, setMounted] = useState(false);
   const [useWallet, setUseWallet] = useState(false);
   const [walletAmount, setWalletAmount] = useState(0);
+  const idempotencyKeyRef = useRef<string>('');
   useEffect(() => {
     setMounted(true);
+    idempotencyKeyRef.current = crypto.randomUUID();
   }, []);
 
   // Ensure cart is synced from server for logged-in users when checkout loads
@@ -205,6 +207,7 @@ export default function CheckoutPage() {
           paymentMethod,
           couponCode,
           walletAmount: appliedWalletAmount > 0 ? appliedWalletAmount : undefined,
+          idempotencyKey: idempotencyKeyRef.current || undefined,
         };
 
         // Optionally save shipping address back to account
@@ -234,6 +237,7 @@ export default function CheckoutPage() {
           phone: data.phone,
           email: data.email,
           name: data.name,
+          idempotencyKey: idempotencyKeyRef.current || undefined,
         };
 
         order = await api.createGuestOrder(guestOrderData);

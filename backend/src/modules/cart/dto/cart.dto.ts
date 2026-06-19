@@ -55,6 +55,7 @@ export interface CartResponse {
     quantity: number;
     price: number;
     total: number;
+    gstPercentage: number;
   }>;
   couponCode?: string;
   subtotal: number;

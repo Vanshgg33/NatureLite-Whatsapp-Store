@@ -9,8 +9,9 @@ import {
   Min,
   MaxLength,
   IsIn,
+  Matches,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ORDER_STATUS_VALUES, type OrderStatus } from '../../../common/constants/order-status';
 import type { PaymentMethod, PaymentStatus } from '../schemas/order.schema';
 import type { DeliveryWorkflowStep } from '../../../common/types/order-types';
@@ -18,34 +19,44 @@ import type { DeliveryWorkflowStep } from '../../../common/types/order-types';
 const ORDER_STATUS_LIST = [...ORDER_STATUS_VALUES] as OrderStatus[];
 
 export class ShippingAddressDto {
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @IsNotEmpty()
   name: string;
 
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @IsNotEmpty()
+  @Matches(/^[6-9]\d{9}$/, { message: 'Phone must be a valid 10-digit Indian mobile number' })
   phone: string;
 
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @IsOptional()
   alternatePhone?: string;
 
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @IsNotEmpty()
   street: string;
 
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @IsNotEmpty()
   city: string;
 
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @IsNotEmpty()
   state: string;
 
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
-  @IsOptional()
-  pincode?: string;
+  @IsNotEmpty()
+  @Matches(/^\d{6}$/, { message: 'Pincode must be exactly 6 digits' })
+  pincode: string;
 
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @IsOptional()
   landmark?: string;

@@ -193,6 +193,7 @@ export class CartService {
         image: product.images[0],
         addedAt: now,
         priceCapturedAt: now,
+        gstPercentage: (product.category as any)?.gstPercentage ?? 0,
       };
 
       cart.items.push(cartItem);
@@ -432,6 +433,7 @@ export class CartService {
         quantity: item.quantity,
         price: item.price,
         total: item.price * item.quantity,
+        gstPercentage: item.gstPercentage ?? 0,
       })),
       couponCode: cart.couponCode,
       subtotal: cart.subtotal,

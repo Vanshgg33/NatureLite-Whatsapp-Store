@@ -750,6 +750,8 @@ export interface CartItem {
   variantSku?: string;
   quantity: number;
   price: number;
+  total?: number;
+  gstPercentage?: number;
   name: string;
   image?: string;
   addedAt: string;

@@ -189,6 +189,11 @@ export class OrdersService implements OnModuleInit {
         for (const item of cart.items) {
           const productId = item.product.toString();
           const product = productMap.get(productId)!;
+          if (!product.isActive) {
+            throw new BadRequestException(
+              `"${product.name}" is no longer available. Please remove it from your cart and try again.`,
+            );
+          }
           tracksStockByProductId.set(productId, product.trackStock !== false);
           orderProductIds.push(productId);
           collectCategoryId(product.category);
@@ -237,6 +242,11 @@ export class OrdersService implements OnModuleInit {
         for (const item of dto.items) {
           const productIdObj = parseObjectId(item.productId, 'items[].productId');
           const product = productMap.get(item.productId)!;
+          if (!product.isActive) {
+            throw new BadRequestException(
+              `"${product.name}" is no longer available. Please refresh and try again.`,
+            );
+          }
           tracksStockByProductId.set(item.productId, product.trackStock !== false);
           orderProductIds.push(item.productId);
           collectCategoryId(product.category);
@@ -525,15 +535,13 @@ export class OrdersService implements OnModuleInit {
         ),
       );
 
-      if (dto.cartId) {
-        try {
-          await this.cartService.clearCart(userId);
-        } catch (clearErr) {
-          this.logger.error(
-            `Order ${savedOrder.orderNumber} committed but cart clear failed for user ${userId}`,
-            clearErr,
-          );
-        }
+      try {
+        await this.cartService.clearCart(userId);
+      } catch (clearErr) {
+        this.logger.error(
+          `Order ${savedOrder.orderNumber} committed but cart clear failed for user ${userId}`,
+          clearErr,
+        );
       }
 
       try {

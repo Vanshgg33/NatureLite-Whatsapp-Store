@@ -239,7 +239,7 @@ export const useCartStore = create<CartState>()(
                 price: item.price,
                 quantity: item.quantity,
                 variantSku: item.variantSku,
-                gstPercentage: 5,
+                gstPercentage: (item as any).gstPercentage ?? 0,
               };
             });
 

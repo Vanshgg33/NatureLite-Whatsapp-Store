@@ -8,12 +8,20 @@ import {
   Param,
   UseGuards,
 } from '@nestjs/common';
+import { IsString, IsNotEmpty, MinLength } from 'class-validator';
 import { AdminService } from './admin.service';
 import { AdminUser } from './schemas/admin-user.schema';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
+
+class ResetPasswordDto {
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(6)
+  password: string;
+}
 
 @Controller('admin/users')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -71,9 +79,9 @@ export class AdminController {
   @Put(':id/reset-password')
   async resetPassword(
     @Param('id') id: string,
-    @Body('password') password: string,
+    @Body() dto: ResetPasswordDto,
   ): Promise<{ success: boolean }> {
-    await this.adminService.resetPassword(id, password);
+    await this.adminService.resetPassword(id, dto.password);
     return { success: true };
   }
 
