@@ -113,7 +113,7 @@ export class AuthService {
   }
 
   async adminLogin(dto: AdminLoginDto): Promise<AuthResponse> {
-    const admin = await this.adminUserRepository.findOneByEmail(dto.email.toLowerCase());
+    const admin = await this.adminUserRepository.findOneByEmailForAuth(dto.email.toLowerCase());
 
     if (!admin) {
       throw new UnauthorizedException('Invalid credentials');
@@ -353,7 +353,7 @@ export class AuthService {
   }
 
   async customerEmailLogin(dto: CustomerEmailLoginDto): Promise<AuthResponse> {
-    const user = await this.userRepository.findOneByEmail(dto.email.toLowerCase());
+    const user = await this.userRepository.findOneByEmailForAuth(dto.email.toLowerCase());
 
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
@@ -431,7 +431,7 @@ export class AuthService {
   }
 
   async changePassword(adminId: string, dto: ChangePasswordDto): Promise<void> {
-    const admin = await this.adminUserRepository.findByIdString(adminId);
+    const admin = await this.adminUserRepository.findByIdWithPassword(adminId);
 
     if (!admin) {
       throw new UnauthorizedException('User not found');
@@ -483,7 +483,10 @@ export class AuthService {
 
   async getProfile(userId: string, role: string): Promise<any> {
     if (role === 'customer') {
-      const user = await this.userRepository.findByIdString(userId);
+      const user = await this.userRepository.getModel()
+        .findById(userId)
+        .select('-password -failedLoginAttempts -lockoutUntil -blockedReason -isBlocked -notes -tags -__v')
+        .exec();
       if (!user) {
         throw new UnauthorizedException('User not found');
       }

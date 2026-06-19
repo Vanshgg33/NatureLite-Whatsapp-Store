@@ -28,6 +28,11 @@ export class UserRepository extends BaseRepository<UserDocument> {
     return this.model.findOne({ email: email.toLowerCase() }).exec();
   }
 
+  // Use only for email+password login — explicitly loads the password hash for bcrypt.compare
+  async findOneByEmailForAuth(email: string): Promise<UserDocument | null> {
+    return this.model.findOne({ email: email.toLowerCase() }).select('+password').exec();
+  }
+
   async findAllPaginated(query: UserQueryDto): Promise<PaginatedResult<User>> {
     const { page = 1, limit = 20, search, isActive, isBlocked, sortBy = 'createdAt', sortOrder = 'desc' } = query;
     const filter: Record<string, unknown> = {};

@@ -15,7 +15,7 @@ export class AdminUser {
   @Prop({ required: true, unique: true, index: true })
   email: string;
 
-  @Prop({ required: true })
+  @Prop({ required: true, select: false })
   password: string;
 
   @Prop({ unique: true, sparse: true })

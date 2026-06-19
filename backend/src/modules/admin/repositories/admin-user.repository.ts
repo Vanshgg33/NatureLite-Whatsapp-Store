@@ -28,6 +28,16 @@ export class AdminUserRepository extends BaseRepository<AdminUserDocument> {
     return this.model.findOne({ email: email.toLowerCase() }).exec();
   }
 
+  // Use only for login — explicitly loads the password hash for bcrypt.compare
+  async findOneByEmailForAuth(email: string): Promise<AdminUserDocument | null> {
+    return this.model.findOne({ email: email.toLowerCase() }).select('+password').exec();
+  }
+
+  // Use only for changePassword — explicitly loads the password hash for bcrypt.compare
+  async findByIdWithPassword(id: string): Promise<AdminUserDocument | null> {
+    return this.model.findById(id).select('+password').exec();
+  }
+
   async findOneByPhone(phone: string): Promise<AdminUserDocument | null> {
     if (!phone || !phone.trim()) return null;
     return this.model.findOne({ phone: phone.trim() }).exec();

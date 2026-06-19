@@ -59,10 +59,7 @@ export class AdminService {
     }
 
     const admin = await this.adminUserRepository.create(payload);
-
-    const result = admin.toObject() as any;
-    delete result.password;
-    return result;
+    return this.adminUserRepository.findByIdExcludePassword(admin._id);
   }
 
   async update(
