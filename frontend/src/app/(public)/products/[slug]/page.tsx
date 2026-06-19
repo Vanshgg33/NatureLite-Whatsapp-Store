@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, Star, Truck, ShieldCheck, Leaf, Heart, Check,
-  ChevronLeft, ChevronRight, Minus, Plus,
+  ChevronLeft, ChevronRight, Minus, Plus, FileText,
 } from 'lucide-react';
 import { QuantitySelector } from '@/components/ecommerce/quantity-selector';
 import { useAddToCartAnimation } from '@/components/ecommerce/add-to-cart-animation';
@@ -604,6 +604,26 @@ export default function ProductDetailPage() {
                 batchNumber={product.batchInfo?.batchNumber}
               />
             </div>
+
+            {/* ── Lab Report ── */}
+            {product.labReportUrl && (
+              <div className="mb-5">
+                <a
+                  href={product.labReportUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 hover:opacity-80"
+                  style={{
+                    background: 'rgba(26,82,16,0.08)',
+                    border: '1px solid rgba(26,82,16,0.18)',
+                    color: '#1a5210',
+                  }}
+                >
+                  <FileText className="w-4 h-4" />
+                  View Lab Report
+                </a>
+              </div>
+            )}
 
             {/* ── Variant selector ── */}
             {product.variants && product.variants.length > 0 && (

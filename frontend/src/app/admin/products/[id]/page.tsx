@@ -5,7 +5,7 @@ import { useDebouncedValue } from '@/lib/utils';
 import { useRouter, useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { ArrowLeft, X, Upload, Trash2, AlertCircle, Plus, ChevronUp, ChevronDown, Video, Globe, Leaf, AlertTriangle, Link2, ShoppingBag } from 'lucide-react';
+import { ArrowLeft, X, Upload, Trash2, AlertCircle, Plus, ChevronUp, ChevronDown, Video, Globe, Leaf, AlertTriangle, Link2, ShoppingBag, FileText } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Header } from '@/components/layout/header';
@@ -80,6 +80,8 @@ export default function EditProductPage() {
   const [productVideos, setProductVideos] = useState<string[]>([]);
   const [newVideoUrl, setNewVideoUrl] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [labReportUrl, setLabReportUrl] = useState('');
+  const [labReportUploading, setLabReportUploading] = useState(false);
   const [skuError, setSkuError] = useState('');
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -172,6 +174,7 @@ export default function EditProductPage() {
         typeof p === 'string' ? { id: p, name: p } : { id: p._id, name: p.name }
       ));
     }
+    setLabReportUrl(product.labReportUrl || '');
   }, [product]);
 
   const updateMutation = useMutation({
@@ -310,7 +313,23 @@ export default function EditProductPage() {
         nextBatchDays: formData.nextBatchDays ? parseInt(formData.nextBatchDays) : undefined,
         purityClaims: formData.purityClaims ? formData.purityClaims.split(',').map((s) => s.trim()).filter(Boolean) : [],
       } : undefined,
+      labReportUrl: labReportUrl || undefined,
     } as Parameters<typeof api.updateProduct>[1]);
+  };
+
+  const handleLabReportUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLabReportUploading(true);
+    try {
+      const result = await api.uploadDocument(file, 'lab-reports');
+      setLabReportUrl(result.secureUrl);
+    } catch (error) {
+      setSubmitError(extractErrorMessage(error, 'Lab report upload failed.'));
+    } finally {
+      setLabReportUploading(false);
+      e.target.value = '';
+    }
   };
 
   const handleDelete = () => { if (confirm('Delete this product?')) deleteMutation.mutate(); };
@@ -753,7 +772,30 @@ export default function EditProductPage() {
               </CardContent>
             </Card>
 
-            <Button type="submit" className="w-full" disabled={updateMutation.isPending || uploading}>
+            <Card>
+              <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-4 w-4" /> Lab Report</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                {labReportUrl ? (
+                  <div className="flex items-center gap-2 p-3 rounded-lg border bg-muted/40">
+                    <FileText className="h-4 w-4 text-primary shrink-0" />
+                    <a href={labReportUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary underline truncate flex-1">View current report</a>
+                    <button type="button" onClick={() => setLabReportUrl('')} className="shrink-0"><X className="h-4 w-4 text-muted-foreground hover:text-destructive" /></button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No lab report uploaded.</p>
+                )}
+                <label className="flex items-center gap-2 cursor-pointer w-fit">
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-md border text-sm hover:bg-muted transition-colors">
+                    <Upload className="h-4 w-4" />
+                    {labReportUploading ? 'Uploading…' : labReportUrl ? 'Replace PDF' : 'Upload PDF'}
+                  </div>
+                  <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={handleLabReportUpload} disabled={labReportUploading} />
+                </label>
+                <p className="text-xs text-muted-foreground">PDF accepted. Will be shown to customers on the product page.</p>
+              </CardContent>
+            </Card>
+
+            <Button type="submit" className="w-full" disabled={updateMutation.isPending || uploading || labReportUploading}>
               {updateMutation.isPending ? 'Saving…' : uploading ? 'Uploading…' : 'Save Changes'}
             </Button>
           </div>

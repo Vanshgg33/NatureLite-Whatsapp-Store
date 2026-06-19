@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ShoppingBag, Check, ChevronLeft, ChevronRight, Star, ExternalLink } from 'lucide-react';
+import { X, ShoppingBag, Check, ChevronLeft, ChevronRight, Star, ExternalLink, FileText } from 'lucide-react';
 import { useCartStore, CartItem } from '@/lib/cart-store';
 import { getProductTotalStock } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
@@ -372,6 +372,20 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
                     <><ShoppingBag className="w-5 h-5" /> Add to Cart — ₹{(currentPrice * quantity).toLocaleString()}</>
                   )}
                 </motion.button>
+
+                {/* Lab report */}
+                {product.labReportUrl && (
+                  <a
+                    href={product.labReportUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-1.5 text-[12px] font-semibold transition-colors hover:opacity-70"
+                    style={{ color: '#1a5210' }}
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    View Lab Report
+                  </a>
+                )}
 
                 {/* View full details */}
                 <Link

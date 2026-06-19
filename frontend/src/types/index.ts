@@ -151,6 +151,7 @@ export interface Product {
     nextBatchDays?: number;
     purityClaims?: string[];
   };
+  labReportUrl?: string;
 }
 
 // ==================== ORDER TYPES ====================

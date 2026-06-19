@@ -222,6 +222,45 @@ export class MediaService {
     return Promise.all(uploads);
   }
 
+  async uploadDocument(file: Express.Multer.File, folder: string = 'lab-reports'): Promise<UploadResult> {
+    const timestamp = Math.round(Date.now() / 1000);
+    const paramsToSign = `folder=${folder}&timestamp=${timestamp}`;
+    const signature = crypto
+      .createHash('sha1')
+      .update(paramsToSign + this.apiSecret)
+      .digest('hex');
+
+    const form = new FormData();
+    form.append('file', new Blob([new Uint8Array(file.buffer)], { type: file.mimetype }), file.originalname);
+    form.append('api_key', this.apiKey);
+    form.append('timestamp', String(timestamp));
+    form.append('signature', signature);
+    form.append('folder', folder);
+
+    const res = await fetch(
+      `https://api.cloudinary.com/v1_1/${this.cloudName}/raw/upload`,
+      { method: 'POST', body: form },
+    );
+    const data = await res.json() as {
+      public_id: string; url: string; secure_url: string;
+      format: string; bytes: number;
+      error?: { message: string };
+    };
+    if (!res.ok || data.error) {
+      this.logger.error('Document upload failed', data.error?.message);
+      throw new BadRequestException(data.error?.message || 'Failed to upload document to Cloudinary');
+    }
+    return {
+      publicId: data.public_id,
+      url: data.url,
+      secureUrl: data.secure_url,
+      format: data.format,
+      width: 0,
+      height: 0,
+      bytes: data.bytes,
+    };
+  }
+
   async uploadPdfBuffer(buffer: Buffer, folder: string = 'invoices', filename: string = 'invoice'): Promise<UploadResult> {
     const publicId = filename.replace(/\.pdf$/i, '');
     return new Promise((resolve, reject) => {

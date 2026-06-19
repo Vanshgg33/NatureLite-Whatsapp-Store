@@ -161,6 +161,9 @@ export class Product {
     purityClaims?: string[];
   };
 
+  @Prop()
+  labReportUrl?: string;
+
   @Prop({ default: 0 })
   totalSold: number;
 

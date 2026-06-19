@@ -48,6 +48,16 @@ export class MediaController {
     return this.mediaService.uploadMultiple(files, folder || 'products');
   }
 
+  @Post('upload/document')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadDocument(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('folder') folder?: string,
+  ): Promise<UploadResult> {
+    if (!file) throw new BadRequestException('No file provided');
+    return this.mediaService.uploadDocument(file, folder || 'lab-reports');
+  }
+
   @Post('upload/video')
   @UseInterceptors(FileInterceptor('file'))
   async uploadVideo(

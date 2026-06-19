@@ -1059,6 +1059,18 @@ class ApiClient {
     return response.data.data;
   }
 
+  async uploadDocument(file: File, folder?: string): Promise<UploadResult> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (folder) formData.append('folder', folder);
+    const response = await this.client.post<ApiResponse<UploadResult>>(
+      '/media/upload/document',
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+    return response.data.data;
+  }
+
   async uploadVideo(file: File, folder?: string): Promise<UploadResult> {
     const formData = new FormData();
     formData.append('file', file);

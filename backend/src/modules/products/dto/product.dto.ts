@@ -290,6 +290,10 @@ export class CreateProductDto {
   @Type(() => BatchInfoDto)
   @IsOptional()
   batchInfo?: BatchInfoDto;
+
+  @IsString()
+  @IsOptional()
+  labReportUrl?: string;
 }
 
 export class UpdateProductDto {
@@ -440,6 +444,10 @@ export class UpdateProductDto {
   @Type(() => BatchInfoDto)
   @IsOptional()
   batchInfo?: BatchInfoDto;
+
+  @IsString()
+  @IsOptional()
+  labReportUrl?: string;
 }
 
 export class ProductQueryDto {

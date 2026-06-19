@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useDebouncedValue } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { ArrowLeft, X, Upload, AlertCircle, Plus, ChevronUp, ChevronDown, Video, Globe, Leaf, AlertTriangle, Link2, ShoppingBag } from 'lucide-react';
+import { ArrowLeft, X, Upload, AlertCircle, Plus, ChevronUp, ChevronDown, Video, Globe, Leaf, AlertTriangle, Link2, ShoppingBag, FileText } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Header } from '@/components/layout/header';
@@ -70,6 +70,8 @@ export default function NewProductPage() {
   const [upsellProducts, setUpsellProducts] = useState<{ id: string; name: string }[]>([]);
   const [skuError, setSkuError] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [labReportUrl, setLabReportUrl] = useState('');
+  const [labReportUploading, setLabReportUploading] = useState(false);
   const [errors, setErrors] = useState<ValidationError[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -160,6 +162,17 @@ export default function NewProductPage() {
 
   const set = (field: string, value: string | boolean) => setFormData((prev) => ({ ...prev, [field]: value }));
 
+  const handleLabReportUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLabReportUploading(true);
+    try {
+      const result = await api.uploadDocument(file, 'lab-reports');
+      setLabReportUrl(result.secureUrl);
+    } catch { setSubmitError('Lab report upload failed.'); }
+    finally { setLabReportUploading(false); e.target.value = ''; }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrors([]);
@@ -210,6 +223,7 @@ export default function NewProductPage() {
         attributes: {},
         images: v.images,
       })),
+      labReportUrl: labReportUrl || undefined,
     } as Parameters<typeof api.createProduct>[0]);
   };
 
@@ -636,7 +650,30 @@ export default function NewProductPage() {
               </CardContent>
             </Card>
 
-            <Button type="submit" className="w-full" disabled={createMutation.isPending}>
+            <Card>
+              <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-4 w-4" /> Lab Report</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                {labReportUrl ? (
+                  <div className="flex items-center gap-2 p-3 rounded-lg border bg-muted/40">
+                    <FileText className="h-4 w-4 text-primary shrink-0" />
+                    <a href={labReportUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary underline truncate flex-1">View uploaded report</a>
+                    <button type="button" onClick={() => setLabReportUrl('')}><X className="h-4 w-4 text-muted-foreground hover:text-destructive" /></button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No lab report uploaded.</p>
+                )}
+                <label className="flex items-center gap-2 cursor-pointer w-fit">
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-md border text-sm hover:bg-muted transition-colors">
+                    <Upload className="h-4 w-4" />
+                    {labReportUploading ? 'Uploading…' : labReportUrl ? 'Replace PDF' : 'Upload PDF'}
+                  </div>
+                  <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={handleLabReportUpload} disabled={labReportUploading} />
+                </label>
+                <p className="text-xs text-muted-foreground">PDF accepted. Customers can view this on the product page.</p>
+              </CardContent>
+            </Card>
+
+            <Button type="submit" className="w-full" disabled={createMutation.isPending || labReportUploading}>
               {createMutation.isPending ? 'Creating…' : 'Create Product'}
             </Button>
           </div>
