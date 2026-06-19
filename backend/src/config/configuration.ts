@@ -114,7 +114,7 @@ export default (): Configuration => ({
       'mongodb://localhost:27017/whatsapp-store',
   },
   jwt: {
-    secret: process.env.JWT_SECRET || 'default-secret-change-me',
+    secret: process.env.JWT_SECRET || '',
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   },
   whatsapp: {

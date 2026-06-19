@@ -17,11 +17,18 @@ let cachedServer: any;
 
 function validateProductionConfig(configService: ConfigService): void {
   const nodeEnv = configService.get<string>('app.nodeEnv');
+
+  // JWT_SECRET is critical in every environment — a missing or empty secret
+  // allows unauthenticated access to all protected endpoints.
+  const jwtSecret = configService.get<string>('jwt.secret') || '';
+  if (!jwtSecret) {
+    throw new Error('JWT_SECRET environment variable must be set.');
+  }
+
   if (nodeEnv !== 'production') {
     return;
   }
 
-  const jwtSecret = configService.get<string>('jwt.secret') || '';
   const frontendUrl = configService.get<string>('frontendUrl') || '';
   const whatsapp = configService.get<WhatsAppConfig>('whatsapp');
 
@@ -29,10 +36,6 @@ function validateProductionConfig(configService: ConfigService): void {
 
   if (!frontendUrl.trim()) {
     errors.push('FRONTEND_URL is required in production.');
-  }
-
-  if (!jwtSecret || jwtSecret === 'default-secret-change-me') {
-    errors.push('JWT_SECRET must be set to a strong non-default value in production.');
   }
 
   const provider = whatsapp?.provider;

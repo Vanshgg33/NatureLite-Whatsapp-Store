@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Mail, Lock, ArrowRight, ShieldCheck, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -161,16 +160,7 @@ export default function AdminLoginPage() {
                 )}
               </Button>
 
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-dashed border-brand-border/60 mt-2">
-                <p className="text-xs sm:text-sm text-brand-muted">
-                  Don&apos;t have an owner login?{' '}
-                  <Link
-                    href="/admin-register"
-                    className="text-brand-green hover:text-brand-green-light font-medium transition-colors"
-                  >
-                    Create admin account
-                  </Link>
-                </p>
+              <div className="flex items-center justify-end pt-2 border-t border-dashed border-brand-border/60 mt-2">
                 <button
                   type="button"
                   onClick={() => router.push('/department-login')}

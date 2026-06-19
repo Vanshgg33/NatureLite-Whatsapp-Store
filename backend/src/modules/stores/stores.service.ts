@@ -55,7 +55,7 @@ export class StoresService implements OnModuleInit {
         if (!store.adminEmail) {
           await this.storeRepository.updateOne(
             { _id: store._id },
-            { adminEmail: email, adminPassword: defaultPassword },
+            { adminEmail: email },
           );
         }
         continue;
@@ -74,7 +74,7 @@ export class StoresService implements OnModuleInit {
 
         await this.storeRepository.updateOne(
           { _id: store._id },
-          { adminEmail: email, adminPassword: defaultPassword },
+          { adminEmail: email },
         );
 
         this.logger.log(`Store admin created for ${store.name}: ${email}`);
@@ -159,11 +159,6 @@ export class StoresService implements OnModuleInit {
     await this.adminUserModel.updateOne(
       { _id: admin._id },
       { password: hashedPassword },
-    );
-
-    await this.storeRepository.updateOne(
-      { _id: storeObjId },
-      { adminPassword: newPassword },
     );
 
     return { message: `Password updated for ${admin.email}` };

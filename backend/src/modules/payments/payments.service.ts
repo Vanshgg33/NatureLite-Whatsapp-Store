@@ -396,16 +396,16 @@ export class PaymentsService {
   }): Promise<{ received: true }> {
     const webhookSecret = this.configService.get<string>('razorpay.webhookSecret') ?? '';
     if (!webhookSecret) {
-      this.logger.warn('RAZORPAY_WEBHOOK_SECRET not set — skipping signature verification');
-    } else {
-      const expected = crypto
-        .createHmac('sha256', webhookSecret)
-        .update(input.rawBody, 'utf8')
-        .digest('hex');
+      throw new BadRequestException('Webhook secret not configured');
+    }
 
-      if (expected !== input.signature) {
-        throw new BadRequestException('Invalid webhook signature');
-      }
+    const expected = crypto
+      .createHmac('sha256', webhookSecret)
+      .update(input.rawBody, 'utf8')
+      .digest('hex');
+
+    if (expected !== input.signature) {
+      throw new BadRequestException('Invalid webhook signature');
     }
 
     const evt = input.body as RazorpayWebhookEvent;

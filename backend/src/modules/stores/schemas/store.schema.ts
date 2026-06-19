@@ -28,9 +28,6 @@ export class Store {
   @Prop()
   adminEmail?: string;
 
-  @Prop()
-  adminPassword?: string;
-
   @Prop({ type: Object, default: {} })
   metadata: Record<string, unknown>;
 

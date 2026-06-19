@@ -13,7 +13,7 @@ export class AdminUserRepository extends BaseRepository<AdminUserDocument> {
   }
 
   async findAllExcludePassword(): Promise<AdminUserDocument[]> {
-    return this.model.find().select('-password').exec();
+    return this.model.find().select('-password -plainPassword').exec();
   }
 
   async findByDepartment(departmentType: string): Promise<AdminUserDocument[]> {
@@ -37,6 +37,6 @@ export class AdminUserRepository extends BaseRepository<AdminUserDocument> {
     id: Types.ObjectId,
     update: Record<string, unknown>,
   ): Promise<AdminUserDocument | null> {
-    return this.model.findByIdAndUpdate(id, { $set: update }, { new: true }).select('-password').exec();
+    return this.model.findByIdAndUpdate(id, { $set: update }, { new: true }).select('-password -plainPassword').exec();
   }
 }

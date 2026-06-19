@@ -51,7 +51,6 @@ export class AdminService {
       name: data.name,
       email: data.email.toLowerCase(),
       password: hashedPassword,
-      plainPassword: data.password,
       role: data.role || 'admin',
       departmentType: data.departmentType,
     };
@@ -94,7 +93,7 @@ export class AdminService {
 
     const result = await this.adminUserRepository.updateOne(
       { _id: idObj },
-      { $set: { password: hashedPassword, plainPassword: newPassword, failedLoginAttempts: 0 } },
+      { $set: { password: hashedPassword, failedLoginAttempts: 0 } },
     );
 
     if (result.modifiedCount === 0) {

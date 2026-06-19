@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException, ConflictException, BadRequestExcepti
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import { createHash } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { AdminUserRepository } from '../admin/repositories/admin-user.repository';
 import { UserRepository } from '../users/repositories/user.repository';
@@ -33,6 +34,10 @@ export class AuthService {
     private configService: ConfigService,
   ) {}
 
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
   private async generateTokens(
     payload: JwtPayload,
   ): Promise<{ accessToken: string; refreshToken: string }> {
@@ -40,7 +45,7 @@ export class AuthService {
     const refreshToken = uuidv4();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     const data: Partial<RefreshToken> = {
-      token: refreshToken,
+      token: this.hashToken(refreshToken),
       userId: parseObjectId(payload.sub, 'userId'),
       role: payload.role,
       expiresAt,
@@ -56,7 +61,7 @@ export class AuthService {
   }
 
   async refreshAccessToken(refreshToken: string): Promise<AuthResponse> {
-    const tokenDoc = await this.refreshTokenRepository.findOne({ token: refreshToken });
+    const tokenDoc = await this.refreshTokenRepository.findOne({ token: this.hashToken(refreshToken) });
 
     if (!tokenDoc || tokenDoc.expiresAt < new Date()) {
       if (tokenDoc?._id) {
@@ -470,7 +475,7 @@ export class AuthService {
    * Call this on logout when the client sends its refresh token so sessions are fully terminated.
    */
   async revokeRefreshTokensForUser(refreshToken: string): Promise<void> {
-    const tokenDoc = await this.refreshTokenRepository.findOne({ token: refreshToken });
+    const tokenDoc = await this.refreshTokenRepository.findOne({ token: this.hashToken(refreshToken) });
     if (tokenDoc) {
       await this.refreshTokenRepository.deleteManyByUserId(tokenDoc.userId);
     }
@@ -487,7 +492,7 @@ export class AuthService {
 
     const admin = await this.adminUserRepository.getModel()
       .findById(userId)
-      .select('-password -__v')
+      .select('-password -plainPassword -__v')
       .populate('store', 'name code')
       .exec();
 

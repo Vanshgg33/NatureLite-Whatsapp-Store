@@ -18,9 +18,6 @@ export class AdminUser {
   @Prop({ required: true })
   password: string;
 
-  @Prop()
-  plainPassword?: string;
-
   @Prop({ unique: true, sparse: true })
   phone?: string;
 
