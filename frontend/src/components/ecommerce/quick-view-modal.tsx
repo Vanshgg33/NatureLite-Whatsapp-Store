@@ -376,7 +376,7 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
                 {/* Lab report */}
                 {product.labReportUrl && (
                   <a
-                    href={product.labReportUrl}
+                    href={product.labReportUrl.replace('/raw/upload/', '/raw/upload/fl_inline/')}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center justify-center gap-1.5 text-[12px] font-semibold transition-colors hover:opacity-70"

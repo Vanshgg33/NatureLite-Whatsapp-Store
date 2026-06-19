@@ -609,7 +609,7 @@ export default function ProductDetailPage() {
             {product.labReportUrl && (
               <div className="mb-5">
                 <a
-                  href={product.labReportUrl}
+                  href={product.labReportUrl.replace('/raw/upload/', '/raw/upload/fl_inline/')}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 hover:opacity-80"
