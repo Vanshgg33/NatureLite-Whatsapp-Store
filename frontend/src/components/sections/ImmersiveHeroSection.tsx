@@ -130,14 +130,23 @@ export default function ImmersiveHeroSection() {
 
       {/* Dot indicators — only when multiple banners */}
       {activeBanners.length > 1 && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 z-10">
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1 z-10">
           {activeBanners.map((_, i) => (
             <button
               key={i}
               onClick={() => setIndex(i)}
-              className="w-2 h-2 rounded-full transition-all"
-              style={{ background: i === index ? '#fff' : 'rgba(255,255,255,0.45)' }}
-            />
+              aria-label={`Go to slide ${i + 1}`}
+              className="p-2.5 flex items-center justify-center"
+            >
+              <span
+                className="block rounded-full transition-all duration-200"
+                style={{
+                  width: i === index ? 20 : 8,
+                  height: 8,
+                  background: i === index ? '#fff' : 'rgba(255,255,255,0.45)',
+                }}
+              />
+            </button>
           ))}
         </div>
       )}

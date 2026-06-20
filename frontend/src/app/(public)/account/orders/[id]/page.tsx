@@ -413,7 +413,7 @@ export default function OrderDetailPage() {
                     </div>
                     <span
                       className={cn(
-                        'mt-2 font-body text-xs text-center',
+                        'mt-2 font-body text-xs text-center max-w-[48px] sm:max-w-none leading-tight',
                         isCurrent ? 'text-brand-mustard font-medium' : 'text-brand-muted'
                       )}
                     >

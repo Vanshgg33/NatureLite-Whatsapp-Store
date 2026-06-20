@@ -53,6 +53,15 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
             </Link>
           );
         })}
+        {isAuthenticated && (
+          <button
+            onClick={logout}
+            className="flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-brand-muted hover:text-red-500 transition-colors shrink-0 ml-auto"
+          >
+            <LogOut className="w-3.5 h-3.5 shrink-0" />
+            Sign Out
+          </button>
+        )}
       </div>
 
       {/* ── Two-tone body ────────────────────────────────────────── */}

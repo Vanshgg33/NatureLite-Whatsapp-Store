@@ -391,7 +391,7 @@ export default function ProductsPage() {
                 style={{ background: 'rgba(160,112,16,0.10)', border: '1px solid rgba(160,112,16,0.25)', color: '#a07010' }}
               >
                 &quot;{search}&quot;
-                <button onClick={() => setSearch('')}><X className="w-3 h-3" /></button>
+                <button onClick={() => setSearch('')} className="p-1 -mr-1 rounded-full hover:bg-black/10"><X className="w-3 h-3" /></button>
               </span>
             )}
             {selectedCatName && (
@@ -400,7 +400,7 @@ export default function ProductsPage() {
                 style={{ background: 'rgba(160,112,16,0.10)', border: '1px solid rgba(160,112,16,0.25)', color: '#a07010' }}
               >
                 {selectedCatName}
-                <button onClick={() => { setSelectedCategory(null); setPage(1); }}><X className="w-3 h-3" /></button>
+                <button onClick={() => { setSelectedCategory(null); setPage(1); }} className="p-1 -mr-1 rounded-full hover:bg-black/10"><X className="w-3 h-3" /></button>
               </span>
             )}
           </div>

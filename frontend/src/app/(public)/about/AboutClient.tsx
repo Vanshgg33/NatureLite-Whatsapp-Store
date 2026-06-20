@@ -444,7 +444,7 @@ function ScrollStorySection() {
         </div>
 
         <div style={{ maxWidth: 1160, margin: '0 auto', padding: '0 clamp(20px,5vw,80px)', width: '100%' }}>
-          <div className="grid lg:grid-cols-2 gap-16 items-center">
+          <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-center">
 
             {/* Left: text transitions */}
             <AnimatePresence mode="wait">

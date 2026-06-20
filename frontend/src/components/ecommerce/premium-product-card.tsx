@@ -223,7 +223,7 @@ export function PremiumProductCard({
                   onClick={handleWishlist}
                   className="absolute top-2 right-2 z-10 flex items-center justify-center rounded-full cursor-pointer"
                   style={{
-                    width: 28, height: 28,
+                    width: 36, height: 36,
                     background: isWishlisted ? '#c0392b' : 'rgba(255,255,255,0.92)',
                     color: isWishlisted ? '#fff' : 'rgba(11,28,8,0.55)',
                     boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
@@ -340,7 +340,7 @@ export function PremiumProductCard({
                         style={{
                           fontSize: 11,
                           fontWeight: 700,
-                          padding: '5px 11px',
+                          padding: '8px 11px',
                           borderRadius: 99,
                           cursor: isOOS ? 'not-allowed' : 'pointer',
                           background: isSelected

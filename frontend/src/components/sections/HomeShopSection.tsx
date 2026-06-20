@@ -356,7 +356,7 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
               <button
                 key={key}
                 onClick={() => handlePillChange(key)}
-                className="px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200"
+                className="px-4 py-2.5 rounded-full text-sm font-medium transition-all duration-200"
                 style={isActive
                   ? { background: '#0d2c07', color: '#fff', boxShadow: '0 2px 10px -2px rgba(13,44,7,0.35)' }
                   : { background: 'rgba(255,255,255,0.70)', color: '#2e4225', border: '1.5px solid rgba(26,82,16,0.12)' }

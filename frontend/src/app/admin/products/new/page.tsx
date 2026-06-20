@@ -673,7 +673,7 @@ export default function NewProductPage() {
                 {labReportUrl ? (
                   <div className="flex items-center gap-2 p-3 rounded-lg border bg-muted/40">
                     <FileText className="h-4 w-4 text-primary shrink-0" />
-                    <a href={labReportUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary underline truncate flex-1">View uploaded report</a>
+                    <a href={labReportUrl.replace('/raw/upload/', '/raw/upload/fl_inline/')} target="_blank" rel="noopener noreferrer" className="text-sm text-primary underline truncate flex-1">View uploaded report</a>
                     <button type="button" onClick={() => setLabReportUrl('')}><X className="h-4 w-4 text-muted-foreground hover:text-destructive" /></button>
                   </div>
                 ) : (
