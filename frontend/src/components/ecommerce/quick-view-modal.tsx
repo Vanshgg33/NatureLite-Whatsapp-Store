@@ -257,12 +257,14 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
                 {product.variants && product.variants.length > 0 && (
                   <div
                     className="rounded-2xl p-4"
-                    style={{ background: 'rgba(255,252,246,0.70)', border: '1px solid rgba(200,150,12,0.14)' }}
+                    style={{ background: 'linear-gradient(135deg,rgba(255,252,246,0.90),rgba(249,243,228,0.60))', border: '1px solid rgba(200,150,12,0.16)' }}
                   >
-                    <p className="text-[10px] font-black uppercase tracking-[0.20em] mb-3" style={{ color: 'rgba(26,40,16,0.40)' }}>
-                      Select Option
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em] mb-3 flex items-center gap-2" style={{ color: 'rgba(26,40,16,0.38)' }}>
+                      <span className="inline-block w-3 h-px" style={{ background: 'rgba(200,150,12,0.50)' }} />
+                      Choose Size
+                      <span className="inline-block w-3 h-px" style={{ background: 'rgba(200,150,12,0.50)' }} />
                     </p>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2.5">
                       {product.variants.map((variant) => {
                         const isSelected = selectedVariant === variant.sku;
                         const isOOS = (variant.stock ?? 0) === 0;
@@ -271,31 +273,46 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
                             key={variant.sku}
                             onClick={() => { if (!isOOS) { setSelectedVariant(variant.sku); setSelectedImageIndex(0); } }}
                             disabled={isOOS}
-                            whileTap={{ scale: isOOS ? 1 : 0.95 }}
-                            className="relative px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200"
+                            whileHover={{ scale: isOOS ? 1 : 1.04, y: isOOS ? 0 : -1 }}
+                            whileTap={{ scale: isOOS ? 1 : 0.96 }}
+                            className="relative flex flex-col items-center px-4 py-2.5 rounded-2xl transition-all duration-200"
                             style={{
-                              border: `2px solid ${isSelected ? '#c8960c' : isOOS ? 'rgba(26,40,16,0.08)' : 'rgba(26,40,16,0.16)'}`,
+                              border: `2px solid ${isSelected ? '#c8960c' : isOOS ? 'rgba(26,40,16,0.07)' : 'rgba(200,150,12,0.22)'}`,
                               background: isSelected
-                                ? 'linear-gradient(135deg,rgba(200,150,12,0.16),rgba(200,150,12,0.08))'
-                                : isOOS ? 'rgba(26,40,16,0.03)' : 'rgba(255,252,246,0.90)',
-                              color: isSelected ? '#7a5500' : isOOS ? 'rgba(26,40,16,0.22)' : 'rgba(26,40,16,0.65)',
-                              boxShadow: isSelected ? '0 0 0 3px rgba(200,150,12,0.14)' : 'none',
+                                ? 'linear-gradient(135deg,#8a6200 0%,#c8960c 60%,#d4a017 100%)'
+                                : isOOS
+                                ? 'rgba(26,40,16,0.03)'
+                                : 'linear-gradient(135deg,rgba(255,252,246,1),rgba(249,243,228,0.85))',
+                              color: isSelected ? '#fff8e0' : isOOS ? 'rgba(26,40,16,0.20)' : '#5a3e00',
+                              boxShadow: isSelected
+                                ? '0 6px 20px -4px rgba(200,150,12,0.55), 0 0 0 3px rgba(200,150,12,0.15)'
+                                : isOOS
+                                ? 'none'
+                                : '0 2px 8px rgba(200,150,12,0.10)',
                               cursor: isOOS ? 'not-allowed' : 'pointer',
-                              textDecoration: isOOS ? 'line-through' : 'none',
+                              opacity: isOOS ? 0.45 : 1,
+                              minWidth: 64,
                             }}
                           >
-                            {variant.name}
+                            <span className="text-sm font-bold leading-tight" style={{ letterSpacing: '-0.01em', textDecoration: isOOS ? 'line-through' : 'none' }}>
+                              {variant.name}
+                            </span>
                             {variant.price && variant.price !== product.price && (
-                              <span className="ml-1.5 text-[11px] opacity-55">· ₹{variant.price.toLocaleString()}</span>
+                              <span
+                                className="text-[10px] font-semibold mt-0.5 leading-none"
+                                style={{ opacity: isSelected ? 0.75 : 0.55 }}
+                              >
+                                ₹{variant.price.toLocaleString()}
+                              </span>
                             )}
                             {isSelected && (
                               <motion.span
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1 }}
-                                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center"
-                                style={{ background: '#c8960c' }}
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                className="absolute -top-2 -right-2 w-5 h-5 rounded-full flex items-center justify-center"
+                                style={{ background: '#1a2810', boxShadow: '0 2px 8px rgba(26,40,16,0.40)' }}
                               >
-                                <Check style={{ width: 8, height: 8, color: '#fff' }} />
+                                <Check style={{ width: 9, height: 9, color: '#e8c84a' }} />
                               </motion.span>
                             )}
                           </motion.button>
