@@ -271,7 +271,8 @@ export default function ProductDetailPage() {
     );
   }
 
-  const images     = product.images.length > 0 ? product.images : [null];
+  const variantImages = selectedVariantData?.images?.length ? selectedVariantData.images : null;
+  const images     = variantImages ?? (product.images.length > 0 ? product.images : [null]);
   const siteUrl    = process.env.NEXT_PUBLIC_SITE_URL;
   const productUrl = siteUrl ? `${siteUrl}/products/${product.slug}` : `/products/${product.slug}`;
   const totalStock = getProductTotalStock(product);
@@ -638,7 +639,7 @@ export default function ProductDetailPage() {
                     return (
                       <motion.button
                         key={variant.sku}
-                        onClick={() => setSelectedVariant(variant.sku)}
+                        onClick={() => { setSelectedVariant(variant.sku); setSelectedImageIndex(0); }}
                         disabled={oos}
                         whileHover={{ scale: oos ? 1 : 1.03 }}
                         whileTap={{ scale: 0.96 }}

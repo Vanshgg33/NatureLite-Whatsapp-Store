@@ -85,7 +85,7 @@ export default function EditProductPage() {
   const [skuError, setSkuError] = useState('');
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const initialized = useRef(false);
+  const initialized = useRef<string | null>(null);
 
   const { data: product, isLoading } = useQuery({
     queryKey: ['product', productId],
@@ -105,8 +105,10 @@ export default function EditProductPage() {
   });
 
   useEffect(() => {
-    if (!product || initialized.current) return;
-    initialized.current = true;
+    if (!product) return;
+    const initKey = `${product._id}::${product.updatedAt}`;
+    if (initialized.current === initKey) return;
+    initialized.current = initKey;
     const categoryValue = product.category && typeof product.category === 'object'
       ? (product.category as { _id: string })._id
       : (typeof product.category === 'string' ? product.category : '');
