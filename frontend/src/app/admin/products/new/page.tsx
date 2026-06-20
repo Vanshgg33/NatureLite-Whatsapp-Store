@@ -189,6 +189,14 @@ export default function NewProductPage() {
     const validation = validateProduct(formData);
     if (!validation.isValid) { setErrors(validation.errors); return; }
 
+    const incompleteVariants = variants.filter(
+      (v) => (v.name || v.sku || v.price) && !(v.name && v.sku && v.price)
+    );
+    if (incompleteVariants.length > 0) {
+      setSubmitError('Each variant must have a Name, SKU, and Sale Price. Fill in all required fields or remove the incomplete variant.');
+      return;
+    }
+
     createMutation.mutate({
       name: formData.name,
       description: formData.description,
@@ -224,7 +232,7 @@ export default function NewProductPage() {
       allergenDeclaration: (allergen || allergenActive) ? { isActive: allergenActive, text: allergen } : undefined,
       relatedProducts: relatedProducts.map((p) => p.id),
       upsellProducts: upsellProducts.map((p) => p.id),
-      variants: variants.filter((v) => v.name && v.sku && v.price).map((v) => ({
+      variants: variants.filter((v) => v.name || v.sku || v.price).map((v) => ({
         name: v.name, sku: v.sku,
         price: parseFloat(v.price),
         compareAtPrice: v.compareAtPrice ? parseFloat(v.compareAtPrice) : undefined,

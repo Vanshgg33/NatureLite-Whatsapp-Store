@@ -73,10 +73,24 @@ export class ProductsService implements OnModuleInit {
     if (existingSku) throw new BadRequestException('Product with this SKU already exists');
     if (existingSlug) throw new BadRequestException('Product with this slug already exists');
 
+    const plainVariants = Array.isArray(dto.variants)
+      ? dto.variants.map((v) => ({
+          name: v.name,
+          sku: v.sku,
+          price: v.price,
+          ...(v.compareAtPrice !== undefined && { compareAtPrice: v.compareAtPrice }),
+          ...(v.stock !== undefined && { stock: v.stock }),
+          attributes: v.attributes ?? {},
+          isActive: v.isActive ?? true,
+          images: Array.isArray(v.images) ? v.images : [],
+        }))
+      : [];
+
     const saved = await this.productRepository.create({
       ...dto,
       slug,
       category: categoryId,
+      variants: plainVariants,
     } as any);
 
     try {
@@ -290,7 +304,28 @@ export class ProductsService implements OnModuleInit {
       }
     }
 
+    // class-transformer produces class instances, not plain objects. Mongoose's
+    // findByIdAndUpdate needs plain objects to correctly cast subdocument arrays.
+    this.logger.log(`[DEBUG] dto.variants type=${Array.isArray(dto.variants) ? 'array' : typeof dto.variants} count=${Array.isArray(dto.variants) ? dto.variants.length : 'N/A'}`);
+    if (Array.isArray(updateData.variants)) {
+      updateData.variants = (updateData.variants as any[]).map((v) => ({
+        name: v.name,
+        sku: v.sku,
+        price: v.price,
+        ...(v.compareAtPrice !== undefined && { compareAtPrice: v.compareAtPrice }),
+        ...(v.stock !== undefined && { stock: v.stock }),
+        attributes: v.attributes ?? {},
+        isActive: v.isActive ?? true,
+        images: Array.isArray(v.images) ? v.images : [],
+      }));
+      this.logger.log(`[DEBUG] updateData.variants after conversion: ${JSON.stringify(updateData.variants)}`);
+    } else {
+      this.logger.log(`[DEBUG] updateData.variants is NOT an array: ${typeof updateData.variants} = ${JSON.stringify(updateData.variants)}`);
+    }
+
     const product = await this.productRepository.findByIdAndUpdateDoc(id, updateData);
+    this.logger.log(`[DEBUG] saved product.variants count=${product?.variants?.length ?? 'null/undefined'} values=${JSON.stringify(product?.variants?.map(v => ({ name: v.name, sku: v.sku })))}`);
+
     if (!product) {
       throw new NotFoundException('Product not found');
     }

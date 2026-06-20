@@ -34,7 +34,7 @@ export function PremiumProductCard({
   const [imageError,       setImageError]       = useState(false);
   const [showSuccess,      setShowSuccess]      = useState(false);
   const [heartBurst,       setHeartBurst]       = useState(false);
-  const [selectedVarIdx,   setSelectedVarIdx]   = useState(0);
+  const [selectedVarIdx,   setSelectedVarIdx]   = useState<number | null>(null);
   const addToCartBtnRef = useRef<HTMLButtonElement>(null);
   const tiltRef  = useRef<HTMLDivElement>(null);
   const shineRef = useRef<HTMLDivElement>(null);
@@ -66,13 +66,15 @@ export function PremiumProductCard({
   const flyAnimation = useAddToCartAnimation();
 
   const displayVariants = product.variants?.filter((v) => v.isActive) ?? [];
-  const selectedVar  = displayVariants[selectedVarIdx] ?? null;
+  const selectedVar  = selectedVarIdx !== null ? (displayVariants[selectedVarIdx] ?? null) : null;
 
   const cartItemForSelectedVar = cartItems.find(
     (item) => item.productId === product._id && (!selectedVar ? !item.variantSku : item.variantSku === selectedVar.sku)
   );
   const quantityInCart = cartItemForSelectedVar?.quantity ?? 0;
 
+  // Only swap to variant image on explicit click; default to product image
+  const displayImage = (selectedVarIdx !== null && selectedVar?.images?.length ? selectedVar.images[0] : null) ?? product.images?.[0] ?? null;
   const displayPrice = selectedVar?.price ?? product.price;
   const displayCompare = selectedVar?.compareAtPrice ?? product.compareAtPrice;
   const discount   = displayCompare
@@ -165,7 +167,7 @@ export function PremiumProductCard({
               )}
               <div className={`absolute inset-0 transition-transform duration-500 ${isHovered ? 'scale-[1.05]' : 'scale-100'}`}>
                 <Image
-                  src={imageError ? '/images/placeholder-product.svg' : (product.images?.[0] || '/images/placeholder-product.svg')}
+                  src={imageError ? '/images/placeholder-product.svg' : (displayImage || '/images/placeholder-product.svg')}
                   alt={product.name}
                   fill
                   className={`object-cover ${imageLoaded ? 'opacity-100' : 'opacity-0'} transition-opacity duration-500`}
@@ -325,7 +327,7 @@ export function PremiumProductCard({
 
               {/* Variant pills - displayed BELOW price */}
               {displayVariants.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-3">
+                <div className="flex flex-wrap gap-1.5 mb-3">
                   {displayVariants.slice(0, 6).map((v, i) => {
                     const raw = v.attributes?.volume ?? v.attributes?.size ?? v.attributes?.weight ?? v.name;
                     const label = String(raw).length > 10 ? String(raw).slice(0, 10) : String(raw);
@@ -334,17 +336,28 @@ export function PremiumProductCard({
                     return (
                       <button
                         key={v.sku}
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (!isOOS) setSelectedVarIdx(i); }}
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (!isOOS) { setSelectedVarIdx(selectedVarIdx === i ? null : i); setImageError(false); } }}
                         style={{
-                          fontSize: 13, fontWeight: 700, padding: '6px 14px', borderRadius: 8,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          padding: '5px 11px',
+                          borderRadius: 99,
                           cursor: isOOS ? 'not-allowed' : 'pointer',
-                          background: isSelected ? '#0b1c08' : '#fff',
-                          color: isSelected ? '#fff' : isOOS ? 'rgba(46,66,37,0.28)' : '#1a3a14',
-                          border: `2px solid ${isSelected ? '#0b1c08' : isOOS ? 'rgba(46,66,37,0.14)' : 'rgba(46,66,37,0.35)'}`,
+                          background: isSelected
+                            ? 'linear-gradient(135deg, #1a3a14 0%, #2d5c24 100%)'
+                            : isOOS
+                            ? 'rgba(46,66,37,0.04)'
+                            : 'rgba(46,66,37,0.06)',
+                          color: isSelected ? '#e8f5e1' : isOOS ? 'rgba(46,66,37,0.25)' : 'rgba(46,66,37,0.70)',
+                          border: `1.5px solid ${isSelected ? 'transparent' : isOOS ? 'rgba(46,66,37,0.10)' : 'rgba(46,66,37,0.18)'}`,
                           textDecoration: isOOS ? 'line-through' : 'none',
-                          transition: 'background 0.12s, color 0.12s, border-color 0.12s',
-                          letterSpacing: '0.01em',
+                          letterSpacing: '0.02em',
                           lineHeight: 1,
+                          boxShadow: isSelected
+                            ? '0 2px 8px rgba(26,58,20,0.28), inset 0 1px 0 rgba(255,255,255,0.10)'
+                            : 'none',
+                          transition: 'all 0.18s cubic-bezier(0.34,1.56,0.64,1)',
+                          transform: isSelected ? 'scale(1.06)' : 'scale(1)',
                         }}
                       >
                         {label}
