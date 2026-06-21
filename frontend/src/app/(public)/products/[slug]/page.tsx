@@ -157,7 +157,8 @@ export default function ProductDetailPage() {
 
   useEffect(() => {
     if (product && product.variants?.length > 0 && !variantAutoSelected) {
-      setSelectedVariant(product.variants[0].sku);
+      const firstInStock = product.variants.find((v) => (v.stock ?? 0) > 0);
+      setSelectedVariant((firstInStock ?? product.variants[0]).sku);
       setVariantAutoSelected(true);
     }
   }, [product, variantAutoSelected]);
@@ -635,7 +636,7 @@ export default function ProductDetailPage() {
                 <div className="flex flex-wrap gap-2.5">
                   {product.variants.map((variant) => {
                     const isSelected = selectedVariant === variant.sku;
-                    const oos = variant.stock === 0;
+                    const oos = (variant.stock ?? 0) === 0;
                     return (
                       <motion.button
                         key={variant.sku}

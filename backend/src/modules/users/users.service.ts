@@ -50,14 +50,12 @@ export class UsersService {
    * hasn't been provisioned by a login/OTP yet).
    */
   async setNameByPhone(phone: string, name: string): Promise<User> {
+    if (!phone) throw new BadRequestException('Phone is required');
     const trimmed = name.trim();
     if (!trimmed) {
       throw new BadRequestException('Name cannot be empty');
     }
-    let userDoc = await this.userRepository.findOneByPhone(phone);
-    if (!userDoc) {
-      userDoc = await this.userRepository.create({ phone } as Partial<User>);
-    }
+    const userDoc = await this.userRepository.findOrCreateByPhoneAtomic(phone);
     userDoc.name = trimmed;
     return userDoc.save();
   }
@@ -67,11 +65,8 @@ export class UsersService {
    * If a guest later registers with the same phone, they get the same account.
    */
   async findOrCreateByPhone(phone: string): Promise<User> {
-    let user = await this.userRepository.findOneByPhone(phone);
-    if (!user) {
-      user = await this.userRepository.create({ phone } as Partial<User>);
-    }
-    return user;
+    if (!phone) throw new BadRequestException('Phone is required');
+    return this.userRepository.findOrCreateByPhoneAtomic(phone);
   }
 
   async update(id: string, dto: UpdateUserDto): Promise<User> {

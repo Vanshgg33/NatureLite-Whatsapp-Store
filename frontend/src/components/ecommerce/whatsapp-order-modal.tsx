@@ -39,9 +39,14 @@ export function WhatsAppOrderModal({ items, total, onClose }: Props) {
     e.preventDefault();
     setError('');
 
-    const cleanPhone = phone.replace(/\D/g, '');
-    if (cleanPhone.length < 10) {
-      setError('Enter a valid 10-digit phone number');
+    const rawPhone = phone.replace(/\D/g, '');
+    // Strip leading country code (91 or 0) to get a plain 10-digit number
+    let cleanPhone = rawPhone;
+    if (rawPhone.length === 12 && rawPhone.startsWith('91')) cleanPhone = rawPhone.slice(2);
+    else if (rawPhone.length === 11 && rawPhone.startsWith('1')) cleanPhone = rawPhone.slice(1);
+    else if (rawPhone.length === 11 && rawPhone.startsWith('0')) cleanPhone = rawPhone.slice(1);
+    if (cleanPhone.length !== 10 || !/^[6-9]/.test(cleanPhone)) {
+      setError('Enter a valid 10-digit Indian mobile number');
       return;
     }
     const cleanPincode = pincode.replace(/\D/g, '');
@@ -64,7 +69,7 @@ export function WhatsAppOrderModal({ items, total, onClose }: Props) {
           street: address,
           city,
           state: 'Chhattisgarh',
-          pincode,
+          pincode: cleanPincode,
         },
         paymentMethod: 'cod',
         phone: cleanPhone,

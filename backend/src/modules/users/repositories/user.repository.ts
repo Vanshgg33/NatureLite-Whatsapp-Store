@@ -19,6 +19,15 @@ export class UserRepository extends BaseRepository<UserDocument> {
     return this.model.findOne({ phone }).exec();
   }
 
+  async findOrCreateByPhoneAtomic(phone: string): Promise<UserDocument> {
+    const doc = await this.model.findOneAndUpdate(
+      { phone },
+      { $setOnInsert: { phone } },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    ).exec();
+    return doc!;
+  }
+
   async findManyByPhones(phones: string[]): Promise<UserDocument[]> {
     if (!phones.length) return [];
     return this.model.find({ phone: { $in: phones } }).exec();

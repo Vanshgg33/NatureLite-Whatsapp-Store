@@ -31,7 +31,8 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
     setSelectedImageIndex(0);
     setQuantity(1);
     setShowSuccess(false);
-    setSelectedVariant(product.variants?.length > 0 ? product.variants[0].sku : null);
+    const firstInStock = product.variants?.find((v) => (v.stock ?? 0) > 0);
+    setSelectedVariant(product.variants?.length > 0 ? (firstInStock ?? product.variants[0]).sku : null);
   }, [product?._id]);
 
   if (!product) return null;
