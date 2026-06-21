@@ -211,7 +211,7 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
                     className="font-bold leading-tight"
                     style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(1.3rem, 3vw, 1.75rem)', color: '#1a2810', letterSpacing: '-0.02em' }}
                   >
-                    {product.name}
+                    {selectedVariantData ? `${product.name} - ${selectedVariantData.name}` : product.name}
                   </h2>
                 </div>
 

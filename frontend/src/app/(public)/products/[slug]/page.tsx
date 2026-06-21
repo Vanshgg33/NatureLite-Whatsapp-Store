@@ -500,7 +500,7 @@ export default function ProductDetailPage() {
                 color: '#1a2810',
               }}
             >
-              {product.name}
+              {selectedVariantData ? `${product.name} - ${selectedVariantData.name}` : product.name}
             </h1>
 
             {/* Ratings */}
