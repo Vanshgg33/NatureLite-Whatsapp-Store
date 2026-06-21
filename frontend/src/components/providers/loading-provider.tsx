@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { motion, AnimatePresence, useAnimation, useMotionValue, useAnimationFrame } from 'framer-motion';
+import { usePathname } from 'next/navigation';
 
 interface LoadingContextType { isInitialLoad: boolean; hasLoadedOnce: boolean }
 const LoadingContext = createContext<LoadingContextType>({ isInitialLoad: true, hasLoadedOnce: false });
@@ -64,7 +65,7 @@ function PressWheel() {
   const knobInRef  = useRef<SVGCircleElement>(null);
 
   useAnimationFrame((t) => {
-    const phi = (t / 10000) * Math.PI * 2;
+    const phi = (t / 2500) * Math.PI * 2;
     const cos = Math.cos(phi);
     const sin = Math.sin(phi);
 
@@ -118,32 +119,32 @@ function PressWheel() {
   return (
     <g transform="translate(150,140)">
       {/* ── Static disc — flat ellipse = top-down horizontal stone, never spins ── */}
-      <ellipse rx="76" ry="25" fill="#0e0804" opacity="0.7" />
+      <ellipse rx="76" ry="25" fill="#2a1408" opacity="0.8" />
       <ellipse rx={RX} ry={RY} fill="url(#lf-woodface)" filter="url(#lf-wood)" />
-      <ellipse rx="66" ry="19" fill="none" stroke="#3c2410" strokeWidth="2"   opacity="0.5" />
-      <ellipse rx="52" ry="15" fill="none" stroke="#2c1a0a" strokeWidth="1.5" opacity="0.4" />
-      <ellipse rx="38" ry="11" fill="none" stroke="#3c2410" strokeWidth="1"   opacity="0.35" />
-      <ellipse rx={RX} ry={RY} fill="none" stroke="#7e5434" strokeWidth="3.5" />
-      <ellipse rx="69" ry="20" fill="none" stroke="#3c2410" strokeWidth="1"   opacity="0.6" />
+      <ellipse rx="66" ry="19" fill="none" stroke="#7a4820" strokeWidth="2"   opacity="0.6" />
+      <ellipse rx="52" ry="15" fill="none" stroke="#5c3414" strokeWidth="1.5" opacity="0.5" />
+      <ellipse rx="38" ry="11" fill="none" stroke="#7a4820" strokeWidth="1"   opacity="0.45" />
+      <ellipse rx={RX} ry={RY} fill="none" stroke="#c8803a" strokeWidth="3.5" />
+      <ellipse rx="69" ry="20" fill="none" stroke="#7a4820" strokeWidth="1"   opacity="0.7" />
       {/* Hub */}
-      <ellipse rx="16" ry="5"  fill="#1e1008" />
-      <ellipse rx="10" ry="3"  fill="#3c2410" />
-      <ellipse rx="4"  ry="1.5" fill="#1e1008" />
+      <ellipse rx="16" ry="5"  fill="#3a1e08" />
+      <ellipse rx="10" ry="3"  fill="#6a4020" />
+      <ellipse rx="4"  ry="1.5" fill="#3a1e08" />
 
       {/* ── Arm — ONLY moving element. Sweeps from right rim → behind → left rim → front ── */}
       {/* Dark body */}
       <line ref={armRef}
         x1={RX} y1="0" x2="148" y2="0"
-        stroke="#2c1808" strokeWidth="11" strokeLinecap="round"
+        stroke="#6a3c18" strokeWidth="11" strokeLinecap="round"
       />
       {/* Wood-grain highlight */}
       <line ref={armHiRef}
         x1={RX} y1="0" x2="144" y2="0"
-        stroke="#6c4422" strokeWidth="5" strokeLinecap="round" opacity="0.55"
+        stroke="#c87a38" strokeWidth="5" strokeLinecap="round" opacity="0.7"
       />
       {/* Knob at tip */}
-      <circle ref={knobRef}   cx="148" cy="0" r="9"   fill="#2c1808" />
-      <circle ref={knobInRef} cx="148" cy="0" r="5"   fill="#5e3c1e" />
+      <circle ref={knobRef}   cx="148" cy="0" r="9"   fill="#6a3c18" />
+      <circle ref={knobInRef} cx="148" cy="0" r="5"   fill="#b06030" />
 
       {/* Non-rotating specular */}
       <ellipse cx="-20" cy="-13" rx="18" ry="5"
@@ -157,24 +158,32 @@ export function LoadingProvider({ children }: { children: ReactNode }) {
   const [isInitialLoad, setIsInitialLoad]   = useState(true);
   const [hasLoadedOnce, setHasLoadedOnce]   = useState(false);
   const bar = useAnimation();
+  const pathname = usePathname();
 
   useEffect(() => {
+    // Only show on home page
+    if (pathname !== '/') {
+      setIsInitialLoad(false);
+      setHasLoadedOnce(true);
+      return;
+    }
+
     if (sessionStorage.getItem('naturelite-loaded')) {
       setIsInitialLoad(false);
       setHasLoadedOnce(true);
       return;
     }
 
-    // Two-phase progress: sprint to 76%, stall, then complete
-    bar.start({ scaleX: 0.76, transition: { duration: 0.9, ease: [0.4, 0, 0.2, 1] } });
+    // Two-phase progress: sprint to 80%, stall, then complete — total ~3.5s
+    bar.start({ scaleX: 0.80, transition: { duration: 1.5, ease: [0.4, 0, 0.2, 1] } });
     const t = setTimeout(() => {
-      bar.start({ scaleX: 1, transition: { duration: 0.22, ease: 'easeIn' } })
+      bar.start({ scaleX: 1, transition: { duration: 0.3, ease: 'easeIn' } })
          .then(() => setTimeout(() => {
            setIsInitialLoad(false);
            setHasLoadedOnce(true);
            sessionStorage.setItem('naturelite-loaded', 'true');
-         }, 220));
-    }, 1200);
+         }, 200));
+    }, 2800);
 
     return () => clearTimeout(t);
   }, []);
@@ -191,7 +200,7 @@ export function LoadingProvider({ children }: { children: ReactNode }) {
             }}
             initial={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
           >
             <style>{KEYFRAMES}</style>
 
@@ -226,7 +235,7 @@ export function LoadingProvider({ children }: { children: ReactNode }) {
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
             >
               {/*
                 SVG scene layout (viewBox 0 0 300 370):
@@ -244,17 +253,10 @@ export function LoadingProvider({ children }: { children: ReactNode }) {
                 style={{ overflow: 'visible' }}
               >
                 <defs>
-                  {/* ── Wood grain: turbulence multiplied onto fill ── */}
-                  <filter id="lf-wood" x="0%" y="0%" width="100%" height="100%"
-                    colorInterpolationFilters="sRGB">
-                    <feTurbulence type="fractalNoise" baseFrequency="0.042" numOctaves="5"
-                      seed="4" result="noise" />
-                    <feColorMatrix in="noise" type="saturate" values="0" result="gray" />
-                    <feComponentTransfer in="gray" result="biased">
-                      <feFuncA type="linear" slope="0.55" intercept="0.45" />
-                    </feComponentTransfer>
-                    <feBlend in="SourceGraphic" in2="biased" mode="multiply" result="textured" />
-                    <feComposite in="textured" in2="SourceGraphic" operator="in" />
+                  {/* ── Wood grain: simple glow, no expensive turbulence ── */}
+                  <filter id="lf-wood" x="-20%" y="-20%" width="140%" height="140%">
+                    <feGaussianBlur stdDeviation="3" result="blur" />
+                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
                   </filter>
 
                   {/* ── Oil glow: bloom behind the stream ── */}
@@ -276,16 +278,16 @@ export function LoadingProvider({ children }: { children: ReactNode }) {
 
                   {/* ── Gradients ── */}
                   <radialGradient id="lf-woodface" cx="36%" cy="30%" r="66%">
-                    <stop offset="0%"   stopColor="#7e5434" />
-                    <stop offset="42%"  stopColor="#5a3b1e" />
-                    <stop offset="100%" stopColor="#2c190b" />
+                    <stop offset="0%"   stopColor="#c47a3a" />
+                    <stop offset="42%"  stopColor="#8a5228" />
+                    <stop offset="100%" stopColor="#4a2e10" />
                   </radialGradient>
 
                   <linearGradient id="lf-pillar" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%"   stopColor="#1c0e06" />
-                    <stop offset="32%"  stopColor="#4c3016" />
-                    <stop offset="68%"  stopColor="#3c2412" />
-                    <stop offset="100%" stopColor="#180c04" />
+                    <stop offset="0%"   stopColor="#2c1a08" />
+                    <stop offset="32%"  stopColor="#7a4e24" />
+                    <stop offset="68%"  stopColor="#5c3a1a" />
+                    <stop offset="100%" stopColor="#2c1a08" />
                   </linearGradient>
 
                   <linearGradient id="lf-arm" x1="0" y1="0" x2="1" y2="0">
@@ -349,7 +351,7 @@ export function LoadingProvider({ children }: { children: ReactNode }) {
                     initial={{ scaleY: 0 }}
                     animate={{ scaleY: 1 }}
                     style={{ transformOrigin: '150px 366px', transformBox: 'fill-box' }}
-                    transition={{ duration: 2.0, delay: 0.85, ease: [0.2, 0, 0.38, 1] }}
+                    transition={{ duration: 1.8, delay: 0.6, ease: [0.2, 0, 0.38, 1] }}
                   />
                 </g>
                 {/* Surface shimmer */}
@@ -358,7 +360,7 @@ export function LoadingProvider({ children }: { children: ReactNode }) {
                   initial={{ opacity: 0, scaleX: 0.4 }}
                   animate={{ opacity: [0, 0.6, 0.45, 0.6], scaleX: [0.4, 1, 0.92, 1] }}
                   style={{ transformOrigin: '150px 307px', transformBox: 'fill-box' }}
-                  transition={{ duration: 2.2, delay: 1.9, repeat: Infinity, ease: 'easeInOut' }}
+                  transition={{ duration: 2.0, delay: 2.2, repeat: Infinity, ease: 'easeInOut' }}
                 />
 
                 {/* ━━ 4. Central wooden pillar ━━ */}
@@ -384,7 +386,7 @@ export function LoadingProvider({ children }: { children: ReactNode }) {
                   filter="url(#lf-oilglow)"
                   initial={{ pathLength: 0, opacity: 0 }}
                   animate={{ pathLength: 1, opacity: 1 }}
-                  transition={{ duration: 1.5, delay: 0.5, ease: [0.3, 0, 0.55, 1] }}
+                  transition={{ duration: 1.2, delay: 0.5, ease: [0.3, 0, 0.55, 1] }}
                 />
                 {/* Thinner inner highlight on stream */}
                 <motion.path
@@ -396,7 +398,7 @@ export function LoadingProvider({ children }: { children: ReactNode }) {
                   strokeOpacity="0.35"
                   initial={{ pathLength: 0, opacity: 0 }}
                   animate={{ pathLength: 1, opacity: 0.35 }}
-                  transition={{ duration: 1.5, delay: 0.62, ease: [0.3, 0, 0.55, 1] }}
+                  transition={{ duration: 1.2, delay: 0.65, ease: [0.3, 0, 0.55, 1] }}
                 />
 
                 {/* ━━ 7. Oil droplets ━━ */}
@@ -425,7 +427,7 @@ export function LoadingProvider({ children }: { children: ReactNode }) {
               style={{ marginTop: '-6px' }}
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.65, delay: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.6, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
             >
               <h1
                 className="font-display font-bold"
@@ -462,7 +464,7 @@ export function LoadingProvider({ children }: { children: ReactNode }) {
               }}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 0.38 }}
+              transition={{ delay: 0.3 }}
             >
               <motion.div
                 style={{
