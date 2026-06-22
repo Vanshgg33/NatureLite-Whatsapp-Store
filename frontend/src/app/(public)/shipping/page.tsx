@@ -26,7 +26,7 @@ const shippingInfo = [
   {
     icon: MapPin,
     title: 'Delivery Coverage',
-    description: 'We deliver pan-India to all serviceable pin codes. Remote areas may take 2-3 additional days.',
+    description: 'We currently deliver to Raipur, Bhilai, Durg & Bilaspur areas in Chhattisgarh. Enter your pincode at checkout to confirm serviceability.',
   },
   {
     icon: Package,

@@ -43,6 +43,10 @@ export class StoreStockService {
     return this.storeStockRepository.findForProduct(productId);
   }
 
+  async deleteByProductId(productId: string): Promise<void> {
+    await this.storeStockRepository.deleteAllByProductId(parseObjectId(productId, 'productId'));
+  }
+
   async getStockForStoreProduct(storeId: string, productId: string): Promise<StoreStock | null> {
     const storeObjId = parseObjectId(storeId, 'storeId');
     const productObjId = parseObjectId(productId, 'productId');

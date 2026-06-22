@@ -781,6 +781,7 @@ export default function SalesPage() {
       setUpiProofUrl(result.url);
     } catch {
       setUpiProofUrl(null);
+      toast({ title: 'Upload failed', description: 'Could not upload payment proof. Please try again.', variant: 'destructive' });
     } finally {
       setUpiProofUploading(false);
     }
@@ -1814,7 +1815,9 @@ export default function SalesPage() {
                         try {
                           const result = await api.uploadImage(file, 'sales');
                           setEditImages((prev) => [...prev, result.secureUrl || result.url]);
-                        } catch {}
+                        } catch {
+                          toast({ title: 'Image upload failed', description: 'Could not upload one or more images.', variant: 'destructive' });
+                        }
                       }
                     }}
                   />

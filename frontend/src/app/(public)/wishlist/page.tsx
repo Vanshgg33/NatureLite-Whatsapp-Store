@@ -29,7 +29,9 @@ export default function WishlistPage() {
       try {
         const wishlist = await api.getWishlist();
         setItems(wishlist.items.map((item) => ({ productId: item.productId, slug: item.slug, name: item.name, image: item.image, price: item.price })));
-      } catch { /* fail silently */ }
+      } catch {
+        toast({ title: 'Could not load wishlist', description: 'Please refresh the page.', variant: 'destructive' });
+      }
     })();
   }, [isAuthenticated, setItems]);
 

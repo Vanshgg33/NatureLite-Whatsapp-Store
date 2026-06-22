@@ -14,6 +14,7 @@ import { StoresService } from '../stores/stores.service';
 import { ProductRepository } from './repositories/product.repository';
 import { UcmService } from '../ucm/ucm.service';
 import { RedisService } from '../redis/redis.service';
+import { CartRepository } from '../cart/repositories/cart.repository';
 
 @Injectable()
 export class ProductsService implements OnModuleInit {
@@ -26,6 +27,8 @@ export class ProductsService implements OnModuleInit {
     @Inject(forwardRef(() => UcmService))
     private readonly ucmService: UcmService,
     private readonly redisService: RedisService,
+    @Inject(forwardRef(() => CartRepository))
+    private readonly cartRepository: CartRepository,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -428,6 +431,12 @@ export class ProductsService implements OnModuleInit {
     if (deleted === 0) {
       throw new NotFoundException('Product not found');
     }
+
+    const productObjId = parseObjectId(id, 'id');
+    await Promise.all([
+      this.storeStockService.deleteByProductId(id),
+      this.cartRepository.pullProductFromAllCarts(productObjId),
+    ]);
 
     if (product) {
       await this.ucmService.archiveDeletedProduct(product, 'product_deleted');

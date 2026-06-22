@@ -303,11 +303,11 @@ export default function ContactPage() {
                   {[
                     {
                       q: 'How long does shipping take?',
-                      a: 'We ship within 2-3 business days. Delivery typically takes 5-7 days pan-India.',
+                      a: 'We ship within 1-2 business days. Delivery typically takes 1-3 days within our delivery zones (Raipur, Bhilai, Durg & Bilaspur).',
                     },
                     {
                       q: 'Do you offer returns?',
-                      a: "Yes, we have a 30-day return policy for unopened products. Contact us if you're not satisfied.",
+                      a: "Yes, we have a 7-day return policy for unopened products. Contact us if you're not satisfied.",
                     },
                     {
                       q: 'Are your products organic?',

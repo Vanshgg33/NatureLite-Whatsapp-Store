@@ -222,7 +222,7 @@ export class CartService {
     );
 
     if (itemIndex < 0) {
-      throw new NotFoundException('Item not found in cart');
+      return this.formatCartResponse(cart);
     }
 
     const product = await this.productsService.findById(productId);
@@ -264,7 +264,7 @@ export class CartService {
     );
 
     if (itemIndex < 0) {
-      throw new NotFoundException('Item not found in cart');
+      return this.formatCartResponse(cart);
     }
 
     cart.items.splice(itemIndex, 1);

@@ -7,7 +7,6 @@ import { Cart, CartSchema } from './schemas/cart.schema';
 import { CartRepository } from './repositories/cart.repository';
 import { CartAutomationService } from './cart-automation.service';
 import { CartAutomationProcessor } from './cart-automation.processor';
-import { ProductsModule } from '../products/products.module';
 import { CouponsModule } from '../coupons/coupons.module';
 import { OrdersModule } from '../orders/orders.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -18,7 +17,7 @@ import { QUEUE_CART_AUTOMATION } from '../queues/queues.constants';
   imports: [
     MongooseModule.forFeature([{ name: Cart.name, schema: CartSchema }]),
     BullModule.registerQueue({ name: QUEUE_CART_AUTOMATION }),
-    ProductsModule,
+    forwardRef(() => ProductsModule),
     forwardRef(() => CouponsModule),
     forwardRef(() => OrdersModule),
     NotificationsModule,

@@ -20,6 +20,13 @@ export class CartRepository extends BaseRepository<CartDocument> {
     return this.model.findOne({ _id: cartId, user: userId }).exec();
   }
 
+  async pullProductFromAllCarts(productId: Types.ObjectId): Promise<void> {
+    await this.model.updateMany(
+      { 'items.productId': productId },
+      { $pull: { items: { productId } } },
+    ).exec();
+  }
+
   async findAbandonedCarts(
     cutoffTime: Date,
     limit: number,

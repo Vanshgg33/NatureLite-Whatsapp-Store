@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Star, ShoppingBag, Heart, Eye } from 'lucide-react';
+import { ShoppingBag, Heart, Eye } from 'lucide-react';
 import { cn, getProductTotalStock } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useCartStore, CartItem } from '@/lib/cart-store';
@@ -243,17 +243,6 @@ export function ProductCard({
 
           {/* Content */}
           <div className="p-5">
-            {/* Rating */}
-            <div className="flex items-center gap-1 mb-2">
-              <Star className="w-4 h-4 fill-brand-mustard text-brand-mustard" />
-              <span className="text-sm font-body font-medium text-brand-charcoal">
-                {(4.5 + Math.random() * 0.5).toFixed(1)}
-              </span>
-              <span className="text-xs text-brand-muted ml-1">
-                ({Math.floor(Math.random() * 100 + 20)})
-              </span>
-            </div>
-
             {/* Category */}
             {typeof product.category === 'object' && product.category && (
               <span className="text-xs font-body text-brand-muted uppercase tracking-wide">

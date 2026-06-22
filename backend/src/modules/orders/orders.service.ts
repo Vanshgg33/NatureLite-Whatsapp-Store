@@ -281,11 +281,12 @@ export class OrdersService implements OnModuleInit {
       }
 
       // Basic serviceability check by pincode (Raipur, Bhilai, Durg, Bilaspur areas)
+      // Skipped for admin-created orders so staff can place orders for any location.
       const pincode = dto.shippingAddress?.pincode;
       const SERVICEABLE_PINCODE_PREFIXES = ['492', '490', '491', '495']; // Raipur, Bhilai, Durg, Bilaspur
       if (
-        !pincode ||
-        !SERVICEABLE_PINCODE_PREFIXES.some((prefix) => pincode.startsWith(prefix))
+        dto.source !== 'admin' &&
+        (!pincode || !SERVICEABLE_PINCODE_PREFIXES.some((prefix) => pincode.startsWith(prefix)))
       ) {
         throw new BadRequestException('We currently do not deliver to this pincode.');
       }
@@ -465,12 +466,18 @@ export class OrdersService implements OnModuleInit {
       //     a data-setup gap that only the admin can fix would be incorrect.
       //     Admins can still see low/zero stock in the Store Stock dashboard.
       //   - Products with a StoreStock row get the normal guarded decrement.
-      const mainStore = await this.storesService.findMainStore();
-      const mainStoreId = mainStore._id.toString();
+      let mainStore: Awaited<ReturnType<typeof this.storesService.findMainStore>> | null = null;
+      try {
+        mainStore = await this.storesService.findMainStore();
+      } catch {
+        // Main store not configured — skip stock decrement, order still goes through
+      }
+      const mainStoreId = mainStore?._id.toString();
 
       await Promise.all(
         orderItems.map(async (item) => {
           const productId = item.product.toString();
+          if (!mainStoreId) return;
           if (tracksStockByProductId.get(productId) === false) return;
           const existingStoreStock = await this.storeStockService.getStockForStoreProduct(
             mainStoreId,
@@ -1004,7 +1011,7 @@ export class OrdersService implements OnModuleInit {
       }
     }
 
-    if (dto.status === 'delivery_done' && !dto.deliveryProofUrl) {
+    if (dto.status === 'delivery_done' && !dto.deliveryProofUrl && departmentType === 'delivery') {
       throw new BadRequestException('A delivery proof photo is required to mark the order as delivered.');
     }
 
@@ -1408,10 +1415,10 @@ export class OrdersService implements OnModuleInit {
     const order = await this.orderRepository.findById(idObj);
     if (!order) throw new NotFoundException('Order not found');
 
-    const assignableStatuses: OrderStatus[] = ['preparing', 'out_for_delivery'];
+    const assignableStatuses: OrderStatus[] = ['placed', 'confirmed', 'preparing', 'out_for_delivery'];
     if (!assignableStatuses.includes(order.status)) {
       throw new BadRequestException(
-        `Cannot assign delivery: order status is "${order.status}". Only preparing or out_for_delivery orders can be assigned.`,
+        `Cannot assign delivery: order status is "${order.status}". Order must be placed, confirmed, preparing, or out for delivery.`,
       );
     }
 

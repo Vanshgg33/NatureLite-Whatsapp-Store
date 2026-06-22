@@ -370,7 +370,7 @@ const CHAPTERS = [
     title: 'Rooted in Relationships',
     body: [
       'We don\'t just buy from farmers — we grow with them. Premium pricing, advance payments before harvest, and natural farming workshops.',
-      'When you open a bottle of Purity Foods, you complete a chain from a small farm to your kitchen — untouched and whole.',
+      'When you open a bottle of NatureLite Foods, you complete a chain from a small farm to your kitchen — untouched and whole.',
     ],
   },
 ];

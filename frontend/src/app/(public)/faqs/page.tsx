@@ -32,7 +32,7 @@ const faqs = [
     items: [
       {
         q: 'How long does delivery take?',
-        a: 'Standard delivery takes 5-7 business days pan-India. Metro cities typically receive orders within 3-5 days. You can track your order using the tracking link sent via email.',
+        a: 'We currently deliver to Raipur, Bhilai, Durg & Bilaspur areas (Chhattisgarh). Orders are typically delivered within 1-3 business days.',
       },
       {
         q: 'Is there free shipping?',

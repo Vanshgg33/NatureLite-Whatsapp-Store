@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
-import { ShoppingBag, Heart, Eye, Star, Sparkles } from 'lucide-react';
+import { ShoppingBag, Heart, Eye, Sparkles } from 'lucide-react';
 import { useCartStore } from '@/lib/cart-store';
 import { getProductTotalStock } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
@@ -246,25 +246,6 @@ export function PremiumProductCard3D({
               {product.name}
             </h3>
           </Link>
-
-          {/* Rating */}
-          <div className="flex items-center gap-2 mb-3">
-            <div className="flex">
-              {[...Array(5)].map((_, i) => (
-                <Star
-                  key={i}
-                  className={`w-4 h-4 ${
-                    i < 4
-                      ? 'fill-brand-mustard text-brand-mustard'
-                      : 'text-brand-border'
-                  }`}
-                />
-              ))}
-            </div>
-            <span className="text-xs text-brand-muted">
-              ({product.totalSold || 0} sold)
-            </span>
-          </div>
 
           {/* Price */}
           <div className="flex items-center gap-3">

@@ -43,7 +43,7 @@ const badges = [
   {
     icon: RefreshCcw,
     title: 'Easy Returns',
-    description: '30-day hassle-free return policy',
+    description: '7-day hassle-free return policy',
     color: 'text-blue-600',
     bg: 'bg-blue-50',
   },

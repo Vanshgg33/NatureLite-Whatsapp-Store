@@ -47,7 +47,7 @@ export default function WhatsAppPayPage() {
         key: data.keyId,
         amount: data.amount,
         currency: data.currency,
-        name: 'Purity Foods Store',
+        name: 'Nature Lite Foods',
         description: `Order #${data.orderNumber}`,
         order_id: data.razorpayOrderId,
         handler: async (response: RazorpayCheckoutResponse) => {

@@ -116,7 +116,7 @@ export class PaymentsService {
         : Math.round(order.total * 100);
 
     if (amountPaise <= 0) {
-      throw new BadRequestException('No online payment required for this order');
+      return { alreadyPaid: true, razorpayOrderId: null, keyId: null, amount: 0, currency: 'INR', orderNumber: order.orderNumber };
     }
 
     // Reuse a recent unspent Razorpay order if one exists. Without this, every

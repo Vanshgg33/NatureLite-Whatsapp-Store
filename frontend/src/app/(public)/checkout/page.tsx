@@ -252,7 +252,7 @@ export default function CheckoutPage() {
             key: paymentData.keyId,
             amount: paymentData.amount,
             currency: paymentData.currency,
-            name: 'Purity Foods Store',
+            name: 'Nature Lite Foods',
             description: `Order #${order.orderNumber}`,
             order_id: paymentData.razorpayOrderId,
             handler: async (response: RazorpayCheckoutResponse) => {

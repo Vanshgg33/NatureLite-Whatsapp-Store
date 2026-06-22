@@ -2,8 +2,8 @@ import { Metadata } from 'next';
 import dynamic from 'next/dynamic';
 
 export const metadata: Metadata = {
-  title: 'Our Story — Purity Foods',
-  description: 'Learn about Purity Foods — our mission to bring traditional cold-pressed oils and bilona ghee to your kitchen.',
+  title: 'Our Story — Nature Lite Foods',
+  description: 'Learn about Nature Lite Foods — our mission to bring traditional cold-pressed oils and bilona ghee to your kitchen.',
 };
 
 const AboutClient = dynamic(() => import('./AboutClient'), { ssr: false });

@@ -113,7 +113,7 @@ export function PromoBar() {
         {/* WhatsApp contact stays at the end */}
         <span className="hidden sm:inline text-white/40">·</span>
         <Link
-          href="https://wa.me/919999999999"
+          href="https://wa.me/918817200740"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-white/90 hover:text-brand-mustard transition-colors"

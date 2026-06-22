@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ShoppingBag, Check, ChevronLeft, ChevronRight, Star, ExternalLink, FileText } from 'lucide-react';
+import { X, ShoppingBag, Check, ChevronLeft, ChevronRight, ExternalLink, FileText } from 'lucide-react';
 import { useCartStore, CartItem } from '@/lib/cart-store';
 import { getProductTotalStock } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
@@ -219,14 +219,6 @@ export function QuickViewModal({ product, isOpen, onClose, initialVariantSku }: 
                   >
                     {selectedVariantData ? `${product.name} - ${selectedVariantData.name}` : product.name}
                   </h2>
-                </div>
-
-                {/* Stars */}
-                <div className="flex items-center gap-1.5">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} style={{ width: 13, height: 13, fill: i < 4 ? '#c8960c' : 'transparent', color: i < 4 ? '#c8960c' : 'rgba(26,40,16,0.18)' }} />
-                  ))}
-                  <span className="text-[12px]" style={{ color: 'rgba(26,40,16,0.38)' }}>({product.totalSold} sold)</span>
                 </div>
 
                 {/* Price */}

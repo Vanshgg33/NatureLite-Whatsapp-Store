@@ -440,6 +440,10 @@ export class StoreStockRepository extends BaseRepository<StoreStockDocument> {
     return this.model.populate(docs as StoreStockDocument[], { path: 'product', select: 'name sku images price' });
   }
 
+  async deleteAllByProductId(productId: Types.ObjectId): Promise<void> {
+    await this.model.deleteMany({ product: productId }).exec();
+  }
+
   async initializeStockForProduct(
     productId: Types.ObjectId,
     storeIds: Types.ObjectId[],

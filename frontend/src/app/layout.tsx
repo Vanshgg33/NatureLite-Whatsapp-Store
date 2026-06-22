@@ -14,8 +14,8 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:8001';
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: 'Purity Foods | Traditional Wood-Pressed Oils & Bilona Ghee',
-    template: '%s | Purity Foods',
+    default: 'Nature Lite Foods | Traditional Wood-Pressed Oils & Bilona Ghee',
+    template: '%s | Nature Lite Foods',
   },
   description:
     'Experience the authentic taste of tradition with our wood-pressed oils and bilona ghee. Farm to bottle purity, crafted the way nature intended.',
@@ -28,11 +28,11 @@ export const metadata: Metadata = {
     'cold-pressed oil',
     'natural food',
   ],
-  authors: [{ name: 'Purity Foods' }],
+  authors: [{ name: 'Nature Lite Foods' }],
   openGraph: {
     type: 'website',
     locale: 'en_IN',
-    siteName: 'Purity Foods',
+    siteName: 'Nature Lite Foods',
   },
 };
 

@@ -7,6 +7,7 @@ import { ProductRepository } from './repositories/product.repository';
 import { StoreStockModule } from '../store-stock/store-stock.module';
 import { StoresModule } from '../stores/stores.module';
 import { UcmModule } from '../ucm/ucm.module';
+import { CartModule } from '../cart/cart.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { UcmModule } from '../ucm/ucm.module';
     StoreStockModule,
     forwardRef(() => StoresModule),
     forwardRef(() => UcmModule),
+    forwardRef(() => CartModule),
   ],
   controllers: [ProductsController],
   providers: [ProductRepository, ProductsService],
