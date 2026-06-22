@@ -96,12 +96,7 @@ export class CategoriesService {
 
   async delete(id: string): Promise<void> {
     const idObj = parseObjectId(id, 'id');
-    const hasSubcategories = await this.categoryRepository.existsByParentId(idObj);
-    if (hasSubcategories) {
-      throw new BadRequestException(
-        'Cannot delete category with subcategories. Delete subcategories first.',
-      );
-    }
+    await this.categoryRepository.deleteAllByParentId(idObj);
     const result = await this.categoryRepository.deleteOne({ _id: idObj });
     if (result.deletedCount === 0) {
       throw new NotFoundException('Category not found');

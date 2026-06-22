@@ -501,8 +501,8 @@ export default function CategoriesPage() {
           <DialogHeader>
             <DialogTitle>Delete Category</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete this category? This action cannot
-              be undone. Products in this category will become uncategorized.
+              Are you sure you want to delete this category? This action cannot be undone.
+              Any subcategories will also be deleted. Products in this category will become uncategorized.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

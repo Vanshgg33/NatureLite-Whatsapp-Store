@@ -85,6 +85,10 @@ export class CategoryRepository extends BaseRepository<CategoryDocument> {
     return !!count;
   }
 
+  async deleteAllByParentId(parentId: Types.ObjectId): Promise<void> {
+    await this.model.deleteMany({ parent: parentId }).exec();
+  }
+
   async findByIdAndUpdateDoc(
     id: Types.ObjectId,
     update: Record<string, unknown>,
