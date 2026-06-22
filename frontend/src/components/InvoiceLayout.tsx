@@ -5,9 +5,9 @@ import { Printer, Download, X } from 'lucide-react';
 const SELLER = {
   name: 'NATURE LITE FOODS',
   legal: '(SUHIKA PVT LTD)',
-  addr: 'B7, GROUND FLOOR, SECTOR-1, AVANTI VIHAR, RAIPUR-492001 (NEAR ATM CHOWK)',
+  addr: 'AVANTI VIHAR RD, KAVITA NAGAR, GEETANJALI COLONY, SHANKAR NAGAR, RAIPUR, CHHATTISGARH-492001',
   phone: '8817200740',
-  email: 'naturelite2021@gmail.com',
+  email: 'naturelitefoods@gmail.com',
   gstin: '22ABJCS3598L1ZR',
   state: 'Chhattisgarh',
   stateCode: '22',

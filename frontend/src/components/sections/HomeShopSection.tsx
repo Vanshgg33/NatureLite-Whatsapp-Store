@@ -280,6 +280,7 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
   const [selectedPill,     setSelectedPill]     = useState<PillKey>('best');
   const [visibleCount,     setVisibleCount]     = useState(INITIAL);
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
+  const [quickViewVariantSku, setQuickViewVariantSku] = useState<string | undefined>(undefined);
 
   const { data: categoryData, isLoading: catLoading } = useQuery({
     queryKey: ['home-category-products', selectedCatId],
@@ -407,7 +408,7 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
                       index={index}
                       showMostPopular={index === 0 && selectedPill === 'best' && !selectedCatId}
                       compact
-                      onQuickView={product.variants?.length > 0 ? setQuickViewProduct : undefined}
+                      onQuickView={product.variants?.length > 0 ? (p, sku) => { setQuickViewProduct(p); setQuickViewVariantSku(sku); } : undefined}
                     />
                   </TiltCard>
                 ))
@@ -463,7 +464,8 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
       <QuickViewModal
         product={quickViewProduct}
         isOpen={!!quickViewProduct}
-        onClose={() => setQuickViewProduct(null)}
+        initialVariantSku={quickViewVariantSku}
+        onClose={() => { setQuickViewProduct(null); setQuickViewVariantSku(undefined); }}
       />
     </section>
   );

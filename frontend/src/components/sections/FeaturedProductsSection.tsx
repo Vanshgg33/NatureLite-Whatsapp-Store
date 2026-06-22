@@ -16,6 +16,7 @@ interface FeaturedProductsSectionProps {
 
 export default function FeaturedProductsSection({ products }: FeaturedProductsSectionProps) {
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
+  const [quickViewVariantSku, setQuickViewVariantSku] = useState<string | undefined>(undefined);
 
   const featured = useMemo(
     () => [...products].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5),
@@ -140,7 +141,7 @@ export default function FeaturedProductsSection({ products }: FeaturedProductsSe
                 index={index}
                 showMostPopular={index === 0}
                 compact
-                onQuickView={product.variants?.length > 0 ? setQuickViewProduct : undefined}
+                onQuickView={product.variants?.length > 0 ? (p, sku) => { setQuickViewProduct(p); setQuickViewVariantSku(sku); } : undefined}
               />
             </motion.div>
           ))}
@@ -161,7 +162,8 @@ export default function FeaturedProductsSection({ products }: FeaturedProductsSe
       <QuickViewModal
         product={quickViewProduct}
         isOpen={!!quickViewProduct}
-        onClose={() => setQuickViewProduct(null)}
+        initialVariantSku={quickViewVariantSku}
+        onClose={() => { setQuickViewProduct(null); setQuickViewVariantSku(undefined); }}
       />
     </section>
   );

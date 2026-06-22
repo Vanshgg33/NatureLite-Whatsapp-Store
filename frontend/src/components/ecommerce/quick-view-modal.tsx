@@ -14,9 +14,10 @@ interface QuickViewModalProps {
   product: Product | null;
   isOpen: boolean;
   onClose: () => void;
+  initialVariantSku?: string;
 }
 
-export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps) {
+export function QuickViewModal({ product, isOpen, onClose, initialVariantSku }: QuickViewModalProps) {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [selectedVariant, setSelectedVariant] = useState<string | null>(null);
@@ -31,9 +32,13 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
     setSelectedImageIndex(0);
     setQuantity(1);
     setShowSuccess(false);
-    const firstInStock = product.variants?.find((v) => (v.stock ?? 0) > 0);
-    setSelectedVariant(product.variants?.length > 0 ? (firstInStock ?? product.variants[0]).sku : null);
-  }, [product?._id]);
+    if (initialVariantSku && product.variants?.some((v) => v.sku === initialVariantSku)) {
+      setSelectedVariant(initialVariantSku);
+    } else {
+      const firstInStock = product.variants?.find((v) => (v.stock ?? 0) > 0);
+      setSelectedVariant(product.variants?.length > 0 ? (firstInStock ?? product.variants[0]).sku : null);
+    }
+  }, [product?._id, initialVariantSku]);
 
   if (!product) return null;
 

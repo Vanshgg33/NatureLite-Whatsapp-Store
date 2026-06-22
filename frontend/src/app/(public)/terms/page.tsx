@@ -45,7 +45,7 @@ const sections = [
   },
   {
     title: '10. Contact',
-    content: 'For questions about these terms, contact us at hello@naturelite.in or call +91 88172 00740.',
+    content: 'For questions about these terms, contact us at naturelitefoods@gmail.com or call +91 88172 00740.',
   },
 ];
 

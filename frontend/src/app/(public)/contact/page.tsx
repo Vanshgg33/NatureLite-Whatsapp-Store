@@ -43,8 +43,8 @@ const contactInfo = [
   {
     icon: Mail,
     title: 'Email',
-    value: 'hello@naturelite.in',
-    href: 'mailto:hello@naturelite.in',
+    value: 'naturelitefoods@gmail.com',
+    href: 'mailto:naturelitefoods@gmail.com',
     description: 'We reply within 24 hours',
   },
   {
@@ -57,9 +57,9 @@ const contactInfo = [
   {
     icon: MapPin,
     title: 'Address',
-    value: 'Jaipur, Rajasthan',
+    value: 'Avanti Vihar Rd, Kavita Nagar, Geetanjali Colony',
     href: '#',
-    description: 'India 302001',
+    description: 'Shankar Nagar, Raipur, Chhattisgarh 492001, India',
   },
 ];
 

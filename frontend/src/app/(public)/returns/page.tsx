@@ -74,18 +74,18 @@ export default function ReturnsPage() {
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <a
-                  href="mailto:hello@naturelite.in"
+                  href="mailto:naturelitefoods@gmail.com"
                   className="inline-flex items-center gap-2 px-6 py-3 bg-brand-mustard text-white rounded-full font-body font-medium hover:bg-brand-mustard-dark transition-colors"
                 >
                   <Mail className="w-4 h-4" />
-                  hello@naturelite.in
+                  naturelitefoods@gmail.com
                 </a>
                 <a
-                  href="tel:+919999999999"
+                  href="tel:+918817200740"
                   className="inline-flex items-center gap-2 px-6 py-3 bg-white/10 text-brand-cream rounded-full font-body font-medium hover:bg-white/20 transition-colors"
                 >
                   <Phone className="w-4 h-4" />
-                  +91 99999 99999
+                  +91 88172 00740
                 </a>
               </div>
             </div>

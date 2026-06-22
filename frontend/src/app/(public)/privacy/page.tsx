@@ -57,9 +57,9 @@ const sections = [
     title: 'Contact Us',
     content: `If you have questions about this privacy policy, please contact us at:
 
-- **Email**: hello@naturelite.in
-- **Phone**: +91 99999 99999
-- **Address**: Jaipur, Rajasthan, India 302001`,
+- **Email**: naturelitefoods@gmail.com
+- **Phone**: +91 88172 00740
+- **Address**: Avanti Vihar Rd, Kavita Nagar, Geetanjali Colony, Shankar Nagar, Raipur, Chhattisgarh 492001, India`,
   },
 ];
 

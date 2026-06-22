@@ -4,7 +4,7 @@ import { useState, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, ShoppingBag, Star, Eye, Check, Flame, Award } from 'lucide-react';
+import { Heart, ShoppingBag, Eye, Check, Flame, Award } from 'lucide-react';
 import { useCartStore, CartItem } from '@/lib/cart-store';
 import { useToast } from '@/components/ui/use-toast';
 import { useAddToCartAnimation } from '@/components/ecommerce/add-to-cart-animation';
@@ -14,7 +14,7 @@ import { Product } from '@/types';
 interface PremiumProductCardProps {
   product: Product;
   index?: number;
-  onQuickView?: (product: Product) => void;
+  onQuickView?: (product: Product, variantSku?: string) => void;
   showMostPopular?: boolean;
   showOnlyXLeft?: boolean;
   compact?: boolean;
@@ -83,7 +83,6 @@ export function PremiumProductCard({
   const totalStock = getProductTotalStock(product);
   const isLowStock = forceShowOnlyXLeft ?? (totalStock <= (product.lowStockThreshold || 5) && totalStock > 0);
   const isBestSeller = product.totalSold > 50;
-  const reviewCount  = product.totalSold || 0;
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
@@ -255,7 +254,7 @@ export function PremiumProductCard({
               {/* Quick View button */}
               {onQuickView && (
                 <button
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onQuickView(product); }}
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onQuickView(product, selectedVar?.sku ?? undefined); }}
                   className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 z-20 cursor-pointer"
                   style={{
                     background: 'rgba(11,28,8,0.78)',
@@ -297,16 +296,6 @@ export function PremiumProductCard({
               >
                 {product.name}
               </h3>
-
-              {/* Stars - styled subtly */}
-              <div className="flex items-center gap-1" style={{ marginBottom: 7 }}>
-                {[...Array(5)].map((_, i) => (
-                  <Star key={i} className="w-2.5 h-2.5"
-                    style={{ fill: i < 4 ? '#a07010' : 'transparent', color: i < 4 ? '#a07010' : 'rgba(46,66,37,0.18)' }}
-                  />
-                ))}
-                <span style={{ fontSize: 10, color: 'rgba(46,66,37,0.42)' }}>({reviewCount})</span>
-              </div>
 
               {/* Price block - displayed ABOVE variants */}
               <div className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 mb-3">
@@ -547,14 +536,6 @@ export function PremiumProductCard({
             <h3 className="font-display font-semibold text-brand-charcoal line-clamp-2 group-hover:text-brand-green transition-colors text-lg mt-1">
               {product.name}
             </h3>
-            <div className="flex items-center gap-2 mt-2">
-              <div className="flex items-center">
-                {[...Array(5)].map((_, i) => (
-                  <Star key={i} className={cn("w-4 h-4", i < 4 ? "fill-brand-mustard text-brand-mustard" : "text-brand-border")} />
-                ))}
-              </div>
-              <span className="text-sm text-brand-muted">({reviewCount})</span>
-            </div>
             <div className="flex items-center gap-3 mt-3">
               <span className="font-display font-bold text-xl text-brand-charcoal">₹{product.price.toLocaleString()}</span>
               {product.compareAtPrice && product.compareAtPrice > product.price && (

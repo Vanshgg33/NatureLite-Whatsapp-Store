@@ -226,12 +226,12 @@ export function PublicFooter() {
             {/* Contact quick-links */}
             <div className="mt-6 space-y-2">
               <a
-                href="mailto:hello@naturelitefoods.in"
+                href="mailto:naturelitefoods@gmail.com"
                 className="flex items-center gap-2 text-xs transition-colors duration-200"
                 style={{ color: 'rgba(255,245,225,0.38)' }}
               >
                 <Mail className="w-3.5 h-3.5 flex-shrink-0" />
-                hello@naturelitefoods.in
+                naturelitefoods@gmail.com
               </a>
             </div>
           </div>
