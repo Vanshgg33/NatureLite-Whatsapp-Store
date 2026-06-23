@@ -11,6 +11,7 @@ import { CouponsModule } from '../coupons/coupons.module';
 import { OrdersModule } from '../orders/orders.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SettingsModule } from '../settings/settings.module';
+import { ProductsModule } from '../products/products.module';
 import { QUEUE_CART_AUTOMATION } from '../queues/queues.constants';
 
 @Module({

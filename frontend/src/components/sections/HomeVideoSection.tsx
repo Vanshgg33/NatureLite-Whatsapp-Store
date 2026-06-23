@@ -75,7 +75,7 @@ function VideoCard({ entry, index, onClick }: { entry: VideoEntry; index: number
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-40px' }}
       transition={{ duration: 0.45, delay: index * 0.06, ease: [0.23, 1, 0.32, 1] }}
-      style={{ width: 160, borderRadius: 18, overflow: 'hidden', flexShrink: 0, position: 'relative', cursor: 'pointer' }}
+      style={{ width: 'clamp(130px, 40vw, 160px)', borderRadius: 18, overflow: 'hidden', flexShrink: 0, position: 'relative', cursor: 'pointer' }}
     >
       {/* Clickable video area */}
       <div
@@ -382,8 +382,8 @@ export default function HomeVideoSection() {
     <>
       <div style={{ background: 'linear-gradient(180deg, #f0e8d8 0%, #ede5d5 100%)', borderTop: '1px solid rgba(160,112,16,0.12)', borderBottom: '1px solid rgba(160,112,16,0.12)' }}>
       <section
-        style={{ paddingTop: 64, paddingBottom: 64 }}
         className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8"
+        style={{ paddingTop: 'clamp(32px, 5vw, 64px)', paddingBottom: 'clamp(32px, 5vw, 64px)' }}
       >
         {/* Header */}
         <motion.div
@@ -391,7 +391,7 @@ export default function HomeVideoSection() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-60px' }}
           transition={{ duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
-          className="flex items-end justify-between mb-8"
+          className="flex items-end justify-between mb-6 sm:mb-8 gap-3"
         >
           <div>
             <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.30em', textTransform: 'uppercase', color: 'rgba(26,40,16,0.28)', marginBottom: 6 }}>

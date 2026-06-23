@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { RemindersService } from './reminders.service';
 import { RemindersController } from './reminders.controller';
@@ -9,7 +9,7 @@ import { StoresModule } from '../stores/stores.module';
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Reminder.name, schema: ReminderSchema }]),
-    StoresModule,
+    forwardRef(() => StoresModule),
   ],
   controllers: [RemindersController],
   providers: [ReminderRepository, RemindersService],

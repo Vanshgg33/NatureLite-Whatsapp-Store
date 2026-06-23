@@ -172,7 +172,8 @@ export class MediaService {
     folder: string = 'banners',
   ): Promise<UploadResult> {
     const timestamp = Math.round(Date.now() / 1000);
-    const paramsToSign = `folder=${folder}&timestamp=${timestamp}`;
+    // params must be alphabetically sorted for Cloudinary signature
+    const paramsToSign = `access_mode=public&folder=${folder}&timestamp=${timestamp}`;
     const signature = crypto
       .createHash('sha1')
       .update(paramsToSign + this.apiSecret)
@@ -184,6 +185,7 @@ export class MediaService {
     form.append('timestamp', String(timestamp));
     form.append('signature', signature);
     form.append('folder', folder);
+    form.append('access_mode', 'public');
 
     try {
       const res = await fetch(
@@ -224,7 +226,8 @@ export class MediaService {
 
   async uploadDocument(file: Express.Multer.File, folder: string = 'lab-reports'): Promise<UploadResult> {
     const timestamp = Math.round(Date.now() / 1000);
-    const paramsToSign = `folder=${folder}&timestamp=${timestamp}`;
+    // params must be alphabetically sorted for Cloudinary signature
+    const paramsToSign = `access_mode=public&folder=${folder}&timestamp=${timestamp}`;
     const signature = crypto
       .createHash('sha1')
       .update(paramsToSign + this.apiSecret)
@@ -236,6 +239,7 @@ export class MediaService {
     form.append('timestamp', String(timestamp));
     form.append('signature', signature);
     form.append('folder', folder);
+    form.append('access_mode', 'public');
 
     const res = await fetch(
       `https://api.cloudinary.com/v1_1/${this.cloudName}/raw/upload`,
@@ -266,7 +270,7 @@ export class MediaService {
     return new Promise((resolve, reject) => {
       cloudinary.uploader
         .upload_stream(
-          { folder, resource_type: 'raw', public_id: publicId, format: 'pdf' },
+          { folder, resource_type: 'raw', public_id: publicId, format: 'pdf', access_mode: 'public' },
           (error: UploadApiErrorResponse | undefined, result: UploadApiResponse | undefined) => {
             if (error || !result) {
               this.logger.error('PDF upload failed', error);

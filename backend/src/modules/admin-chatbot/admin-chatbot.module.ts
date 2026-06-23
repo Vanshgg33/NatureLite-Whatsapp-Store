@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { BullModule } from '@nestjs/bullmq';
 import { AdminChatbotController } from './admin-chatbot.controller';
@@ -32,19 +32,19 @@ import { SettingsModule } from '../settings/settings.module';
       { name: AdminChatSession.name, schema: AdminChatSessionSchema },
       { name: Subscription.name, schema: SubscriptionSchema },
     ]),
-    ProductsModule,
-    ChatbotModule,
-    AnalyticsModule,
-    OrdersModule,
+    forwardRef(() => ProductsModule),
+    forwardRef(() => ChatbotModule),
+    forwardRef(() => AnalyticsModule),
+    forwardRef(() => OrdersModule),
     UsersModule,
     FeedbackModule,
     CouponsModule,
-    CartModule,
+    forwardRef(() => CartModule),
     WalletModule,
     PaymentsModule,
     StoreSalesModule,
     RemindersModule,
-    WhatsAppModule,
+    forwardRef(() => WhatsAppModule),
     EmailModule,
     SettingsModule,
   ],

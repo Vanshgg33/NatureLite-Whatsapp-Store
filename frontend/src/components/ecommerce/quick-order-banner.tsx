@@ -47,16 +47,17 @@ export default function QuickOrderBanner() {
           position: relative;
           display: inline-flex;
           align-items: center;
-          gap: 10px;
-          padding: 13px 28px;
+          gap: 8px;
+          padding: 12px clamp(16px, 5vw, 28px);
           border-radius: 50px;
           font-weight: 700;
-          font-size: 15px;
+          font-size: clamp(13px, 3.8vw, 15px);
           letter-spacing: 0.02em;
           cursor: pointer;
           text-decoration: none;
           overflow: hidden;
           color: #fff;
+          max-width: calc(100vw - 32px);
           background: linear-gradient(135deg, #1a7a38 0%, #25d366 50%, #128c3e 100%);
           box-shadow:
             0 4px 20px rgba(37,211,102,0.35),

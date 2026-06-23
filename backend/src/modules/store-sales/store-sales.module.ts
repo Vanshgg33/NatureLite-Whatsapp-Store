@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { StoreSalesService } from './store-sales.service';
 import { StoreSalesController } from './store-sales.controller';
@@ -15,8 +15,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
   imports: [
     MongooseModule.forFeature([{ name: StoreSale.name, schema: StoreSaleSchema }]),
     StoreStockModule,
-    ProductsModule,
-    StoresModule,
+    forwardRef(() => ProductsModule),
+    forwardRef(() => StoresModule),
     RemindersModule,
     MediaModule,
     NotificationsModule,

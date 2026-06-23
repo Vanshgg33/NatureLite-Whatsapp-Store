@@ -67,7 +67,7 @@ function NewsletterStrip() {
       className="relative overflow-hidden"
       style={{ borderBottom: '1px solid rgba(255,245,225,0.07)' }}
     >
-      <div className="max-w-7xl mx-auto px-6 py-10 sm:py-12 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
         <div>
           <p style={{ fontSize: 10, letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(160,112,16,0.70)', marginBottom: 6, fontFamily: 'monospace' }}>
             Newsletter
@@ -151,8 +151,8 @@ export function PublicFooter() {
       <div className="relative z-10">
         {/* Trust strip */}
         <div style={{ borderBottom: '1px solid rgba(255,245,225,0.07)' }}>
-          <div className="max-w-7xl mx-auto px-6 py-4">
-            <div className="flex flex-wrap justify-center items-center gap-8 sm:gap-12">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+            <div className="flex flex-wrap justify-center items-center gap-5 sm:gap-12">
               {[
                 { icon: ShieldCheck, label: 'FSSAI Certified' },
                 { icon: Leaf,        label: '100% Organic'    },
@@ -173,7 +173,7 @@ export function PublicFooter() {
         <NewsletterStrip />
 
         {/* Main columns */}
-        <div className="max-w-7xl mx-auto px-6 py-14 sm:py-20 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-10 lg:gap-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10 sm:py-14 lg:py-20 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-8 sm:gap-10 lg:gap-8">
           {/* Brand column */}
           <div className="col-span-2 md:col-span-3 lg:col-span-2">
             <Link href="/" className="inline-flex mb-5">
@@ -244,7 +244,7 @@ export function PublicFooter() {
 
         {/* Bottom bar */}
         <div
-          className="max-w-7xl mx-auto px-6 py-5 flex flex-wrap items-center justify-between gap-3"
+          className="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-wrap items-center justify-between gap-3"
           style={{ borderTop: '1px solid rgba(255,245,225,0.07)' }}
         >
           <p style={{ fontSize: 12, color: 'rgba(255,245,225,0.28)' }}>

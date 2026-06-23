@@ -38,7 +38,8 @@ function CategoryCarousel({
   const rowRef = useRef<HTMLDivElement>(null);
 
   const scroll = (dir: 'left' | 'right') => {
-    rowRef.current?.scrollBy({ left: dir === 'left' ? -340 : 340, behavior: 'smooth' });
+    const amount = rowRef.current ? rowRef.current.clientWidth * 0.75 : 280;
+    rowRef.current?.scrollBy({ left: dir === 'left' ? -amount : amount, behavior: 'smooth' });
   };
 
   return (
@@ -79,7 +80,7 @@ function CategoryCarousel({
           <div
             className="relative flex items-center justify-center transition-all duration-200 group-hover:-translate-y-2"
             style={{
-              width: 100, height: 100, borderRadius: 24,
+              width: 'clamp(76px, 22vw, 100px)', height: 'clamp(76px, 22vw, 100px)', borderRadius: 20,
               background: !selectedCatId
                 ? 'linear-gradient(145deg,#1a5210,#2d7a1e)'
                 : '#fff',
@@ -114,7 +115,7 @@ function CategoryCarousel({
               <div
                 className="relative overflow-hidden transition-all duration-200 group-hover:-translate-y-2"
                 style={{
-                  width: 100, height: 100, borderRadius: 24,
+                  width: 'clamp(76px, 22vw, 100px)', height: 'clamp(76px, 22vw, 100px)', borderRadius: 20,
                   background: cat.image ? 'transparent' : palette.bg,
                   boxShadow: active
                     ? `0 8px 28px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.10), 0 0 0 3px ${palette.ring}`

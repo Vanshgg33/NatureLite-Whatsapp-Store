@@ -122,7 +122,7 @@ export default function SocialProofSection() {
 
             {/* Quote */}
             <blockquote
-              className="font-display text-xl lg:text-2xl leading-relaxed mb-8 max-w-3xl mx-auto"
+              className="font-display text-base sm:text-xl lg:text-2xl leading-relaxed mb-8 max-w-3xl mx-auto px-2 sm:px-0"
               style={{ color: '#0b1c08', letterSpacing: '-0.01em' }}
             >
               {testimonial.text}

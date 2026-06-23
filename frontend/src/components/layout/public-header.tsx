@@ -16,6 +16,7 @@ const navigation = [
   { name: 'Shop',         href: '/products'                },
   { name: 'Quick Order',  href: '/quick-order'             },
   { name: 'Best Sellers', href: '/products?sort=bestseller' },
+  { name: 'Lab Reports',  href: '/lab-reports'             },
   { name: 'About',        href: '/about'                   },
   { name: 'Contact',      href: '/contact'                 },
 ];

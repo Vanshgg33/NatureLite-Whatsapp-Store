@@ -75,9 +75,14 @@ const MOTES = [
 ];
 
 function LoadingScreen({ onDone }: { onDone: () => void }) {
-  const [percent,   setPercent]   = useState(0);
-  const [exiting,   setExiting]   = useState(false);
-  const [phraseIdx, setPhraseIdx] = useState(0);
+  const [percent,    setPercent]   = useState(0);
+  const [exiting,    setExiting]   = useState(false);
+  const [phraseIdx,  setPhraseIdx] = useState(0);
+  const [sceneScale, setSceneScale] = useState(1);
+
+  useEffect(() => {
+    setSceneScale(Math.min(1, (window.innerWidth * 0.88) / 360));
+  }, []);
 
   useEffect(() => {
     const start = performance.now();
@@ -159,8 +164,9 @@ function LoadingScreen({ onDone }: { onDone: () => void }) {
           marginBottom: 22,
         }} />
 
-        {/* ── Press scene (360 × 295) ── */}
-        <div style={{ position: 'relative', width: 360, height: 295, marginBottom: 18 }}>
+        {/* ── Press scene (360 × 295, scales down on small phones) ── */}
+        <div style={{ position: 'relative', width: 360 * sceneScale, height: 295 * sceneScale, marginBottom: 18, flexShrink: 0 }}>
+        <div style={{ position: 'absolute', width: 360, height: 295, transformOrigin: 'top left', transform: `scale(${sceneScale})` }}>
 
           {/* Seeds falling into hopper */}
           {SEEDS_V2.map((s, i) => (
@@ -392,7 +398,8 @@ function LoadingScreen({ onDone }: { onDone: () => void }) {
             <line x1="22" y1="8" x2="18" y2="21"
               stroke="rgba(255,200,100,0.12)" strokeWidth="1" strokeLinecap="round"/>
           </svg>
-        </div>
+        </div>{/* end inner scale wrapper */}
+        </div>{/* end outer size wrapper */}
 
         {/* ── Rotating phrase ── */}
         <div style={{ height: 18, marginBottom: 20 }}>
@@ -454,6 +461,12 @@ const sectionVariants = {
 export default function HomePage() {
   const [loaderExited, setLoaderExited] = useState(false);
 
+  useEffect(() => {
+    if (sessionStorage.getItem('nl_intro_seen') === '1') {
+      setLoaderExited(true);
+    }
+  }, []);
+
   const { data: productsData } = useQuery({
     queryKey: ['homepage-products'],
     queryFn: () => api.getProducts({ limit: 60, sortBy: 'totalSold', sortOrder: 'desc' }),
@@ -468,7 +481,7 @@ export default function HomePage() {
   const products = productsData?.items ?? [];
   const categories = categoriesData ?? [];
   if (!loaderExited) {
-    return <LoadingScreen onDone={() => setLoaderExited(true)} />;
+    return <LoadingScreen onDone={() => { sessionStorage.setItem('nl_intro_seen', '1'); setLoaderExited(true); }} />;
   }
 
   return (

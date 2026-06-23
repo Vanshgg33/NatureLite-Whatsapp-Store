@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ScheduleModule } from '@nestjs/schedule';
 import { BullModule } from '@nestjs/bullmq';
@@ -27,14 +27,14 @@ import { QUEUE_ANALYTICS } from '../queues/queues.constants';
     MongooseModule.forFeature([
       { name: AnalyticsSnapshot.name, schema: AnalyticsSnapshotSchema },
     ]),
-    OrdersModule,
+    forwardRef(() => OrdersModule),
     UsersModule,
-    ProductsModule,
-    ChatbotModule,
-    WhatsAppModule,
+    forwardRef(() => ProductsModule),
+    forwardRef(() => ChatbotModule),
+    forwardRef(() => WhatsAppModule),
     StoreSalesModule,
     StoreStockModule,
-    StoresModule,
+    forwardRef(() => StoresModule),
     SettingsModule,
     RawMaterialModule,
   ],

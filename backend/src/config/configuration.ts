@@ -183,17 +183,12 @@ export default (): Configuration => ({
     if (url) {
       // Parse the URL (supports redis:// and rediss://)
       const parsed = new URL(url);
-      // Render Redis (and most hosted Redis) uses single-arg AUTH (password only).
-      // The URL may contain an instance ID as the "username" which is NOT a Redis
-      // ACL username — passing it causes ioredis to send AUTH username password
-      // (Redis 6 ACL format) which Render rejects with "internal error".
-      // Only use the URL username if it is the canonical ACL default username.
       const urlUsername = parsed.username;
       return {
         url,
         host: parsed.hostname,
         port: parseInt(parsed.port || '6379', 10),
-        username: urlUsername === 'default' ? 'default' : undefined,
+        username: urlUsername || undefined,
         password: parsed.password || undefined,
         tls: parsed.protocol === 'rediss:',
       };

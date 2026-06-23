@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import {
   Wishlist,
@@ -12,7 +12,7 @@ import { ProductsModule } from '../products/products.module';
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Wishlist.name, schema: WishlistSchema }]),
-    ProductsModule,
+    forwardRef(() => ProductsModule),
   ],
   controllers: [WishlistController],
   providers: [WishlistRepository, WishlistService],
