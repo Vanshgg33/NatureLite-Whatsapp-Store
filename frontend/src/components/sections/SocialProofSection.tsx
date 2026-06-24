@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect } from 'react';
 import { motion, useInView } from 'framer-motion';
-import { Users, Leaf, Truck, Award, Star, BadgeCheck } from 'lucide-react';
+import { Users, Star, BadgeCheck } from 'lucide-react';
 import { ScrollReveal } from '@/components/ui/scroll-reveal';
 
 function useCountUp(end: number, duration: number = 2000, start: boolean = false) {
@@ -25,10 +25,7 @@ function useCountUp(end: number, duration: number = 2000, start: boolean = false
 }
 
 const statsData = [
-  { numericValue: 50000, suffix: '+', label: 'Happy Families',   icon: Users  },
-  { numericValue: 100,   suffix: '+', label: 'Pure Products',    icon: Leaf   },
-  { numericValue: 100,   suffix: '+', label: 'Cities Served',    icon: Truck  },
-  { numericValue: 15,    suffix: '+', label: 'Quality Awards',   icon: Award  },
+  { numericValue: 5000, suffix: '+', label: 'Happy Families', icon: Users },
 ];
 
 const testimonial = {
@@ -73,7 +70,7 @@ function StatsRow() {
   const isInView = useInView(sectionRef, { once: true, amount: 0.3 });
 
   return (
-    <div ref={sectionRef} className="grid grid-cols-2 lg:grid-cols-4 gap-8">
+    <div ref={sectionRef} className="flex justify-center gap-8">
       {statsData.map((stat, index) => (
         <StatItem key={stat.label} stat={stat} isInView={isInView} index={index} />
       ))}
