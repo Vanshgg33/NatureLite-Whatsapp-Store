@@ -12,9 +12,11 @@ import {
   Logger,
   RawBodyRequest,
   OnModuleDestroy,
+  HttpCode,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { WhatsAppService } from './whatsapp.service';
+import { WaFlowService } from './wa-flow.service';
 import { ChatbotService } from '../chatbot/chatbot.service';
 import { SettingsService } from '../settings/settings.service';
 import {
@@ -81,6 +83,7 @@ export class WhatsAppController implements OnModuleDestroy {
 
   constructor(
     private readonly whatsappService: WhatsAppService,
+    private readonly waFlowService: WaFlowService,
     private readonly chatbotService: ChatbotService,
     private readonly settingsService: SettingsService,
   ) {
@@ -186,6 +189,29 @@ export class WhatsAppController implements OnModuleDestroy {
       }
     } catch (error) {
       this.logger.error('Error processing webhook', error);
+    }
+  }
+
+  /**
+   * WhatsApp Flows data-exchange endpoint — called by Meta's servers (not users).
+   * No JWT auth: authenticated via RSA/AES encryption of the payload itself.
+   */
+  @Public()
+  @Post('flow')
+  @HttpCode(200)
+  async handleFlowRequest(
+    @Body() body: { encrypted_flow_data: string; encrypted_aes_key: string; initial_vector: string },
+    @Res() res: Response,
+  ): Promise<void> {
+    try {
+      const encrypted = await this.waFlowService.handleRequest(body);
+      (res as unknown as import('express').Response)
+        .set('Content-Type', 'text/plain')
+        .status(200)
+        .send(encrypted);
+    } catch (err) {
+      this.logger.error('Flow endpoint error', err);
+      (res as unknown as import('express').Response).status(421).send();
     }
   }
 

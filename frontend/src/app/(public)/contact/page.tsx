@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils';
 const contactSchema = z.object({
   name: z.string().min(2, 'Name is required'),
   email: z.string().email('Valid email is required'),
-  phone: z.string().optional(),
+  phone: z.string().min(10, 'Phone number is required'),
   subject: z.string().min(5, 'Subject is required'),
   message: z.string().min(20, 'Message must be at least 20 characters'),
 });
@@ -43,8 +43,8 @@ const contactInfo = [
   {
     icon: Mail,
     title: 'Email',
-    value: 'naturelitefoods@gmail.com',
-    href: 'mailto:naturelitefoods@gmail.com',
+    value: 'support@naturelitefoods.com',
+    href: 'mailto:support@naturelitefoods.com',
     description: 'We reply within 24 hours',
   },
   {
@@ -57,7 +57,7 @@ const contactInfo = [
   {
     icon: MapPin,
     title: 'Address',
-    value: 'Avanti Vihar Rd, Kavita Nagar, Geetanjali Colony',
+    value: 'Ground floor, B7, Nature Lite Foods, beside Aesthetic Institute of Design, Avanti Vihar, Sector 1',
     href: '#',
     description: 'Shankar Nagar, Raipur, Chhattisgarh 492001, India',
   },
@@ -230,9 +230,18 @@ export default function ContactPage() {
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
                       <label className="font-body text-sm text-brand-text mb-1.5 block">
-                        Phone (Optional)
+                        Phone *
                       </label>
-                      <Input {...register('phone')} placeholder="+91 99999 99999" />
+                      <Input
+                        {...register('phone')}
+                        className={cn(errors.phone && 'border-brand-error')}
+                        placeholder="+91 99999 99999"
+                      />
+                      {errors.phone && (
+                        <p className="text-xs text-brand-error mt-1">
+                          {errors.phone.message}
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="font-body text-sm text-brand-text mb-1.5 block">

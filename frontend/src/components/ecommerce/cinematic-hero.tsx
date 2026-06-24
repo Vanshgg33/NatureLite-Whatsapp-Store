@@ -231,7 +231,7 @@ export function CinematicHero({ products = [] }: CinematicHeroProps) {
                 >
                   <Sparkles className="w-4 h-4 text-brand-mustard" />
                   <span className="text-sm text-white/80 tracking-wide">
-                    100% Certified Organic
+                    100% Pure
                   </span>
                 </motion.div>
 
@@ -316,9 +316,8 @@ export function CinematicHero({ products = [] }: CinematicHeroProps) {
                   transition={{ duration: 0.6, delay: 1.2 }}
                 >
                   {[
-                    { value: '50k+', label: 'Happy Customers' },
-                    { value: '500+', label: 'Organic Products' },
-                    { value: '100%', label: 'Natural' },
+                    { value: '5k+', label: 'Happy Customers' },
+                    { value: '100%', label: 'Natural & Pure' },
                   ].map((stat, i) => (
                     <div key={i} className="text-center lg:text-left">
                       <div className="font-display text-3xl md:text-4xl font-bold text-white mb-1">

@@ -390,8 +390,7 @@ const VALUES = [
 ];
 
 const STATS = [
-  { to: 50,  suffix: 'k+', label: 'Families Served' },
-  { to: 100, suffix: '+',  label: 'Products'         },
+  { to: 5,   suffix: 'k+', label: 'Families Served' },
   { to: 5,   suffix: '+',  label: 'Years of Craft'   },
   { to: 100, suffix: '%',  label: 'Natural & Pure'   },
 ];
@@ -610,7 +609,7 @@ function StatsSection() {
   return (
     <div ref={ref} style={{ background: 'rgba(255,252,245,0.72)', borderTop: '1px solid rgba(26,82,16,0.08)', borderBottom: '1px solid rgba(26,82,16,0.08)', padding: '3.5rem 0' }}>
       <div style={{ maxWidth: 1160, margin: '0 auto', padding: '0 clamp(20px,5vw,48px)' }}>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 text-center">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-8 text-center">
           {STATS.map((s, i) => (
             <motion.div key={s.label} initial={{ opacity: 0, y: 22 }} animate={inView ? { opacity: 1, y: 0 } : {}} transition={{ delay: i * 0.1, duration: 0.75, ease: [0.22, 1, 0.36, 1] }}>
               <p className="font-display" style={{ fontSize: 'clamp(2rem, 4vw, 3rem)', fontWeight: 900, color: '#0b1c08', letterSpacing: '-0.03em', lineHeight: 1 }}>

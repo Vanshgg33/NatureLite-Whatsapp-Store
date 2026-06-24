@@ -28,7 +28,7 @@ const storyBlocks = [
     subtitle: 'Quality Assurance',
     description: 'Every product undergoes rigorous quality testing. We hold certifications from FSSAI, India Organic, and international standards.',
     image: '/images/story/quality.jpg',
-    stat: { value: '100%', label: 'Certified Organic' },
+    stat: { value: '100%', label: 'Certified Pure' },
     color: 'brand-mustard',
   },
   {
@@ -245,10 +245,7 @@ export function StorySection() {
           viewport={{ once: true }}
         >
           {[
-            { icon: Users, value: '50,000+', label: 'Happy Customers' },
-            { icon: Truck, value: '100+', label: 'Cities Served' },
-            { icon: Award, value: '15+', label: 'Awards Won' },
-            { icon: Leaf, value: '500+', label: 'Organic Products' },
+            { icon: Users, value: '5,000+', label: 'Happy Customers' },
           ].map((stat, i) => (
             <motion.div
               key={i}

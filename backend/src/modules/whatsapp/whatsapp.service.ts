@@ -1157,6 +1157,74 @@ export class WhatsAppService implements OnModuleInit {
     return 'meta_cloud';
   }
 
+  async sendWhatsAppFlow(dto: {
+    phone: string;
+    flowId: string;
+    flowToken: string;
+    flowMode: 'draft' | 'published';
+    headerText?: string;
+    bodyText: string;
+    footerText?: string;
+    ctaLabel: string;
+  }): Promise<string | null> {
+    const phone = this.normalizePhone(dto.phone) ?? dto.phone;
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: phone,
+      type: 'interactive',
+      interactive: {
+        type: 'flow',
+        ...(dto.headerText ? { header: { type: 'text', text: dto.headerText.slice(0, 60) } } : {}),
+        body: { text: dto.bodyText },
+        ...(dto.footerText ? { footer: { text: dto.footerText.slice(0, 60) } } : {}),
+        action: {
+          name: 'flow',
+          parameters: {
+            flow_message_version: '3',
+            flow_token: dto.flowToken,
+            flow_id: dto.flowId,
+            flow_cta: dto.ctaLabel,
+            flow_action: 'data_exchange',
+            mode: dto.flowMode,
+          },
+        },
+      },
+    };
+    return this.sendOutboundWithRetry({
+      phone,
+      messageType: 'interactive',
+      content: { text: dto.bodyText },
+      payload,
+    });
+  }
+
+  async markReadAndTyping(messageId: string, phone: string): Promise<void> {
+    const normalizedPhone = this.normalizePhone(phone) ?? phone;
+    try {
+      if (this.is360DialogProvider) {
+        await this.httpClient.post('/messages', {
+          messaging_product: 'whatsapp',
+          status: 'read',
+          message_id: messageId,
+        });
+        await this.httpClient.post('/messages', {
+          to: normalizedPhone,
+          type: 'action',
+          action: { type: 'typing' },
+        });
+      } else {
+        await this.httpClient.post('/messages', {
+          messaging_product: 'whatsapp',
+          status: 'read',
+          message_id: messageId,
+        });
+      }
+    } catch {
+      // non-critical — never block message processing
+    }
+  }
+
   private async sendOutboundWithRetry(input: {
     phone: string;
     messageType: MessageLogDocument['messageType'];

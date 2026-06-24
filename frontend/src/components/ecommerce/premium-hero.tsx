@@ -163,7 +163,7 @@ export function PremiumHero({
             >
               <div className="h-px w-12 bg-brand-mustard" />
               <span className="text-brand-mustard font-medium text-sm tracking-[0.2em] uppercase">
-                Organic & Natural
+                Pure & Natural
               </span>
               <div className="h-px w-12 bg-brand-mustard" />
             </motion.div>
@@ -225,9 +225,8 @@ export function PremiumHero({
               transition={{ duration: 0.6, delay: 0.9 }}
             >
               {[
-                { value: '100%', label: 'Organic' },
-                { value: '500+', label: 'Products' },
-                { value: '10k+', label: 'Happy Customers' },
+                { value: '100%', label: 'Pure' },
+                { value: '5k+', label: 'Happy Customers' },
               ].map((stat, i) => (
                 <div key={i} className="text-center">
                   <div className="font-display text-2xl font-bold text-brand-charcoal">

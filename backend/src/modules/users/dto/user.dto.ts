@@ -16,6 +16,26 @@ export class AddressDto {
   label: string;
 
   @IsString()
+  @IsOptional()
+  fullName?: string;
+
+  @IsString()
+  @IsOptional()
+  phone?: string;
+
+  @IsString()
+  @IsOptional()
+  house?: string;
+
+  @IsString()
+  @IsOptional()
+  building?: string;
+
+  @IsString()
+  @IsOptional()
+  area?: string;
+
+  @IsString()
   @IsNotEmpty()
   street: string;
 
@@ -34,6 +54,10 @@ export class AddressDto {
   @IsString()
   @IsOptional()
   landmark?: string;
+
+  @IsString()
+  @IsOptional()
+  addressType?: 'home' | 'office' | 'other';
 
   @IsBoolean()
   @IsOptional()

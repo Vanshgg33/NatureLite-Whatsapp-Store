@@ -264,7 +264,7 @@ export function ProductCarousel3D() {
 
                 {/* Features */}
                 <div className="flex flex-wrap gap-3 mb-8">
-                  {['100% Organic', 'Farm Fresh', 'No Additives'].map((tag) => (
+                  {['100% Pure', 'Farm Fresh', 'No Additives'].map((tag) => (
                     <span
                       key={tag}
                       className="px-4 py-2 rounded-full bg-brand-green/10 text-brand-green text-sm font-medium"

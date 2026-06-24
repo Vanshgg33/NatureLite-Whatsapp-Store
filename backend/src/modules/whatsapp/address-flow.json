@@ -1,0 +1,206 @@
+{
+  "version": "7.1",
+  "screens": [
+    {
+      "id": "ADDRESS_LIST",
+      "title": "Select Delivery Address",
+      "data": {
+        "addresses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" },
+              "description": { "type": "string" }
+            }
+          },
+          "__example__": [
+            { "id": "example1", "title": "Home ⭐", "description": "221B Baker St, Nagpur - 440001" }
+          ]
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "RadioButtonsGroup",
+            "name": "selected_address_id",
+            "label": "Choose a delivery address",
+            "data-source": "${data.addresses}",
+            "required": true
+          },
+          {
+            "type": "Footer",
+            "label": "Continue",
+            "on-click-action": {
+              "name": "data_exchange",
+              "payload": {
+                "selected_address_id": "${form.selected_address_id}"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "ADD_ADDRESS",
+      "title": "Add New Address",
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextInput",
+            "name": "full_name",
+            "label": "Full Name",
+            "required": true,
+            "input-type": "text"
+          },
+          {
+            "type": "TextInput",
+            "name": "phone",
+            "label": "Phone Number",
+            "required": true,
+            "input-type": "phone"
+          },
+          {
+            "type": "TextInput",
+            "name": "house",
+            "label": "House / Flat No",
+            "required": true,
+            "input-type": "text"
+          },
+          {
+            "type": "TextInput",
+            "name": "building",
+            "label": "Apartment / Building",
+            "input-type": "text"
+          },
+          {
+            "type": "TextInput",
+            "name": "area",
+            "label": "Street / Area",
+            "required": true,
+            "input-type": "text"
+          },
+          {
+            "type": "TextInput",
+            "name": "landmark",
+            "label": "Landmark (Optional)",
+            "input-type": "text"
+          },
+          {
+            "type": "TextInput",
+            "name": "city",
+            "label": "City",
+            "required": true,
+            "input-type": "text"
+          },
+          {
+            "type": "Dropdown",
+            "name": "state",
+            "label": "State",
+            "required": true,
+            "data-source": [
+              { "id": "Andhra Pradesh", "title": "Andhra Pradesh" },
+              { "id": "Arunachal Pradesh", "title": "Arunachal Pradesh" },
+              { "id": "Assam", "title": "Assam" },
+              { "id": "Bihar", "title": "Bihar" },
+              { "id": "Chhattisgarh", "title": "Chhattisgarh" },
+              { "id": "Goa", "title": "Goa" },
+              { "id": "Gujarat", "title": "Gujarat" },
+              { "id": "Haryana", "title": "Haryana" },
+              { "id": "Himachal Pradesh", "title": "Himachal Pradesh" },
+              { "id": "Jharkhand", "title": "Jharkhand" },
+              { "id": "Karnataka", "title": "Karnataka" },
+              { "id": "Kerala", "title": "Kerala" },
+              { "id": "Madhya Pradesh", "title": "Madhya Pradesh" },
+              { "id": "Maharashtra", "title": "Maharashtra" },
+              { "id": "Manipur", "title": "Manipur" },
+              { "id": "Meghalaya", "title": "Meghalaya" },
+              { "id": "Mizoram", "title": "Mizoram" },
+              { "id": "Nagaland", "title": "Nagaland" },
+              { "id": "Odisha", "title": "Odisha" },
+              { "id": "Punjab", "title": "Punjab" },
+              { "id": "Rajasthan", "title": "Rajasthan" },
+              { "id": "Sikkim", "title": "Sikkim" },
+              { "id": "Tamil Nadu", "title": "Tamil Nadu" },
+              { "id": "Telangana", "title": "Telangana" },
+              { "id": "Tripura", "title": "Tripura" },
+              { "id": "Uttar Pradesh", "title": "Uttar Pradesh" },
+              { "id": "Uttarakhand", "title": "Uttarakhand" },
+              { "id": "West Bengal", "title": "West Bengal" },
+              { "id": "Andaman and Nicobar Islands", "title": "Andaman & Nicobar Islands" },
+              { "id": "Chandigarh", "title": "Chandigarh" },
+              { "id": "Dadra and Nagar Haveli", "title": "Dadra & Nagar Haveli" },
+              { "id": "Daman and Diu", "title": "Daman & Diu" },
+              { "id": "Delhi", "title": "Delhi" },
+              { "id": "Jammu and Kashmir", "title": "Jammu & Kashmir" },
+              { "id": "Ladakh", "title": "Ladakh" },
+              { "id": "Lakshadweep", "title": "Lakshadweep" },
+              { "id": "Puducherry", "title": "Puducherry" }
+            ]
+          },
+          {
+            "type": "TextInput",
+            "name": "pin_code",
+            "label": "PIN Code",
+            "required": true,
+            "input-type": "text",
+            "min-chars": 6,
+            "max-chars": 6
+          },
+          {
+            "type": "RadioButtonsGroup",
+            "name": "address_type",
+            "label": "Address Type",
+            "required": true,
+            "data-source": [
+              { "id": "home", "title": "Home" },
+              { "id": "office", "title": "Office" },
+              { "id": "other", "title": "Other" }
+            ]
+          },
+          {
+            "type": "Footer",
+            "label": "Save Address",
+            "on-click-action": {
+              "name": "data_exchange",
+              "payload": {
+                "screen_action": "save_address",
+                "full_name": "${form.full_name}",
+                "phone": "${form.phone}",
+                "house": "${form.house}",
+                "building": "${form.building}",
+                "area": "${form.area}",
+                "landmark": "${form.landmark}",
+                "city": "${form.city}",
+                "state": "${form.state}",
+                "pin_code": "${form.pin_code}",
+                "address_type": "${form.address_type}"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "SUCCESS",
+      "title": "All Done",
+      "terminal": true,
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextHeading",
+            "text": "Address saved"
+          },
+          {
+            "type": "TextBody",
+            "text": "Your delivery address has been saved. Head back to the chat to complete your order."
+          }
+        ]
+      }
+    }
+  ]
+}

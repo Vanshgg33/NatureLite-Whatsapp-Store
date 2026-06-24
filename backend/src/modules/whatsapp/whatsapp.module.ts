@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { WhatsAppService } from './whatsapp.service';
+import { WaFlowService } from './wa-flow.service';
 import { WhatsAppController } from './whatsapp.controller';
 import { MessageLog, MessageLogSchema } from './schemas/message-log.schema';
 import { MessageLogRepository } from './repositories/message-log.repository';
@@ -16,7 +17,7 @@ import { SettingsModule } from '../settings/settings.module';
     SettingsModule,
   ],
   controllers: [WhatsAppController],
-  providers: [MessageLogRepository, WhatsAppService],
-  exports: [MessageLogRepository, WhatsAppService],
+  providers: [MessageLogRepository, WhatsAppService, WaFlowService],
+  exports: [MessageLogRepository, WhatsAppService, WaFlowService],
 })
 export class WhatsAppModule {}

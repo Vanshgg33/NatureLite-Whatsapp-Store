@@ -22,8 +22,8 @@ interface Badge {
 const defaultBadges: Badge[] = [
   {
     icon: <Leaf className="w-7 h-7" />,
-    title: '100% Organic',
-    description: 'Certified organic ingredients with no harmful chemicals',
+    title: '100% Pure',
+    description: 'Pure natural ingredients with no harmful chemicals',
   },
   {
     icon: <Truck className="w-7 h-7" />,
@@ -284,7 +284,7 @@ export function TrustBadges({
 export function TrustBanner() {
   const items = [
     'Free Shipping on Orders ₹499+',
-    '100% Organic Certified',
+    '100% Pure Certified',
     'Farm Fresh Quality',
     'Secure Checkout',
     'Easy Returns',

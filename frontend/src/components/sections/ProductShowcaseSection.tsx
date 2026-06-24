@@ -16,7 +16,7 @@ const products = [
     name: 'Cold-Pressed Oil',
     subtitle: 'TRADITIONAL WOOD-PRESSED',
     description: 'Pure organic oil extracted using age-old wooden Ghani methods. No chemicals, no heat — just nature.',
-    tags: ['100% Organic', 'Farm Fresh', 'No Additives'],
+    tags: ['100% Pure', 'Farm Fresh', 'No Additives'],
     link: '/products',
     range: [0, 0.45] as [number, number],
     align: 'left' as const,

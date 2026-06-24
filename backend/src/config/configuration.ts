@@ -28,6 +28,12 @@ export interface WhatsAppConfig {
   webhookUrl: string;
   webhookVerifyToken: string;
   appSecret: string;
+  /** Meta WhatsApp Flow ID (from Business Manager). Empty = Flows disabled. */
+  flowId: string;
+  /** RSA private key (PEM) used to decrypt Flow data exchange requests. */
+  flowPrivateKey: string;
+  /** "draft" during development, "published" in production. */
+  flowMode: 'draft' | 'published';
 }
 
 export interface CatalogConfig {
@@ -130,6 +136,9 @@ export default (): Configuration => ({
     webhookUrl: process.env.WHATSAPP_WEBHOOK_URL || '',
     webhookVerifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '',
     appSecret: process.env.WHATSAPP_APP_SECRET || '',
+    flowId: process.env.WHATSAPP_FLOW_ID || '',
+    flowPrivateKey: (process.env.WHATSAPP_FLOW_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+    flowMode: (process.env.WHATSAPP_FLOW_MODE as 'draft' | 'published') || 'draft',
   },
   catalog: {
     apiUrl: process.env.CATALOG_API_URL || 'https://graph.facebook.com/v27.0',

@@ -437,8 +437,30 @@ export class ChatbotService {
     }
   }
 
+  /**
+   * Called by WaFlowService after the user completes address selection via WhatsApp Flow.
+   * Updates the session state and sends the payment options message.
+   */
+  async triggerPaymentFromFlow(phone: string, addressIdx: number): Promise<void> {
+    const session = await this.chatSessionRepository.findOneByPhone(phone);
+    if (!session) {
+      this.logger.warn(`triggerPaymentFromFlow: no session for ${phone}`);
+      return;
+    }
+    session.context = mergeChatContext(session.context, { selectedAddressIndex: addressIdx });
+    session.previousState = session.currentState;
+    session.currentState = 'payment_selection';
+    await session.save();
+    await this.sendOrderBillSummary(phone, session);
+    await this.sendFlowResponse(phone, 'payment_selection', session);
+  }
+
   private async handleMessageUnsafe(message: WhatsAppMessage): Promise<void> {
     try {
+      if (message.messageId) {
+        void this.whatsappService.markReadAndTyping(message.messageId, message.phone);
+      }
+
       const session = await this.getOrCreateSession(message.phone);
 
       await this.updateSessionActivity(session._id.toString());
@@ -3174,6 +3196,21 @@ export class ChatbotService {
     }
 
     if (input === 'add_address') {
+      const flowId = this.configService.get<string>('whatsapp.flowId');
+      const provider = this.configService.get<string>('whatsapp.provider');
+      if (flowId && provider === 'meta') {
+        await this.whatsappService.sendWhatsAppFlow({
+          phone,
+          flowId,
+          flowToken: this.encodeFlowToken(phone, 'account'),
+          flowMode: this.configService.get<'draft' | 'published'>('whatsapp.flowMode') ?? 'draft',
+          headerText: 'Add Address',
+          bodyText: 'Fill in your new delivery address.',
+          ctaLabel: 'Add Address',
+        });
+        // Session stays in 'account_addresses' — flow endpoint transitions it after save.
+        return;
+      }
       await this.transitionToState(session, 'address_input');
       await this.sendFlowResponse(phone, 'address_input', session);
       return;
@@ -4553,6 +4590,10 @@ export class ChatbotService {
     });
   }
 
+  private encodeFlowToken(phone: string, context: 'checkout' | 'account'): string {
+    return Buffer.from(JSON.stringify({ phone, context })).toString('base64url');
+  }
+
   private async sendCheckoutOptions(
     phone: string,
     session: ChatSessionDocument,
@@ -4570,8 +4611,42 @@ export class ChatbotService {
 
     const user = await this.usersService.findById(session.user.toString());
 
-    // If the user has no saved addresses, the list would only hold the "Add new" row,
-    // which reads awkwardly as a list. Fall back to a simple 2-button screen.
+    // Auto-pick when the choice is unambiguous: exactly one saved address,
+    // or one explicitly marked default. Skips address selection entirely.
+    // `forceShowList` overrides this for the explicit change path.
+    if (!options.forceShowList && user.addresses.length > 0) {
+      const defaultIdx = user.addresses.findIndex((a) => a.isDefault);
+      const autoIdx = user.addresses.length === 1 ? 0 : defaultIdx;
+      if (autoIdx >= 0) {
+        session.context = mergeChatContext(session.context, { selectedAddressIndex: autoIdx });
+        await session.save();
+        await this.transitionToState(session, 'payment_selection');
+        await this.sendFlowResponse(phone, 'payment_selection', session, notice);
+        return;
+      }
+    }
+
+    // For Meta Cloud API with a Flow configured, use WhatsApp Flows UI.
+    const flowId = this.configService.get<string>('whatsapp.flowId');
+    const provider = this.configService.get<string>('whatsapp.provider');
+    if (flowId && provider === 'meta') {
+      await this.whatsappService.sendWhatsAppFlow({
+        phone,
+        flowId,
+        flowToken: this.encodeFlowToken(phone, 'checkout'),
+        flowMode: this.configService.get<'draft' | 'published'>('whatsapp.flowMode') ?? 'draft',
+        headerText: 'Deliver to',
+        bodyText: notice
+          ? `${notice}\n\nChoose where you'd like your order delivered.`
+          : "Choose where you'd like your order delivered.",
+        footerText: 'NatureLite Foods',
+        ctaLabel: 'Select Address',
+      });
+      // Session stays in 'checkout' \u2014 flow endpoint transitions it to 'payment_selection'.
+      return;
+    }
+
+    // 360Dialog fallback: interactive list (existing behaviour).
     if (user.addresses.length === 0) {
       await this.whatsappService.sendInteractiveButtons({
         phone,
@@ -4583,23 +4658,6 @@ export class ChatbotService {
         ],
       });
       return;
-    }
-
-    // Auto-pick when the choice is unambiguous: exactly one saved address,
-    // or one explicitly marked default. Skips a list screen on every repeat
-    // order. Customers can still change it from the payment screen via
-    // "Change address". `forceShowList` overrides this for the explicit
-    // change path.
-    if (!options.forceShowList) {
-      const defaultIdx = user.addresses.findIndex((a) => a.isDefault);
-      const autoIdx = user.addresses.length === 1 ? 0 : defaultIdx;
-      if (autoIdx >= 0) {
-        session.context = mergeChatContext(session.context, { selectedAddressIndex: autoIdx });
-        await session.save();
-        await this.transitionToState(session, 'payment_selection');
-        await this.sendFlowResponse(phone, 'payment_selection', session, notice);
-        return;
-      }
     }
 
     const savedRows = user.addresses.slice(0, 8).map((addr, i) => {

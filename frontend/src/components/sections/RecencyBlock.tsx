@@ -92,7 +92,7 @@ export default function RecencyBlock() {
 
         {/* CTAs */}
         <motion.div
-          className="flex flex-wrap items-center justify-center gap-3"
+          className="flex flex-col sm:flex-row items-center justify-center gap-3"
           initial={{ opacity: 0, y: 12 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
@@ -102,7 +102,7 @@ export default function RecencyBlock() {
             <Link
               href="/products"
               data-cursor="SHOP"
-              className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl font-bold text-sm transition-all duration-200 hover:-translate-y-0.5"
+              className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-7 py-3.5 rounded-xl font-bold text-sm transition-all duration-200 hover:-translate-y-0.5"
               style={{ background: '#a07010', color: '#fff', boxShadow: '0 4px 24px -4px rgba(160,112,16,0.55)', fontSize: 14 }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#7a5408'; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#a07010'; }}
@@ -118,7 +118,7 @@ export default function RecencyBlock() {
               target="_blank"
               rel="noopener noreferrer"
               data-cursor="ORDER"
-              className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl font-bold text-sm transition-all duration-200 hover:-translate-y-0.5"
+              className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-7 py-3.5 rounded-xl font-bold text-sm transition-all duration-200 hover:-translate-y-0.5"
               style={{ background: '#25D366', color: '#fff', boxShadow: '0 4px 24px -4px rgba(37,211,102,0.40)', fontSize: 14 }}
             >
               <MessageCircle className="w-4 h-4" />

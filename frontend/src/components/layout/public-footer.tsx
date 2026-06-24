@@ -155,7 +155,7 @@ export function PublicFooter() {
             <div className="flex flex-wrap justify-center items-center gap-5 sm:gap-12">
               {[
                 { icon: ShieldCheck, label: 'FSSAI Certified' },
-                { icon: Leaf,        label: '100% Organic'    },
+                { icon: Leaf,        label: '100% Pure'       },
                 { icon: CreditCard,  label: 'Secure Payments' },
               ].map(({ icon: Icon, label }) => (
                 <div key={label} className="flex items-center gap-2">
@@ -226,12 +226,12 @@ export function PublicFooter() {
             {/* Contact quick-links */}
             <div className="mt-6 space-y-2">
               <a
-                href="mailto:naturelitefoods@gmail.com"
+                href="mailto:support@naturelitefoods.com"
                 className="flex items-center gap-2 text-xs transition-colors duration-200"
                 style={{ color: 'rgba(255,245,225,0.38)' }}
               >
                 <Mail className="w-3.5 h-3.5 flex-shrink-0" />
-                naturelitefoods@gmail.com
+                support@naturelitefoods.com
               </a>
             </div>
           </div>

@@ -8,6 +8,21 @@ export class Address {
   @Prop({ required: true })
   label: string;
 
+  @Prop()
+  fullName?: string;
+
+  @Prop()
+  phone?: string;
+
+  @Prop()
+  house?: string;
+
+  @Prop()
+  building?: string;
+
+  @Prop()
+  area?: string;
+
   @Prop({ required: true })
   street: string;
 
@@ -22,6 +37,9 @@ export class Address {
 
   @Prop()
   landmark?: string;
+
+  @Prop({ enum: ['home', 'office', 'other'] })
+  addressType?: 'home' | 'office' | 'other';
 
   @Prop({ default: false })
   isDefault: boolean;
