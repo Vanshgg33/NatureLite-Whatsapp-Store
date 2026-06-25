@@ -11,6 +11,16 @@ import { CatalogConfig } from '../../config/configuration';
 import { UpdateUcmCatalogConfigDto, UcmSyncMode } from './dto/ucm.dto';
 import { StoresService } from '../stores/stores.service';
 import { StoreStockService } from '../store-stock/store-stock.service';
+import { AuditService } from '../audit/audit.service';
+import { EmailService } from '../email/email.service';
+
+const AUDIT_RECIPIENT = 'jaiswalvansh96@gmail.com';
+
+export interface PushActorContext {
+  userId: string;
+  userPhone: string;
+  ipAddress: string;
+}
 
 type CatalogState = {
   syncMode?: UcmSyncMode | 'dry_run' | 'meta';
@@ -101,6 +111,8 @@ export class UcmService {
     private readonly categoryRepository: CategoryRepository,
     private readonly storesService: StoresService,
     private readonly storeStockService: StoreStockService,
+    private readonly auditService: AuditService,
+    private readonly emailService: EmailService,
   ) {
     const catalogConfig = this.configService.get<CatalogConfig>('catalog')!;
     this.graphClient = axios.create({
@@ -194,7 +206,7 @@ export class UcmService {
     return this.pushCatalogToMeta(reason);
   }
 
-  async pushCatalogToMeta(reason = 'manual_sync'): Promise<SyncSummary> {
+  async pushCatalogToMeta(reason = 'manual_sync', actor?: PushActorContext): Promise<SyncSummary> {
     const state = await this.getCatalogState();
 
     if (state.syncMode === 'meta' && !state.selectedCatalogId?.trim()) {
@@ -226,7 +238,7 @@ export class UcmService {
       };
     }
 
-    return this.syncProductsToRemote(products, reason, 'push');
+    return this.syncProductsToRemote(products, reason, 'push', actor);
   }
 
   async pullCatalogToDatabase(reason = 'manual_pull'): Promise<SyncSummary> {
@@ -288,7 +300,7 @@ export class UcmService {
     return summary;
   }
 
-  async syncProductById(productId: string, reason = 'product_update'): Promise<void> {
+  async syncProductById(productId: string, reason = 'product_update', actor?: PushActorContext): Promise<void> {
     const catalogConfig = this.configService.get<CatalogConfig>('catalog')!;
     if (!catalogConfig.accessToken) {
       return;
@@ -306,7 +318,7 @@ export class UcmService {
       return;
     }
 
-    await this.syncProductsToRemote([product], reason, 'push');
+    await this.syncProductsToRemote([product], reason, 'push', actor);
   }
 
   async archiveDeletedProduct(product: ProductDocument, reason = 'product_deleted'): Promise<void> {
@@ -324,7 +336,7 @@ export class UcmService {
     await this.upsertRemoteProduct(state, this.buildCatalogItem(product, true, 0));
   }
 
-  private async syncProductsToRemote(products: ProductDocument[], reason: string, mode: 'push'): Promise<SyncSummary> {
+  private async syncProductsToRemote(products: ProductDocument[], reason: string, mode: 'push', actor?: PushActorContext): Promise<SyncSummary> {
     const state = await this.getCatalogState();
     const { remoteCatalogId, remoteCatalogName } = await this.resolveCatalogSelection(state);
 
@@ -455,6 +467,18 @@ export class UcmService {
       remoteCatalogName,
       summary,
     );
+
+    if (actor?.userId) {
+      const pushedProducts = items.map((i) => ({
+        name: i.product.name,
+        retailerId: String(i.item.retailer_id ?? i.product._id.toString()),
+        stock: i.item.inventory !== undefined ? Number(i.item.inventory) : null,
+        availability: String(i.item.availability ?? ''),
+      }));
+      this.logProductPushAudit(summary, actor, pushedProducts, reason).catch((err: unknown) => {
+        this.logger.error(`UCM audit log failed: ${err instanceof Error ? err.message : String(err)}`);
+      });
+    }
 
     return summary;
   }
@@ -948,6 +972,197 @@ export class UcmService {
 
   private async sleep(ms: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private async logProductPushAudit(
+    summary: SyncSummary,
+    actor: PushActorContext,
+    products: Array<{ name: string; retailerId: string; stock: number | null; availability: string }>,
+    reason: string,
+  ): Promise<void> {
+    await this.auditService.log({
+      action: 'ucm.push',
+      performedBy: actor.userId,
+      performedByName: actor.userPhone,
+      targetModel: 'Product',
+      newValues: {
+        syncedProducts: summary.syncedProducts,
+        failedProducts: summary.failedProducts,
+        totalProducts: summary.totalProducts,
+        catalogId: summary.remoteCatalogId,
+        catalogName: summary.remoteCatalogName,
+        reason,
+      },
+      description: `UCM push: ${summary.syncedProducts}/${summary.totalProducts} products synced to Meta catalog (${summary.remoteCatalogName || summary.remoteCatalogId})`,
+      ipAddress: actor.ipAddress,
+    });
+
+    const now = new Date();
+    const timestamp = now.toLocaleString('en-IN', {
+      day: '2-digit', month: 'long', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true, timeZone: 'Asia/Kolkata',
+    });
+
+    const productRows = products.map((p) => {
+      const statusColor = p.availability === 'in stock' ? '#16a34a' : '#dc2626';
+      const stockDisplay = p.stock !== null ? p.stock.toString() : '∞';
+      return `<tr style="border-bottom:1px solid #f0f0f0;">
+        <td style="padding:10px 12px;color:#111827;font-size:13px;">${this.escapeHtml(p.name)}</td>
+        <td style="padding:10px 12px;color:#6b7280;font-size:12px;font-family:monospace;">${this.escapeHtml(p.retailerId)}</td>
+        <td style="padding:10px 12px;text-align:center;color:#374151;font-size:13px;">${stockDisplay}</td>
+        <td style="padding:10px 12px;text-align:center;">
+          <span style="background:${p.availability === 'in stock' ? '#dcfce7' : '#fee2e2'};color:${statusColor};font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;text-transform:uppercase;">${this.escapeHtml(p.availability || 'unknown')}</span>
+        </td>
+      </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;">
+<tr><td align="center">
+<table width="620" cellpadding="0" cellspacing="0" style="max-width:620px;width:100%;">
+
+  <!-- Top accent -->
+  <tr><td style="background:linear-gradient(90deg,#C8900A,#E8A838,#D4A017);height:4px;border-radius:12px 12px 0 0;font-size:0;">&nbsp;</td></tr>
+
+  <!-- Header -->
+  <tr>
+    <td style="background:linear-gradient(160deg,#060F09,#0D2116,#1C3D26);padding:32px 40px 28px;border-radius:0;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td>
+            <span style="background:rgba(212,160,23,0.15);border:1px solid rgba(212,160,23,0.4);border-radius:6px;padding:4px 12px;color:#D4A017;font-size:10px;font-weight:800;letter-spacing:2px;text-transform:uppercase;">Nature Lite · UCM</span>
+            <h1 style="margin:14px 0 6px;color:#ffffff;font-size:24px;font-weight:900;letter-spacing:-0.3px;">Product Push Audit</h1>
+            <p style="margin:0;color:rgba(255,255,255,0.5);font-size:13px;">A catalog push was performed from the UCM panel</p>
+          </td>
+          <td align="right" valign="top">
+            <span style="background:${summary.failedProducts > 0 ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)'};border:1px solid ${summary.failedProducts > 0 ? 'rgba(239,68,68,0.4)' : 'rgba(34,197,94,0.4)'};border-radius:20px;padding:6px 14px;color:${summary.failedProducts > 0 ? '#f87171' : '#4ade80'};font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">${summary.failedProducts > 0 ? 'PARTIAL FAIL' : 'SUCCESS'}</span>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- Who / When / IP cards -->
+  <tr>
+    <td style="background:#ffffff;padding:28px 40px 0;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <!-- Login ID -->
+          <td width="33%" style="padding-right:8px;vertical-align:top;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+              <tr><td style="background:linear-gradient(90deg,#0D2116,#1C3D26);height:3px;font-size:0;">&nbsp;</td></tr>
+              <tr><td style="padding:14px 16px;">
+                <p style="margin:0 0 4px;color:#6b7280;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;">Login ID</p>
+                <p style="margin:0;color:#111827;font-size:13px;font-weight:700;">${this.escapeHtml(actor.userPhone || 'N/A')}</p>
+                <p style="margin:3px 0 0;color:#9ca3af;font-size:11px;word-break:break-all;">${this.escapeHtml(actor.userId)}</p>
+              </td></tr>
+            </table>
+          </td>
+          <!-- Timestamp -->
+          <td width="34%" style="padding:0 4px;vertical-align:top;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+              <tr><td style="background:linear-gradient(90deg,#D4A017,#E8A838);height:3px;font-size:0;">&nbsp;</td></tr>
+              <tr><td style="padding:14px 16px;">
+                <p style="margin:0 0 4px;color:#6b7280;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;">Timestamp (IST)</p>
+                <p style="margin:0;color:#111827;font-size:12px;font-weight:700;line-height:1.4;">${timestamp}</p>
+              </td></tr>
+            </table>
+          </td>
+          <!-- IP Address -->
+          <td width="33%" style="padding-left:8px;vertical-align:top;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+              <tr><td style="background:linear-gradient(90deg,#7c3aed,#a855f7);height:3px;font-size:0;">&nbsp;</td></tr>
+              <tr><td style="padding:14px 16px;">
+                <p style="margin:0 0 4px;color:#6b7280;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;">IP Address</p>
+                <p style="margin:0;color:#111827;font-size:13px;font-weight:700;font-family:monospace;">${this.escapeHtml(actor.ipAddress || 'unknown')}</p>
+              </td></tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- Sync stats bar -->
+  <tr>
+    <td style="background:#ffffff;padding:20px 40px 0;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#0D2116,#1C3D26);border-radius:10px;">
+        <tr><td style="padding:18px 24px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="color:rgba(255,255,255,0.5);font-size:10px;font-weight:800;letter-spacing:2px;text-transform:uppercase;">Catalog</td>
+              <td style="color:rgba(255,255,255,0.5);font-size:10px;font-weight:800;letter-spacing:2px;text-transform:uppercase;text-align:center;">Total</td>
+              <td style="color:rgba(255,255,255,0.5);font-size:10px;font-weight:800;letter-spacing:2px;text-transform:uppercase;text-align:center;">Synced</td>
+              <td style="color:rgba(255,255,255,0.5);font-size:10px;font-weight:800;letter-spacing:2px;text-transform:uppercase;text-align:center;">Failed</td>
+              <td style="color:rgba(255,255,255,0.5);font-size:10px;font-weight:800;letter-spacing:2px;text-transform:uppercase;text-align:right;">Reason</td>
+            </tr>
+            <tr>
+              <td style="color:#D4A017;font-size:13px;font-weight:700;padding-top:6px;">${this.escapeHtml(summary.remoteCatalogName || summary.remoteCatalogId || 'N/A')}</td>
+              <td style="color:#ffffff;font-size:20px;font-weight:900;text-align:center;padding-top:6px;">${summary.totalProducts}</td>
+              <td style="color:#4ade80;font-size:20px;font-weight:900;text-align:center;padding-top:6px;">${summary.syncedProducts}</td>
+              <td style="color:${summary.failedProducts > 0 ? '#f87171' : '#4ade80'};font-size:20px;font-weight:900;text-align:center;padding-top:6px;">${summary.failedProducts}</td>
+              <td style="color:rgba(255,255,255,0.6);font-size:12px;text-align:right;padding-top:6px;">${this.escapeHtml(reason)}</td>
+            </tr>
+          </table>
+        </td></tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- Products table -->
+  <tr>
+    <td style="background:#ffffff;padding:24px 40px 36px;">
+      <p style="margin:0 0 14px;color:#111827;font-size:13px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;">Products Pushed (${products.length})</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+        <thead>
+          <tr style="background:#f9fafb;">
+            <th style="padding:10px 12px;text-align:left;color:#6b7280;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Product Name</th>
+            <th style="padding:10px 12px;text-align:left;color:#6b7280;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Retailer ID / SKU</th>
+            <th style="padding:10px 12px;text-align:center;color:#6b7280;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Stock</th>
+            <th style="padding:10px 12px;text-align:center;color:#6b7280;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Availability</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${productRows || '<tr><td colspan="4" style="padding:16px;text-align:center;color:#9ca3af;font-size:13px;">No products in this push</td></tr>'}
+        </tbody>
+      </table>
+    </td>
+  </tr>
+
+  <!-- Footer -->
+  <tr>
+    <td style="background:#0D2116;padding:24px 40px;border-radius:0 0 12px 12px;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td><span style="color:#D4A017;font-size:11px;font-weight:800;letter-spacing:2px;">NATURE LITE</span><br/><span style="color:rgba(255,255,255,0.3);font-size:10px;">Automated UCM Audit System</span></td>
+          <td align="right"><span style="color:rgba(255,255,255,0.2);font-size:10px;">This is an automated audit email.<br/>Do not reply to this message.</span></td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+
+    await this.emailService.sendAdminReport(
+      AUDIT_RECIPIENT,
+      `[UCM Audit] Product Push by ${actor.userPhone || actor.userId} — ${timestamp}`,
+      html,
+    );
+  }
+
+  private escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
   private async writeSyncState(

@@ -233,8 +233,11 @@ export default function ProductDetailPage() {
       toast({ title: 'Review submitted!', description: 'Thank you for your feedback.' });
       setReviewMessage(''); setReviewRating(5); setShowReviewForm(false);
       refetchReviews();
-    } catch {
-      toast({ title: 'Failed to submit review', variant: 'destructive' });
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+        'Failed to submit review. Please try again.';
+      toast({ title: 'Could not submit review', description: msg, variant: 'destructive' });
     } finally {
       setSubmittingReview(false);
     }
