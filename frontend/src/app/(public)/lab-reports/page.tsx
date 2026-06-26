@@ -24,7 +24,7 @@ function SkeletonCard() {
 function LabReportCard({ product, index }: { product: Product; index: number }) {
   const image = product.images?.[0];
   const reportUrl = `/api/lab-report?url=${encodeURIComponent(product.labReportUrl!)}`;
-  const downloadUrl = `/api/lab-report?url=${encodeURIComponent(product.labReportUrl!)}`;
+  const downloadUrl = `/api/lab-report?url=${encodeURIComponent(product.labReportUrl!)}&download=1`;
 
   return (
     <motion.div
@@ -88,8 +88,6 @@ function LabReportCard({ product, index }: { product: Product; index: number }) 
           <a
             href={downloadUrl}
             download
-            target="_blank"
-            rel="noopener noreferrer"
             className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 hover:opacity-80 active:scale-95"
             style={{
               background: 'rgba(26,82,16,0.06)',
