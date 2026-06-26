@@ -323,7 +323,7 @@ export default function EditProductPage() {
         nextBatchDays: formData.nextBatchDays ? parseInt(formData.nextBatchDays) : undefined,
         purityClaims: formData.purityClaims ? formData.purityClaims.split(',').map((s) => s.trim()).filter(Boolean) : [],
       } : undefined,
-      labReportUrl: labReportUrl || undefined,
+      labReportUrl: labReportUrl,
     } as Parameters<typeof api.updateProduct>[1]);
   };
 
