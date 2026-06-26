@@ -124,7 +124,13 @@ export class AdminChatbotController {
         (h): h is HistoryItem =>
           h != null &&
           typeof h.text === 'string' &&
+          h.text.length > 0 &&
           (h.role === 'user' || h.role === 'assistant'),
-      );
+      )
+      .map((h) => ({
+        role: h.role,
+        // Enforce server-side text budget: user messages 300 chars, assistant 400 chars
+        text: h.role === 'user' ? h.text.slice(0, 300) : h.text.slice(0, 400),
+      }));
   }
 }

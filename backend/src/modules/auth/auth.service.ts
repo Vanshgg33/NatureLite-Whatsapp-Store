@@ -20,6 +20,7 @@ import {
 } from './dto/auth.dto';
 import { JwtPayload } from '../../common/decorators/current-user.decorator';
 import { parseObjectId } from '../../common/utils/objectid.util';
+import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class AuthService {
@@ -32,6 +33,7 @@ export class AuthService {
     private readonly refreshTokenRepository: RefreshTokenRepository,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private readonly redisService: RedisService,
   ) {}
 
   private hashToken(token: string): string {
@@ -255,29 +257,17 @@ export class AuthService {
     return { message: 'Your account has been promoted to superadmin. Please log out and log back in.' };
   }
 
-  /** In-memory OTP store: phone -> { otp, expiresAt }. Rate limit: lastSentAt per phone. */
-  private readonly otpStore = new Map<string, { otp: string; expiresAt: number }>();
-  private readonly otpRateLimit = new Map<string, number>();
-  private static readonly OTP_TTL_MS = 5 * 60 * 1000;
-  private static readonly OTP_RATE_LIMIT_MS = 60 * 1000;
-
   async customerLogin(dto: CustomerLoginDto): Promise<AuthResponse> {
-    const stored = this.otpStore.get(dto.phone);
-    // OTP bypass is allowed only when ENABLE_OTP_BYPASS=true is explicitly set.
-    // Relying on NODE_ENV is unsafe because staging may not be set to 'production'.
     const devBypass = dto.otp === '123456' && process.env.ENABLE_OTP_BYPASS === 'true';
     if (!devBypass) {
+      const stored = await this.redisService.get(`otp:${dto.phone}`);
       if (!stored) {
         throw new UnauthorizedException('Invalid or expired OTP. Please request a new one.');
       }
-      if (Date.now() > stored.expiresAt) {
-        this.otpStore.delete(dto.phone);
-        throw new UnauthorizedException('OTP has expired. Please request a new one.');
-      }
-      if (stored.otp !== dto.otp) {
+      if (stored !== dto.otp) {
         throw new UnauthorizedException('Invalid OTP');
       }
-      this.otpStore.delete(dto.phone);
+      await this.redisService.del(`otp:${dto.phone}`);
     }
 
     let user = await this.userRepository.findOneByPhone(dto.phone);
@@ -410,18 +400,20 @@ export class AuthService {
   }
 
   async sendOtp(phone: string): Promise<{ success: boolean; message: string }> {
-    const now = Date.now();
-    const lastSent = this.otpRateLimit.get(phone);
-    if (lastSent != null && now - lastSent < AuthService.OTP_RATE_LIMIT_MS) {
-      const waitSec = Math.ceil((AuthService.OTP_RATE_LIMIT_MS - (now - lastSent)) / 1000);
+    const rateLimitKey = `otp:rate:${phone}`;
+    const rateEntry = await this.redisService.get(rateLimitKey);
+    if (rateEntry) {
+      const waitSec = Math.ceil((60_000 - (Date.now() - parseInt(rateEntry, 10))) / 1000);
       throw new BadRequestException(`Please wait ${waitSec} seconds before requesting another OTP.`);
     }
 
     const otp = process.env.ENABLE_OTP_BYPASS === 'true'
       ? '123456'
       : String(Math.floor(100000 + Math.random() * 900000));
-    this.otpStore.set(phone, { otp, expiresAt: now + AuthService.OTP_TTL_MS });
-    this.otpRateLimit.set(phone, now);
+
+    // OTP key expires in 5 min; rate-limit key expires in 60 s
+    await this.redisService.set(`otp:${phone}`, otp, 300);
+    await this.redisService.set(rateLimitKey, String(Date.now()), 60);
 
     this.logger.log(`Sending OTP to ${phone}`);
     return {

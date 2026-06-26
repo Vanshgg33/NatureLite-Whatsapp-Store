@@ -280,13 +280,21 @@ function BriefingCard({ briefing, onAsk }: { briefing: Record<string, string | n
 
 function parseKeyValues(text: string): Array<{ key: string; value: string }> {
   const pairs: Array<{ key: string; value: string }> = [];
-  const lines = text.split('\n');
-  for (const line of lines) {
-    const match = line.match(/\*\*([^*]+)\*\*:\s*(.+)/);
-    if (match) {
-      const key = match[1].trim();
-      const value = match[2].replace(/\*\*/g, '').split('|')[0].trim();
-      if (pairs.length < 4) pairs.push({ key, value });
+  const seen = new Set<string>();
+  for (const line of text.split('\n')) {
+    if (pairs.length >= 4) break;
+    const t = line.replace(/^[-•*|\s]+/, '').trim();
+    // Try: **Key**: Value  |  **Key** Value  |  Key: **Value**  |  Key: Value
+    const m =
+      t.match(/\*\*([^*:]{2,30})\*\*[:\s]+\*?\*?([^*\n|]{1,35})\*?\*?/) ??
+      t.match(/^([A-Za-z][A-Za-z '\d]{2,28}):\s*\*?\*?([^*\n|]{1,35})\*?\*?/);
+    if (!m) continue;
+    const key = m[1].trim();
+    const value = m[2].replace(/\*\*/g, '').split(/[|,]/)[0].trim();
+    const kl = key.toLowerCase();
+    if (key.length >= 3 && value.length >= 1 && !seen.has(kl)) {
+      seen.add(kl);
+      pairs.push({ key, value });
     }
   }
   return pairs;
@@ -305,6 +313,7 @@ export default function AdminChatbotPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastUserTextRef = useRef<string>('');
   const abortRef = useRef<AbortController | null>(null);
+  const briefingCacheRef = useRef<Record<string, string | null> | null>(null);
 
   // Load DB history on mount
   useEffect(() => {
@@ -330,10 +339,16 @@ export default function AdminChatbotPage() {
     (async () => {
       try {
         const data = await api.getAdminChatbotBriefing();
+        briefingCacheRef.current = data;
         setBriefing(data);
       } catch { /* not fatal */ }
     })();
   }, [historyLoaded, messages.length]);
+
+  // Abort any in-flight SSE stream on unmount
+  useEffect(() => {
+    return () => { abortRef.current?.abort(); };
+  }, []);
 
   // Auto-scroll
   useEffect(() => {
@@ -343,7 +358,8 @@ export default function AdminChatbotPage() {
   const buildHistory = useCallback((currentMessages: Message[]): HistoryItem[] =>
     currentMessages.slice(-MAX_HISTORY_TURNS).map((m) => ({
       role: m.sender === 'user' ? 'user' : 'assistant',
-      text: m.text,
+      // Assistant replies can be 2000+ char tables — send max 400 chars; user messages are already short
+      text: m.sender === 'user' ? m.text : m.text.slice(0, 400),
     })), []);
 
   const handleSendMessage = async (text: string) => {
@@ -437,12 +453,8 @@ export default function AdminChatbotPage() {
   const handleResetChat = async () => {
     setMessages([]);
     setShowSuggestions(false);
-    setBriefing(null);
+    setBriefing(briefingCacheRef.current);
     try { await api.clearAdminChatHistory(); } catch { /* not fatal */ }
-    // Reload briefing for empty state
-    setTimeout(async () => {
-      try { const data = await api.getAdminChatbotBriefing(); setBriefing(data); } catch { /* */ }
-    }, 300);
   };
 
   const handleStopStream = () => {

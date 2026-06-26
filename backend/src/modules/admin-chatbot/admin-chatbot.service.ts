@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+﻿import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -27,12 +27,9 @@ import { EmailService } from '../email/email.service';
 import { parseDateRange, dateRangeToDays } from '../../common/utils/date-parse.util';
 import { SettingsService } from '../settings/settings.service';
 import {
-  ChatbotIntentSchema,
   ChatRequestSchema,
-  type ValidatedIntent,
   normalizeQuery,
   queryFingerprint,
-  intentCacheKey,
   rerankContextBlocks,
   compressContext,
   SYNTHESIS_FEW_SHOTS,
@@ -172,30 +169,13 @@ export class AdminChatbotService implements OnApplicationBootstrap {
   private deduplicatePlan(plan: RagStep[]): RagStep[] {
     const seen = new Set<string>();
     return plan.filter((s) => {
-      if (seen.has(s.tool)) return false;
-      seen.add(s.tool);
+      const sortedParams = Object.keys(s.params ?? {})
+        .sort()
+        .reduce((acc, k) => ({ ...acc, [k]: (s.params as any)[k] }), {});
+      const key = `${s.tool}:${JSON.stringify(sortedParams)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
       return true;
-    });
-  }
-
-  // ─── Email confirmation: extract params from prior preview in history ─────────
-
-  private enrichEmailConfirmation(plan: RagStep[], history: HistoryItem[]): RagStep[] {
-    return plan.map((step) => {
-      if (step.tool !== 'send_email_report') return step;
-      // Already has valid params
-      if (step.params?.to && step.params?.reportType) return step;
-      // Scan history (most recent assistant messages first) for a READY_TO_SEND preview
-      for (let i = history.length - 1; i >= 0; i--) {
-        const msg = history[i];
-        if (msg.role !== 'assistant') continue;
-        const toMatch = msg.text.match(/\bto:\s*([^\s\n]+)/);
-        const typeMatch = msg.text.match(/\breportType:\s*([^\s\n]+)/);
-        if (toMatch && typeMatch && msg.text.includes('READY_TO_SEND')) {
-          return { ...step, params: { to: toMatch[1], reportType: typeMatch[1] } };
-        }
-      }
-      return step; // no preview found — will fail validation gracefully
     });
   }
 
@@ -455,85 +435,26 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     return result.data;
   }
 
-  // ─── Query expansion (RAG concept) ───────────────────────────────────────────
-
-  /**
-   * Ask Gemini to expand/clarify a short or ambiguous query into a more precise
-   * one before intent extraction.  Returns the original if Gemini is unavailable.
-   * Cost: 1 cheap intent-class call (~50 tokens in, ~30 tokens out).
-   */
-  private async expandQuery(apiKey: string, query: string): Promise<string> {
-    if (query.length > 80) return query; // already detailed enough
-    try {
-      const data = await this.geminiRequest(
-        apiKey,
-        {
-          contents: [{
-            parts: [{
-              text: `You are an e-commerce analytics query optimizer. Expand this short admin query into a single clear question. Return ONLY the expanded query, nothing else.\n\nShort query: "${query}"\nExpanded query:`,
-            }],
-          }],
-          generationConfig: { temperature: 0.0, maxOutputTokens: 80 },
-        },
-        'expand',
-      );
-      const expanded = this.extractText(data).trim().replace(/^["']|["']$/g, '');
-      if (expanded && expanded.length > query.length) {
-        this.logger.debug(`Query expanded: "${query}" → "${expanded}"`);
-        return expanded;
-      }
-    } catch { /* fall through */ }
-    return query;
-  }
-
-  // ─── Semantic reply cache ─────────────────────────────────────────────────────
-
-  /**
-   * Try to serve a cached AI reply for this intent.
-   * Key: intent fingerprint (topic + filters + timePreset) — independent of exact wording.
-   */
-  private async getCachedReply(intent: ValidatedIntent): Promise<string | null> {
-    const key = `${intentCacheKey(intent)}:reply`;
-    return this.redisService.get(key);
-  }
-
-  private async setCachedReply(intent: ValidatedIntent, reply: string): Promise<void> {
-    const key = `${intentCacheKey(intent)}:reply`;
-    await this.redisService.set(key, reply, SYNTHESIS_CACHE_TTL_SECONDS);
-  }
-
   // ─── Core RAG pipeline ────────────────────────────────────────────────────────
 
-  /**
-   * Full RAG pipeline: expand → cache check → Gemini plans tools →
-   * execute (parallel) → re-rank → compress → synthesise → cache → persist.
-   * Gemini decides which tools to call — no hardcoded topic→tool mapping.
-   */
+  /** Full RAG pipeline: cache check → retrieve context → synthesise → cache → persist. */
   async runRagPipeline(
     message: string,
     history: HistoryItem[],
     adminId: string | undefined,
     apiKey: string,
   ): Promise<{ reply: string; contextBlocks: string[]; failedTools: string[] }> {
-    const failedTools: string[] = [];
-
-    // ── 1. Normalise query + fingerprint ────────────────────────────────────────
+    // ── 1. Fingerprint + history-aware cache key ──────────────────────────────────
     const normalized = normalizeQuery(message);
     const fingerprint = queryFingerprint(normalized);
-    this.logger.debug(`Query fingerprint: ${fingerprint}`);
-
-    // ── 1b. Expand short/ambiguous queries ──────────────────────────────────────
-    const expandedMessage = await this.expandQuery(apiKey, message);
-
-    // ── 2. Semantic reply cache check ───────────────────────────────────────────
-    // Skip cache for email confirmation flows (must always hit live tools)
     const isEmailFlow = /\byes\b|\bconfirm\b|\bsend\s+it\b|\bgo\s+ahead\b/i.test(message) &&
       history.some((h) => h.role === 'assistant' && /preview_email_report|READY_TO_SEND/i.test(h.text));
-    const replyCacheKey = `chatbot:reply:${fingerprint}`;
+    const replyCacheKey = `chatbot:reply:${fingerprint}:${this.historyContextHash(history)}`;
+
     if (!isEmailFlow) {
       const cachedReply = await this.redisService.get(replyCacheKey).catch(() => null);
       if (cachedReply) {
-        this.logger.debug(`Reply cache HIT: ${fingerprint}`);
+        this.logger.debug(`Reply cache HIT: ${replyCacheKey}`);
         if (adminId) {
           const ts = new Date().toISOString();
           await this.adminChatSessionRepository.appendMessages(adminId, [
@@ -545,14 +466,83 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       }
     }
 
-    // ── 3. Gemini plans which tools to call ─────────────────────────────────────
+    // ── 2. Retrieve context (planner + DB tools + rerank + compress) ──────────────
+    const { finalPlan, rawBlocks, compressedText, failedTools, error } =
+      await this.retrieveContext(message, history, apiKey);
+
+    if (error) {
+      return { reply: error, contextBlocks: [], failedTools };
+    }
+
+    // ── 3. Synthesise ─────────────────────────────────────────────────────────────
+    const synthesisData = await this.geminiRequest(
+      apiKey,
+      {
+        contents: [{ parts: [{ text: this.buildSynthesisPrompt(message, compressedText, history) }] }],
+        generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
+      },
+      'synthesis',
+      true,
+    );
+    const aiReply = this.extractText(synthesisData);
+
+    const rawFallback = this.formatRawDataFallback(rawBlocks, failedTools, message);
+    const baseReply = aiReply || rawFallback;
+    const finalReply = failedTools.length > 0
+      ? `${baseReply}\n\n> ⚠️ *Partial data — could not load: ${failedTools.join(', ')}*`
+      : baseReply;
+
+    // ── 4. Cache + persist ────────────────────────────────────────────────────────
+    const ACTION_TOOLS = new Set(['send_email_report', 'preview_email_report']);
+    const isActionPlan = finalPlan.some((s) => ACTION_TOOLS.has(s.tool));
+    if (aiReply && !isActionPlan && !isEmailFlow) {
+      await this.redisService.set(replyCacheKey, finalReply, SYNTHESIS_CACHE_TTL_SECONDS).catch(() => {});
+    }
+    if (adminId) {
+      const ts = new Date().toISOString();
+      await this.adminChatSessionRepository.appendMessages(adminId, [
+        { id: `${Date.now()}-u`, sender: 'user', text: message, timestamp: ts },
+        { id: `${Date.now()}-a`, sender: 'assistant', text: finalReply, timestamp: ts },
+      ]).catch(() => {});
+    }
+
+    return { reply: finalReply, contextBlocks: rawBlocks, failedTools };
+  }
+
+  // ─── History context hash (cache key scoping) ─────────────────────────────────
+
+  private historyContextHash(history: HistoryItem[]): string {
+    const ctx = history
+      .filter((h) => h.role === 'assistant')
+      .slice(-2)
+      .map((h) => h.text.slice(0, 80))
+      .join('|');
+    return ctx ? queryFingerprint(ctx).slice(0, 8) : '0';
+  }
+
+  // ─── Context retrieval (planner → tools → rerank → compress) ─────────────────
+
+  private async retrieveContext(
+    message: string,
+    history: HistoryItem[],
+    apiKey: string,
+  ): Promise<{
+    finalPlan: RagStep[];
+    rawBlocks: string[];
+    compressedText: string;
+    failedTools: string[];
+    error: string | null;
+  }> {
+    const failedTools: string[] = [];
+    const normalized = normalizeQuery(message);
+
     let plan: RagStep[] = [];
     let planSource = 'gemini';
 
     const planData = await this.geminiRequest(
       apiKey,
       {
-        contents: [{ parts: [{ text: this.buildPlannerPrompt(expandedMessage, history) }] }],
+        contents: [{ parts: [{ text: this.buildPlannerPrompt(message, history) }] }],
         generationConfig: { temperature: 0.0, maxOutputTokens: 400, responseMimeType: 'application/json' },
       },
       'planner',
@@ -570,8 +560,28 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     }
 
     if (!plan.length) {
-      planSource = 'keyword-fallback';
-      plan = this.keywordFallbackPlan(message);
+      const retryData = await this.geminiRequest(
+        apiKey,
+        {
+          contents: [{ parts: [{ text: this.buildCompactPlannerPrompt(message) }] }],
+          generationConfig: { temperature: 0.0, maxOutputTokens: 200, responseMimeType: 'application/json' },
+        },
+        'planner-retry',
+      );
+      if (retryData) {
+        try {
+          let raw = this.extractText(retryData).trim();
+          if (raw.startsWith('```')) raw = raw.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '');
+          const parsed = JSON.parse(raw.trim());
+          if (Array.isArray(parsed) && parsed.length > 0) { plan = parsed; planSource = 'gemini-retry'; }
+        } catch {
+          this.logger.warn('Planner retry parse failed — keyword fallback');
+        }
+      }
+      if (!plan.length) {
+        planSource = 'keyword-fallback';
+        plan = this.keywordFallbackPlan(message);
+      }
     }
 
     const finalPlan = this.deduplicatePlan(plan);
@@ -597,54 +607,67 @@ export class AdminChatbotService implements OnApplicationBootstrap {
 
     if (rawBlocks.length === 0) {
       return {
-        reply: `⚠️ **Could not load data.**\n\nAll queries failed (${failedTools.join(', ')}). Check DB connection.`,
-        contextBlocks: [],
+        finalPlan,
+        rawBlocks: [],
+        compressedText: '',
         failedTools,
+        error: `⚠️ **Could not load data.**\n\nAll queries failed (${failedTools.join(', ')}). Check DB connection.`,
       };
     }
 
-    // ── 5. Re-rank by relevance to the normalised query ─────────────────────────
     const rankedBlocks = rerankContextBlocks(rawBlocks, normalized);
-
-    // ── 6. Compress context to fit budget ───────────────────────────────────────
     const compressedBlocks = compressContext(rankedBlocks, normalized, MAX_CONTEXT_CHARS);
-    const retrievedText = compressedBlocks.join('\n\n').slice(0, MAX_CONTEXT_CHARS);
+    const compressedText = compressedBlocks.join('\n\n').slice(0, MAX_CONTEXT_CHARS);
 
-    // ── 7. Synthesise ────────────────────────────────────────────────────────────
-    const synthesisData = await this.geminiRequest(
-      apiKey,
-      {
-        contents: [{ parts: [{ text: this.buildSynthesisPrompt(message, retrievedText, history) }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
-      },
-      'synthesis',
-      true,
-    );
-    const aiReply = this.extractText(synthesisData);
+    return { finalPlan, rawBlocks, compressedText, failedTools, error: null };
+  }
 
-    const rawFallback = this.formatRawDataFallback(rawBlocks, failedTools, message);
-    const baseReply = aiReply || rawFallback;
-    const finalReply = failedTools.length > 0
-      ? `${baseReply}\n\n> ⚠️ *Partial data — could not load: ${failedTools.join(', ')}*`
-      : baseReply;
+  // ─── Gemini SSE streaming ─────────────────────────────────────────────────────
 
-    // ── 8. Cache synthesised reply (skip action tools like send_email) ───────────
-    const ACTION_TOOLS = new Set(['send_email_report', 'preview_email_report']);
-    const isActionPlan = finalPlan.some((s) => ACTION_TOOLS.has(s.tool));
-    if (aiReply && !isActionPlan && !isEmailFlow) {
-      await this.redisService.set(replyCacheKey, finalReply, SYNTHESIS_CACHE_TTL_SECONDS).catch(() => {});
+  private async geminiStreamText(
+    apiKey: string,
+    body: object,
+    onChunk: (text: string) => void,
+  ): Promise<string> {
+    const url = `${GEMINI_BASE}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
+    let fullText = '';
+    let response: any;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      return '';
     }
+    if (!response?.ok || !response.body) return '';
 
-    // ── 9. Persist conversation history ──────────────────────────────────────────
-    if (adminId) {
-      const ts = new Date().toISOString();
-      await this.adminChatSessionRepository.appendMessages(adminId, [
-        { id: `${Date.now()}-u`, sender: 'user', text: message, timestamp: ts },
-        { id: `${Date.now()}-a`, sender: 'assistant', text: finalReply, timestamp: ts },
-      ]).catch(() => {});
+    const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr || jsonStr === '[DONE]') continue;
+          try {
+            const chunk = JSON.parse(jsonStr) as GeminiResponse;
+            const text = chunk?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+            if (text) { onChunk(text); fullText += text; }
+          } catch { /* ignore malformed chunk */ }
+        }
+      }
+    } finally {
+      reader.releaseLock();
     }
-
-    return { reply: finalReply, contextBlocks: rawBlocks, failedTools };
+    return fullText;
   }
 
   // ─── Main chat entry point ────────────────────────────────────────────────────
@@ -734,7 +757,27 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) return { reply: '⚠️ GEMINI_API_KEY not configured.' };
     try {
-      const { reply } = await this.runRagPipeline(data.message, data.history, data.adminId, apiKey);
+      const { compressedText, error } = await this.retrieveContext(data.message, data.history, apiKey);
+      if (error) return { reply: `⚠️ ${error}` };
+
+      const synthData = await this.geminiRequest(
+        apiKey,
+        {
+          contents: [{ parts: [{ text: this.buildSynthesisPrompt(data.message, compressedText, data.history) }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
+        },
+        'synthesis',
+      );
+
+      const reply = synthData ? this.extractText(synthData).trim() : '⚠️ No response from AI.';
+
+      if (data.adminId) {
+        const ts = new Date().toISOString();
+        await this.adminChatSessionRepository.appendMessages(data.adminId, [
+          { id: `${Date.now()}-u`, sender: 'user', text: data.message, timestamp: ts },
+          { id: `${Date.now()}-a`, sender: 'assistant', text: reply, timestamp: ts },
+        ]);
+      }
       return { reply };
     } catch (err) {
       if (err instanceof GeminiRateLimitError) {
@@ -770,31 +813,68 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     }
 
     try {
-      // Run full RAG pipeline (persistence skipped — we handle it after streaming)
-      const { reply: fullReply, contextBlocks, failedTools } = await this.runRagPipeline(
-        safe.message,
-        safe.history,
-        undefined, // skip persistence inside pipeline
-        apiKey,
-      );
+      // ── 1. History-aware cache check ─────────────────────────────────────────
+      const normalized = normalizeQuery(safe.message);
+      const fingerprint = queryFingerprint(normalized);
+      const isEmailFlow = /\byes\b|\bconfirm\b|\bsend\s+it\b|\bgo\s+ahead\b/i.test(safe.message) &&
+        safe.history.some((h) => h.role === 'assistant' && /preview_email_report|READY_TO_SEND/i.test(h.text));
+      const replyCacheKey = `chatbot:reply:${fingerprint}:${this.historyContextHash(safe.history)}`;
 
-      if (!fullReply || fullReply.startsWith('⚠️ **Could not load')) {
-        res.write(`data: ${JSON.stringify({ delta: fullReply || '⚠️ Could not load data. Check database connection.' })}\n\n`);
+      if (!isEmailFlow) {
+        const cachedReply = await this.redisService.get(replyCacheKey).catch(() => null);
+        if (cachedReply) {
+          res.write(`data: ${JSON.stringify({ delta: cachedReply })}\n\n`);
+          res.write('data: [DONE]\n\n');
+          if (adminId) {
+            const ts = new Date().toISOString();
+            await this.adminChatSessionRepository.appendMessages(adminId, [
+              { id: `${Date.now()}-u`, sender: 'user', text: safe.message, timestamp: ts },
+              { id: `${Date.now()}-a`, sender: 'assistant', text: cachedReply, timestamp: ts },
+            ]).catch(() => {});
+          }
+          return;
+        }
+      }
+
+      // ── 2. Retrieve context (DB queries + planner) ─────────────────────────────
+      const { finalPlan, rawBlocks, compressedText, failedTools, error } =
+        await this.retrieveContext(safe.message, safe.history, apiKey);
+
+      if (error || rawBlocks.length === 0) {
+        res.write(`data: ${JSON.stringify({ delta: error ?? '⚠️ Could not load data. Check database connection.' })}\n\n`);
         res.write('data: [DONE]\n\n');
         return;
       }
 
-      // Stream word-by-word
-      const tokens = fullReply.split(/(\s+)/);
-      for (const token of tokens) {
-        if (token) {
-          res.write(`data: ${JSON.stringify({ delta: token })}\n\n`);
-          await this.sleep(10);
-        }
+      // ── 3. Stream synthesis directly from Gemini SSE ───────────────────────────
+      const ACTION_TOOLS = new Set(['send_email_report', 'preview_email_report']);
+      const isActionPlan = finalPlan.some((s) => ACTION_TOOLS.has(s.tool));
+
+      let fullReply = await this.geminiStreamText(
+        apiKey,
+        {
+          contents: [{ parts: [{ text: this.buildSynthesisPrompt(safe.message, compressedText, safe.history) }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
+        },
+        (chunk) => res.write(`data: ${JSON.stringify({ delta: chunk })}\n\n`),
+      );
+
+      if (!fullReply) {
+        // Gemini stream returned nothing — fall back to raw formatted data
+        fullReply = this.formatRawDataFallback(rawBlocks, failedTools, safe.message);
+        res.write(`data: ${JSON.stringify({ delta: fullReply })}\n\n`);
+      }
+      if (failedTools.length > 0) {
+        const notice = `\n\n> ⚠️ *Partial data — could not load: ${failedTools.join(', ')}*`;
+        fullReply += notice;
+        res.write(`data: ${JSON.stringify({ delta: notice })}\n\n`);
       }
       res.write('data: [DONE]\n\n');
 
-      // Persist after streaming completes
+      // ── 4. Cache + persist ─────────────────────────────────────────────────────
+      if (fullReply && !isActionPlan && !isEmailFlow) {
+        await this.redisService.set(replyCacheKey, fullReply, SYNTHESIS_CACHE_TTL_SECONDS).catch(() => {});
+      }
       if (adminId) {
         const ts = new Date().toISOString();
         await this.adminChatSessionRepository.appendMessages(adminId, [
@@ -805,13 +885,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
 
     } catch (err) {
       if (err instanceof GeminiRateLimitError) {
-        const msg =
-          '> ⚠️ **Gemini API rate limit reached.**\n\n' +
-          'The AI is temporarily unavailable. Please wait a minute and try again.\n\n' +
-          '_Your data was retrieved — only the AI summary step failed._';
-        for (const token of msg.split(/(\s+)/)) {
-          if (token) res.write(`data: ${JSON.stringify({ delta: token })}\n\n`);
-        }
+        res.write(`data: ${JSON.stringify({ delta: '> ⚠️ **Gemini API rate limit reached.**\n\nPlease wait a minute and try again.' })}\n\n`);
       } else {
         this.logger.error(`streamChat error: ${(err as Error).message}`);
         res.write(`data: ${JSON.stringify({ delta: '⚠️ Something went wrong. Please try again.' })}\n\n`);
@@ -843,7 +917,8 @@ export class AdminChatbotService implements OnApplicationBootstrap {
 
   async getHistory(adminId: string) {
     const session = await this.adminChatSessionRepository.getByAdminId(adminId);
-    return session?.messages ?? [];
+    // Return last 50 messages — enough for UI display, avoids transferring full 100-msg document
+    return (session?.messages ?? []).slice(-50);
   }
 
   async clearHistory(adminId: string): Promise<void> {
@@ -918,32 +993,32 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     if (UNCACHED.has(step.tool)) return { key: null, ttl: 0 };
 
     const TTL_MAP: Record<string, number> = {
-      get_dashboard_summary: 120,
-      get_orders_by_status: 120,
-      search_low_stock_products: 300,
-      search_out_of_stock_products: 300,
-      search_in_stock_products: 300,
-      search_products: 300,
-      get_revenue_trend: 300,
+      get_dashboard_summary: 45,
+      get_orders_by_status: 45,
+      search_low_stock_products: 90,
+      search_out_of_stock_products: 90,
+      search_in_stock_products: 90,
+      search_products: 120,
+      get_revenue_trend: 90,
       get_analytics_period: 600,
-      get_top_selling_products: 600,
-      get_top_customers_online: 600,
-      get_new_customers: 300,
-      get_store_sales: 300,
-      get_payment_failures: 120,
-      get_subscription_data: 300,
-      get_whatsapp_queue: 60,
-      get_reminders: 60,
-      get_coupon_list: 300,
-      get_feedback_list: 120,
-      search_recent_orders: 120,
-      search_orders_by_date_range: 180,
-      search_customers: 180,
-      get_customer_orders: 120,
-      search_abandoned_carts: 180,
-      get_wallet_balances: 120,
-      get_login_audit_logs: 120,
-      compare_periods: 300,
+      get_top_selling_products: 300,
+      get_top_customers_online: 300,
+      get_new_customers: 60,
+      get_store_sales: 90,
+      get_payment_failures: 45,
+      get_subscription_data: 90,
+      get_whatsapp_queue: 30,
+      get_reminders: 30,
+      get_coupon_list: 180,
+      get_feedback_list: 60,
+      search_recent_orders: 45,
+      search_orders_by_date_range: 90,
+      search_customers: 120,
+      get_customer_orders: 60,
+      search_abandoned_carts: 90,
+      get_wallet_balances: 45,
+      get_login_audit_logs: 60,
+      compare_periods: 90,
     };
 
     const ttl = TTL_MAP[step.tool] ?? 120;
@@ -1717,375 +1792,13 @@ export class AdminChatbotService implements OnApplicationBootstrap {
 
   // ─── Prompt builders ──────────────────────────────────────────────────────────
 
-  // ─── Intent extraction (new primary path) ────────────────────────────────────
-
-  /** Lightweight Gemini prompt that extracts structured intent from a free-form
-   *  admin query. Returns a small JSON object — not tool names — so understanding
-   *  is always separated from tool selection. */
-  private buildIntentPrompt(message: string, history: HistoryItem[]): string {
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-    const yesterdayStr = new Date(now.getTime() - 86_400_000).toISOString().split('T')[0];
-
-    const historySection = history.length > 0
-      ? `\nConversation so far:\n${history.slice(-3).map((h) => `${h.role === 'user' ? 'User' : 'AI'}: ${h.text.slice(0, 120)}`).join('\n')}\n`
-      : '';
-
-    return `Extract the intent of this e-commerce admin query. Return ONLY valid JSON.
-
-TODAY: ${todayStr}  YESTERDAY: ${yesterdayStr}
-${historySection}
-JSON schema (omit null fields):
-{
-  "topic": "orders|revenue|customers|inventory|feedback|coupons|payments|subscriptions|store_sales|wallet|reminders|whatsapp|overview|email|login|abandoned_carts|top_products",
-  "timePreset": "today|yesterday|this_week|last_week|this_month|last_30_days",
-  "from": "ISO date string",
-  "to": "ISO date string",
-  "filters": {
-    "status": "placed|confirmed|preparing|out_for_delivery|delivered|cancelled",
-    "paymentMethod": "cod|prepaid",
-    "customerName": "name string",
-    "customerPhone": "phone string",
-    "productName": "product name string",
-    "minRating": 1-5,
-    "maxRating": 1-5,
-    "feedbackType": "complaint|suggestion|review",
-    "couponStatus": "active|expired|upcoming|inactive",
-    "minSpent": number,
-    "outOfStock": true,
-    "inStock": true
-  },
-  NOTE on inventory filters:
-  - "inStock": true → user wants products that ARE available (use for "which items are in stock / available")
-  - "outOfStock": true → user wants products with zero stock
-  - NEITHER flag (default) → user wants LOW STOCK products (running low, need restock)
-  CRITICAL: "low in stock", "low stock", "running low", "need to restock" → OMIT both inStock and outOfStock
-  "action": "list|count|summary|trend|compare|search",
-  "emailTo": "email address",
-  "emailReportType": "dashboard|orders|revenue|analytics|monthly|weekly|customers|feedback|coupons|store_sales|abandoned|payments|low_stock|ims",
-  "emailConfirm": true
-}
-
-IMPORTANT RULE: Only set "timePreset" when the user EXPLICITLY mentions a time period ("today", "this week", etc.). If no time period is mentioned, OMIT timePreset entirely.
-
-Examples:
-"show orders" → {"topic":"orders","action":"list"}
-"how many orders do I have" → {"topic":"orders","action":"count"}
-"total orders" → {"topic":"orders","action":"count"}
-"which orders came today" → {"topic":"orders","timePreset":"today","action":"list"}
-"yesterday revenue" → {"topic":"revenue","timePreset":"yesterday","action":"trend"}
-"revenue" → {"topic":"revenue","action":"trend"}
-"how much money did I make" → {"topic":"revenue","action":"trend"}
-"cancelled orders this week" → {"topic":"orders","timePreset":"this_week","filters":{"status":"cancelled"},"action":"list"}
-"cancelled orders" → {"topic":"orders","filters":{"status":"cancelled"},"action":"list"}
-"Rahul ki orders" → {"topic":"orders","filters":{"customerName":"Rahul"},"action":"list"}
-"1 star reviews" → {"topic":"feedback","filters":{"maxRating":1},"action":"list"}
-"complaints about ghee" → {"topic":"feedback","filters":{"feedbackType":"complaint","productName":"ghee"},"action":"list"}
-"active coupons" → {"topic":"coupons","filters":{"couponStatus":"active"},"action":"list"}
-"out of stock items" → {"topic":"inventory","filters":{"outOfStock":true},"action":"list"}
-"low stock" → {"topic":"inventory","action":"list"}
-"which oil products low in stock" → {"topic":"inventory","filters":{"productName":"oil"},"action":"list"}
-"oil products running low" → {"topic":"inventory","filters":{"productName":"oil"},"action":"list"}
-"ghee low stock" → {"topic":"inventory","filters":{"productName":"ghee"},"action":"list"}
-"which ghee items are in stock" → {"topic":"inventory","filters":{"inStock":true,"productName":"ghee"},"action":"list"}
-"what ghee is available" → {"topic":"inventory","filters":{"inStock":true,"productName":"ghee"},"action":"list"}
-"show available oil products" → {"topic":"inventory","filters":{"inStock":true,"productName":"oil"},"action":"list"}
-"compare this week vs last" → {"topic":"revenue","action":"compare"}
-"customers" → {"topic":"customers","action":"list"}
-"total customers" → {"topic":"customers","action":"count"}
-"how many customers do I have" → {"topic":"customers","action":"count"}
-"customers who spent over 5000" → {"topic":"customers","filters":{"minSpent":5000},"action":"list"}
-"compare this month vs last month" → {"topic":"revenue","timePreset":"this_month","action":"compare"}
-"compare this week vs last week" → {"topic":"revenue","timePreset":"this_week","action":"compare"}
-"abandoned carts" → {"topic":"abandoned_carts","action":"list"}
-"abandoned carts with ghee" → {"topic":"abandoned_carts","filters":{"productName":"ghee"},"action":"list"}
-"best selling oil" → {"topic":"top_products","filters":{"productName":"oil"},"action":"list"}
-"top products" → {"topic":"top_products","action":"list"}
-"payments" → {"topic":"payments","action":"list"}
-"failed payments" → {"topic":"payments","action":"list"}
-"coupons" → {"topic":"coupons","action":"list"}
-"subscriptions" → {"topic":"subscriptions","action":"list"}
-"wallet" → {"topic":"wallet","action":"list"}
-"reminders" → {"topic":"reminders","action":"list"}
-"feedback" → {"topic":"feedback","action":"list"}
-"store sales" → {"topic":"store_sales","action":"list"}
-"send analytics to admin@store.com" → {"topic":"email","emailTo":"admin@store.com","emailReportType":"analytics"}
-"yes" (after email preview) → {"topic":"email","emailConfirm":true}
-"overview" → {"topic":"overview","action":"summary"}
-
-Query: """${message}"""`;
-  }
-
-  /** Resolve timePreset or explicit from/to into ISO date strings. */
-  private resolveIntentDates(intent: ChatbotIntent, now: Date): { from?: string; to?: string } {
-    if (intent.from && intent.to) return { from: intent.from, to: intent.to };
-    const t = now.toISOString().split('T')[0];
-    switch (intent.timePreset) {
-      case 'today':
-        return { from: `${t}T00:00:00.000Z`, to: `${t}T23:59:59.000Z` };
-      case 'yesterday': {
-        const y = new Date(now.getTime() - 86_400_000).toISOString().split('T')[0];
-        return { from: `${y}T00:00:00.000Z`, to: `${y}T23:59:59.000Z` };
-      }
-      case 'this_week': {
-        const w = new Date(now.getTime() - 7 * 86_400_000).toISOString().split('T')[0];
-        return { from: `${w}T00:00:00.000Z`, to: `${t}T23:59:59.000Z` };
-      }
-      case 'last_week': {
-        const ws = new Date(now.getTime() - 14 * 86_400_000).toISOString().split('T')[0];
-        const we = new Date(now.getTime() - 7 * 86_400_000).toISOString().split('T')[0];
-        return { from: `${ws}T00:00:00.000Z`, to: `${we}T23:59:59.000Z` };
-      }
-      case 'this_month': {
-        const ms = `${t.slice(0, 7)}-01T00:00:00.000Z`;
-        return { from: ms, to: `${t}T23:59:59.000Z` };
-      }
-      case 'last_30_days': {
-        const m = new Date(now.getTime() - 30 * 86_400_000).toISOString().split('T')[0];
-        return { from: `${m}T00:00:00.000Z`, to: `${t}T23:59:59.000Z` };
-      }
-      default:
-        return {};
-    }
-  }
-
-  /** Maps a structured ChatbotIntent to the minimum set of DB tool calls.
-   *  No regex on raw user text — all decisions are based on the AI-extracted intent. */
-  private intentToTools(intent: ChatbotIntent, now: Date, history: HistoryItem[]): RagStep[] {
-    const { from, to } = this.resolveIntentDates(intent, now);
-    const f = intent.filters ?? {};
-
-    switch (intent.topic) {
-      case 'orders': {
-        if (f.customerName) return [{ tool: 'get_customer_orders', params: { name: f.customerName, limit: 10 } }];
-        if (f.customerPhone) return [{ tool: 'get_customer_orders', params: { phone: f.customerPhone, limit: 10 } }];
-        const params: Record<string, unknown> = { limit: 20 };
-        if (from) params.from = from;
-        if (to) params.to = to;
-        if (f.status) params.status = f.status;
-        if (f.paymentMethod) params.paymentMethod = f.paymentMethod;
-        // Always include all-time order counts so a narrow date range never shows "0 orders"
-        return [
-          { tool: 'get_orders_by_status', params: {} },
-          { tool: 'search_recent_orders', params },
-        ];
-      }
-      case 'revenue': {
-        if (intent.action === 'compare') {
-          // "compare this month vs last month" → 30 days; "this week vs last" → 7 days
-          const compareDays = (intent.timePreset === 'this_month' || intent.timePreset === 'last_30_days') ? 30 : 7;
-          return [{ tool: 'compare_periods', params: { days: compareDays } }];
-        }
-        // Default to last 30 days so "today only" queries don't silently return ₹0
-        return [{ tool: 'get_revenue_trend', params: from ? { from, to } : { days: 30 } }];
-      }
-      case 'customers':
-        if (f.customerName) return [{ tool: 'search_customers', params: { searchTerm: f.customerName, limit: 10 } }];
-        if (f.customerPhone) return [{ tool: 'search_customers', params: { searchTerm: f.customerPhone, limit: 5 } }];
-        if (f.minSpent) return [{ tool: 'get_top_customers_online', params: { minSpent: f.minSpent, limit: 20 } }];
-        if (intent.action === 'count' || intent.action === 'summary')
-          // "total customers" → dashboard has totalCustomers count + new customers breakdown
-          return [{ tool: 'get_dashboard_summary', params: {} }, { tool: 'get_new_customers', params: { days: 30 } }];
-        if (intent.action === 'list') return [{ tool: 'get_top_customers_online', params: { limit: 10 } }];
-        return [{ tool: 'get_new_customers', params: from ? { from, to } : { days: 7 } }];
-      case 'inventory':
-        if (f.outOfStock) return [{ tool: 'search_out_of_stock_products', params: f.productName ? { searchTerm: f.productName } : {} }];
-        if (f.inStock) return [{ tool: 'search_in_stock_products', params: f.productName ? { searchTerm: f.productName } : {} }];
-        return [{ tool: 'search_low_stock_products', params: f.productName ? { searchTerm: f.productName } : {} }];
-      case 'feedback': {
-        const fp: Record<string, unknown> = { limit: 15 };
-        if (f.minRating) fp.minRating = f.minRating;
-        if (f.maxRating) fp.maxRating = f.maxRating;
-        if (f.feedbackType) fp.type = f.feedbackType;
-        if (f.productName) fp.productName = f.productName;
-        return [{ tool: 'get_feedback_list', params: fp }];
-      }
-      case 'coupons':
-        return [{ tool: 'get_coupon_list', params: f.couponStatus ? { status: f.couponStatus } : {} }];
-      case 'payments':
-        return [{ tool: 'get_payment_failures', params: { limit: 20 } }];
-      case 'subscriptions':
-        return [{ tool: 'get_subscription_data', params: {} }];
-      case 'store_sales':
-        return [{ tool: 'get_store_sales', params: from ? { from, to } : {} }];
-      case 'wallet':
-        return [{ tool: 'get_wallet_balances', params: { limit: 20 } }];
-      case 'reminders':
-        return [{ tool: 'get_reminders', params: {} }];
-      case 'whatsapp':
-        return [{ tool: 'get_whatsapp_queue', params: {} }];
-      case 'login':
-        return [{ tool: 'get_login_audit_logs', params: { limit: 20 } }];
-      case 'abandoned_carts':
-        return [{ tool: 'search_abandoned_carts', params: { limit: 30, ...(f.productName ? { productSearch: f.productName } : {}) } }];
-      case 'top_products': {
-        const tp: Record<string, unknown> = { limit: 8 };
-        if (from) tp.from = from;
-        if (to) tp.to = to;
-        if (f.productName) tp.searchTerm = f.productName;
-        return [{ tool: 'get_top_selling_products', params: tp }];
-      }
-      case 'email': {
-        if (intent.emailConfirm) {
-          const emailTo = this.extractEmailFromHistory(history);
-          const reportType = this.extractReportTypeFromHistory(history);
-          return [{ tool: 'send_email_report', params: { to: emailTo, reportType } }];
-        }
-        if (intent.emailTo)
-          return [{ tool: 'preview_email_report', params: { to: intent.emailTo, reportType: intent.emailReportType || 'dashboard' } }];
-        return [{ tool: 'get_dashboard_summary', params: {} }];
-      }
-      case 'overview':
-      default:
-        return [
-          { tool: 'get_dashboard_summary', params: {} },
-          { tool: 'get_orders_by_status', params: {} },
-          { tool: 'search_recent_orders', params: { limit: 10 } },
-          { tool: 'search_low_stock_products', params: {} },
-        ];
-    }
-  }
-
-  /** Simple text-based intent extraction used only when Gemini is unavailable.
-   *  Matches clean topic keywords — never runs regex directly on raw user text
-   *  to decide DB params. */
-  private textToIntent(message: string): ChatbotIntent {
-    const m = message.toLowerCase();
-
-    // Time preset
-    let timePreset: ChatbotIntent['timePreset'];
-    if (/\btoday\b/.test(m)) timePreset = 'today';
-    else if (/\byesterday\b/.test(m)) timePreset = 'yesterday';
-    else if (/this\s+week/.test(m)) timePreset = 'this_week';
-    else if (/last\s+week/.test(m)) timePreset = 'last_week';
-    else if (/this\s+month/.test(m)) timePreset = 'this_month';
-    else if (/last\s+30|last\s+month/.test(m)) timePreset = 'last_30_days';
-
-    // Topic + filters
-    if (/\border(s|ing|ed)?\b/.test(m) && !/coupon|feedback|subscription|revenue/.test(m)) {
-      const filters: ChatbotIntent['filters'] = {};
-      const statusM = m.match(/\b(placed|confirmed|preparing|delivered|cancelled|out.for.delivery)\b/);
-      if (statusM) filters.status = statusM[1];
-      if (/\bcod\b/.test(m)) filters.paymentMethod = 'cod';
-      else if (/prepaid|online|upi/.test(m)) filters.paymentMethod = 'prepaid';
-      return { topic: 'orders', timePreset, filters, action: 'list' };
-    }
-    if (/\brevenue|earning/.test(m)) {
-      if (/compare|vs|versus/.test(m)) return { topic: 'revenue', action: 'compare' };
-      return { topic: 'revenue', timePreset, action: 'trend' };
-    }
-    if (/out[\s-]of[\s-]stock|zero.stock/.test(m)) return { topic: 'inventory', filters: { outOfStock: true } };
-    // "low in stock" / "low stock" must match BEFORE the generic "in stock" check
-    if (/low[\s-]in[\s-]stock|low[\s-]stock|running[\s-]low|need[\s-]restock/.test(m)) {
-      const prodM = m.match(/\b(ghee|oil|seeds?|spice|flour|atta|nuts?|dry.fruit)\b/i);
-      return { topic: 'inventory', filters: { ...(prodM ? { productName: prodM[1] } : {}) } };
-    }
-    if (/\bin[\s-]stock\b|available|in.availability|has.stock|stocked/.test(m)) {
-      const prodM = m.match(/\b(ghee|oil|seeds?|spice|flour|atta|nuts?|dry.fruit)\b/i);
-      return { topic: 'inventory', filters: { inStock: true, ...(prodM ? { productName: prodM[1] } : {}) } };
-    }
-    if (/stock|inventory/.test(m)) return { topic: 'inventory' };
-    if (/feedback|review|rating|complaint/.test(m)) {
-      const filters: ChatbotIntent['filters'] = {};
-      if (/1.star|terrible|worst/.test(m)) filters.maxRating = 1;
-      else if (/2.star|bad|poor/.test(m)) filters.maxRating = 2;
-      else if (/5.star|excellent/.test(m)) filters.minRating = 5;
-      else if (/negative/.test(m)) filters.maxRating = 2;
-      else if (/positive/.test(m)) filters.minRating = 4;
-      if (/complaint/.test(m)) filters.feedbackType = 'complaint';
-      else if (/suggestion/.test(m)) filters.feedbackType = 'suggestion';
-      return { topic: 'feedback', filters, action: 'list' };
-    }
-    if (/coupon|promo.code/.test(m)) {
-      const filters: ChatbotIntent['filters'] = {};
-      const statusM = m.match(/\b(active|expired|upcoming|inactive)\b/);
-      if (statusM) filters.couponStatus = statusM[1] as ChatbotIntent['filters']['couponStatus'];
-      return { topic: 'coupons', filters, action: 'list' };
-    }
-    if (/payment.fail|failed.payment/.test(m)) return { topic: 'payments', action: 'list' };
-    if (/subscription|recurring/.test(m)) return { topic: 'subscriptions', action: 'list' };
-    if (/store.sale|walk.in|offline/.test(m)) return { topic: 'store_sales', timePreset, action: 'list' };
-    if (/wallet|credit.balance/.test(m)) return { topic: 'wallet', action: 'list' };
-    if (/reminder/.test(m)) return { topic: 'reminders', action: 'list' };
-    if (/whatsapp.queue|support.queue/.test(m)) return { topic: 'whatsapp', action: 'list' };
-    if (/abandon|left.without/.test(m)) return { topic: 'abandoned_carts', action: 'list' };
-    if (/best.sell|top.sell|popular|most.sold/.test(m)) return { topic: 'top_products', timePreset, action: 'list' };
-    if (/login|audit/.test(m)) return { topic: 'login', action: 'list' };
-    if (/customer/.test(m)) return { topic: 'customers', action: 'list' };
-    return { topic: 'overview', action: 'summary' };
-  }
-
-  private extractEmailFromHistory(history: HistoryItem[]): string {
-    for (let i = history.length - 1; i >= 0; i--) {
-      const m = history[i].text.match(/\bto:\s*([^\s\n]+)/);
-      if (m) return m[1];
-    }
-    return '';
-  }
-
-  private extractReportTypeFromHistory(history: HistoryItem[]): string {
-    for (let i = history.length - 1; i >= 0; i--) {
-      const m = history[i].text.match(/\breportType:\s*([^\s\n]+)/);
-      if (m) return m[1];
-    }
-    return 'dashboard';
-  }
-
-  /** Secondary AI planner: called when the primary planner returns an empty result.
-   *  Uses a compact prompt so the AI understands the question and picks tools
-   *  without needing all the detailed examples. Falls back to keyword regex only
-   *  if Gemini itself fails (network error, rate-limit, etc.). */
-  private async aiFallbackPlan(message: string): Promise<RagStep[]> {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return this.keywordFallbackPlan(message);
-
+  private buildCompactPlannerPrompt(message: string): string {
     const today = new Date().toISOString().split('T')[0];
+    return `Today: ${today}. Pick 1-2 best tools for this admin query. Return ONLY a JSON array, no explanation.
 
-    const prompt = `You select database tools for NatureLite's e-commerce admin dashboard.
+Tools: get_dashboard_summary | search_recent_orders(limit,status?,from?,to?,customerSearch?,orderNumber?) | get_orders_by_status | get_revenue_trend(from?,to?,days?) | search_low_stock_products(searchTerm?) | search_out_of_stock_products(searchTerm?) | search_in_stock_products(searchTerm?) | get_feedback_list(limit,minRating?,type?,productName?) | get_coupon_list(status?) | get_analytics_period(from?,to?,days?) | get_top_selling_products(limit,searchTerm?) | get_top_customers_online(limit,minSpent?) | search_customers(searchTerm,limit) | get_customer_orders(name?,phone?,limit) | get_store_sales | get_payment_failures | get_subscription_data | get_whatsapp_queue | get_reminders | compare_periods(days) | get_new_customers(from?,to?,days?) | get_wallet_balances | search_abandoned_carts | get_login_audit_logs | preview_email_report(to,reportType) | send_email_report(to,reportType)
 
-Today: ${today}
-Question: "${message.slice(0, 300)}"
-
-Read the question, understand what the admin wants, then pick 1-3 tools from this list. Return ONLY a JSON array.
-
-Tools (use exact names, include relevant params):
-get_dashboard_summary | search_out_of_stock_products(searchTerm?) | search_low_stock_products(searchTerm?) | search_products(searchTerm) |
-get_login_audit_logs | search_abandoned_carts(limit,productSearch?) | get_top_selling_products(limit,from?,to?,searchTerm?) |
-search_recent_orders(limit,status?,from?,to?,customerSearch?,paymentMethod?) | search_orders_by_date_range(from,to,limit) |
-search_customers(searchTerm,limit) | get_top_customers_online(limit,minSpent?) | get_customer_orders(phone?,name?,limit) |
-get_revenue_trend(from?,to?) | get_orders_by_status | get_feedback_list(limit,minRating?,maxRating?,type?,productName?) |
-get_coupon_list(status?) | get_analytics_period(from?,to?,days?) | get_new_customers(from?,to?,days?) |
-get_store_sales(from?,to?) | get_wallet_balances(limit) | get_payment_failures(limit) |
-get_subscription_data | get_whatsapp_queue | get_reminders | compare_periods(days) |
-preview_email_report(to,reportType) | send_email_report(to,reportType)
-
-Example: [{"tool":"search_recent_orders","params":{"limit":10,"status":"placed"}}]
-JSON array only:`;
-
-    const data = await this.geminiRequest(
-      apiKey,
-      {
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.0, maxOutputTokens: 250, responseMimeType: 'application/json' },
-      },
-      'ai-fallback-planner',
-    );
-
-    if (data) {
-      try {
-        let raw = this.extractText(data).trim();
-        if (raw.startsWith('```')) raw = raw.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '');
-        const parsed = JSON.parse(raw.trim());
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          this.logger.log(`AI fallback plan: ${parsed.map((s: RagStep) => s.tool).join(', ')}`);
-          return parsed;
-        }
-      } catch {
-        this.logger.warn('AI fallback plan JSON parse failed — keyword fallback');
-      }
-    }
-
-    return this.keywordFallbackPlan(message);
+Query: "${message.slice(0, 300)}"`;
   }
 
   private buildPlannerPrompt(message: string, history: HistoryItem[]): string {
@@ -2096,9 +1809,19 @@ JSON array only:`;
     const yesterdayStr = new Date(now.getTime() - 86_400_000).toISOString().split('T')[0];
     const weekAgoStr = new Date(now.getTime() - 7 * 86_400_000).toISOString().split('T')[0];
     const monthAgoStr = new Date(now.getTime() - 30 * 86_400_000).toISOString().split('T')[0];
+    // Calendar week: Monday of the current week (not rolling 7 days)
+    const weekStartDate = new Date(now);
+    const dow = weekStartDate.getDay();
+    weekStartDate.setDate(weekStartDate.getDate() - (dow === 0 ? 6 : dow - 1));
+    weekStartDate.setHours(0, 0, 0, 0);
+    const weekStartStr = weekStartDate.toISOString().split('T')[0];
 
     const historySection = history.length > 0
-      ? `\n=== CONVERSATION HISTORY ===\n${history.slice(-4).map((h) => `${h.role === 'user' ? 'User' : 'AI'}: ${h.text.slice(0, 200)}`).join('\n')}\n===========================\n`
+      ? `\n=== CONVERSATION HISTORY ===\n${history.slice(-4).map((h) => {
+        const label = h.role === 'user' ? 'User' : 'AI';
+        const text = h.role === 'user' ? h.text : h.text.length > 150 ? `${h.text.slice(0, 130)}…` : h.text;
+        return `${label}: ${text}`;
+      }).join('\n')}\n===========================\n`
       : '';
 
     return `You are the data planner for NatureLite's e-commerce admin dashboard.
@@ -2108,7 +1831,7 @@ TODAY: ${todayStr}  |  YESTERDAY: ${yesterdayStr}  |  7 DAYS AGO: ${weekAgoStr} 
 ── STEP 1: UNDERSTAND THE QUESTION ──────────────────────────────────────────────
 Before selecting tools, identify:
 • Data topic: orders / revenue / customers / inventory / coupons / feedback / payments / subscriptions / store-sales / wallet / reminders / whatsapp
-• Time period: convert ALL relative dates to ISO ("today" → ${todayStart}–${todayEnd}, "yesterday" → ${yesterdayStr}T00:00:00.000Z–${yesterdayStr}T23:59:59.000Z, "this week" → ${weekAgoStr}T00:00:00.000Z–${todayEnd}, "last month" → ${monthAgoStr}T00:00:00.000Z–${todayEnd})
+• Time period: convert ALL relative dates to ISO ("today" → ${todayStart}–${todayEnd}, "yesterday" → ${yesterdayStr}T00:00:00.000Z–${yesterdayStr}T23:59:59.000Z, "this week" → ${weekStartStr}T00:00:00.000Z–${todayEnd}, "last week" → 7 days before ${weekStartStr}, "last month" → ${monthAgoStr}T00:00:00.000Z–${todayEnd})
 • Filters: customer name/phone, product name, status, payment method, rating range, coupon status
 • Follow-up: use conversation history to resolve "that customer", "same period", "those orders"
 
@@ -2169,7 +1892,7 @@ EXAMPLES:
 "how many orders do I have" → [{"tool":"get_orders_by_status","params":{}},{"tool":"search_recent_orders","params":{"limit":10}}]
 "show orders" → [{"tool":"get_orders_by_status","params":{}},{"tool":"search_recent_orders","params":{"limit":10}}]
 "yesterday revenue" → [{"tool":"get_revenue_trend","params":{"from":"${yesterdayStr}T00:00:00.000Z","to":"${yesterdayStr}T23:59:59.000Z"}}]
-"this week's revenue" → [{"tool":"get_revenue_trend","params":{"from":"${weekAgoStr}T00:00:00.000Z","to":"${todayEnd}"}}]
+"this week's revenue" → [{"tool":"get_revenue_trend","params":{"from":"${weekStartStr}T00:00:00.000Z","to":"${todayEnd}"}}]
 "last 30 days analytics" → [{"tool":"get_analytics_period","params":{"from":"${monthAgoStr}T00:00:00.000Z","to":"${todayEnd}","days":30}}]
 "orders in May 2025" → [{"tool":"search_orders_by_date_range","params":{"from":"2025-05-01T00:00:00.000Z","to":"2025-05-31T23:59:59.000Z","limit":20}}]
 "this week vs last week" → [{"tool":"compare_periods","params":{"days":7}}]
@@ -2184,17 +1907,14 @@ EXAMPLES:
 "low stock" → [{"tool":"search_low_stock_products","params":{}}]
 "total customers" → [{"tool":"get_dashboard_summary","params":{}}]
 "new customers today" → [{"tool":"get_new_customers","params":{"from":"${todayStart}","to":"${todayEnd}"}}]
-"new customers this week" → [{"tool":"get_new_customers","params":{"from":"${weekAgoStr}T00:00:00.000Z","to":"${todayEnd}"}}]
+"new customers this week" → [{"tool":"get_new_customers","params":{"from":"${weekStartStr}T00:00:00.000Z","to":"${todayEnd}"}}]
 "orders by Rahul today" → [{"tool":"search_recent_orders","params":{"customerSearch":"Rahul","from":"${todayStart}","to":"${todayEnd}","limit":20}}]
-"COD orders by Priya this week" → [{"tool":"search_recent_orders","params":{"customerSearch":"Priya","paymentMethod":"cod","from":"${weekAgoStr}T00:00:00.000Z","to":"${todayEnd}","limit":20}}]
+"COD orders by Priya this week" → [{"tool":"search_recent_orders","params":{"customerSearch":"Priya","paymentMethod":"cod","from":"${weekStartStr}T00:00:00.000Z","to":"${todayEnd}","limit":20}}]
 "active subscriptions" → [{"tool":"get_subscription_data","params":{}}]
-"paused subscriptions" → [{"tool":"get_subscription_data","params":{}}]
 "best selling oil" → [{"tool":"get_top_selling_products","params":{"searchTerm":"oil","limit":8}}]
 "Rahul's orders" → [{"tool":"get_customer_orders","params":{"name":"Rahul","limit":10}}]
 "tell me about Rahul" → [{"tool":"search_customers","params":{"searchTerm":"Rahul","limit":5}},{"tool":"get_customer_orders","params":{"name":"Rahul","limit":10}}]
 "customer profile for 9876543210" → [{"tool":"search_customers","params":{"searchTerm":"9876543210","limit":5}},{"tool":"get_customer_orders","params":{"phone":"9876543210","limit":10}}]
-"who is Priya" → [{"tool":"search_customers","params":{"searchTerm":"Priya","limit":5}},{"tool":"get_customer_orders","params":{"name":"Priya","limit":10}}]
-"details about customer Amit" → [{"tool":"search_customers","params":{"searchTerm":"Amit","limit":5}},{"tool":"get_customer_orders","params":{"name":"Amit","limit":10}}]
 "COD orders today" → [{"tool":"search_recent_orders","params":{"paymentMethod":"cod","from":"${todayStart}","to":"${todayEnd}","limit":20}}]
 "cancelled orders" → [{"tool":"get_orders_by_status","params":{}},{"tool":"search_recent_orders","params":{"status":"cancelled","limit":10}}]
 "1 star reviews" → [{"tool":"get_feedback_list","params":{"maxRating":1,"limit":15}}]
@@ -2203,7 +1923,6 @@ EXAMPLES:
 "who has ghee in abandoned cart" → [{"tool":"search_abandoned_carts","params":{"productSearch":"ghee","limit":30}}]
 "customers who spent over 5000" → [{"tool":"get_top_customers_online","params":{"minSpent":5000,"limit":20}}]
 "failed payments" → [{"tool":"get_payment_failures","params":{"limit":20}}]
-"active subscriptions" → [{"tool":"get_subscription_data","params":{}}]
 "whatsapp support queue" → [{"tool":"get_whatsapp_queue","params":{}}]
 "send analytics to admin@store.com" → [{"tool":"preview_email_report","params":{"to":"admin@store.com","reportType":"analytics"}}]
 "yes" (after email preview in history) → [{"tool":"send_email_report","params":{"to":"<email from history>","reportType":"<type from history>"}}]
@@ -2214,7 +1933,14 @@ Question: """${message}"""`;
 
   private buildSynthesisPrompt(message: string, retrievedData: string, history: HistoryItem[]): string {
     const historySection = history.length > 0
-      ? `\n=== CONVERSATION HISTORY ===\n${history.slice(-6).map((h) => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.text.slice(0, 300)}`).join('\n')}\n===========================\n`
+      ? `\n=== CONVERSATION HISTORY ===\n${history.slice(-6).map((h) => {
+        const label = h.role === 'user' ? 'User' : 'Assistant';
+        // Keep user messages full (short intent); trim long assistant replies at a sentence boundary
+        const text = h.role === 'user'
+          ? h.text
+          : h.text.length > 250 ? `${h.text.slice(0, 220)}…[${h.text.length} chars]` : h.text;
+        return `${label}: ${text}`;
+      }).join('\n')}\n===========================\n`
       : '';
 
     return `You are the Naturelite AI Admin Assistant. Answer using ONLY the database data below. Never invent numbers, names, or products.
