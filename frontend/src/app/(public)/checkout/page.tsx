@@ -378,8 +378,8 @@ export default function CheckoutPage() {
   const baseTotal = getTotal(); // subtotal - discount
   const shipping =
     subtotal >= shippingSettings.freeShippingThreshold ? 0 : shippingSettings.defaultShippingCharge;
-  // Order total should include GST + shipping
-  const total = baseTotal + gst + shipping;
+  // GST is inclusive in item prices — do not add it on top
+  const total = baseTotal + shipping;
 
   const maxWalletUsable =
     isAuthenticated && wallet ? Math.min(wallet.balance, total) : 0;
@@ -677,7 +677,7 @@ export default function CheckoutPage() {
                     </div>
                   )}
                   <div className="flex justify-between font-body text-sm">
-                    <span className="text-brand-muted">GST</span>
+                    <span className="text-brand-muted">GST (incl.)</span>
                     <span className="text-brand-charcoal">{formatPrice(gst)}</span>
                   </div>
                   <div className="flex justify-between font-body text-sm">

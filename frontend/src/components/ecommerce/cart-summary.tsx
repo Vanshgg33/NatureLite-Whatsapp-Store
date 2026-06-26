@@ -72,8 +72,8 @@ export function CartSummary({
   const freeShippingThreshold = shippingSettings.freeShippingThreshold;
   const shippingCost = subtotal >= freeShippingThreshold ? 0 : shippingSettings.defaultShippingCharge;
   const amountToFreeShipping = freeShippingThreshold - subtotal;
-  // Order total should include GST + shipping
-  const totalWithGst = baseTotal + gst;
+  // GST is inclusive in item prices — do not add it on top
+  const orderTotal = baseTotal;
 
   const handleApplyCoupon = async () => {
     if (!couponInput.trim()) return;
@@ -301,7 +301,7 @@ export function CartSummary({
         )}
 
         <div className="flex justify-between font-body text-sm">
-          <span className="text-brand-muted">GST</span>
+          <span className="text-brand-muted">GST (incl.)</span>
           <span className="text-brand-charcoal">{formatPrice(gst)}</span>
         </div>
 
@@ -322,7 +322,7 @@ export function CartSummary({
               Total
             </span>
             <span className="font-display text-xl font-bold text-brand-charcoal">
-            {formatPrice(totalWithGst + shippingCost)}
+            {formatPrice(orderTotal + shippingCost)}
             </span>
           </div>
         </div>
@@ -357,7 +357,7 @@ export function CartSummary({
                 quantity: it.quantity,
                 price: it.price,
               }))}
-              total={totalWithGst + shippingCost}
+              total={orderTotal + shippingCost}
               onClose={() => setShowWaModal(false)}
             />
           )}

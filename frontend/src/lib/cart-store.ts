@@ -270,7 +270,7 @@ export const useCartStore = create<CartState>()(
         const state = get();
         return state.items.reduce((sum, item) => {
           const itemTotal = item.price * item.quantity;
-          const gstAmount = (itemTotal * item.gstPercentage) / 100;
+          const gstAmount = item.gstPercentage > 0 ? itemTotal - itemTotal / (1 + item.gstPercentage / 100) : 0;
           return sum + gstAmount;
         }, 0);
       },
