@@ -354,35 +354,6 @@ export class UcmService {
       this.logger.error(`Catalog health-check FAILED — token may lack catalog_management permission: ${msg}`);
     }
 
-    // Write diagnostic: try one item with a unique timestamp ID + public URL.
-    try {
-      const diagId = `diag-${Date.now()}`;
-      const diagResp = await this.graphClient.post(`/${remoteCatalogId}/items_batch`, {
-        item_type: 'PRODUCT_ITEM',
-        allow_upsert: true,
-        requests: [{
-          method: 'CREATE',
-          retailer_id: diagId,
-          data: {
-            id: diagId,
-            title: 'Diagnostic Test Item',
-            description: 'Temporary diagnostic item — safe to delete',
-            availability: 'in stock',
-            condition: 'new',
-            price: '1.00 INR',
-            image_link: 'https://picsum.photos/200/200',
-            link: 'https://www.google.com',
-          },
-        }],
-      }, {
-        params: { access_token: catalogConfig.accessToken },
-      });
-      this.logger.log(`Write diagnostic response: ${JSON.stringify(diagResp.data)}`);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`Write diagnostic error: ${msg}`);
-    }
-
     let stockMap: Map<string, number | null>;
     try {
       stockMap = await this.resolveMainStoreStockMap(products);
