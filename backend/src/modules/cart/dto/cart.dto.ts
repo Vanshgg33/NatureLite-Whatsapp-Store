@@ -52,6 +52,7 @@ export interface CartResponse {
       image?: string;
     };
     variantSku?: string;
+    variantName?: string;
     quantity: number;
     price: number;
     total: number;

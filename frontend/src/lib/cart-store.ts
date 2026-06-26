@@ -239,6 +239,7 @@ export const useCartStore = create<CartState>()(
                 price: item.price,
                 quantity: item.quantity,
                 variantSku: item.variantSku,
+                variantName: (item as any).variantName,
                 gstPercentage: (item as any).gstPercentage ?? 0,
               };
             });

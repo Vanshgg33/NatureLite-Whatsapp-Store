@@ -124,6 +124,7 @@ export class CartService {
 
     let price = product.price;
     let stock = product.stock;
+    let variantName: string | undefined;
 
     if (dto.variantSku) {
       const variant = product.variants.find((v) => v.sku === dto.variantSku);
@@ -135,6 +136,7 @@ export class CartService {
       }
       price = variant.price;
       stock = variant.stock;
+      variantName = variant.name;
     }
 
     // The override is a *fallback*, not a blind override: it only applies when
@@ -186,6 +188,7 @@ export class CartService {
       const cartItem: CartItem = {
         product: productIdObj,
         variantSku: dto.variantSku,
+        variantName,
         quantity: dto.quantity,
         price,
         name: product.name,
@@ -430,6 +433,7 @@ export class CartService {
           image: item.image,
         },
         variantSku: item.variantSku,
+        variantName: item.variantName,
         quantity: item.quantity,
         price: item.price,
         total: item.price * item.quantity,

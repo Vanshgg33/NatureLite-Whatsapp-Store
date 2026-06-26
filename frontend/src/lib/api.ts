@@ -163,16 +163,17 @@ class ApiClient {
             this.isRefreshing = true;
 
             const failedRouteIsAdmin = failedUrl.startsWith('admin/') || failedUrl.startsWith('admin?') || failedUrl === 'admin';
-            // Department pages use the admin token but call non-admin API routes (e.g. /orders/…),
-            // so we must also check the current page path to pick the right storage key.
+            // Admin, department, and invoice pages all use the admin token but may call
+            // non-admin-prefixed API routes (e.g. /orders/…), so check the page path too.
             const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
-            const isDepartmentPage = currentPath.startsWith('/department')
+            const isAdminRelatedPage = currentPath.startsWith('/admin')
+              || currentPath.startsWith('/department')
               || currentPath.startsWith('/invoice');
 
             let refreshTokenToSend: string | undefined;
             if (typeof window !== 'undefined') {
               try {
-                const storageKey = (failedRouteIsAdmin || isDepartmentPage) ? 'admin-auth-storage' : 'customer-auth-storage';
+                const storageKey = (failedRouteIsAdmin || isAdminRelatedPage) ? 'admin-auth-storage' : 'customer-auth-storage';
                 const storage = localStorage.getItem(storageKey);
                 if (storage) {
                   const parsed = JSON.parse(storage);

@@ -11,6 +11,9 @@ export class CartItem {
   @Prop()
   variantSku?: string;
 
+  @Prop()
+  variantName?: string;
+
   @Prop({ required: true, min: 1 })
   quantity: number;
 
