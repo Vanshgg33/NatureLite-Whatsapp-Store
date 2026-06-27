@@ -31,7 +31,7 @@ export class AdminService {
     password: string;
     phone?: string;
     role?: 'admin' | 'superadmin';
-    departmentType?: 'packing' | 'billing' | 'delivery';
+    departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
   }): Promise<AdminUser> {
     const existing = await this.adminUserRepository.findOneByEmail(data.email.toLowerCase());
     if (existing) {
@@ -70,7 +70,7 @@ export class AdminService {
       role?: 'admin' | 'superadmin';
       isActive?: boolean;
       permissions?: string[];
-      departmentType?: 'packing' | 'billing' | 'delivery';
+      departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
     },
   ): Promise<AdminUser> {
     const idObj = parseObjectId(id, 'id');

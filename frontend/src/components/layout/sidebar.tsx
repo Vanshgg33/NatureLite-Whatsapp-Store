@@ -81,6 +81,25 @@ const BASE_NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+const CRM_NAV_GROUPS: NavGroup[] = [
+  {
+    label: 'Operations',
+    items: [
+      { name: 'Orders', href: '/admin/orders', icon: ShoppingCart },
+      { name: 'Sales Log', href: '/admin/sales', icon: Receipt },
+      { name: 'Cash Ledger', href: '/admin/delivery-collections', icon: Banknote },
+      { name: 'Delivery History', href: '/admin/delivery-history', icon: Truck },
+    ],
+  },
+  {
+    label: 'Customers',
+    items: [
+      { name: 'Customers', href: '/admin/customers', icon: Users },
+      { name: 'Coupons', href: '/admin/coupons', icon: Tag },
+    ],
+  },
+];
+
 const SUPERADMIN_NAV_GROUPS: NavGroup[] = [
   {
     label: 'Analytics',
@@ -117,11 +136,11 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   useEffect(() => { setIsMounted(true); }, []);
 
   const isSuperadmin = user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
+  const isCrm = user?.departmentType === 'crm_head' || user?.departmentType === 'crm_senior';
 
-  const navGroups: NavGroup[] = [
-    ...BASE_NAV_GROUPS,
-    ...(isSuperadmin ? SUPERADMIN_NAV_GROUPS : []),
-  ];
+  const navGroups: NavGroup[] = isCrm
+    ? CRM_NAV_GROUPS
+    : [...BASE_NAV_GROUPS, ...(isSuperadmin ? SUPERADMIN_NAV_GROUPS : [])];
 
   const handleLogout = () => {
     // Redirect instantly — fire API logout in background
@@ -136,6 +155,10 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const displayName = user?.name || 'Admin';
   const roleLabel = user?.role === 'superadmin'
     ? 'superadmin'
+    : user?.departmentType === 'crm_head'
+    ? 'CRM Head'
+    : user?.departmentType === 'crm_senior'
+    ? 'CRM Senior'
     : user?.storeName
     ? user.storeName
     : 'admin';

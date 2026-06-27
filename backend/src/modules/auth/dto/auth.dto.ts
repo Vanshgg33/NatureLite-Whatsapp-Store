@@ -126,7 +126,7 @@ export interface AuthResponse {
     phone?: string;
     name?: string;
     role: string;
-    departmentType?: 'packing' | 'billing' | 'delivery';
+    departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
     storeId?: string;
     storeName?: string;
   };

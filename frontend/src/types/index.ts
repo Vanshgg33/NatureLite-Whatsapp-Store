@@ -25,7 +25,7 @@ export interface AdminUser {
   role: 'admin' | 'superadmin';
   isActive: boolean;
   store?: string;
-  departmentType?: 'packing' | 'billing' | 'delivery';
+  departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
   permissions: string[];
   plainPassword?: string;
   createdAt: string;
@@ -623,7 +623,7 @@ export interface AuthUser {
   role: 'admin' | 'superadmin' | 'customer';
   storeId?: string;
   storeName?: string;
-   departmentType?: 'packing' | 'billing' | 'delivery';
+   departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
 }
 
 export interface UploadResult {

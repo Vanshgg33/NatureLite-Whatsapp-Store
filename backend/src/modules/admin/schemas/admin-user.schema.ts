@@ -27,8 +27,8 @@ export class AdminUser {
   @Prop({ default: 'admin' })
   role: AdminRole;
 
-  @Prop({ enum: ['packing', 'billing', 'delivery'], required: false })
-  departmentType?: 'packing' | 'billing' | 'delivery';
+  @Prop({ enum: ['packing', 'billing', 'delivery', 'crm_head', 'crm_senior'], required: false })
+  departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
 
   @Prop({ default: true })
   isActive: boolean;

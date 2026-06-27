@@ -342,7 +342,7 @@ class ApiClient {
     password: string;
     phone?: string;
     role?: 'admin' | 'superadmin';
-    departmentType?: 'packing' | 'billing' | 'delivery';
+    departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
   }): Promise<AdminUser> {
     const response = await this.client.post<ApiResponse<AdminUser>>('/admin/users', data);
     return response.data.data;
@@ -356,7 +356,7 @@ class ApiClient {
       role?: 'admin' | 'superadmin';
       isActive?: boolean;
       permissions?: string[];
-      departmentType?: 'packing' | 'billing' | 'delivery';
+      departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
     }
   ): Promise<AdminUser> {
     const response = await this.client.put<ApiResponse<AdminUser>>(`/admin/users/${id}`, data);

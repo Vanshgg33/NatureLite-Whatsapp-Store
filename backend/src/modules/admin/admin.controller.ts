@@ -54,7 +54,7 @@ export class AdminController {
       password: string;
       phone?: string;
       role?: 'admin' | 'superadmin';
-      departmentType?: 'packing' | 'billing' | 'delivery';
+      departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
     },
   ): Promise<AdminUser> {
     return this.adminService.create(body);
@@ -70,7 +70,7 @@ export class AdminController {
       role?: 'admin' | 'superadmin';
       isActive?: boolean;
       permissions?: string[];
-      departmentType?: 'packing' | 'billing' | 'delivery';
+      departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
     },
   ): Promise<AdminUser> {
     return this.adminService.update(id, body);

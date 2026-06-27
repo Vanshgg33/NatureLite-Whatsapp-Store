@@ -35,7 +35,7 @@ export default function AdminLoginsPage() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'admin' | 'superadmin'>('admin');
-  const [departmentType, setDepartmentType] = useState<'packing' | 'billing' | 'delivery' | 'none'>('none');
+  const [departmentType, setDepartmentType] = useState<'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior' | 'none'>('none');
 
   // per-row password editing state
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
@@ -101,7 +101,7 @@ export default function AdminLoginsPage() {
         password,
         phone: phone || undefined,
         role,
-        departmentType: departmentType === 'none' ? undefined : departmentType,
+        departmentType: departmentType === 'none' ? undefined : departmentType as 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior',
       }),
     onSuccess: () => {
       toast({
@@ -227,7 +227,7 @@ export default function AdminLoginsPage() {
             <Select
               value={departmentType}
               onValueChange={(v) =>
-                setDepartmentType(v as 'packing' | 'billing' | 'delivery' | 'none')
+                setDepartmentType(v as 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior' | 'none')
               }
             >
               <SelectTrigger className="h-9 text-xs">
@@ -238,6 +238,8 @@ export default function AdminLoginsPage() {
                 <SelectItem value="packing">Packing</SelectItem>
                 <SelectItem value="billing">Billing</SelectItem>
                 <SelectItem value="delivery">Delivery</SelectItem>
+                <SelectItem value="crm_head">CRM Head</SelectItem>
+                <SelectItem value="crm_senior">CRM Senior</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -419,8 +421,12 @@ export default function AdminLoginsPage() {
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-2 capitalize">
-                        {user.departmentType ? user.departmentType : '-'}
+                      <td className="px-4 py-2">
+                        {user.departmentType
+                          ? user.departmentType === 'crm_head' ? 'CRM Head'
+                          : user.departmentType === 'crm_senior' ? 'CRM Senior'
+                          : <span className="capitalize">{user.departmentType}</span>
+                          : '-'}
                       </td>
                       <td className="px-4 py-2 capitalize">{user.role}</td>
                       <td className="px-4 py-2">

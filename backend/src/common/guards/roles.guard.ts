@@ -32,8 +32,11 @@ export class RolesGuard implements CanActivate {
       );
     }
 
+    // CRM roles (crm_head, crm_senior) get full read/write access to their allowed modules — no handler restriction
+    const isCrmRole = user.departmentType === 'crm_head' || user.departmentType === 'crm_senior';
+
     // Department staff may only access specific order workflow endpoints; other admin routes are forbidden
-    if (requiredRoles.includes('admin') && user.departmentType) {
+    if (requiredRoles.includes('admin') && user.departmentType && !isCrmRole) {
       const handlerName = context.getHandler().name;
       const allowedDepartmentHandlers = [
         'findAll',
