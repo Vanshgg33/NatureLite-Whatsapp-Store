@@ -1699,7 +1699,7 @@ export default function SalesPage() {
                 cartItems.length === 0 ||
                 !effectiveLogSaleStore ||
                 !customerName.trim() ||
-                !/^[6-9]\d{9}$/.test(customerPhone) ||
+                (customerPhone.trim().length > 0 && customerPhone.trim().length < 10) ||
                 (saleType === 'delivery' && (!addrCity.trim() || !addrState.trim()))
               }
             >

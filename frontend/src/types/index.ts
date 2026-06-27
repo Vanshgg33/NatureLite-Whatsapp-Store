@@ -850,6 +850,7 @@ export interface UpdateOrderDto {
   notes?: string;
   adminNotes?: string;
   shippingAddress?: Partial<ShippingAddress>;
+  paymentProofUrl?: string;
 }
 
 // ==================== ADDRESS DTO ====================

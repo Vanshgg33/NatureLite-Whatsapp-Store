@@ -1213,6 +1213,9 @@ export class OrdersService implements OnModuleInit {
     if (dto.adminNotes !== undefined) {
       order.adminNotes = dto.adminNotes;
     }
+    if (dto.paymentProofUrl !== undefined) {
+      order.paymentProofUrl = dto.paymentProofUrl;
+    }
 
     if (dto.shippingAddress) {
       order.shippingAddress = {

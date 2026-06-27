@@ -97,7 +97,7 @@ export default function CustomerDetailPage() {
     mutationFn: () =>
       api.adminCreditWallet(
         params.id as string,
-        Number(walletAmountInput || 0),
+        Math.round(Number(walletAmountInput || 0)),
         walletNoteInput || undefined,
       ),
     onSuccess: () => {
@@ -111,7 +111,7 @@ export default function CustomerDetailPage() {
     mutationFn: () =>
       api.adminDebitWallet(
         params.id as string,
-        Number(walletAmountInput || 0),
+        Math.round(Number(walletAmountInput || 0)),
         walletNoteInput || undefined,
       ),
     onSuccess: () => {
@@ -397,6 +397,7 @@ export default function CustomerDetailPage() {
               <Input
                 type="number"
                 min={1}
+                step={1}
                 value={walletAmountInput}
                 onChange={(e) => setWalletAmountInput(e.target.value)}
                 placeholder="Enter amount"

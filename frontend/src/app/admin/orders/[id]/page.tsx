@@ -150,8 +150,30 @@ export default function AdminOrderDetailPage() {
           </CardContent>
         </Card>
 
+        {/* UPI payment proof */}
+        {order.paymentProofUrl && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Camera className="h-4 w-4 text-blue-600" />
+                UPI Payment Screenshot
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <a href={order.paymentProofUrl} target="_blank" rel="noopener noreferrer">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={order.paymentProofUrl}
+                  alt="UPI payment proof"
+                  className="max-h-80 w-auto rounded-lg border object-contain hover:opacity-90 transition-opacity cursor-zoom-in"
+                />
+              </a>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Delivery proof — shown only after delivery is completed */}
-        {(order.deliveryProofUrl || order.paymentProofUrl || order.amountCollected !== undefined) && (
+        {(order.deliveryProofUrl || order.amountCollected !== undefined) && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -160,7 +182,6 @@ export default function AdminOrderDetailPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Amount collected row */}
               {order.amountCollected !== undefined && (
                 <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-100">
                   <Banknote className="h-5 w-5 text-green-600 shrink-0" />
@@ -177,36 +198,19 @@ export default function AdminOrderDetailPage() {
                   </div>
                 </div>
               )}
-
-              {/* Photo grid */}
-              <div className="grid grid-cols-2 gap-4">
-                {order.deliveryProofUrl && (
-                  <div className="space-y-1.5">
-                    <p className="text-xs font-semibold text-gray-600">Delivery proof</p>
-                    <a href={order.deliveryProofUrl} target="_blank" rel="noopener noreferrer">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={order.deliveryProofUrl}
-                        alt="Delivery proof"
-                        className="w-full rounded-lg border object-cover aspect-[4/3] hover:opacity-90 transition-opacity cursor-zoom-in"
-                      />
-                    </a>
-                  </div>
-                )}
-                {order.paymentProofUrl && (
-                  <div className="space-y-1.5">
-                    <p className="text-xs font-semibold text-gray-600">Payment proof</p>
-                    <a href={order.paymentProofUrl} target="_blank" rel="noopener noreferrer">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={order.paymentProofUrl}
-                        alt="Payment proof"
-                        className="w-full rounded-lg border object-cover aspect-[4/3] hover:opacity-90 transition-opacity cursor-zoom-in"
-                      />
-                    </a>
-                  </div>
-                )}
-              </div>
+              {order.deliveryProofUrl && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-semibold text-gray-600">Delivery proof</p>
+                  <a href={order.deliveryProofUrl} target="_blank" rel="noopener noreferrer">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={order.deliveryProofUrl}
+                      alt="Delivery proof"
+                      className="w-full rounded-lg border object-cover aspect-[4/3] hover:opacity-90 transition-opacity cursor-zoom-in"
+                    />
+                  </a>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

@@ -27,7 +27,7 @@ export class ShippingAddressDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @IsNotEmpty()
-  @Matches(/^[6-9]\d{9}$/, { message: 'Phone must be a valid 10-digit Indian mobile number' })
+  @Matches(/^\d{10,}$/, { message: 'Phone must be at least 10 digits' })
   phone: string;
 
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
@@ -52,9 +52,9 @@ export class ShippingAddressDto {
 
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @Matches(/^\d{6}$/, { message: 'Pincode must be exactly 6 digits' })
-  pincode: string;
+  pincode?: string;
 
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
@@ -382,4 +382,8 @@ export class UpdateOrderDto {
   @Type(() => ShippingAddressDto)
   @IsOptional()
   shippingAddress?: ShippingAddressDto;
+
+  @IsString()
+  @IsOptional()
+  paymentProofUrl?: string;
 }

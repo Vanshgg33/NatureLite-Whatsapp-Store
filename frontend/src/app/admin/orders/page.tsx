@@ -123,7 +123,7 @@ export default function OrdersPage() {
 
   // Create order dialog
   const [showCreate, setShowCreate] = useState(false);
-  const [source, setSource] = useState<'whatsapp' | 'website' | 'phone' | 'vayepar' | 'b2b' | 'transport'>('whatsapp');
+  const [source, setSource] = useState<'whatsapp' | 'website' | 'phone' | 'vayepar' | 'b2b'>('whatsapp');
   const [orderType, setOrderType] = useState<'b2b' | 'other_cities' | 'transport' | ''>('');
   const [custName, setCustName] = useState('');
   const [custPhone, setCustPhone] = useState('');
@@ -135,6 +135,8 @@ export default function OrdersPage() {
   const [addrState, setAddrState] = useState('Chhattisgarh');
   const [addrPincode, setAddrPincode] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cod' | 'upi' | 'card' | 'netbanking'>('cod');
+  const [upiProofFile, setUpiProofFile] = useState<File | null>(null);
+  const [upiProofPreview, setUpiProofPreview] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [productSearch, setProductSearch] = useState('');
@@ -183,12 +185,20 @@ export default function OrdersPage() {
         phone: custPhone.trim(),
         name: custName.trim(),
         notes: notes.trim()
-          ? `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : source === 'phone' ? 'Phone' : source === 'b2b' ? 'B2B' : source === 'transport' ? 'Transport' : 'Vayepar'}] ${notes.trim()}`
-          : `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : source === 'phone' ? 'Phone' : source === 'b2b' ? 'B2B' : source === 'transport' ? 'Transport' : 'Vayepar'}] Order created by admin`,
+          ? `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : source === 'phone' ? 'Phone' : source === 'b2b' ? 'B2B' : 'Vayepar'}] ${notes.trim()}`
+          : `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : source === 'phone' ? 'Phone' : source === 'b2b' ? 'B2B' : 'Vayepar'}] Order created by admin`,
         source,
         orderType: orderType || undefined,
       }),
-    onSuccess: () => {
+    onSuccess: async (order) => {
+      if (upiProofFile) {
+        try {
+          const uploaded = await api.uploadImage(upiProofFile, 'payment-proofs');
+          await api.updateOrder(order._id, { paymentProofUrl: uploaded.secureUrl || uploaded.url });
+        } catch {
+          // proof upload failed silently — order still created
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       resetCreateForm();
       setShowCreate(false);
@@ -212,6 +222,9 @@ export default function OrdersPage() {
     setAddrState('Chhattisgarh');
     setAddrPincode('');
     setPaymentMethod('cod');
+    setUpiProofFile(null);
+    if (upiProofPreview) URL.revokeObjectURL(upiProofPreview);
+    setUpiProofPreview(null);
     setNotes('');
     setCart([]);
     setProductSearch('');
@@ -626,7 +639,6 @@ export default function OrdersPage() {
                   { val: 'phone',    label: 'Phone',    icon: <Phone className="h-4 w-4" />,          active: 'border-amber-500 bg-amber-50 text-amber-700' },
                   { val: 'vayepar',  label: 'Vyapar',   icon: <Receipt className="h-4 w-4" />,        active: 'border-purple-500 bg-purple-50 text-purple-700' },
                   { val: 'b2b',      label: 'B2B',      icon: <Building2 className="h-4 w-4" />,      active: 'border-orange-500 bg-orange-50 text-orange-700' },
-                  { val: 'transport',label: 'Transport', icon: <Truck className="h-4 w-4" />,          active: 'border-cyan-500 bg-cyan-50 text-cyan-700' },
                 ] as const).map(({ val, label, icon, active }) => (
                   <button
                     key={val}
@@ -855,7 +867,7 @@ export default function OrdersPage() {
             {/* Payment method */}
             <div>
               <label className="text-sm font-medium block mb-1">Payment Method</label>
-              <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as typeof paymentMethod)}>
+              <Select value={paymentMethod} onValueChange={(v) => { setPaymentMethod(v as typeof paymentMethod); if (v !== 'upi') { setUpiProofFile(null); if (upiProofPreview) URL.revokeObjectURL(upiProofPreview); setUpiProofPreview(null); } }}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -867,6 +879,49 @@ export default function OrdersPage() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* UPI payment proof */}
+            {paymentMethod === 'upi' && (
+              <div>
+                <label className="text-sm font-medium block mb-1">UPI Payment Screenshot <span className="text-muted-foreground font-normal">(Optional)</span></label>
+                <div
+                  className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-muted-foreground/40 transition-colors"
+                  onClick={() => document.getElementById('upi-proof-input')?.click()}
+                >
+                  {upiProofPreview ? (
+                    <div className="relative">
+                      <img src={upiProofPreview} alt="UPI proof" className="max-h-40 mx-auto rounded object-contain" />
+                      <button
+                        type="button"
+                        className="absolute top-1 right-1 bg-black/60 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                        onClick={(e) => { e.stopPropagation(); setUpiProofFile(null); if (upiProofPreview) URL.revokeObjectURL(upiProofPreview); setUpiProofPreview(null); }}
+                      >✕</button>
+                    </div>
+                  ) : (
+                    <div className="text-muted-foreground text-sm py-4">
+                      <p className="font-medium">Tap to upload screenshot</p>
+                      <p className="text-xs mt-1">JPG, PNG supported</p>
+                    </div>
+                  )}
+                </div>
+                <input
+                  id="upi-proof-input"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setUpiProofFile(file);
+                    setUpiProofPreview((prev) => {
+                      if (prev) URL.revokeObjectURL(prev);
+                      return URL.createObjectURL(file);
+                    });
+                    e.target.value = '';
+                  }}
+                />
+              </div>
+            )}
 
             {/* Notes */}
             <div>
@@ -1077,7 +1132,7 @@ export default function OrdersPage() {
                 !editShipStreet.trim() ||
                 !editShipCity.trim() ||
                 !editShipState.trim() ||
-                editShipPincode.trim().length !== 6 ||
+                (editShipPincode.trim().length > 0 && editShipPincode.trim().length !== 6) ||
                 updateOrderMutation.isPending
               }
             >
