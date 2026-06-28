@@ -5,12 +5,13 @@ import { useQuery } from '@tanstack/react-query';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, ShoppingCart, Loader2, Minus, Plus, CheckCircle2, Package, X } from 'lucide-react';
+import { Search, ShoppingCart, Loader2, Minus, Plus, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCartStore } from '@/lib/cart-store';
 import { useToast } from '@/components/ui/use-toast';
 import { Product } from '@/types';
 import { WhatsAppOrderModal } from '@/components/ecommerce/whatsapp-order-modal';
+import { CircularCategoryOrbit } from '@/components/sections/HomeShopSection';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 function WaIcon({ size = 18 }: { size?: number }) {
@@ -82,14 +83,6 @@ function StockBadge({ isOOS, isLow, stock }: { isOOS: boolean; isLow: boolean; s
     </div>
   );
 }
-
-// ─── How-it-works steps ───────────────────────────────────────────────────────
-type StepIcon = { size?: number; style?: React.CSSProperties; className?: string };
-const STEPS: Array<{ Icon: React.ComponentType<StepIcon>; num: string; title: string; desc: string }> = [
-  { Icon: Package as React.ComponentType<StepIcon>,     num: '01', title: 'Pick products',     desc: 'Set quantities across our full catalogue in one place.' },
-  { Icon: WaIcon,                                       num: '02', title: 'Send via WhatsApp', desc: 'We receive your exact order instantly on WhatsApp.' },
-  { Icon: CheckCircle2 as React.ComponentType<StepIcon>, num: '03', title: 'Delivered to you', desc: 'Confirm details, pay & get fresh delivery at your door.' },
-];
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function QuickOrderPage() {
@@ -205,73 +198,16 @@ export default function QuickOrderPage() {
 
       <div className="min-h-screen" style={{ background: 'linear-gradient(180deg,#f8f3ea 0%,#f2ece0 100%)', paddingBottom: selectedCount > 0 ? 'calc(env(safe-area-inset-bottom) + 136px)' : '64px', transition: 'padding-bottom 0.3s ease' }}>
 
-        {/* ══════ HERO ══════ */}
-        <div className="relative overflow-hidden" style={{ background: 'linear-gradient(160deg,#040e02 0%,#0b2206 55%,#061504 100%)' }}>
-
-          {/* Grain */}
-          <div aria-hidden className="pointer-events-none absolute inset-0"
-            style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")", opacity: 0.6, mixBlendMode: 'overlay' as const }} />
-          {/* Amber glow top-left */}
-          <div aria-hidden className="pointer-events-none absolute" style={{ top: '-20%', left: '-10%', width: 600, height: 600, borderRadius: '50%', background: 'radial-gradient(circle,rgba(160,112,16,0.18) 0%,transparent 65%)', filter: 'blur(60px)' }} />
-          {/* Green glow bottom-right */}
-          <div aria-hidden className="pointer-events-none absolute" style={{ bottom: '-30%', right: '-5%', width: 500, height: 500, borderRadius: '50%', background: 'radial-gradient(circle,rgba(37,211,102,0.10) 0%,transparent 65%)', filter: 'blur(70px)' }} />
-
-          <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 sm:pt-24 pb-14 sm:pb-20">
-
-            {/* Eyebrow badge */}
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
-              className="flex justify-center mb-6">
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full" style={{ background: 'rgba(37,211,102,0.12)', border: '1px solid rgba(37,211,102,0.25)', color: '#4ade80' }}>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', animation: 'qo-pulse 2s ease-in-out infinite' }} />
-                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>WhatsApp Quick Order</span>
-              </div>
-            </motion.div>
-
-            {/* Title */}
-            <div className="text-center mb-5">
-              <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease: [0.23, 1, 0.32, 1], delay: 0.1 }}
-                className="font-display font-bold leading-[1.0] text-white"
-                style={{ fontSize: 'clamp(2.4rem, 9vw, 5.5rem)', letterSpacing: '-0.02em' }}>
-                Order in 60&nbsp;Seconds
-              </motion.h1>
-              <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35, duration: 0.6 }}
-                className="font-display italic mt-3"
-                style={{ fontSize: 'clamp(1rem, 2.6vw, 1.35rem)', color: 'rgba(255,255,255,0.40)' }}>
-                Pick products · WhatsApp us · Get delivered
-              </motion.p>
-            </div>
-
-            {/* Divider line */}
-            <motion.div initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: 1.1, ease: [0.23, 1, 0.32, 1], delay: 0.3 }}
-              style={{ height: 1, background: 'linear-gradient(90deg,transparent,rgba(160,112,16,0.45),transparent)', margin: '0 auto 28px', width: '60%', maxWidth: 320, transformOrigin: 'center' }} />
-
-            {/* How it works */}
-            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45, duration: 0.6 }}
-              className="grid grid-cols-3 gap-3 sm:gap-6 max-w-2xl mx-auto">
-              {STEPS.map((step, i) => (
-                <div key={i} className="text-center">
-                  <div className="flex justify-center mb-2.5">
-                    <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center" style={{ background: i === 1 ? 'rgba(37,211,102,0.15)' : 'rgba(160,112,16,0.12)', border: `1px solid ${i === 1 ? 'rgba(37,211,102,0.25)' : 'rgba(160,112,16,0.22)'}` }}>
-                      <step.Icon size={i === 1 ? 18 : 16} style={{ color: i === 1 ? '#4ade80' : '#c8920a' }} />
-                    </div>
-                  </div>
-                  <p style={{ fontSize: 'clamp(9px,2.2vw,11px)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.50)', marginBottom: 3 }}>
-                    {step.num}
-                  </p>
-                  <p className="font-semibold text-white" style={{ fontSize: 'clamp(11px,2.8vw,13px)', lineHeight: 1.25 }}>
-                    {step.title}
-                  </p>
-                  <p className="hidden sm:block mt-1" style={{ fontSize: 11, color: 'rgba(255,255,255,0.30)', lineHeight: 1.45 }}>
-                    {step.desc}
-                  </p>
-                </div>
-              ))}
-            </motion.div>
+        {/* ══════ CIRCULAR CATEGORIES ══════ */}
+        {(categories ?? []).length > 0 && (
+          <div className="w-full px-2 sm:px-3 pt-6 pb-2">
+            <CircularCategoryOrbit
+              categories={categories ?? []}
+              selectedCatId={activeCategory === 'all' ? null : activeCategory}
+              onSelect={(id) => setActiveCategory(id ?? 'all')}
+            />
           </div>
-
-          {/* Bottom edge fade into page bg */}
-          <div className="absolute bottom-0 inset-x-0 h-8" style={{ background: 'linear-gradient(to bottom,transparent,#f2ece0)' }} />
-        </div>
+        )}
 
         {/* ══════ CATALOG ══════ */}
         <div className="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
