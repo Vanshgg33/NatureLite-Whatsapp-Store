@@ -62,7 +62,10 @@ export class CategoryRepository extends BaseRepository<CategoryDocument> {
   }
 
   async findActiveSorted(): Promise<CategoryDocument[]> {
-    return this.model.find({ isActive: true }).sort({ sortOrder: 1, name: 1 }).exec();
+    return this.model
+      .find({ isActive: true, $or: [{ parent: { $exists: false } }, { parent: null }] })
+      .sort({ sortOrder: 1, name: 1 })
+      .exec();
   }
 
   async findActiveLean(): Promise<(Category & { _id: Types.ObjectId; parent?: Types.ObjectId })[]> {
@@ -94,5 +97,20 @@ export class CategoryRepository extends BaseRepository<CategoryDocument> {
     update: Record<string, unknown>,
   ): Promise<CategoryDocument | null> {
     return this.model.findByIdAndUpdate(id, { $set: update }, { new: true }).exec();
+  }
+
+  async findAllAtLevel(parentId?: Types.ObjectId): Promise<CategoryDocument[]> {
+    const filter = parentId
+      ? { parent: parentId }
+      : { $or: [{ parent: { $exists: false } }, { parent: null }] };
+    return this.model.find(filter).sort({ sortOrder: 1, name: 1 }).exec();
+  }
+
+  async bulkUpdateSortOrders(updates: Array<{ id: Types.ObjectId; sortOrder: number }>): Promise<void> {
+    await Promise.all(
+      updates.map(({ id, sortOrder }) =>
+        this.model.findByIdAndUpdate(id, { $set: { sortOrder } }).exec(),
+      ),
+    );
   }
 }

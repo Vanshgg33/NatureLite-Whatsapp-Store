@@ -83,7 +83,8 @@ export class CategoriesService {
         throw new BadRequestException('Category with this slug already exists');
       }
     }
-    const updateData: Record<string, unknown> = { ...dto };
+    const { sortOrder, ...rest } = dto;
+    const updateData: Record<string, unknown> = { ...rest };
     if (dto.parent !== undefined && dto.parent !== null && dto.parent !== '') {
       updateData.parent = parseObjectId(dto.parent, 'parent');
     }
@@ -91,7 +92,24 @@ export class CategoriesService {
     if (!category) {
       throw new NotFoundException('Category not found');
     }
+
+    if (sortOrder !== undefined) {
+      await this.reorderAtLevel(idObj, sortOrder, category.parent ?? undefined);
+      return (await this.categoryRepository.findByIdString(id))!;
+    }
+
     return category;
+  }
+
+  private async reorderAtLevel(targetId: Types.ObjectId, newPosition: number, parentId?: Types.ObjectId): Promise<void> {
+    const siblings = await this.categoryRepository.findAllAtLevel(parentId);
+    const otherIds = siblings
+      .filter((c) => !c._id.equals(targetId))
+      .map((c) => c._id);
+    const pos = Math.max(1, Math.min(newPosition, otherIds.length + 1));
+    otherIds.splice(pos - 1, 0, targetId);
+    const updates = otherIds.map((id, idx) => ({ id, sortOrder: idx + 1 }));
+    await this.categoryRepository.bulkUpdateSortOrders(updates);
   }
 
   async delete(id: string): Promise<void> {
