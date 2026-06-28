@@ -475,7 +475,7 @@ export default function HomePage() {
   const { data: categoriesData } = useQuery({
     queryKey: ['homepage-categories'],
     queryFn: () => api.getActiveCategories(),
-    staleTime: 10 * 60 * 1000,
+    staleTime: 0,
   });
 
   const products = productsData?.items ?? [];
