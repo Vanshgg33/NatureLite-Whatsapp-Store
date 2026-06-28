@@ -92,7 +92,7 @@ export default function CheckoutPage() {
     staleTime: 10 * 60 * 1000,
   });
   const shippingSettings = {
-    freeShippingThreshold: publicSettings?.store?.freeShippingThreshold ?? 999,
+    freeShippingThreshold: publicSettings?.store?.freeShippingThreshold ?? 300,
     defaultShippingCharge: publicSettings?.store?.defaultShippingCharge ?? 50,
   };
 

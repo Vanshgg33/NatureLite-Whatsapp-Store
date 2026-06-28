@@ -42,7 +42,7 @@ export const DEFAULT_SETTINGS = {
     timezone: 'Asia/Kolkata',
     minOrderAmount: 0,
     maxOrderAmount: 100000,
-    freeShippingThreshold: 500,
+    freeShippingThreshold: 300,
     defaultShippingCharge: 50,
   },
   whatsapp: {

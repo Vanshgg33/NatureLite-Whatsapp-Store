@@ -324,16 +324,16 @@ export class OrdersService implements OnModuleInit {
       }
 
       // Get shipping settings instead of hard-coded values
-      let freeShippingThreshold = 500;
+      let freeShippingThreshold = 300;
       let defaultShippingCharge = 50;
       try {
-        const checkoutSettings = await this.settingsService.get('checkout');
-        if (checkoutSettings?.value && typeof checkoutSettings.value === 'object') {
-          const v = checkoutSettings.value as {
+        const storeSettings = await this.settingsService.get('store');
+        if (storeSettings?.value && typeof storeSettings.value === 'object') {
+          const v = storeSettings.value as {
             freeShippingThreshold?: number;
             defaultShippingCharge?: number;
           };
-          freeShippingThreshold = v.freeShippingThreshold ?? 500;
+          freeShippingThreshold = v.freeShippingThreshold ?? 300;
           defaultShippingCharge = v.defaultShippingCharge ?? 50;
         }
       } catch {

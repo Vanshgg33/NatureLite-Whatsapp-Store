@@ -17,7 +17,7 @@ export default function SettingsPage() {
     description: '',
     currency: 'INR',
     minOrderAmount: 0,
-    freeShippingThreshold: 500,
+    freeShippingThreshold: 300,
     defaultShippingCharge: 50,
   });
 

@@ -4233,7 +4233,7 @@ export class ChatbotService {
     }
     breakdown.push(bold(`You pay:  ${this.formatCurrency(cart.total)}`));
 
-    const FREE_SHIP_THRESHOLD = 500;
+    const FREE_SHIP_THRESHOLD = 300;
     const shippingLine =
       cart.subtotal >= FREE_SHIP_THRESHOLD
         ? '\n🎉 Free delivery included'
@@ -4558,7 +4558,7 @@ export class ChatbotService {
       }
       lines.push(bold(`You pay:  ${this.formatCurrency(cart.total)}`));
 
-      const FREE_SHIP_THRESHOLD = 500;
+      const FREE_SHIP_THRESHOLD = 300;
       const shippingLine = cart.subtotal >= FREE_SHIP_THRESHOLD
         ? '\n🎉 Free delivery included'
         : `\n${italic(`Add ${this.formatCurrency(FREE_SHIP_THRESHOLD - cart.subtotal)} more to unlock free delivery`)}`;

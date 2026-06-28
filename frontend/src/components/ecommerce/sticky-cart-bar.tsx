@@ -9,7 +9,7 @@ import { useCartStore } from '@/lib/cart-store';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 
-const FREE_SHIPPING_DEFAULT = 499;
+const FREE_SHIPPING_DEFAULT = 300;
 
 /**
  * Sticky bottom bar: cart summary + checkout CTA + free-shipping progress (psychology).

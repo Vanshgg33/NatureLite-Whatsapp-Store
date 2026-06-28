@@ -65,7 +65,7 @@ export function CartSummary({
     staleTime: 10 * 60 * 1000, // Cache for 10 minutes
   });
   const shippingSettings = {
-    freeShippingThreshold: publicSettings?.store?.freeShippingThreshold ?? 999,
+    freeShippingThreshold: publicSettings?.store?.freeShippingThreshold ?? 300,
     defaultShippingCharge: publicSettings?.store?.defaultShippingCharge ?? 50,
   };
 

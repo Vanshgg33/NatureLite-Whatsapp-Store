@@ -357,7 +357,7 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
 export const FAQ_RESPONSES: Record<string, string> = {
   faq_shipping:
     `*Shipping & Delivery*\n\n` +
-    `\u2022 Free shipping on orders above *\u20B9500*\n` +
+    `\u2022 Free shipping on orders above *\u20B9300*\n` +
     `\u2022 Standard delivery \u2014 *3\u20135 business days*\n` +
     `\u2022 Express delivery \u2014 *1\u20132 business days*\n` +
     `\u2022 Pan-India coverage`,
