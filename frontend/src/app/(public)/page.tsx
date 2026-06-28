@@ -9,7 +9,7 @@ import { Product } from '@/types';
 
 import ImmersiveHeroSection from '@/components/sections/ImmersiveHeroSection';
 import QuickOrderBanner from '@/components/ecommerce/quick-order-banner';
-import HomeShopSection from '@/components/sections/HomeShopSection';
+import HomeShopSection, { CircularCategoryOrbit } from '@/components/sections/HomeShopSection';
 import FeaturedProductsSection from '@/components/sections/FeaturedProductsSection';
 import SocialProofSection from '@/components/sections/SocialProofSection';
 import RecencyBlock from '@/components/sections/RecencyBlock';
@@ -460,6 +460,7 @@ const sectionVariants = {
 
 export default function HomePage() {
   const [loaderExited, setLoaderExited] = useState(false);
+  const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
 
   useEffect(() => {
     if (sessionStorage.getItem('nl_intro_seen') === '1') {
@@ -547,10 +548,26 @@ export default function HomePage() {
       {/* Quick Order CTA */}
       <QuickOrderBanner />
 
+      {/* Circular category orbit */}
+      {categories.length > 0 && (
+        <div className="max-w-[1440px] mx-auto px-3 sm:px-4 lg:px-6 pt-6 pb-2" style={{ background: '#f2ece0' }}>
+          <CircularCategoryOrbit
+            categories={categories}
+            selectedCatId={selectedCatId}
+            onSelect={setSelectedCatId}
+          />
+        </div>
+      )}
+
       {/* 2. Product collection with category filter */}
       {products.length > 0 && (
         <motion.div variants={sectionVariants}>
-          <HomeShopSection products={products} categories={categories} />
+          <HomeShopSection
+            products={products}
+            categories={categories}
+            selectedCatId={selectedCatId}
+            onCatChange={setSelectedCatId}
+          />
         </motion.div>
       )}
 

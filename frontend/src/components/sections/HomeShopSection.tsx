@@ -31,7 +31,7 @@ const CAT_STYLE_MAP: Record<string, { Icon: LucideIcon; bgGrad: string; ic: stri
 const DEFAULT_CAT_STYLE = { Icon: Leaf, bgGrad: 'linear-gradient(145deg,#f5f0e8,#e6ddc8)', ic: '#3a6e20' };
 const getCatStyle = (name: string) => CAT_STYLE_MAP[name.toLowerCase().trim()] ?? DEFAULT_CAT_STYLE;
 
-function CircularCategoryOrbit({
+export function CircularCategoryOrbit({
   categories,
   selectedCatId,
   onSelect,
@@ -64,15 +64,17 @@ function CircularCategoryOrbit({
   if (N === 0) return null;
 
   const { R, tileSize } = dims;
-  const labelZone  = Math.round(tileSize * 0.72);
-  const containerW = (R + tileSize / 2 + labelZone) * 2;
-  const containerH = containerW + 32;
-  const cx         = containerW / 2;
-  const cy         = containerH / 2 - 8;
-  const iconSize   = Math.round(tileSize * 0.42);
-  const hubSize    = Math.round(tileSize * 1.35);
-  const labelW     = Math.round(tileSize * 1.6);
-  const labelFs    = Math.max(9, Math.round(tileSize * 0.158));
+  const labelGap    = 6;
+  const labelFs     = Math.max(9, Math.round(tileSize * 0.158));
+  const labelW      = Math.round(tileSize * 1.8);
+  const labelH      = labelFs * 2.8;
+  const labelZone   = Math.round(tileSize / 2 + labelGap + labelH);
+  const containerW  = (R + labelZone) * 2;
+  const containerH  = containerW + 16;
+  const cx          = containerW / 2;
+  const cy          = containerH / 2;
+  const iconSize    = Math.round(tileSize * 0.42);
+  const hubSize     = Math.round(tileSize * 1.35);
 
   return (
     <div ref={wrapRef} style={{ width: '100%', marginBottom: 20 }}>
@@ -168,36 +170,8 @@ function CircularCategoryOrbit({
           <circle cx="400" cy="270" r="400" stroke="rgba(200,160,40,0.06)" strokeWidth="1" fill="none" strokeDasharray="4 16"/>
         </svg>
 
-        {/* ── Card header ── */}
-        <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', paddingTop: 28, paddingBottom: 4 }}>
-          <p style={{
-            fontFamily: 'monospace', fontSize: 9, letterSpacing: '0.30em',
-            textTransform: 'uppercase', color: 'rgba(212,178,70,0.75)', marginBottom: 8,
-          }}>
-            Curated for you
-          </p>
-          <h2 style={{
-            fontFamily: 'var(--font-display, Georgia, serif)',
-            fontSize: 'clamp(1.35rem, 3.5vw, 2rem)',
-            fontWeight: 700, letterSpacing: '-0.02em',
-            color: 'rgba(255,248,220,0.96)', margin: 0,
-          }}>
-            Shop Our Collection
-          </h2>
-          <div style={{
-            width: 44, height: 1.5, margin: '10px auto 0',
-            background: 'linear-gradient(90deg, transparent, rgba(212,168,40,0.65), transparent)',
-          }} />
-          <p style={{
-            fontSize: 11, color: 'rgba(255,255,255,0.30)',
-            marginTop: 8, letterSpacing: '0.03em',
-          }}>
-            Tap a category to explore
-          </p>
-        </div>
-
         {/* ── Orbit canvas ── */}
-        <div style={{ position: 'relative', zIndex: 1, width: containerW, height: containerH, margin: '0 auto' }}>
+        <div style={{ position: 'relative', zIndex: 1, width: containerW, height: containerH, margin: '16px auto 12px' }}>
 
           {/* SVG rings */}
           <svg width={containerW} height={containerH}
@@ -211,9 +185,10 @@ function CircularCategoryOrbit({
               fill="none" stroke="rgba(200,146,10,0.14)" strokeWidth="1" />
           </svg>
 
-          {/* Category tiles */}
-          {categories.map((cat, i) => {
-            const angle  = (-90 + i * (360 / N)) * (Math.PI / 180);
+          {/* Category tiles — first category lives in center, skip it in ring */}
+          {categories.slice(1).map((cat, i) => {
+            const ringN  = N - 1;
+            const angle  = (-90 + i * (360 / ringN)) * (Math.PI / 180);
             const x      = cx + R * Math.cos(angle);
             const y      = cy + R * Math.sin(angle);
             const active = selectedCatId === cat._id;
@@ -279,87 +254,123 @@ function CircularCategoryOrbit({
                   </motion.div>
                 </div>
 
-                {/* Label — anchored from 0,0 (tile center) */}
+                {/* Label — radially outward, high z-index so it's never behind tiles */}
                 <div style={{
                   position: 'absolute',
-                  left: -(labelW / 2), top: tileSize / 2 + 9,
-                  width: labelW, textAlign: 'center', pointerEvents: 'none',
+                  zIndex: 20,
+                  left: Math.cos(angle) * (tileSize / 2 + labelGap) - labelW / 2,
+                  top: Math.sin(angle) * (tileSize / 2 + labelGap) - labelH / 2,
+                  width: labelW,
+                  height: labelH,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  pointerEvents: 'none',
                 }}>
                   <span style={{
-                    display: 'inline-block',
                     fontSize: labelFs,
                     fontWeight: active ? 700 : 500,
                     lineHeight: 1.25,
                     color: active ? '#ffd040' : 'rgba(238,222,182,0.82)',
-                    background: active ? 'rgba(255,210,20,0.12)' : 'transparent',
-                    padding: active ? '2px 6px' : '1px 3px',
-                    borderRadius: 5,
-                    whiteSpace: 'normal',
+                    background: active ? 'rgba(255,210,20,0.12)' : 'rgba(0,0,0,0.35)',
+                    padding: '2px 5px',
+                    borderRadius: 4,
+                    textAlign: 'center',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical' as const,
+                    overflow: 'hidden',
                     letterSpacing: '0.01em',
+                    backdropFilter: 'blur(4px)',
                   }}>
                     {cat.name}
                   </span>
                 </div>
+
               </motion.div>
             );
           })}
 
-          {/* Center hub — static wrapper positions it, motion handles only scale */}
-          <div style={{
-            position: 'absolute',
-            left: cx - hubSize / 2,
-            top: cy - hubSize / 2,
-            width: hubSize, height: hubSize,
-          }}>
-            <motion.div
-              whileHover={{ scale: 1.09 }}
-              whileTap={{ scale: 0.94 }}
-              style={{ width: '100%', height: '100%', borderRadius: '50%' }}
-            >
-              <button
-                onClick={() => onSelect(null)}
+          {/* Center — first category, always visible, clickable to filter */}
+          {(() => {
+            const centerCat = categories[0] ?? null;
+            if (!centerCat) return null;
+            const s = getCatStyle(centerCat.name);
+            const Icon = s.Icon;
+            const isActive = selectedCatId === centerCat._id;
+            return (
+              <motion.div
                 style={{
-                  width: '100%', height: '100%', borderRadius: '50%',
-                  border: !selectedCatId
-                    ? '3px solid rgba(255,240,140,0.45)'
-                    : '2px solid rgba(255,255,255,0.15)',
-                  cursor: 'pointer',
-                  background: !selectedCatId
-                    ? 'linear-gradient(145deg, #ffe040 0%, #f0c010 45%, #c8920a 100%)'
-                    : 'linear-gradient(145deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05))',
-                  color: !selectedCatId ? '#2a1a00' : 'rgba(255,255,255,0.55)',
-                  boxShadow: !selectedCatId
-                    ? '0 18px 44px -8px rgba(220,165,10,0.65), 0 4px 12px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,200,0.45)'
-                    : '0 4px 16px rgba(0,0,0,0.30)',
-                  display: 'flex', flexDirection: 'column' as const,
+                  position: 'absolute',
+                  left: cx - hubSize / 2,
+                  top: cy - hubSize / 2,
+                  width: hubSize, height: hubSize,
+                  display: 'flex', flexDirection: 'column',
                   alignItems: 'center', justifyContent: 'center',
-                  gap: Math.round(hubSize * 0.05),
-                  transition: 'background 0.30s, box-shadow 0.30s, border-color 0.30s',
-                  outline: 'none',
                 }}
+                animate={{ scale: isActive ? 1.08 : 1 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 25 }}
               >
-                <span style={{
-                  fontSize: Math.round(hubSize * 0.175),
-                  fontWeight: 800, lineHeight: 1, whiteSpace: 'nowrap', letterSpacing: '-0.01em',
+                {/* Glow on active */}
+                {isActive && (
+                  <div aria-hidden style={{
+                    position: 'absolute', inset: -12, borderRadius: '50%',
+                    background: 'rgba(255,210,40,0.18)', filter: 'blur(12px)',
+                    pointerEvents: 'none',
+                  }} />
+                )}
+
+                {/* Circle image/icon — golden ring via box-shadow */}
+                <button
+                  onClick={() => onSelect(isActive ? null : centerCat._id)}
+                  style={{
+                    width: hubSize, height: hubSize, borderRadius: '50%',
+                    overflow: 'hidden', cursor: 'pointer', padding: 0, outline: 'none',
+                    border: 'none', flexShrink: 0,
+                    background: centerCat.image ? '#f0ebe0' : s.bgGrad,
+                    boxShadow: isActive
+                      ? '0 0 0 3px #ffd700, 0 0 0 6px rgba(200,146,10,0.35), 0 8px 24px rgba(220,165,10,0.50)'
+                      : '0 0 0 3px #c8920a, 0 0 0 6px rgba(200,146,10,0.18), 0 4px 16px rgba(0,0,0,0.30)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'box-shadow 0.25s ease',
+                  }}
+                >
+                  {centerCat.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={centerCat.image} alt={centerCat.name}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <Icon size={Math.round(hubSize * 0.45)} color={s.ic} strokeWidth={1.5} />
+                  )}
+                </button>
+
+                {/* Name label below circle */}
+                <div style={{
+                  position: 'absolute',
+                  top: hubSize + 10,
+                  width: Math.round(hubSize * 2),
+                  left: '50%', transform: 'translateX(-50%)',
+                  textAlign: 'center', pointerEvents: 'none',
                 }}>
-                  Shop All
-                </span>
-                <ArrowRight size={Math.round(hubSize * 0.24)} strokeWidth={2.5} />
-              </button>
-            </motion.div>
-          </div>
+                  <span style={{
+                    fontSize: Math.max(10, Math.round(hubSize * 0.16)),
+                    fontWeight: isActive ? 700 : 600,
+                    color: isActive ? '#ffd040' : 'rgba(238,222,182,0.90)',
+                    background: 'rgba(0,0,0,0.40)',
+                    padding: '2px 8px', borderRadius: 6,
+                    backdropFilter: 'blur(4px)',
+                    whiteSpace: 'nowrap',
+                    letterSpacing: '0.01em',
+                  }}>
+                    {centerCat.name}
+                  </span>
+                </div>
+              </motion.div>
+            );
+          })()}
+
         </div>
 
-        {/* ── Card footer ── */}
-        <p style={{
-          position: 'relative', zIndex: 1,
-          textAlign: 'center', paddingBottom: 20, paddingTop: 4,
-          fontSize: 10, color: 'rgba(255,255,255,0.20)', letterSpacing: '0.04em',
-        }}>
-          {selectedCatId
-            ? '↓ Showing filtered products below'
-            : 'Select a category or scroll to browse all'}
-        </p>
       </div>
     </div>
   );
@@ -439,12 +450,14 @@ function sortByPill(products: Product[], pill: PillKey): Product[] {
 interface HomeShopSectionProps {
   products: Product[];
   categories?: Category[];
+  selectedCatId?: string | null;
+  onCatChange?: (id: string | null) => void;
 }
 
 const PAGE_SIZE = 10;
 const INITIAL   = 15;
 
-export default function HomeShopSection({ products, categories = [] }: HomeShopSectionProps) {
+export default function HomeShopSection({ products, categories = [], selectedCatId: externalCatId, onCatChange }: HomeShopSectionProps) {
   // Drop any category or product whose populated category object has a null _id
   // (happens when a category document is deleted but the reference lingers).
   const safeCategories = useMemo(() => categories.filter((c) => c._id != null), [categories]);
@@ -453,7 +466,8 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
     return (p.category as Category | null)?._id != null;
   }), [products]);
 
-  const [selectedCatId,    setSelectedCatId]    = useState<string | null>(null);
+  const [internalCatId,    setInternalCatId]    = useState<string | null>(null);
+  const selectedCatId = externalCatId !== undefined ? externalCatId : internalCatId;
   const [selectedPill,     setSelectedPill]     = useState<PillKey>('best');
   const [visibleCount,     setVisibleCount]     = useState(INITIAL);
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
@@ -478,7 +492,7 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
   const hasMore = visibleCount < allFiltered.length;
 
   // Reset visible count whenever filter/pill changes
-  const handleCatChange = (id: string | null) => { setSelectedCatId(id); setVisibleCount(INITIAL); };
+  const handleCatChange = (id: string | null) => { setInternalCatId(id); onCatChange?.(id); setVisibleCount(INITIAL); };
   const handlePillChange = (key: PillKey) => { setSelectedPill(key); setVisibleCount(INITIAL); };
 
   if (safeProducts.length === 0) return null;
@@ -498,15 +512,6 @@ export default function HomeShopSection({ products, categories = [] }: HomeShopS
       />
 
       <div className="relative max-w-[1440px] mx-auto px-3 sm:px-4 lg:px-6">
-
-        {/* ── Circular category orbit (header lives inside the card) ── */}
-        {safeCategories.length > 0 && (
-          <CircularCategoryOrbit
-            categories={safeCategories}
-            selectedCatId={selectedCatId}
-            onSelect={handleCatChange}
-          />
-        )}
 
         {/* ── Sort pills ──────────────────────────────────────── */}
         <div className="flex flex-wrap justify-center gap-2 mb-4">

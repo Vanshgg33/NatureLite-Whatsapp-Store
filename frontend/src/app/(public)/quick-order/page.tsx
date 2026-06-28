@@ -430,9 +430,9 @@ export default function QuickOrderPage() {
                           const isOOS = row.stock <= 0;
                           const isLow = !isOOS && row.stock <= (product.lowStockThreshold ?? 5);
                           return (
-                            <div key={row.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                              {/* Left label */}
-                              <div style={{ flex: 1, minWidth: 0 }}>
+                            <div key={row.id} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              {/* Label */}
+                              <div>
                                 {hasVariants ? (
                                   <span style={{ display: 'inline-block', fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 99, background: qty > 0 ? 'rgba(160,112,16,0.13)' : 'rgba(11,28,8,0.05)', color: qty > 0 ? '#7a5008' : 'rgba(11,28,8,0.40)', border: `1px solid ${qty > 0 ? 'rgba(160,112,16,0.25)' : 'rgba(11,28,8,0.08)'}`, transition: 'all 0.2s', textDecoration: isOOS ? 'line-through' : 'none' }}>
                                     {row.variantName}
@@ -441,9 +441,9 @@ export default function QuickOrderPage() {
                                   <StockBadge isOOS={isOOS} isLow={isLow} stock={row.stock} />
                                 )}
                               </div>
-                              {/* Right: stepper or OOS */}
+                              {/* Stepper or OOS */}
                               {isOOS
-                                ? <span style={{ fontSize: 9, fontWeight: 600, color: '#b91c1c', padding: '3px 7px', borderRadius: 6, background: 'rgba(220,38,38,0.06)' }}>OOS</span>
+                                ? <span style={{ fontSize: 9, fontWeight: 600, color: '#b91c1c', padding: '3px 7px', borderRadius: 6, background: 'rgba(220,38,38,0.06)', alignSelf: 'flex-start' }}>Out of Stock</span>
                                 : <Stepper qty={qty} stock={row.stock} size="sm" disabled={addingToCart} onDecrement={() => handleQty(row.id, -1, row.stock)} onIncrement={() => handleQty(row.id, 1, row.stock)} />
                               }
                             </div>
