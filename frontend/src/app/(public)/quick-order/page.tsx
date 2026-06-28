@@ -43,23 +43,23 @@ function SlotNumber({ value }: { value: number }) {
 }
 
 // ─── Stepper ─────────────────────────────────────────────────────────────────
-function Stepper({ qty, stock, onDecrement, onIncrement, size = 'md' }: {
-  qty: number; stock: number; onDecrement: () => void; onIncrement: () => void; size?: 'sm' | 'md';
+function Stepper({ qty, stock, onDecrement, onIncrement, disabled = false, size = 'md' }: {
+  qty: number; stock: number; onDecrement: () => void; onIncrement: () => void; disabled?: boolean; size?: 'sm' | 'md';
 }) {
   const btnH = size === 'sm' ? 34 : 32;
   const iconS = 12;
   const numW  = size === 'sm' ? 34 : 32;
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, padding: 3, background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(11,28,8,0.10)', borderRadius: 14, boxShadow: '0 1px 4px rgba(11,28,8,0.06)' }}>
-      <motion.button whileTap={{ scale: 0.9 }} onClick={onDecrement} disabled={qty === 0}
-        style={{ width: btnH, height: btnH, borderRadius: 11, border: 'none', cursor: qty === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: qty > 0 ? 'rgba(160,112,16,0.10)' : 'transparent', color: qty === 0 ? 'rgba(11,28,8,0.18)' : '#7a5008', transition: 'all 0.15s', flexShrink: 0 }}>
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, padding: 3, background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(11,28,8,0.10)', borderRadius: 14, boxShadow: '0 1px 4px rgba(11,28,8,0.06)', opacity: disabled ? 0.5 : 1, pointerEvents: disabled ? 'none' : 'auto' }}>
+      <motion.button type="button" whileTap={{ scale: 0.9 }} onClick={onDecrement} disabled={disabled || qty === 0}
+        style={{ width: btnH, height: btnH, borderRadius: 11, border: 'none', cursor: (disabled || qty === 0) ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: qty > 0 ? 'rgba(160,112,16,0.10)' : 'transparent', color: qty === 0 ? 'rgba(11,28,8,0.18)' : '#7a5008', transition: 'all 0.15s', flexShrink: 0 }}>
         <Minus size={iconS} strokeWidth={2.5} />
       </motion.button>
       <div style={{ width: numW, textAlign: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0, color: '#0b1c08' }}>
         <SlotNumber value={qty} />
       </div>
-      <motion.button whileTap={{ scale: 0.9 }} onClick={onIncrement} disabled={qty >= stock}
-        style={{ width: btnH, height: btnH, borderRadius: 11, border: 'none', cursor: qty >= stock ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: qty < stock ? '#0b1c08' : 'transparent', color: qty < stock ? '#fff' : 'rgba(11,28,8,0.18)', transition: 'all 0.15s', flexShrink: 0 }}>
+      <motion.button type="button" whileTap={{ scale: 0.9 }} onClick={onIncrement} disabled={disabled || qty >= stock}
+        style={{ width: btnH, height: btnH, borderRadius: 11, border: 'none', cursor: (disabled || qty >= stock) ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: (!disabled && qty < stock) ? '#0b1c08' : 'transparent', color: (!disabled && qty < stock) ? '#fff' : 'rgba(11,28,8,0.18)', transition: 'all 0.15s', flexShrink: 0 }}>
         <Plus size={iconS} strokeWidth={2.5} />
       </motion.button>
     </div>
@@ -94,7 +94,9 @@ const STEPS: Array<{ Icon: React.ComponentType<StepIcon>; num: string; title: st
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function QuickOrderPage() {
   const { toast } = useToast();
-  const addItem = useCartStore((s) => s.addItem);
+  const addItem        = useCartStore((s) => s.addItem);
+  const updateQuantity = useCartStore((s) => s.updateQuantity);
+  const cartItems      = useCartStore((s) => s.items);
 
   const [search,        setSearch]        = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
@@ -127,9 +129,9 @@ export default function QuickOrderPage() {
       if (!p.isActive) return;
       const catId = typeof p.category === 'object' && p.category ? (p.category._id || '') : String(p.category || '');
       if (p.variants?.length > 0) {
-        p.variants.forEach((v) => {
+        p.variants.forEach((v, vIdx) => {
           if (!v.isActive) return;
-          list.push({ id: `${p._id}-${v.sku}`, productId: p._id, product: p, name: p.name, slug: p.slug, variantName: v.name, variantSku: v.sku, sku: v.sku, price: v.price, compareAtPrice: v.compareAtPrice, stock: v.stock, image: (v.images && v.images.length > 0) ? v.images[0] : p.images[0], category: catId });
+          list.push({ id: `${p._id}-${vIdx}`, productId: p._id, product: p, name: p.name, slug: p.slug, variantName: v.name, variantSku: v.sku, sku: v.sku, price: v.price, compareAtPrice: v.compareAtPrice, stock: v.stock, image: (v.images && v.images.length > 0) ? v.images[0] : p.images[0], category: catId });
         });
       } else {
         list.push({ id: p._id, productId: p._id, product: p, name: p.name, slug: p.slug, sku: p.sku, price: p.price, compareAtPrice: p.compareAtPrice, stock: p.stock, image: p.images[0], category: catId });
@@ -147,6 +149,15 @@ export default function QuickOrderPage() {
   const selectedCount = allSelectedItems.reduce((a, i) => a + i.quantity, 0);
   const totalAmount   = allSelectedItems.reduce((a, i) => a + i.price * i.quantity, 0);
 
+  const filteredProducts = useMemo(() => {
+    const map = new Map<string, { product: Product; rows: typeof filteredRows }>();
+    filteredRows.forEach((row) => {
+      if (!map.has(row.productId)) map.set(row.productId, { product: row.product, rows: [] });
+      map.get(row.productId)!.rows.push(row);
+    });
+    return Array.from(map.values());
+  }, [filteredRows]);
+
   const handleQty = (id: string, delta: number, stock: number) => {
     const next = Math.max(0, (quantities[id] ?? 0) + delta);
     if (next > stock) { toast({ title: 'Insufficient Stock', description: `Only ${stock} in stock.`, variant: 'destructive' }); return; }
@@ -158,7 +169,14 @@ export default function QuickOrderPage() {
     setAddingToCart(true);
     try {
       for (const item of allSelectedItems) {
-        await addItem({ productId: item.productId, name: item.name, slug: item.slug, image: item.image || '/images/products/placeholder.jpg', price: item.price, compareAtPrice: item.compareAtPrice, variantSku: item.variantSku, variantName: item.variantName, gstPercentage: item.product.gstPercentage ?? 5 }, item.quantity);
+        const existing = cartItems.find(
+          (ci) => ci.productId === item.productId && ci.variantSku === item.variantSku,
+        );
+        if (existing) {
+          await updateQuantity(item.productId, item.quantity, item.variantSku);
+        } else {
+          await addItem({ productId: item.productId, name: item.name, slug: item.slug, image: item.image || '/images/products/placeholder.jpg', price: item.price, compareAtPrice: item.compareAtPrice, variantSku: item.variantSku, variantName: item.variantName, gstPercentage: item.product.gstPercentage ?? 5 }, item.quantity);
+        }
       }
       toast({ title: 'Added to cart!', description: `${selectedCount} items added.` });
       setQuantities({});
@@ -301,7 +319,7 @@ export default function QuickOrderPage() {
             {!isLoading && filteredRows.length > 0 && (
               <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 className="mb-3 px-1" style={{ fontSize: 11, color: 'rgba(11,28,8,0.35)', letterSpacing: '0.04em' }}>
-                {filteredRows.length} {filteredRows.length === 1 ? 'product' : 'products'}
+                {filteredProducts.length} {filteredProducts.length === 1 ? 'product' : 'products'}
                 {search && <> matching <strong style={{ color: '#a07010' }}>"{search}"</strong></>}
               </motion.p>
             )}
@@ -326,171 +344,125 @@ export default function QuickOrderPage() {
             </motion.div>
           )}
 
-          {/* ══════ DESKTOP TABLE ══════ */}
+          {/* ══════ PRODUCT GRID ══════ */}
           {!isLoading && filteredRows.length > 0 && (
             <>
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.65, duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
-                className="hidden md:block rounded-2xl overflow-hidden mb-6"
-                style={{ background: 'rgba(255,253,248,0.92)', border: '1px solid rgba(160,112,16,0.10)', backdropFilter: 'blur(16px)', boxShadow: '0 4px 40px rgba(11,28,8,0.05),0 1px 0 rgba(255,255,255,0.7) inset' }}>
-
-                {/* Table header */}
-                <div className="grid items-center px-6 py-3.5"
-                  style={{ gridTemplateColumns: '1fr 100px 100px 148px 110px', borderBottom: '1px solid rgba(11,28,8,0.06)', fontSize: 9.5, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'rgba(11,28,8,0.30)', fontWeight: 600 }}>
-                  <span>Product</span>
-                  <span>Stock</span>
-                  <span style={{ textAlign: 'right' }}>Price</span>
-                  <span style={{ textAlign: 'center' }}>Qty</span>
-                  <span style={{ textAlign: 'right' }}>Subtotal</span>
-                </div>
-
-                <motion.div variants={rowVars} initial="hidden" animate="show">
-                  {filteredRows.map((item, idx) => {
-                    const qty = quantities[item.id] ?? 0;
-                    const isOOS = item.stock <= 0;
-                    const isLow = !isOOS && item.stock <= (item.product.lowStockThreshold ?? 5);
-                    const isSelected = qty > 0;
-                    return (
-                      <motion.div key={item.id} variants={itemVar}
-                        className="grid items-center px-6 py-3.5 group relative"
-                        style={{ gridTemplateColumns: '1fr 100px 100px 148px 110px', borderBottom: idx < filteredRows.length - 1 ? '1px solid rgba(11,28,8,0.04)' : 'none', background: isSelected ? 'linear-gradient(90deg,rgba(160,112,16,0.055),rgba(160,112,16,0.02) 60%,transparent)' : 'transparent', transition: 'background 0.25s' }}>
-
-                        {/* Selection stripe */}
-                        <AnimatePresence>
-                          {isSelected && (
-                            <motion.div initial={{ scaleY: 0 }} animate={{ scaleY: 1 }} exit={{ scaleY: 0 }} transition={{ duration: 0.22 }}
-                              style={{ position: 'absolute', left: 0, top: '12%', bottom: '12%', width: 3, background: 'linear-gradient(180deg,#d4a820,#a07010)', borderRadius: '0 3px 3px 0', transformOrigin: 'center' }} />
-                          )}
-                        </AnimatePresence>
-
-                        {/* Product */}
-                        <div className="flex items-center gap-3.5 min-w-0">
-                          <Link href={`/products/${item.slug}`}
-                            className="relative shrink-0 overflow-hidden rounded-xl qo-card"
-                            style={{ width: 72, height: 72, border: `1.5px solid ${isSelected ? 'rgba(160,112,16,0.22)' : 'rgba(11,28,8,0.07)'}`, background: '#faf6ee', transition: 'border-color 0.25s,box-shadow 0.25s', boxShadow: isSelected ? '0 4px 14px rgba(160,112,16,0.14)' : '0 1px 4px rgba(11,28,8,0.05)' }}>
-                            {item.image
-                              ? <div className="absolute inset-[8%] overflow-hidden"><Image src={item.image} alt={item.name} fill className="object-contain qo-img" style={{ transition: 'transform 0.4s ease' }} /></div>
-                              : <div className="absolute inset-0 flex items-center justify-center font-display font-black text-amber-800/20 text-2xl">{item.name.charAt(0)}</div>}
-                          </Link>
-                          <div className="min-w-0">
-                            <Link href={`/products/${item.slug}`} className="font-semibold text-[13.5px] text-[#0b1c08] hover:text-[#a07010] transition-colors block truncate max-w-[200px]">{item.name}</Link>
-                            {item.variantName && (
-                              <span className="inline-block mt-0.5" style={{ padding: '2px 8px', borderRadius: 100, fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', background: 'rgba(160,112,16,0.08)', color: '#92680a', border: '1px solid rgba(160,112,16,0.15)', fontWeight: 700 }}>
-                                {item.variantName}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Stock */}
-                        <StockBadge isOOS={isOOS} isLow={isLow} stock={item.stock} />
-
-                        {/* Price */}
-                        <div style={{ textAlign: 'right' }}>
-                          <span className="font-bold text-sm text-[#0b1c08]">{fmt(item.price)}</span>
-                          {item.compareAtPrice && item.compareAtPrice > item.price && (
-                            <span className="block" style={{ fontSize: 10, textDecoration: 'line-through', color: 'rgba(11,28,8,0.28)', marginTop: 1 }}>{fmt(item.compareAtPrice)}</span>
-                          )}
-                        </div>
-
-                        {/* Qty */}
-                        <div className="flex justify-center">
-                          {isOOS
-                            ? <span style={{ fontSize: 10, color: '#b91c1c', fontWeight: 500 }}>—</span>
-                            : <Stepper qty={qty} stock={item.stock} onDecrement={() => handleQty(item.id, -1, item.stock)} onIncrement={() => handleQty(item.id, 1, item.stock)} />
-                          }
-                        </div>
-
-                        {/* Subtotal */}
-                        <div style={{ textAlign: 'right' }}>
-                          <AnimatePresence mode="wait" initial={false}>
-                            {qty > 0
-                              ? <motion.span key="amt" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }} className="font-black text-sm" style={{ color: '#a07010' }}>{fmt(item.price * qty)}</motion.span>
-                              : <motion.span key="dash" initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ color: 'rgba(11,28,8,0.16)', fontSize: 14 }}>—</motion.span>
-                            }
-                          </AnimatePresence>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </motion.div>
-              </motion.div>
-
-              {/* ══════ MOBILE CARDS ══════ */}
-              <motion.div className="md:hidden space-y-3" variants={rowVars} initial="hidden" animate="show">
-                {filteredRows.map((item) => {
-                  const qty = quantities[item.id] ?? 0;
-                  const isOOS = item.stock <= 0;
-                  const isLow = !isOOS && item.stock <= (item.product.lowStockThreshold ?? 5);
-                  const isSelected = qty > 0;
-                  const discount = item.compareAtPrice && item.compareAtPrice > item.price
-                    ? Math.round((1 - item.price / item.compareAtPrice) * 100) : null;
+              <motion.div
+                className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 mb-6"
+                variants={rowVars} initial="hidden" animate="show"
+              >
+                {filteredProducts.map(({ product, rows }) => {
+                  const catName = typeof product.category === 'object' && product.category ? ((product.category as { name?: string }).name ?? '') : '';
+                  const hasVariants = rows.some((r) => r.variantName);
+                  const totalQty = rows.reduce((s, r) => s + (quantities[r.id] ?? 0), 0);
+                  const subtotal  = rows.reduce((s, r) => s + r.price * (quantities[r.id] ?? 0), 0);
+                  const isAnySelected = totalQty > 0;
+                  const displayImage = rows[0]?.image || (product.images?.[0] as string | undefined) || null;
+                  const priceMin = Math.min(...rows.map((r) => r.price));
+                  const priceMax = Math.max(...rows.map((r) => r.price));
+                  const allOOS  = rows.every((r) => r.stock <= 0);
+                  const firstDiscount = (() => {
+                    const r = rows[0];
+                    return r?.compareAtPrice && r.compareAtPrice > r.price
+                      ? Math.round((1 - r.price / r.compareAtPrice) * 100) : 0;
+                  })();
 
                   return (
-                    <motion.div key={item.id} variants={itemVar}
-                      style={{ position: 'relative', borderRadius: 20, overflow: 'hidden', background: isSelected ? 'rgba(255,252,244,0.98)' : 'rgba(255,253,248,0.80)', border: `1.5px solid ${isSelected ? 'rgba(160,112,16,0.24)' : 'rgba(11,28,8,0.07)'}`, backdropFilter: 'blur(12px)', boxShadow: isSelected ? '0 8px 32px rgba(160,112,16,0.12)' : '0 1px 8px rgba(11,28,8,0.05)', transition: 'border-color 0.25s,box-shadow 0.25s,background 0.25s' }}>
+                    <motion.div
+                      key={product._id}
+                      variants={itemVar}
+                      style={{
+                        borderRadius: 18,
+                        overflow: 'hidden',
+                        background: isAnySelected ? 'rgba(255,252,244,0.98)' : 'rgba(255,253,248,0.92)',
+                        border: `1.5px solid ${isAnySelected ? 'rgba(160,112,16,0.28)' : 'rgba(11,28,8,0.08)'}`,
+                        backdropFilter: 'blur(12px)',
+                        boxShadow: isAnySelected ? '0 8px 28px rgba(160,112,16,0.14)' : '0 1px 6px rgba(11,28,8,0.05)',
+                        transition: 'border-color 0.25s, box-shadow 0.25s, background 0.25s',
+                        display: 'flex',
+                        flexDirection: 'column',
+                      }}
+                    >
+                      {/* Selection top bar */}
+                      <div style={{ height: 3, background: isAnySelected ? 'linear-gradient(90deg,#e8c84a,#a07010)' : 'transparent', transition: 'background 0.25s' }} />
 
-                      {/* Selection stripe */}
-                      <AnimatePresence>
-                        {isSelected && (
-                          <motion.div initial={{ scaleY: 0 }} animate={{ scaleY: 1 }} exit={{ scaleY: 0 }} transition={{ duration: 0.22 }}
-                            style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3.5, background: 'linear-gradient(180deg,#e8c84a,#a07010)', transformOrigin: 'center' }} />
-                        )}
-                      </AnimatePresence>
-
-                      <div className="flex gap-3.5 p-4">
-                        {/* Image */}
-                        <Link href={`/products/${item.slug}`}
-                          className="relative shrink-0 overflow-hidden"
-                          style={{ width: 90, height: 90, borderRadius: 14, background: '#faf6ee', border: `1.5px solid ${isSelected ? 'rgba(160,112,16,0.20)' : 'rgba(11,28,8,0.07)'}`, boxShadow: isSelected ? '0 4px 16px rgba(160,112,16,0.12)' : '0 1px 4px rgba(11,28,8,0.06)', flexShrink: 0 }}>
-                          {item.image
-                            ? <div className="absolute inset-[8%]"><Image src={item.image} alt={item.name} fill className="object-contain" /></div>
-                            : <div className="absolute inset-0 flex items-center justify-center text-amber-800/20 font-display font-black text-2xl">{item.name.charAt(0)}</div>}
-                          {discount && (
-                            <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md text-white font-bold" style={{ fontSize: 8, background: '#dc2626', letterSpacing: '0.04em' }}>
-                              -{discount}%
+                      {/* Image */}
+                      <Link href={`/products/${product.slug}`} style={{ display: 'block' }}>
+                        <div style={{ position: 'relative', aspectRatio: '1/1', background: '#faf6ee', overflow: 'hidden' }}>
+                          {displayImage
+                            ? <Image src={displayImage} alt={product.name} fill className="object-contain qo-img" style={{ padding: '8%', transition: 'transform 0.4s ease' }} sizes="(max-width:640px) 50vw,(max-width:1024px) 33vw,25vw" />
+                            : <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, fontWeight: 900, color: 'rgba(160,112,16,0.18)' }}>{product.name.charAt(0)}</div>
+                          }
+                          {firstDiscount > 0 && (
+                            <div style={{ position: 'absolute', top: 8, left: 8, padding: '2px 6px', borderRadius: 5, background: '#dc2626', color: '#fff', fontSize: 9, fontWeight: 700 }}>
+                              -{firstDiscount}%
                             </div>
                           )}
-                        </Link>
-
-                        {/* Info */}
-                        <div className="flex-1 min-w-0">
-                          <Link href={`/products/${item.slug}`} className="font-semibold text-[#0b1c08] hover:text-[#a07010] transition-colors" style={{ fontSize: 13.5, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                            {item.name}
-                          </Link>
-
-                          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                            {item.variantName && (
-                              <span style={{ padding: '2px 8px', borderRadius: 100, fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', background: 'rgba(160,112,16,0.08)', color: '#92680a', border: '1px solid rgba(160,112,16,0.15)', fontWeight: 700 }}>
-                                {item.variantName}
-                              </span>
-                            )}
-                            <StockBadge isOOS={isOOS} isLow={isLow} stock={item.stock} />
-                          </div>
-
-                          <div className="flex items-baseline gap-2 mt-2">
-                            <span className="font-bold text-[#0b1c08]" style={{ fontSize: 16 }}>{fmt(item.price)}</span>
-                            {item.compareAtPrice && item.compareAtPrice > item.price && (
-                              <span style={{ fontSize: 11, textDecoration: 'line-through', color: 'rgba(11,28,8,0.30)' }}>{fmt(item.compareAtPrice)}</span>
-                            )}
-                          </div>
+                          {allOOS && (
+                            <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.62)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <span style={{ fontSize: 10, fontWeight: 600, background: 'rgba(11,28,8,0.72)', color: '#fff', padding: '3px 10px', borderRadius: 99 }}>Out of Stock</span>
+                            </div>
+                          )}
                         </div>
+                      </Link>
+
+                      {/* Info */}
+                      <div style={{ padding: '10px 12px 8px' }}>
+                        {catName && (
+                          <span style={{ display: 'inline-block', fontSize: 8, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '2px 6px', borderRadius: 99, background: 'rgba(160,112,16,0.08)', color: '#92680a', border: '1px solid rgba(160,112,16,0.15)', marginBottom: 5 }}>
+                            {catName}
+                          </span>
+                        )}
+                        <Link href={`/products/${product.slug}`}>
+                          <h3 style={{ fontSize: 12.5, fontWeight: 700, color: '#0b1c08', lineHeight: 1.3, marginBottom: 4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as React.CSSProperties['WebkitBoxOrient'], overflow: 'hidden' }}>
+                            {product.name}
+                          </h3>
+                        </Link>
+                        <p style={{ fontSize: 15, fontWeight: 800, color: '#0b1c08', letterSpacing: '-0.01em' }}>
+                          {priceMin === priceMax ? fmt(priceMin) : `${fmt(priceMin)} – ${fmt(priceMax)}`}
+                        </p>
                       </div>
 
-                      {/* Bottom action row */}
-                      <div className="flex items-center justify-between mx-4 mb-4 mt-1 pt-3" style={{ borderTop: '1px solid rgba(11,28,8,0.06)' }}>
+                      {/* Variant rows */}
+                      <div style={{ padding: '8px 12px 12px', borderTop: '1px solid rgba(11,28,8,0.05)', flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {rows.map((row) => {
+                          const qty   = quantities[row.id] ?? 0;
+                          const isOOS = row.stock <= 0;
+                          const isLow = !isOOS && row.stock <= (product.lowStockThreshold ?? 5);
+                          return (
+                            <div key={row.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                              {/* Left label */}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                {hasVariants ? (
+                                  <span style={{ display: 'inline-block', fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 99, background: qty > 0 ? 'rgba(160,112,16,0.13)' : 'rgba(11,28,8,0.05)', color: qty > 0 ? '#7a5008' : 'rgba(11,28,8,0.40)', border: `1px solid ${qty > 0 ? 'rgba(160,112,16,0.25)' : 'rgba(11,28,8,0.08)'}`, transition: 'all 0.2s', textDecoration: isOOS ? 'line-through' : 'none' }}>
+                                    {row.variantName}
+                                  </span>
+                                ) : (
+                                  <StockBadge isOOS={isOOS} isLow={isLow} stock={row.stock} />
+                                )}
+                              </div>
+                              {/* Right: stepper or OOS */}
+                              {isOOS
+                                ? <span style={{ fontSize: 9, fontWeight: 600, color: '#b91c1c', padding: '3px 7px', borderRadius: 6, background: 'rgba(220,38,38,0.06)' }}>OOS</span>
+                                : <Stepper qty={qty} stock={row.stock} size="sm" disabled={addingToCart} onDecrement={() => handleQty(row.id, -1, row.stock)} onIncrement={() => handleQty(row.id, 1, row.stock)} />
+                              }
+                            </div>
+                          );
+                        })}
+
+                        {/* Per-card subtotal */}
                         <AnimatePresence>
-                          {qty > 0
-                            ? <motion.div initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
-                                <span style={{ fontSize: 10, fontWeight: 600, color: 'rgba(11,28,8,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total </span>
-                                <span className="font-black" style={{ fontSize: 14, color: '#a07010' }}>{fmt(item.price * qty)}</span>
-                              </motion.div>
-                            : <span style={{ fontSize: 11, color: 'rgba(11,28,8,0.28)' }}>Set quantity →</span>
-                          }
+                          {isAnySelected && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.18 }}
+                              style={{ borderTop: '1px solid rgba(160,112,16,0.13)', paddingTop: 7, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                            >
+                              <span style={{ fontSize: 9, fontWeight: 600, color: 'rgba(11,28,8,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Subtotal</span>
+                              <span style={{ fontSize: 13, fontWeight: 800, color: '#a07010' }}>{fmt(subtotal)}</span>
+                            </motion.div>
+                          )}
                         </AnimatePresence>
-                        {isOOS
-                          ? <span style={{ padding: '6px 14px', borderRadius: 100, background: 'rgba(220,38,38,0.07)', color: '#b91c1c', fontSize: 10, fontWeight: 600 }}>Out of stock</span>
-                          : <Stepper qty={qty} stock={item.stock} size="sm" onDecrement={() => handleQty(item.id, -1, item.stock)} onIncrement={() => handleQty(item.id, 1, item.stock)} />
-                        }
                       </div>
                     </motion.div>
                   );
@@ -498,10 +470,10 @@ export default function QuickOrderPage() {
               </motion.div>
 
               {/* Bottom nudge */}
-              {filteredRows.length > 4 && selectedCount === 0 && (
+              {filteredProducts.length > 6 && selectedCount === 0 && (
                 <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}
-                  className="text-center mt-8 mb-2" style={{ fontSize: 12, color: 'rgba(11,28,8,0.30)', fontStyle: 'italic' }}>
-                  Add quantities above · then tap WhatsApp or Add to Cart
+                  className="text-center mt-4 mb-2" style={{ fontSize: 12, color: 'rgba(11,28,8,0.30)', fontStyle: 'italic' }}>
+                  Set quantities above · then tap WhatsApp or Add to Cart
                 </motion.div>
               )}
             </>

@@ -201,7 +201,20 @@
   button:not(:disabled):not([data-no-press]):active,
   [role="button"]:not([aria-disabled="true"]):active {
     transform: scale(0.97);
-    transition: transform 80ms ease !important;
+    transition: transform 80ms ease-in !important;
+  }
+
+  /* GPU compositing hint — applied only on hover to avoid persistent memory overhead */
+  button:not(:disabled):hover,
+  [role="button"]:not([aria-disabled="true"]):hover {
+    will-change: transform;
+  }
+
+  /* Smooth focus ring on all form fields — catches inputs without explicit transition classes */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
   }
 
   /* Speed up hover transitions on all buttons to 100ms max */

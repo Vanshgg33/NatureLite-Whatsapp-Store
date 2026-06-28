@@ -1,6 +1,8 @@
 'use client';
 
 import Script from 'next/script';
+import { usePathname } from 'next/navigation';
+import { AnimatePresence, motion } from 'framer-motion';
 import { PublicHeader } from '@/components/layout/public-header';
 import { PublicFooter } from '@/components/layout/public-footer';
 import { LoadingProvider } from '@/components/providers/loading-provider';
@@ -20,6 +22,8 @@ const ScrollProgress = dynamic(
 );
 
 export default function PublicLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+
   return (
     <SiteSettingsProvider>
       <LoadingProvider>
@@ -32,9 +36,18 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
             <PublicHeader />
           </div>
           <div className="min-h-screen flex flex-col bg-white" style={{ overflowX: 'clip' }}>
-            <main className="flex-1">
-              <ErrorBoundary>{children}</ErrorBoundary>
-            </main>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.main
+                key={pathname}
+                className="flex-1"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <ErrorBoundary>{children}</ErrorBoundary>
+              </motion.main>
+            </AnimatePresence>
             <PublicFooter />
             <StickyCartBar />
           </div>

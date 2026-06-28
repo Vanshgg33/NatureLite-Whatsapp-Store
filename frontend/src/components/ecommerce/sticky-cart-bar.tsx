@@ -92,16 +92,14 @@ export function StickyCartBar() {
               )}
               <Link
                 href={hasItems ? '/cart' : '/products'}
-                className="inline-flex items-center justify-center px-5 py-2.5 bg-brand-charcoal text-white text-sm font-semibold rounded-full hover:bg-brand-brown"
-                style={{ transition: 'background-color 0.1s' }}
+                className="inline-flex items-center justify-center px-5 py-2.5 bg-brand-charcoal text-white text-sm font-semibold rounded-full hover:bg-brand-brown hover:-translate-y-0.5 hover:shadow-md active:scale-[0.97] active:translate-y-0 transition-[background-color,transform,box-shadow] duration-150 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)]"
               >
                 {hasItems ? 'View cart' : 'Shop now'}
               </Link>
               {hasItems && (
                 <Link
                   href="/checkout"
-                  className="inline-flex items-center justify-center px-5 py-2.5 bg-brand-mustard text-white text-sm font-semibold rounded-full hover:opacity-90"
-                  style={{ transition: 'opacity 0.1s' }}
+                  className="inline-flex items-center justify-center px-5 py-2.5 bg-brand-mustard text-white text-sm font-semibold rounded-full hover:bg-brand-mustard-dark hover:-translate-y-0.5 hover:shadow-md active:scale-[0.97] active:translate-y-0 transition-[background-color,transform,box-shadow] duration-150 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)]"
                 >
                   Checkout
                 </Link>

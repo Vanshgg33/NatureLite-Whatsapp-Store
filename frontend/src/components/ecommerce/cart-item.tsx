@@ -109,8 +109,7 @@ export function CartItem({ item, variant = 'default' }: CartItemProps) {
           </div>
           <button
             onClick={handleRemove}
-            className="p-2 text-brand-muted hover:text-brand-error cursor-pointer"
-            style={{ transition: 'color 0.1s' }}
+            className="p-2 rounded-lg text-brand-muted hover:text-brand-error hover:bg-brand-error/8 transition-[color,background-color,transform] duration-150 ease-out hover:scale-110 active:scale-95 cursor-pointer"
             aria-label="Remove item"
           >
             <Trash2 className="w-5 h-5" />
