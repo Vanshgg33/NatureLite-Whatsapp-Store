@@ -28,6 +28,7 @@ import {
   AppearanceSettings,
   BannerSettings,
   HeroBanner,
+  PromoBanner,
 } from '@/types';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -101,8 +102,20 @@ export default function AppearancePage() {
   const [bannerMediaType, setBannerMediaType] = useState<'image' | 'video'>('image');
   const [bannerVideoUploading, setBannerVideoUploading] = useState(false);
 
+  // Promo banners state
+  const [promoBanners, setPromoBanners] = useState<PromoBanner[]>([]);
+  const [showPromoForm, setShowPromoForm] = useState(false);
+  const [promoUploading, setPromoUploading] = useState(false);
+  const [promoVideoUploading, setPromoVideoUploading] = useState(false);
+  const [promoMediaType, setPromoMediaType] = useState<'image' | 'video'>('image');
+  const [editingPromo, setEditingPromo] = useState<PromoBanner>({
+    id: '', imageUrl: '', imagePublicId: '', videoUrl: '', videoPublicId: '', linkUrl: '', label: '', isActive: true,
+  });
+
   const bannerFileRef = useRef<HTMLInputElement>(null);
   const bannerVideoRef = useRef<HTMLInputElement>(null);
+  const promoFileRef = useRef<HTMLInputElement>(null);
+  const promoVideoRef = useRef<HTMLInputElement>(null);
   const logoFileRef = useRef<HTMLInputElement>(null);
 
   // Sync local state from fetched settings
@@ -116,6 +129,7 @@ export default function AppearancePage() {
     if (allSettings?.banners) {
       const ban = allSettings.banners as BannerSettings;
       setHeroBanners(ban.heroBanners || []);
+      setPromoBanners(ban.promoBanners || []);
       setAnnouncementEnabled(ban.announcementBar?.enabled || false);
       setAnnouncementText(ban.announcementBar?.text || '');
       setAnnouncementLinkText(ban.announcementBar?.linkText || '');
@@ -184,18 +198,17 @@ export default function AppearancePage() {
     });
   };
 
+  const currentAnnouncementBar = {
+    enabled: announcementEnabled,
+    text: announcementText,
+    linkText: announcementLinkText,
+    linkUrl: announcementLinkUrl,
+    backgroundColor: announcementBg,
+    textColor: 'white',
+  };
+
   const handleSaveAnnouncement = () => {
-    bannersMutation.mutate({
-      heroBanners,
-      announcementBar: {
-        enabled: announcementEnabled,
-        text: announcementText,
-        linkText: announcementLinkText,
-        linkUrl: announcementLinkUrl,
-        backgroundColor: announcementBg,
-        textColor: 'white',
-      },
-    });
+    bannersMutation.mutate({ heroBanners, promoBanners, announcementBar: currentAnnouncementBar });
   };
 
   const handleBannerImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -258,33 +271,13 @@ export default function AppearancePage() {
       ctaLink: '/products',
       isActive: true,
     });
-    bannersMutation.mutate({
-      heroBanners: updated,
-      announcementBar: {
-        enabled: announcementEnabled,
-        text: announcementText,
-        linkText: announcementLinkText,
-        linkUrl: announcementLinkUrl,
-        backgroundColor: announcementBg,
-        textColor: 'white',
-      },
-    });
+    bannersMutation.mutate({ heroBanners: updated, promoBanners, announcementBar: currentAnnouncementBar });
   };
 
   const handleDeleteBanner = (id: string) => {
     const updated = heroBanners.filter((b) => b.id !== id);
     setHeroBanners(updated);
-    bannersMutation.mutate({
-      heroBanners: updated,
-      announcementBar: {
-        enabled: announcementEnabled,
-        text: announcementText,
-        linkText: announcementLinkText,
-        linkUrl: announcementLinkUrl,
-        backgroundColor: announcementBg,
-        textColor: 'white',
-      },
-    });
+    bannersMutation.mutate({ heroBanners: updated, promoBanners, announcementBar: currentAnnouncementBar });
   };
 
   const handleToggleBanner = (id: string) => {
@@ -292,17 +285,61 @@ export default function AppearancePage() {
       b.id === id ? { ...b, isActive: !b.isActive } : b
     );
     setHeroBanners(updated);
-    bannersMutation.mutate({
-      heroBanners: updated,
-      announcementBar: {
-        enabled: announcementEnabled,
-        text: announcementText,
-        linkText: announcementLinkText,
-        linkUrl: announcementLinkUrl,
-        backgroundColor: announcementBg,
-        textColor: 'white',
-      },
-    });
+    bannersMutation.mutate({ heroBanners: updated, promoBanners, announcementBar: currentAnnouncementBar });
+  };
+
+  const handlePromoImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPromoUploading(true);
+    try {
+      const result = await api.uploadImage(file, 'banners');
+      setEditingPromo((prev) => ({ ...prev, imageUrl: result.secureUrl, imagePublicId: result.publicId }));
+    } catch {
+      toast({ title: 'Failed to upload image', variant: 'destructive' });
+    } finally {
+      setPromoUploading(false);
+    }
+  };
+
+  const handlePromoVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPromoVideoUploading(true);
+    try {
+      const result = await api.uploadVideo(file, 'banners');
+      setEditingPromo((prev) => ({ ...prev, videoUrl: result.secureUrl, videoPublicId: result.publicId, imageUrl: '', imagePublicId: '' }));
+    } catch {
+      toast({ title: 'Failed to upload video', variant: 'destructive' });
+    } finally {
+      setPromoVideoUploading(false);
+    }
+  };
+
+  const handleAddPromo = () => {
+    if (!editingPromo.label?.trim()) {
+      toast({ title: 'Label is required', variant: 'destructive' });
+      return;
+    }
+    const newPromo = { ...editingPromo, id: generateId() };
+    const updated = [...promoBanners, newPromo];
+    setPromoBanners(updated);
+    setShowPromoForm(false);
+    setPromoMediaType('image');
+    setEditingPromo({ id: '', imageUrl: '', imagePublicId: '', videoUrl: '', videoPublicId: '', linkUrl: '', label: '', isActive: true });
+    bannersMutation.mutate({ heroBanners, promoBanners: updated, announcementBar: currentAnnouncementBar });
+  };
+
+  const handleDeletePromo = (id: string) => {
+    const updated = promoBanners.filter((b) => b.id !== id);
+    setPromoBanners(updated);
+    bannersMutation.mutate({ heroBanners, promoBanners: updated, announcementBar: currentAnnouncementBar });
+  };
+
+  const handleTogglePromo = (id: string) => {
+    const updated = promoBanners.map((b) => b.id === id ? { ...b, isActive: !b.isActive } : b);
+    setPromoBanners(updated);
+    bannersMutation.mutate({ heroBanners, promoBanners: updated, announcementBar: currentAnnouncementBar });
   };
 
   if (isLoading) {
@@ -850,6 +887,205 @@ export default function AppearancePage() {
                     >
                       Cancel
                     </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Promotional Banner */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.32 }}
+        >
+          <Card className="rounded-2xl shadow-sm">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                  <CardTitle className="text-lg font-semibold">Promotional Banner</CardTitle>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full gap-1.5"
+                  onClick={() => setShowPromoForm(true)}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add Banner
+                </Button>
+              </div>
+              <CardDescription>
+                Displayed above the product grid on the homepage. First active banner is shown. Supports image or video with optional link.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {promoBanners.length > 0 ? (
+                <div className="space-y-3">
+                  {promoBanners.map((banner) => (
+                    <div
+                      key={banner.id}
+                      className={`flex items-center gap-4 p-3 rounded-xl border transition-colors ${
+                        banner.isActive ? 'bg-primary/5 border-primary/20' : 'bg-gray-50 border-gray-200'
+                      }`}
+                    >
+                      <GripVertical className="h-4 w-4 text-gray-300 flex-shrink-0" />
+                      {banner.videoUrl ? (
+                        <div className="h-14 w-20 bg-gray-900 rounded-lg flex items-center justify-center flex-shrink-0 relative overflow-hidden">
+                          <video src={banner.videoUrl} className="h-full w-full object-cover" muted />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                            <Video className="h-5 w-5 text-white" />
+                          </div>
+                        </div>
+                      ) : banner.imageUrl ? (
+                        <img src={banner.imageUrl} alt={banner.label} className="h-14 w-20 object-cover rounded-lg flex-shrink-0" />
+                      ) : (
+                        <div className="h-14 w-20 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <ImageIcon className="h-5 w-5 text-gray-400" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{banner.label || 'Untitled'}</p>
+                        {banner.linkUrl && (
+                          <p className="text-xs text-muted-foreground truncate">{banner.linkUrl}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => handleTogglePromo(banner.id)}
+                          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                            banner.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                          }`}
+                        >
+                          {banner.isActive ? 'Active' : 'Inactive'}
+                        </button>
+                        <button
+                          onClick={() => handleDeletePromo(banner.id)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : !showPromoForm ? (
+                <div className="py-8 text-center text-muted-foreground text-sm">
+                  <ImageIcon className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                  <p>No promotional banner. Add one to display above the product grid.</p>
+                </div>
+              ) : null}
+
+              {showPromoForm && (
+                <div className="border rounded-xl p-4 space-y-4 bg-gray-50/50">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold">New Promotional Banner</h4>
+                    <button onClick={() => setShowPromoForm(false)} className="p-1 rounded-lg hover:bg-gray-200 transition-colors">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {/* Media type */}
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Media</label>
+                    <div className="flex gap-2 mb-3">
+                      <button
+                        onClick={() => { setPromoMediaType('image'); setEditingPromo((p) => ({ ...p, videoUrl: '', videoPublicId: '' })); }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${promoMediaType === 'image' ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-200'}`}
+                      >
+                        <ImageIcon className="h-3.5 w-3.5" /> Image
+                      </button>
+                      <button
+                        onClick={() => { setPromoMediaType('video'); setEditingPromo((p) => ({ ...p, imageUrl: '', imagePublicId: '' })); }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${promoMediaType === 'video' ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-200'}`}
+                      >
+                        <Video className="h-3.5 w-3.5" /> Video
+                      </button>
+                    </div>
+
+                    {promoMediaType === 'image' ? (
+                      <>
+                        {editingPromo.imageUrl ? (
+                          <div className="relative inline-block group">
+                            <img src={editingPromo.imageUrl} alt="Preview" className="h-32 w-full max-w-sm object-cover rounded-xl" />
+                            <button
+                              onClick={() => setEditingPromo((p) => ({ ...p, imageUrl: '', imagePublicId: '' }))}
+                              className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <input ref={promoFileRef} type="file" accept="image/*" className="hidden" onChange={handlePromoImageUpload} />
+                            <button
+                              onClick={() => promoFileRef.current?.click()}
+                              disabled={promoUploading}
+                              className="h-32 w-48 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center gap-2 hover:border-gray-400 hover:bg-gray-50 transition-colors"
+                            >
+                              {promoUploading ? <Loader2 className="h-6 w-6 text-gray-400 animate-spin" /> : <><Upload className="h-6 w-6 text-gray-400" /><span className="text-xs text-gray-400">Upload image</span></>}
+                            </button>
+                          </>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-1.5">Recommended: 1400×400px wide banner</p>
+                      </>
+                    ) : (
+                      <>
+                        {editingPromo.videoUrl ? (
+                          <div className="relative inline-block group">
+                            <video src={editingPromo.videoUrl} className="h-32 w-48 object-cover rounded-xl bg-black" muted autoPlay loop playsInline />
+                            <button
+                              onClick={() => setEditingPromo((p) => ({ ...p, videoUrl: '', videoPublicId: '' }))}
+                              className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <input ref={promoVideoRef} type="file" accept="video/mp4,video/webm,video/mov,video/quicktime" className="hidden" onChange={handlePromoVideoUpload} />
+                            <button
+                              onClick={() => promoVideoRef.current?.click()}
+                              disabled={promoVideoUploading}
+                              className="h-32 w-48 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center gap-2 hover:border-gray-400 hover:bg-gray-50 transition-colors"
+                            >
+                              {promoVideoUploading ? <Loader2 className="h-6 w-6 text-gray-400 animate-spin" /> : <><Video className="h-6 w-6 text-gray-400" /><span className="text-xs text-gray-400">Upload video</span></>}
+                            </button>
+                          </>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-1.5">MP4, WebM, MOV. Autoplay, muted, looped.</p>
+                      </>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">Label (admin only)</label>
+                    <Input
+                      value={editingPromo.label}
+                      onChange={(e) => setEditingPromo((p) => ({ ...p, label: e.target.value }))}
+                      placeholder="e.g. Monsoon Sale Banner"
+                      className="rounded-xl"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">Link URL (optional)</label>
+                    <Input
+                      value={editingPromo.linkUrl ?? ''}
+                      onChange={(e) => setEditingPromo((p) => ({ ...p, linkUrl: e.target.value }))}
+                      placeholder="/products or /collections/sale"
+                      className="rounded-xl"
+                    />
+                  </div>
+
+                  <div className="flex gap-3">
+                    <Button onClick={handleAddPromo} disabled={bannersMutation.isPending} className="rounded-full">
+                      {bannersMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+                      Add Banner
+                    </Button>
+                    <Button variant="ghost" onClick={() => setShowPromoForm(false)} className="rounded-full">Cancel</Button>
                   </div>
                 </div>
               )}

@@ -9,6 +9,7 @@ import { QuickViewModal } from '@/components/ecommerce/quick-view-modal';
 import { Product } from '@/types';
 import { ScrollReveal } from '@/components/ui/scroll-reveal';
 import { Magnetic } from '@/components/ui/magnetic';
+import { useSiteSettings } from '@/lib/site-settings-context';
 
 interface FeaturedProductsSectionProps {
   products: Product[];
@@ -17,6 +18,8 @@ interface FeaturedProductsSectionProps {
 export default function FeaturedProductsSection({ products }: FeaturedProductsSectionProps) {
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
   const [quickViewVariantSku, setQuickViewVariantSku] = useState<string | undefined>(undefined);
+  const { banners } = useSiteSettings();
+  const activeProme = (banners?.promoBanners ?? []).find((b) => b.isActive && (b.imageUrl || b.videoUrl));
 
   const featured = useMemo(
     () => [...products].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5),
@@ -26,6 +29,30 @@ export default function FeaturedProductsSection({ products }: FeaturedProductsSe
   if (products.length === 0) return null;
 
   return (
+    <>
+      {/* Promotional banner — above the green section */}
+      {activeProme && (
+        <div style={{ background: '#f2ece0' }}>
+          <div className="overflow-hidden">
+            {activeProme.linkUrl ? (
+              <Link href={activeProme.linkUrl} className="block">
+                {activeProme.videoUrl ? (
+                  <video src={activeProme.videoUrl} className="w-full object-cover max-h-[300px]" autoPlay muted loop playsInline />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={activeProme.imageUrl} alt="Promotional banner" className="w-full object-cover max-h-[300px]" />
+                )}
+              </Link>
+            ) : activeProme.videoUrl ? (
+              <video src={activeProme.videoUrl} className="w-full object-cover max-h-[300px]" autoPlay muted loop playsInline />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={activeProme.imageUrl} alt="Promotional banner" className="w-full object-cover max-h-[300px]" />
+            )}
+          </div>
+        </div>
+      )}
+
     <section
       className="relative py-8 sm:py-12 overflow-hidden"
       style={{ background: 'linear-gradient(160deg,#040e02 0%,#0c2206 60%,#051802 100%)' }}
@@ -166,5 +193,6 @@ export default function FeaturedProductsSection({ products }: FeaturedProductsSe
         onClose={() => { setQuickViewProduct(null); setQuickViewVariantSku(undefined); }}
       />
     </section>
+    </>
   );
 }

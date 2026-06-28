@@ -90,6 +90,7 @@ export const DEFAULT_SETTINGS = {
   },
   banners: {
     heroBanners: [],
+    promoBanners: [],
     announcementBar: {
       enabled: false,
       text: '',

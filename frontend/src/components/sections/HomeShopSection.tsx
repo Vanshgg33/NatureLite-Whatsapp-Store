@@ -12,6 +12,7 @@ import { api } from '@/lib/api';
 import { ScrollReveal } from '@/components/ui/scroll-reveal';
 import { Magnetic } from '@/components/ui/magnetic';
 
+
 // ─── Circular Category Orbit ──────────────────────────────────────────────────
 
 // Category → icon/color map

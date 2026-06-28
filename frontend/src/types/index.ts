@@ -570,9 +570,21 @@ export interface AnnouncementBarConfig {
   textColor: string;
 }
 
+export interface PromoBanner {
+  id: string;
+  imageUrl: string;
+  imagePublicId: string;
+  videoUrl?: string;
+  videoPublicId?: string;
+  linkUrl?: string;
+  label: string;
+  isActive: boolean;
+}
+
 export interface BannerSettings {
   heroBanners: HeroBanner[];
   announcementBar: AnnouncementBarConfig;
+  promoBanners: PromoBanner[];
 }
 
 export interface SettingsValue {

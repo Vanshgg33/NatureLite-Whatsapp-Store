@@ -136,7 +136,7 @@ export function PremiumProductCard({
 
     return (
       <motion.article
-        className="group relative"
+        className="group relative h-full"
         initial={{ opacity: 0, y: 16 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
@@ -145,10 +145,10 @@ export function PremiumProductCard({
         onMouseLeave={handleCardMouseLeave}
         style={{ perspective: 700 }}
       >
-        <Link href={`/products/${product.slug}`} className="block">
+        <Link href={`/products/${product.slug}`} className="block h-full">
           <div
             ref={tiltRef}
-            className="bg-white rounded-xl overflow-hidden"
+            className="bg-white rounded-xl overflow-hidden h-full flex flex-col"
             style={{
               boxShadow: isHovered ? '0 12px 32px rgba(0,0,0,0.13)' : '0 1px 3px rgba(0,0,0,0.06)',
               transition: 'transform 0.45s ease, box-shadow 0.25s ease',
@@ -277,7 +277,7 @@ export function PremiumProductCard({
             </div>
 
             {/* Info */}
-            <div style={{ padding: '12px 12px 14px' }}>
+            <div style={{ padding: '12px 12px 14px' }} className="flex flex-col flex-1">
               {typeof product.category === 'object' && product.category?.name && (
                 <span style={{
                   display: 'inline-block',
@@ -357,7 +357,7 @@ export function PremiumProductCard({
               )}
 
               {/* Add to Cart / Quantity Modifier - ALWAYS visible at the bottom */}
-              <div className="mt-3 w-full">
+              <div className="mt-auto pt-3 w-full">
                 {totalStock <= 0 || (selectedVar && selectedVar.stock <= 0) ? (
                   <div className="w-full h-10 flex items-center justify-center bg-gray-50 text-gray-400 rounded-xl font-semibold text-xs border border-gray-200 select-none">
                     Out of Stock
