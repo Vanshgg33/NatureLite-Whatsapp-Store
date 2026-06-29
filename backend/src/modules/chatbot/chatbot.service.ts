@@ -881,25 +881,28 @@ export class ChatbotService {
   /**
    * Main-menu "Shop now" entry point.
    *
-   * Always tries the native WhatsApp catalog_message first — this opens the
-   * business's linked Facebook/Meta catalog inline in WhatsApp. No UCM catalog
-   * ID is required; WhatsApp resolves the catalog from the business account.
-   * Falls back to the standard browse surface only if the API call fails.
+   * Sends a cta_url button pointing to the WhatsApp catalog link
+   * (wa.me/c/<number>) — tapping it opens the native WhatsApp catalogue
+   * without requiring Meta catalog API approval. Falls back to the browse
+   * surface if the business phone number isn't configured or the send fails.
    */
   private async sendShopNowSurface(phone: string, session: ChatSessionDocument): Promise<void> {
-    try {
-      const thumbnailRetailerId = await this.findCatalogThumbnailRetailerId();
-      const sent = await this.whatsappService.sendCatalogMessage({
-        phone,
-        bodyText: '🛍️ Browse our full catalogue and add items directly in WhatsApp.',
-        footerText: 'Tap "View catalogue" to shop.',
-        thumbnailProductRetailerId: thumbnailRetailerId,
-      });
-      if (sent) return;
-    } catch (err) {
-      this.logger.warn(
-        `sendShopNowSurface: catalog_message failed (${err instanceof Error ? err.message : 'unknown'}), falling back`,
-      );
+    const bizPhone = this.configService.get<string>('whatsapp.businessPhoneNumber') ?? '';
+    if (bizPhone) {
+      try {
+        const catalogUrl = `https://wa.me/c/${bizPhone}`;
+        const sent = await this.whatsappService.sendCatalogLinkMessage({
+          phone,
+          catalogUrl,
+          bodyText: '🛍️ Tap the button below to browse our full catalogue directly in WhatsApp!',
+          buttonLabel: 'View Catalogue',
+        });
+        if (sent) return;
+      } catch (err) {
+        this.logger.warn(
+          `sendShopNowSurface: cta_url failed (${err instanceof Error ? err.message : 'unknown'}), falling back`,
+        );
+      }
     }
     await this.sendBrowseSurface(phone, session);
   }

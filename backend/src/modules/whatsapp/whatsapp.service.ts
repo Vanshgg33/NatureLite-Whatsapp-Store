@@ -572,6 +572,43 @@ export class WhatsAppService implements OnModuleInit {
     });
   }
 
+  async sendCatalogLinkMessage(dto: {
+    phone: string;
+    catalogUrl: string;
+    bodyText: string;
+    buttonLabel?: string;
+    meta?: { idempotencyKey?: string };
+  }): Promise<string | null> {
+    const phone = this.normalizePhone(dto.phone);
+    if (!phone) return null;
+
+    const payload: Record<string, unknown> = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: phone,
+      type: 'interactive',
+      interactive: {
+        type: 'cta_url',
+        body: { text: dto.bodyText },
+        action: {
+          name: 'cta_url',
+          parameters: {
+            display_text: dto.buttonLabel ?? 'View Catalogue',
+            url: dto.catalogUrl,
+          },
+        },
+      },
+    };
+
+    return this.sendOutboundWithRetry({
+      phone,
+      messageType: 'interactive',
+      content: { text: dto.bodyText },
+      idempotencyKey: dto.meta?.idempotencyKey,
+      payload,
+    });
+  }
+
   async sendTextMessage(dto: SendTextMessageDto): Promise<string | null> {
     const phone = this.normalizePhone(dto.phone);
     const idempotencyKey = dto.meta?.idempotencyKey;
