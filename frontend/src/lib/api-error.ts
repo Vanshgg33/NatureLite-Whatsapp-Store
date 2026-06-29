@@ -32,7 +32,7 @@ export function getApiError(error: unknown, fallback = 'Something went wrong. Pl
     case 403:
       return "You don't have permission to do this.";
     case 404:
-      return 'Not found.';
+      return backendMsg || 'Not found.';
     case 429:
       return 'Too many requests. Please wait a moment and try again.';
     case 500:

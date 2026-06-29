@@ -235,7 +235,16 @@ export class OrdersService implements OnModuleInit {
         }
       } else if (dto.items && dto.items.length > 0) {
         const products = await Promise.all(
-          dto.items.map((item) => this.productsService.findById(item.productId)),
+          dto.items.map((item) =>
+            this.productsService.findById(item.productId).catch((err) => {
+              if (err instanceof NotFoundException) {
+                throw new BadRequestException(
+                  'One or more items in your cart are no longer available. Please refresh the page and try again.',
+                );
+              }
+              throw err;
+            }),
+          ),
         );
         const productMap = new Map(products.map((p) => [p._id.toString(), p]));
 

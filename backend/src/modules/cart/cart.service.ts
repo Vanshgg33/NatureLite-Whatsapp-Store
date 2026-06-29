@@ -66,10 +66,15 @@ export class CartService {
   private async refreshStalePrices(cart: CartDocument, userId: string): Promise<void> {
     if (!cart.items.length) return;
     let mutated = false;
+    const deadProductIds = new Set<string>();
     for (const item of cart.items) {
       try {
         const product = await this.productsService.findById(item.product.toString());
-        if (!product?.isActive) continue;
+        if (!product?.isActive) {
+          deadProductIds.add(item.product.toString());
+          mutated = true;
+          continue;
+        }
         let livePrice = product.price;
         if (item.variantSku) {
           const variant = product.variants.find((v) => v.sku === item.variantSku);
@@ -87,10 +92,19 @@ export class CartService {
           mutated = true;
         }
       } catch {
-        // Product lookup failed (deleted between cart save and read);
-        // leave the cart-captured price untouched. Order-create will
-        // surface the failure if it persists.
+        // Product deleted — remove from cart so the customer never hits a
+        // cryptic "Not found" error at order creation.
+        deadProductIds.add(item.product.toString());
+        mutated = true;
       }
+    }
+    if (deadProductIds.size > 0) {
+      cart.items = cart.items.filter(
+        (item) => !deadProductIds.has(item.product.toString()),
+      ) as typeof cart.items;
+      this.logger.warn(
+        `Pruned ${deadProductIds.size} deleted/inactive product(s) from cart ${cart._id}`,
+      );
     }
     if (mutated) {
       this.recalculateCart(cart);
