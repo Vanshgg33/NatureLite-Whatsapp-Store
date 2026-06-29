@@ -75,7 +75,7 @@ export function QuickViewModal({ product, isOpen, onClose, initialVariantSku }: 
     try {
       await addItem(cartItem, quantity);
       setShowSuccess(true);
-      toast({ title: 'Added to cart', description: `${product.name} added.` });
+      toast({ title: 'Added to cart', description: `${product.name}${selectedVariantData ? ` · ${selectedVariantData.name}` : ''} added.` });
       setTimeout(() => { setShowSuccess(false); onClose(); }, 1200);
     } catch {
       toast({ title: 'Error', description: 'Failed to add item to cart.', variant: 'destructive' });

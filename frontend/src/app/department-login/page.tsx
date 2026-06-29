@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Mail, Lock, ArrowRight, Package, FileText, Truck, Shield, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,12 +12,21 @@ type DepartmentTarget = 'packing' | 'billing' | 'delivery';
 
 export default function DepartmentLoginPage() {
   const router = useRouter();
-  const { setUser, setTokens } = useAdminAuthStore();
+  const { setUser, setTokens, isAuthenticated, hasHydrated, user } = useAdminAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [target, setTarget] = useState<DepartmentTarget>('packing');
+
+  useEffect(() => {
+    if (!hasHydrated || !isAuthenticated) return;
+    const dept = user?.departmentType;
+    if (dept === 'packing') router.replace('/department/packing');
+    else if (dept === 'billing') router.replace('/department/billing');
+    else if (dept === 'delivery') router.replace('/department/delivery');
+    else router.replace('/admin/dashboard');
+  }, [hasHydrated, isAuthenticated, user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,14 +46,17 @@ export default function DepartmentLoginPage() {
       });
       setTokens(response.accessToken, response.refreshToken);
 
-      const department = (response.user.departmentType as DepartmentTarget | undefined) ?? target;
+      const dept = response.user.departmentType as DepartmentTarget | 'crm_head' | 'crm_senior' | undefined;
 
-      if (department === 'packing') {
+      if (dept === 'packing') {
         router.push('/department/packing');
-      } else if (department === 'billing') {
+      } else if (dept === 'billing') {
         router.push('/department/billing');
-      } else {
+      } else if (dept === 'delivery') {
         router.push('/department/delivery');
+      } else {
+        // crm_head, crm_senior, and regular admins all use the admin panel
+        router.push('/admin/dashboard');
       }
     } catch {
       setError('Invalid email or password');

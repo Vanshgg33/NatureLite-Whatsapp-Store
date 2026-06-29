@@ -43,9 +43,9 @@ export class AuthService {
   private async generateTokens(
     payload: JwtPayload,
   ): Promise<{ accessToken: string; refreshToken: string }> {
-    const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
+    const accessToken = this.jwtService.sign(payload, { expiresIn: '4h' });
     const refreshToken = uuidv4();
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
     const data: Partial<RefreshToken> = {
       token: this.hashToken(refreshToken),
       userId: parseObjectId(payload.sub, 'userId'),

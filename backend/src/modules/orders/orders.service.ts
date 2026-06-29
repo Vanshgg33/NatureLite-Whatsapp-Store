@@ -1224,6 +1224,49 @@ export class OrdersService implements OnModuleInit {
       };
     }
 
+    if (dto.items && dto.items.length > 0) {
+      const products = await Promise.all(
+        dto.items.map((item) => this.productsService.findById(item.productId)),
+      );
+      const productMap = new Map(products.map((p) => [p._id.toString(), p]));
+
+      let newSubtotal = 0;
+      const newItems: OrderItem[] = [];
+
+      for (const item of dto.items) {
+        const productIdObj = parseObjectId(item.productId, 'items[].productId');
+        const product = productMap.get(item.productId)!;
+
+        let price = product.price;
+        if (item.variantSku) {
+          const variant = product.variants.find((v) => v.sku === item.variantSku);
+          if (variant) price = variant.price;
+        }
+
+        const lineTotal = price * item.quantity;
+        const gstPct = (product.category as any)?.gstPercentage ?? 0;
+
+        newItems.push({
+          product: productIdObj,
+          name: product.name,
+          variantSku: item.variantSku,
+          variantName: item.variantSku
+            ? product.variants.find((v) => v.sku === item.variantSku)?.name
+            : undefined,
+          quantity: item.quantity,
+          price,
+          total: lineTotal,
+          image: product.images[0],
+          gstAmount: (lineTotal * gstPct) / 100,
+        });
+        newSubtotal += lineTotal;
+      }
+
+      order.items = newItems as any;
+      order.subtotal = newSubtotal;
+      order.total = Math.max(0, newSubtotal - (order.discount || 0) + (order.shippingCharge || 0));
+    }
+
     return order.save();
   }
 

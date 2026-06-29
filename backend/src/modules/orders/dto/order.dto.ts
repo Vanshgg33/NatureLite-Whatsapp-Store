@@ -386,4 +386,10 @@ export class UpdateOrderDto {
   @IsString()
   @IsOptional()
   paymentProofUrl?: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OrderItemDto)
+  @IsOptional()
+  items?: OrderItemDto[];
 }

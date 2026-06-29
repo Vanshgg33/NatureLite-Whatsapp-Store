@@ -144,6 +144,12 @@ export default function OrdersPage() {
   const [productDropdownOpen, setProductDropdownOpen] = useState(false);
   const [createError, setCreateError] = useState('');
 
+  // Edit order — product cart state
+  const [editCart, setEditCart] = useState<CartItem[]>([]);
+  const [editProductSearch, setEditProductSearch] = useState('');
+  const [editProductDropdownOpen, setEditProductDropdownOpen] = useState(false);
+  const debouncedEditProductSearch = useDebouncedValue(editProductSearch, 300);
+
   const { data: ordersData, isLoading, isFetching } = useQuery({
     queryKey: ['orders', page, debouncedSearch, status, startDate, endDate],
     queryFn: () =>
@@ -167,6 +173,13 @@ export default function OrdersPage() {
   });
   const productRows = flattenProductRows(productSearchResults as Product[]);
 
+  const { data: editProductSearchResults = [] } = useQuery({
+    queryKey: ['product-search-edit', debouncedEditProductSearch],
+    queryFn: () => api.searchProducts(debouncedEditProductSearch, 20),
+    enabled: !!debouncedEditProductSearch && editingOrder !== null,
+  });
+  const editProductRows = flattenProductRows(editProductSearchResults as Product[]);
+
   const createOrderMutation = useMutation({
     mutationFn: () =>
       api.createGuestOrder({
@@ -187,7 +200,7 @@ export default function OrdersPage() {
         notes: notes.trim()
           ? `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : source === 'phone' ? 'Phone' : source === 'b2b' ? 'B2B' : 'Vayepar'}] ${notes.trim()}`
           : `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : source === 'phone' ? 'Phone' : source === 'b2b' ? 'B2B' : 'Vayepar'}] Order created by admin`,
-        source,
+        source: 'admin',
         orderType: orderType || undefined,
       }),
     onSuccess: async (order) => {
@@ -287,6 +300,28 @@ export default function OrdersPage() {
     setProductSearch('');
   }
 
+  function addToEditCart(row: ProductRow) {
+    const existing = editCart.find(
+      (i) => i.productId === row.productId && (i.variantSku ?? '') === (row.variantSku ?? ''),
+    );
+    if (existing) {
+      setEditCart(editCart.map((i) =>
+        i.productId === row.productId && (i.variantSku ?? '') === (row.variantSku ?? '')
+          ? { ...i, quantity: i.quantity + 1 }
+          : i,
+      ));
+    } else {
+      setEditCart([...editCart, {
+        productId: row.productId,
+        variantSku: row.variantSku,
+        name: row.variantName ? `${row.name} · ${row.variantName}` : row.name,
+        price: row.price,
+        quantity: 1,
+      }]);
+    }
+    setEditProductSearch('');
+  }
+
   const cartTotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
 
   const canSubmit =
@@ -324,6 +359,16 @@ export default function OrdersPage() {
     setEditShipState(order.shippingAddress?.state || '');
     setEditShipPincode(order.shippingAddress?.pincode || '');
     setEditError('');
+    setEditProductSearch('');
+    setEditCart(
+      (order.items || []).map((item) => ({
+        productId: typeof item.product === 'string' ? item.product : (item.product as any)._id,
+        variantSku: item.variantSku,
+        name: item.variantName ? `${item.name} · ${item.variantName}` : item.name,
+        price: item.price,
+        quantity: item.quantity,
+      })),
+    );
   }
 
   function handleSaveEdit() {
@@ -346,6 +391,7 @@ export default function OrdersPage() {
           state: editShipState.trim(),
           pincode: editShipPincode.trim(),
         },
+        items: editCart.map((i) => ({ productId: i.productId, variantSku: i.variantSku, quantity: i.quantity })),
       },
     });
   }
@@ -1039,6 +1085,84 @@ export default function OrdersPage() {
               </div>
             </div>
 
+            {/* Products */}
+            <div className="space-y-3 border rounded-lg p-3 bg-muted/30">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Products</p>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                <Input
+                  value={editProductSearch}
+                  onChange={(e) => setEditProductSearch(e.target.value)}
+                  onFocus={() => setEditProductDropdownOpen(true)}
+                  onBlur={() => setTimeout(() => setEditProductDropdownOpen(false), 150)}
+                  placeholder="Search to add products..."
+                  className="pl-10"
+                />
+              </div>
+              {editProductDropdownOpen && editProductSearch && (
+                <div className="mt-1 border rounded-md max-h-48 overflow-y-auto bg-white shadow-lg z-10">
+                  {editProductRows.length === 0 ? (
+                    <p className="px-3 py-4 text-sm text-muted-foreground text-center">No products found</p>
+                  ) : (
+                    editProductRows.map((row) => {
+                      const outOfStock = row.trackStock && row.stock <= 0;
+                      return (
+                        <button
+                          key={`${row.productId}-${row.variantSku ?? 'main'}`}
+                          type="button"
+                          disabled={outOfStock}
+                          onMouseDown={(e) => { if (outOfStock) return; e.preventDefault(); addToEditCart(row); }}
+                          className={`w-full flex items-center justify-between px-3 py-2.5 text-sm text-left border-b last:border-b-0 ${outOfStock ? 'opacity-40 cursor-not-allowed bg-gray-50' : 'hover:bg-green-50 bg-white'}`}
+                        >
+                          <span>
+                            {row.name}
+                            {row.variantName ? ` · ${row.variantName}` : ''}
+                          </span>
+                          {outOfStock ? (
+                            <span className="text-red-400 text-xs font-medium shrink-0 ml-2">Out of Stock</span>
+                          ) : (
+                            <span className="text-green-600 text-xs font-medium shrink-0 ml-2">₹{row.price.toLocaleString()}</span>
+                          )}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+              {editCart.length > 0 && (
+                <div className="border rounded-md divide-y">
+                  {editCart.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-2 gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{item.name}</p>
+                        <p className="text-xs text-muted-foreground">₹{item.price.toLocaleString()} each</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Input
+                          type="number"
+                          min={1}
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const val = Math.max(1, parseInt(e.target.value, 10) || 1);
+                            setEditCart(editCart.map((ci, i) => i === idx ? { ...ci, quantity: val } : ci));
+                          }}
+                          className="w-16 h-8 text-center"
+                        />
+                        <span className="text-sm font-medium w-20 text-right">₹{(item.price * item.quantity).toLocaleString()}</span>
+                        <Button variant="ghost" size="sm" onClick={() => setEditCart(editCart.filter((_, i) => i !== idx))}>
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex justify-between items-center px-3 py-2 bg-muted/30">
+                    <span className="text-sm text-muted-foreground">{editCart.length} item{editCart.length !== 1 ? 's' : ''}</span>
+                    <span className="font-bold">₹{editCart.reduce((s, i) => s + i.price * i.quantity, 0).toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Shipping Address */}
             <div className="space-y-3 border rounded-lg p-3 bg-muted/30">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Shipping Address</p>
@@ -1133,6 +1257,7 @@ export default function OrdersPage() {
                 !editShipCity.trim() ||
                 !editShipState.trim() ||
                 (editShipPincode.trim().length > 0 && editShipPincode.trim().length !== 6) ||
+                editCart.length === 0 ||
                 updateOrderMutation.isPending
               }
             >

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Mail, Lock, ArrowRight, ShieldCheck, Users } from 'lucide-react';
@@ -12,11 +12,20 @@ import { AuthBrandingPanel } from '@/components/admin/auth-branding-panel';
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const { setUser, setTokens } = useAdminAuthStore();
+  const { setUser, setTokens, isAuthenticated, hasHydrated, user } = useAdminAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!hasHydrated || !isAuthenticated) return;
+    const dept = user?.departmentType;
+    if (dept === 'packing') router.replace('/department/packing');
+    else if (dept === 'billing') router.replace('/department/billing');
+    else if (dept === 'delivery') router.replace('/department/delivery');
+    else router.replace('/admin/dashboard');
+  }, [hasHydrated, isAuthenticated, user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

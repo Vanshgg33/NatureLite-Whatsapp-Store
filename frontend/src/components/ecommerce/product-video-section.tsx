@@ -89,7 +89,7 @@ function ProductStrip({ product, variantSku }: { product: Product; variantSku?: 
         variantName: variant?.name,
         gstPercentage: product.gstPercentage ?? 0,
       });
-      toast({ title: 'Added to cart', description: product.name });
+      toast({ title: 'Added to cart', description: `${product.name}${variant ? ` · ${variant.name}` : ''}` });
     } catch {
       toast({ title: 'Could not add to cart', variant: 'destructive' });
     } finally {
@@ -269,7 +269,7 @@ function ProductPanel({ product }: { product: Product }) {
         variantName: activeVariant?.name,
         gstPercentage: product.gstPercentage ?? 0,
       });
-      toast({ title: 'Added to cart', description: product.name });
+      toast({ title: 'Added to cart', description: `${product.name}${activeVariant ? ` · ${activeVariant.name}` : ''}` });
     } catch {
       toast({ title: 'Could not add to cart', variant: 'destructive' });
     } finally {

@@ -201,7 +201,7 @@ export default function ProductDetailPage() {
       if (flyAnimation && ctaBtnRef.current && product.images[0]) {
         flyAnimation.triggerFlyAnimation(product.images[0], ctaBtnRef.current.getBoundingClientRect());
       }
-      toast({ title: 'Added to cart', description: `${quantity} × ${product.name} added.` });
+      toast({ title: 'Added to cart', description: `${quantity} × ${product.name}${selectedVariantData ? ` · ${selectedVariantData.name}` : ''} added.` });
       setTimeout(() => setShowCartSuccess(false), 2000);
     } catch {
       toast({ title: 'Could not add to cart', variant: 'destructive' });

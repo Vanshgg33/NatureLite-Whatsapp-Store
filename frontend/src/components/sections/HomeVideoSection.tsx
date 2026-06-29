@@ -252,7 +252,7 @@ function LightboxProductPanel({ product }: { product: Product }) {
     setAdding(true);
     try {
       await addItem({ productId: product._id, name: product.name, slug: product.slug, image, price, compareAtPrice: selectedVariant?.compareAtPrice ?? product.compareAtPrice, variantSku: selectedVariant?.sku, variantName: selectedVariant?.name, gstPercentage: product.gstPercentage ?? 0 });
-      toast({ title: 'Added to cart', description: product.name });
+      toast({ title: 'Added to cart', description: `${product.name}${selectedVariant ? ` · ${selectedVariant.name}` : ''}` });
     } catch { toast({ title: 'Could not add', variant: 'destructive' }); }
     finally { setAdding(false); }
   };

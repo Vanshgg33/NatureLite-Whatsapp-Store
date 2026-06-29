@@ -97,7 +97,7 @@ export function PremiumProductCard({
     };
     if (flyAnimation && addToCartBtnRef.current)
       flyAnimation.triggerFlyAnimation(product.images?.[0] || '', addToCartBtnRef.current.getBoundingClientRect());
-    toast({ title: 'Added to cart', description: `${product.name} added.` });
+    toast({ title: 'Added to cart', description: `${product.name}${selectedVar ? ` · ${selectedVar.name}` : ''} added.` });
     // Fire-and-forget: sync with server in background
     addItem(cartItem, 1).catch(() => {
       toast({ title: 'Error', description: 'Failed to add item.', variant: 'destructive' });

@@ -18,6 +18,13 @@ export default function AdminLayout({
   const { isAuthenticated, user, hasHydrated } = useAdminAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Field staff (packing/billing/delivery) belong on /department/... not /admin/...
+  // CRM staff (crm_head, crm_senior) are full admin-panel users.
+  const isFieldDept =
+    user?.departmentType === 'packing' ||
+    user?.departmentType === 'billing' ||
+    user?.departmentType === 'delivery';
+
   useEffect(() => {
     // Wait for persisted auth state to rehydrate from localStorage before deciding.
     // Redirecting during the initial render race creates a login <-> admin loop.
@@ -28,24 +35,18 @@ export default function AdminLayout({
       return;
     }
 
-    if (user?.departmentType) {
-      if (user.departmentType === 'packing' && !pathname.startsWith('/department/packing')) {
+    if (isFieldDept) {
+      if (user!.departmentType === 'packing' && !pathname.startsWith('/department/packing')) {
         router.replace('/department/packing');
-      } else if (
-        user.departmentType === 'billing' &&
-        !pathname.startsWith('/department/billing')
-      ) {
+      } else if (user!.departmentType === 'billing' && !pathname.startsWith('/department/billing')) {
         router.replace('/department/billing');
-      } else if (
-        user.departmentType === 'delivery' &&
-        !pathname.startsWith('/department/delivery')
-      ) {
+      } else if (user!.departmentType === 'delivery' && !pathname.startsWith('/department/delivery')) {
         router.replace('/department/delivery');
       }
     }
-  }, [hasHydrated, isAuthenticated, user, pathname, router]);
+  }, [hasHydrated, isAuthenticated, isFieldDept, user, pathname, router]);
 
-  if (!hasHydrated || !isAuthenticated || user?.departmentType) {
+  if (!hasHydrated || !isAuthenticated || isFieldDept) {
     return null;
   }
 
