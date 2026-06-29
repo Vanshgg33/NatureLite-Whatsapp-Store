@@ -19,11 +19,24 @@ export default function AdminLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Field staff (packing/billing/delivery) belong on /department/... not /admin/...
-  // CRM staff (crm_head, crm_senior) are full admin-panel users.
+  // CRM staff (crm_head, crm_senior) are admin-panel users with restricted access.
   const isFieldDept =
     user?.departmentType === 'packing' ||
     user?.departmentType === 'billing' ||
     user?.departmentType === 'delivery';
+
+  const isCrm =
+    user?.departmentType === 'crm_head' ||
+    user?.departmentType === 'crm_senior';
+
+  const CRM_ALLOWED = [
+    '/admin/sales',
+    '/admin/orders',
+    '/admin/delivery-collections',
+    '/admin/delivery-history',
+    '/admin/customers',
+    '/admin/coupons',
+  ];
 
   useEffect(() => {
     // Wait for persisted auth state to rehydrate from localStorage before deciding.
@@ -43,8 +56,16 @@ export default function AdminLayout({
       } else if (user!.departmentType === 'delivery' && !pathname.startsWith('/department/delivery')) {
         router.replace('/department/delivery');
       }
+      return;
     }
-  }, [hasHydrated, isAuthenticated, isFieldDept, user, pathname, router]);
+
+    if (isCrm) {
+      const allowed = CRM_ALLOWED.some((p) => pathname.startsWith(p));
+      if (!allowed) {
+        router.replace('/admin/orders');
+      }
+    }
+  }, [hasHydrated, isAuthenticated, isFieldDept, isCrm, user, pathname, router]);
 
   if (!hasHydrated || !isAuthenticated || isFieldDept) {
     return null;
