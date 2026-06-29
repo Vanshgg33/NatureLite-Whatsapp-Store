@@ -1186,6 +1186,22 @@ export class OrdersService implements OnModuleInit {
     return order.save();
   }
 
+  async deleteOrder(id: string): Promise<{ deleted: boolean }> {
+    const idObj = parseObjectId(id, 'id');
+    const order = await this.orderRepository.findById(idObj);
+    if (!order) throw new NotFoundException('Order not found');
+
+    // Void any linked store sale so sales log stays consistent
+    try {
+      await this.storeSalesService.voidByLinkedOrder(id, 'order_deleted');
+    } catch (err) {
+      this.logger.warn(`Failed to void store sale on order delete: ${err.message}`);
+    }
+
+    await this.orderRepository.deleteOne({ _id: idObj });
+    return { deleted: true };
+  }
+
   async updateOrder(id: string, dto: UpdateOrderDto): Promise<Order> {
     const idObj = parseObjectId(id, 'id');
     const order = await this.orderRepository.findById(idObj);

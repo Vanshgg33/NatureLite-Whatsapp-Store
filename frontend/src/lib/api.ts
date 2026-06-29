@@ -768,6 +768,11 @@ class ApiClient {
     return response.data.data;
   }
 
+  async deleteOrder(id: string): Promise<{ deleted: boolean }> {
+    const response = await this.client.delete<ApiResponse<{ deleted: boolean }>>(`/orders/${id}`);
+    return response.data.data;
+  }
+
   async markOrderPacked(id: string, packedByName?: string): Promise<Order> {
     const response = await this.client.put<ApiResponse<Order>>(`/orders/${id}/mark-packed`, { packedByName });
     return response.data.data;

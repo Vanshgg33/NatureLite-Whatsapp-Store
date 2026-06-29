@@ -151,6 +151,9 @@ export default function OrdersPage() {
   const [reminderMessage, setReminderMessage] = useState('');
   const [reminderDueAt, setReminderDueAt] = useState('');
 
+  // Delete order state
+  const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
+
   // Edit order — product cart state + discount
   const [editCart, setEditCart] = useState<CartItem[]>([]);
   const [editDiscount, setEditDiscount] = useState('0');
@@ -362,6 +365,19 @@ export default function OrdersPage() {
     onError: (err: unknown) => {
       const msg = err instanceof Error ? err.message : 'Failed to update order';
       setEditError(msg);
+    },
+  });
+
+  const deleteOrderMutation = useMutation({
+    mutationFn: (id: string) => api.deleteOrder(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      toast({ title: 'Order deleted', description: 'The order has been permanently deleted.' });
+      setDeletingOrder(null);
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Failed to delete order';
+      toast({ title: 'Delete failed', description: msg, variant: 'destructive' });
     },
   });
 
@@ -644,6 +660,15 @@ export default function OrdersPage() {
                                 onClick={() => startEditing(order)}
                               >
                                 <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Delete order"
+                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => setDeletingOrder(order)}
+                              >
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                               <Link href={`/admin/orders/${order._id}`}>
                                 <Button variant="ghost" size="icon" aria-label="View order">
@@ -1378,6 +1403,33 @@ export default function OrdersPage() {
               }
             >
               {updateOrderMutation.isPending ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirm dialog */}
+      <Dialog open={!!deletingOrder} onOpenChange={(open) => { if (!open) setDeletingOrder(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete Order</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Permanently delete order <span className="font-medium text-foreground">{deletingOrder?.orderNumber}</span> for{' '}
+            <span className="font-medium text-foreground">{deletingOrder?.shippingAddress?.name}</span>?
+            <br /><br />
+            This cannot be undone. Revenue stats will update automatically.
+          </p>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDeletingOrder(null)} disabled={deleteOrderMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteOrderMutation.isPending}
+              onClick={() => deletingOrder && deleteOrderMutation.mutate(deletingOrder._id)}
+            >
+              {deleteOrderMutation.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Deleting...</> : 'Delete Order'}
             </Button>
           </DialogFooter>
         </DialogContent>

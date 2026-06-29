@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Post,
@@ -281,6 +282,13 @@ export class OrdersController {
     @Body() dto: UpdateOrderDto,
   ): Promise<Order> {
     return this.ordersService.updateOrder(id, dto);
+  }
+
+  @Delete(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  async deleteOrder(@Param('id') id: string): Promise<{ deleted: boolean }> {
+    return this.ordersService.deleteOrder(id);
   }
 
   @Put(':id/priority-tags')
