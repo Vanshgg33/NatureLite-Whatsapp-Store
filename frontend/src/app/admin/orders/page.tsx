@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Eye, Plus, Trash2, ShoppingCart, MessageCircle, Globe, Download, Send, Loader2, Edit, Phone, Receipt, Building2, Truck } from 'lucide-react';
+import { Search, Eye, Plus, Trash2, ShoppingCart, MessageCircle, Globe, Download, Send, Loader2, Edit, Phone, Receipt, Building2, Truck, Bell } from 'lucide-react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -147,6 +147,10 @@ export default function OrdersPage() {
   const [productDropdownOpen, setProductDropdownOpen] = useState(false);
   const [createError, setCreateError] = useState('');
 
+  // Reminder state (create dialog)
+  const [reminderMessage, setReminderMessage] = useState('');
+  const [reminderDueAt, setReminderDueAt] = useState('');
+
   // Edit order — product cart state + discount
   const [editCart, setEditCart] = useState<CartItem[]>([]);
   const [editDiscount, setEditDiscount] = useState('0');
@@ -217,6 +221,10 @@ export default function OrdersPage() {
           // proof upload failed silently — order still created
         }
       }
+      if (reminderDueAt) {
+        const msg = reminderMessage.trim() || `Follow up on order ${order.orderNumber}`;
+        await api.createOrderReminder(order._id, msg, reminderDueAt).catch(() => {});
+      }
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       resetCreateForm();
       setShowCreate(false);
@@ -248,6 +256,8 @@ export default function OrdersPage() {
     setDiscountIsPercent(false);
     setCart([]);
     setProductSearch('');
+    setReminderMessage('');
+    setReminderDueAt('');
     setCreateError('');
   }
 
@@ -962,6 +972,24 @@ export default function OrdersPage() {
                 </div>
               </div>
             )}
+
+            {/* Reminder */}
+            <div className="border rounded-lg p-3 space-y-2 bg-amber-50 border-amber-200">
+              <div className="flex items-center gap-2 text-amber-700 font-medium text-sm">
+                <Bell className="h-4 w-4" />
+                <span>Set Reminder <span className="font-normal text-amber-600">(optional)</span></span>
+              </div>
+              <Input
+                placeholder="Reminder message (e.g. Call customer)"
+                value={reminderMessage}
+                onChange={(e) => setReminderMessage(e.target.value)}
+              />
+              <Input
+                type="datetime-local"
+                value={reminderDueAt}
+                onChange={(e) => setReminderDueAt(e.target.value)}
+              />
+            </div>
 
             {/* Payment method */}
             <div>

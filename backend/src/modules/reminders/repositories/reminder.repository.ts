@@ -22,14 +22,19 @@ export class ReminderRepository {
   async findDueWithinHour(storeIds: Types.ObjectId[]): Promise<any[]> {
     const now = new Date();
     const twentyFourHoursLater = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    // Include store-scoped reminders AND order reminders (no store)
+    const storeFilter = storeIds.length
+      ? { $or: [{ store: { $in: storeIds } }, { store: { $exists: false } }, { store: null }] }
+      : {};
     return this.model
       .find({
-        store: { $in: storeIds },
+        ...storeFilter,
         dueAt: { $gte: now, $lte: twentyFourHoursLater },
         isDismissed: false,
       })
       .sort({ dueAt: 1 })
       .populate('sale', 'saleNumber customerName total')
+      .populate('order', 'orderNumber shippingAddress total')
       .populate('store', 'name code')
       .lean()
       .exec();

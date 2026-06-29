@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, UseGuards } from '@nestjs/common';
 import { RemindersService } from './reminders.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -25,6 +25,20 @@ export class RemindersController {
       storeIds = stores.map((s) => s._id.toString());
     }
     return this.remindersService.getDueReminders(storeIds);
+  }
+
+  @Post('order')
+  async createForOrder(
+    @Body() body: { orderId: string; message: string; dueAt: string },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.remindersService.createForOrder(
+      body.orderId,
+      user.storeId,
+      body.message,
+      new Date(body.dueAt),
+      user.sub,
+    );
   }
 
   @Post(':id/dismiss')

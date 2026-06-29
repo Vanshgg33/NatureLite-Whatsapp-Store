@@ -1159,8 +1159,9 @@ export interface UpdateStoreSaleDto {
 
 export interface Reminder {
   _id: string;
-  sale: { _id: string; saleNumber: string; customerName?: string; total: number };
-  store: { _id: string; name: string; code: string };
+  sale?: { _id: string; saleNumber: string; customerName?: string; total: number };
+  order?: { _id: string; orderNumber: string; shippingAddress: { name: string }; total: number };
+  store?: { _id: string; name: string; code: string };
   message: string;
   dueAt: string;
   createdAt: string;

@@ -354,8 +354,10 @@ export default function DashboardPage() {
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-amber-900">{r.message}</p>
                       <p className="text-sm text-amber-700 mt-1">
-                        Sale #{r.sale?.saleNumber} · {r.store?.name}
-                        {r.sale?.customerName && ` · ${r.sale.customerName}`}
+                        {r.order
+                          ? `Order #${r.order.orderNumber} · ${r.order.shippingAddress?.name ?? ''}`
+                          : `Sale #${r.sale?.saleNumber}${r.sale?.customerName ? ` · ${r.sale.customerName}` : ''}`}
+                        {r.store?.name ? ` · ${r.store.name}` : ''}
                       </p>
                       <p className="text-xs text-amber-600 mt-0.5">
                         Due {new Date(r.dueAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}

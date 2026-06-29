@@ -1530,6 +1530,10 @@ class ApiClient {
     return response.data.data;
   }
 
+  async createOrderReminder(orderId: string, message: string, dueAt: string): Promise<void> {
+    await this.client.post('/reminders/order', { orderId, message, dueAt });
+  }
+
   // ==================== MULTI-STORE ANALYTICS ====================
   async getStoreDashboardStats(storeId: string): Promise<StoreDashboardStats> {
     const response = await this.client.get<ApiResponse<StoreDashboardStats>>(`/analytics/stores/dashboard/${storeId}`);

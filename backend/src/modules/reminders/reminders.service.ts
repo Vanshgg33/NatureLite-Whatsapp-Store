@@ -30,6 +30,20 @@ export class RemindersService {
     });
   }
 
+  async createForOrder(
+    orderId: string,
+    storeId: string | undefined,
+    message: string,
+    dueAt: Date,
+    createdBy: string,
+  ) {
+    const orderObjId = parseObjectId(orderId, 'orderId');
+    const userObjId = parseObjectId(createdBy, 'createdBy');
+    const data: Partial<any> = { order: orderObjId, message, dueAt, createdBy: userObjId };
+    if (storeId) data.store = parseObjectId(storeId, 'storeId');
+    return this.reminderRepository.create(data);
+  }
+
   async getDueReminders(storeIds: string[]): Promise<any[]> {
     if (!storeIds.length) return [];
     const objIds = storeIds.map((id) => parseObjectId(id, 'storeId'));
