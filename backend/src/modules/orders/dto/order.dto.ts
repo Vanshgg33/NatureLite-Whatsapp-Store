@@ -126,6 +126,11 @@ export class CreateOrderDto {
   @IsString()
   @IsOptional()
   orderType?: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  adminDiscount?: number;
 }
 
 export class UpdateOrderStatusDto {
@@ -355,6 +360,11 @@ export class GuestCreateOrderDto {
   @IsString()
   @IsOptional()
   orderType?: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  adminDiscount?: number;
 }
 
 export class UpdateOrderDto {
@@ -392,4 +402,9 @@ export class UpdateOrderDto {
   @Type(() => OrderItemDto)
   @IsOptional()
   items?: OrderItemDto[];
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  discount?: number;
 }

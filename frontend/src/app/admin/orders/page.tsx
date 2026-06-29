@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { api } from '@/lib/api';
 import { formatCurrency, formatDate, getStatusColor, useDebouncedValue } from '@/lib/utils';
 import { captureInvoicePdf, billFilename, base64ToBlob } from '@/lib/bill-pdf';
@@ -138,14 +139,17 @@ export default function OrdersPage() {
   const [upiProofFile, setUpiProofFile] = useState<File | null>(null);
   const [upiProofPreview, setUpiProofPreview] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
+  const [discount, setDiscount] = useState('0');
+  const [discountIsPercent, setDiscountIsPercent] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [productSearch, setProductSearch] = useState('');
   const debouncedProductSearch = useDebouncedValue(productSearch, 300);
   const [productDropdownOpen, setProductDropdownOpen] = useState(false);
   const [createError, setCreateError] = useState('');
 
-  // Edit order — product cart state
+  // Edit order — product cart state + discount
   const [editCart, setEditCart] = useState<CartItem[]>([]);
+  const [editDiscount, setEditDiscount] = useState('0');
   const [editProductSearch, setEditProductSearch] = useState('');
   const [editProductDropdownOpen, setEditProductDropdownOpen] = useState(false);
   const debouncedEditProductSearch = useDebouncedValue(editProductSearch, 300);
@@ -202,6 +206,7 @@ export default function OrdersPage() {
           : `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : source === 'phone' ? 'Phone' : source === 'b2b' ? 'B2B' : 'Vayepar'}] Order created by admin`,
         source: 'admin',
         orderType: orderType || undefined,
+        adminDiscount: discountAmount > 0 ? discountAmount : undefined,
       }),
     onSuccess: async (order) => {
       if (upiProofFile) {
@@ -239,6 +244,8 @@ export default function OrdersPage() {
     if (upiProofPreview) URL.revokeObjectURL(upiProofPreview);
     setUpiProofPreview(null);
     setNotes('');
+    setDiscount('0');
+    setDiscountIsPercent(false);
     setCart([]);
     setProductSearch('');
     setCreateError('');
@@ -322,7 +329,11 @@ export default function OrdersPage() {
     setEditProductSearch('');
   }
 
-  const cartTotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
+  const cartSubtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
+  const discountAmount = discountIsPercent
+    ? cartSubtotal * (Math.min(parseFloat(discount) || 0, 100) / 100)
+    : (parseFloat(discount) || 0);
+  const cartTotal = Math.max(0, cartSubtotal - discountAmount);
 
   const canSubmit =
     custName.trim() &&
@@ -359,6 +370,7 @@ export default function OrdersPage() {
     setEditShipState(order.shippingAddress?.state || '');
     setEditShipPincode(order.shippingAddress?.pincode || '');
     setEditError('');
+    setEditDiscount(String(order.discount ?? 0));
     setEditProductSearch('');
     setEditCart(
       (order.items || []).map((item) => ({
@@ -392,6 +404,7 @@ export default function OrdersPage() {
           pincode: editShipPincode.trim(),
         },
         items: editCart.map((i) => ({ productId: i.productId, variantSku: i.variantSku, quantity: i.quantity })),
+        discount: parseFloat(editDiscount) || 0,
       },
     });
   }
@@ -903,9 +916,49 @@ export default function OrdersPage() {
                     </div>
                   </div>
                 ))}
-                <div className="flex justify-between items-center px-3 py-2 bg-muted/30">
-                  <span className="text-sm text-muted-foreground">{cart.length} item{cart.length !== 1 ? 's' : ''}</span>
-                  <span className="font-bold text-base">₹{cartTotal.toLocaleString()}</span>
+                <div className="space-y-1 px-3 py-2 bg-muted/30 text-sm">
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>{cart.length} item{cart.length !== 1 ? 's' : ''} · Subtotal</span>
+                    <span>₹{cartSubtotal.toLocaleString()}</span>
+                  </div>
+                  {discountAmount > 0 && (
+                    <div className="flex justify-between text-red-600">
+                      <span>Discount{discountIsPercent ? ` (${parseFloat(discount) || 0}%)` : ''}</span>
+                      <span>-₹{discountAmount.toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-base border-t pt-1">
+                    <span>Total</span>
+                    <span>₹{cartTotal.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Discount */}
+            {cart.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-sm font-medium">Discount</label>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-muted-foreground">₹</span>
+                    <Switch checked={discountIsPercent} onCheckedChange={setDiscountIsPercent} />
+                    <span className="text-xs text-muted-foreground">%</span>
+                  </div>
+                </div>
+                <div className="relative">
+                  <Input
+                    type="number"
+                    min="0"
+                    max={discountIsPercent ? 100 : undefined}
+                    value={discount}
+                    onChange={(e) => setDiscount(e.target.value)}
+                    placeholder="0"
+                    className="pr-7"
+                  />
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
+                    {discountIsPercent ? '%' : '₹'}
+                  </span>
                 </div>
               </div>
             )}
@@ -1155,12 +1208,47 @@ export default function OrdersPage() {
                       </div>
                     </div>
                   ))}
-                  <div className="flex justify-between items-center px-3 py-2 bg-muted/30">
-                    <span className="text-sm text-muted-foreground">{editCart.length} item{editCart.length !== 1 ? 's' : ''}</span>
-                    <span className="font-bold">₹{editCart.reduce((s, i) => s + i.price * i.quantity, 0).toLocaleString()}</span>
-                  </div>
+                  {(() => {
+                    const editSubtotal = editCart.reduce((s, i) => s + i.price * i.quantity, 0);
+                    const editDiscountAmt = parseFloat(editDiscount) || 0;
+                    const editTotal = Math.max(0, editSubtotal - editDiscountAmt);
+                    return (
+                      <div className="space-y-1 px-3 py-2 bg-muted/30 text-sm">
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>{editCart.length} item{editCart.length !== 1 ? 's' : ''} · Subtotal</span>
+                          <span>₹{editSubtotal.toLocaleString()}</span>
+                        </div>
+                        {editDiscountAmt > 0 && (
+                          <div className="flex justify-between text-red-600">
+                            <span>Discount</span>
+                            <span>-₹{editDiscountAmt.toLocaleString()}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between font-bold border-t pt-1">
+                          <span>Total</span>
+                          <span>₹{editTotal.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
+
+              {/* Discount */}
+              <div>
+                <label className="text-sm font-medium block mb-1">Discount (₹)</label>
+                <div className="relative">
+                  <Input
+                    type="number"
+                    min="0"
+                    value={editDiscount}
+                    onChange={(e) => setEditDiscount(e.target.value)}
+                    placeholder="0"
+                    className="pr-7"
+                  />
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">₹</span>
+                </div>
+              </div>
             </div>
 
             {/* Shipping Address */}

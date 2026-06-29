@@ -293,6 +293,12 @@ export class OrdersService implements OnModuleInit {
 
       let discount = 0;
       let appliedCouponCode: string | undefined;
+
+      // Admin-supplied flat discount (used when no coupon code is provided)
+      if (!dto.couponCode && dto.adminDiscount != null && dto.adminDiscount > 0) {
+        discount = Math.min(dto.adminDiscount, subtotal);
+      }
+
       if (dto.couponCode) {
         // Precompute per-user counts so the coupon service can enforce
         // `maxUsagePerUser` and `isFirstOrderOnly` without itself depending on
@@ -672,6 +678,7 @@ export class OrdersService implements OnModuleInit {
       idempotencyKey: dto.idempotencyKey,
       source: dto.source,
       orderType: dto.orderType,
+      adminDiscount: dto.adminDiscount,
     };
 
     return this.create(user._id.toString(), createDto);
@@ -1264,7 +1271,17 @@ export class OrdersService implements OnModuleInit {
 
       order.items = newItems as any;
       order.subtotal = newSubtotal;
-      order.total = Math.max(0, newSubtotal - (order.discount || 0) + (order.shippingCharge || 0));
+      // Apply updated discount if provided alongside item changes, else keep existing
+      const effectiveDiscount = dto.discount != null ? Math.min(dto.discount, newSubtotal) : (order.discount || 0);
+      order.discount = effectiveDiscount;
+      order.total = Math.max(0, newSubtotal - effectiveDiscount + (order.shippingCharge || 0));
+    }
+
+    // Standalone discount update (no item changes)
+    if ((dto.discount != null) && !(dto.items && dto.items.length > 0)) {
+      const cappedDiscount = Math.min(dto.discount, order.subtotal || 0);
+      order.discount = cappedDiscount;
+      order.total = Math.max(0, (order.subtotal || 0) - cappedDiscount + (order.shippingCharge || 0));
     }
 
     return order.save();

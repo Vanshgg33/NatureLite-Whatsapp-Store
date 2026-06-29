@@ -848,6 +848,7 @@ export interface GuestCreateOrderDto {
   idempotencyKey?: string;
   source?: string;
   orderType?: string;
+  adminDiscount?: number;
 }
 
 export interface ReorderDto {
