@@ -881,15 +881,26 @@ export class ChatbotService {
   /**
    * Main-menu "Shop now" entry point.
    *
-   * Prefer the native WhatsApp catalog message even if the
-   * broader browse flow has catalog messages disabled, since this button is
-   * explicitly meant to open the catalogue. Fall back safely when UCM isn't
-   * configured or the send fails.
+   * Always tries the native WhatsApp catalog_message first — this opens the
+   * business's linked Facebook/Meta catalog inline in WhatsApp. No UCM catalog
+   * ID is required; WhatsApp resolves the catalog from the business account.
+   * Falls back to the standard browse surface only if the API call fails.
    */
   private async sendShopNowSurface(phone: string, session: ChatSessionDocument): Promise<void> {
-    // WhatsApp cannot be forced to "open" the catalog UI without user intent.
-    // The closest to native behavior is sending a single catalog/product-list
-    // message in chat (no extra text message beforehand).
+    try {
+      const thumbnailRetailerId = await this.findCatalogThumbnailRetailerId();
+      const sent = await this.whatsappService.sendCatalogMessage({
+        phone,
+        bodyText: '🛍️ Browse our full catalogue and add items directly in WhatsApp.',
+        footerText: 'Tap "View catalogue" to shop.',
+        thumbnailProductRetailerId: thumbnailRetailerId,
+      });
+      if (sent) return;
+    } catch (err) {
+      this.logger.warn(
+        `sendShopNowSurface: catalog_message failed (${err instanceof Error ? err.message : 'unknown'}), falling back`,
+      );
+    }
     await this.sendBrowseSurface(phone, session);
   }
 
