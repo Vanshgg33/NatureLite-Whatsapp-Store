@@ -332,9 +332,15 @@ export default function CheckoutPage() {
     } catch (error: unknown) {
       const raw = error as { response?: { data?: { message?: string } } };
       const backendMsg = raw?.response?.data?.message ?? '';
-      const errorMessage = /insufficient wallet balance/i.test(backendMsg)
-        ? 'Wallet balance may have changed. Please review the amount and try again.'
-        : getApiError(error, 'Failed to place order. Please try again.');
+      let errorMessage: string;
+      if (/insufficient wallet balance/i.test(backendMsg)) {
+        errorMessage = 'Wallet balance may have changed. Please review the amount and try again.';
+      } else if (/no longer available|not found/i.test(backendMsg)) {
+        clearCart();
+        errorMessage = 'One or more items in your cart are no longer available. Your cart has been cleared — please add your items again.';
+      } else {
+        errorMessage = getApiError(error, 'Failed to place order. Please try again.');
+      }
       toast({
         title: 'Order failed',
         description: errorMessage,
