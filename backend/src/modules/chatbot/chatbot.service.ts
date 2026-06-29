@@ -3598,14 +3598,21 @@ export class ChatbotService {
       const products = await this.productsService.findByCategory(cat._id.toString());
       for (const product of products) {
         if (product.isActive === false) continue;
-        if (product.trackStock === false) return this.retailerIdForProduct(product);
+        // Only use products confirmed to exist in the FB catalog (UCM-synced).
+        // SKU / ObjectId fallbacks are not guaranteed to be valid catalog retailer IDs
+        // and cause WhatsApp to reject the catalog_message with 131009.
+        const meta = product.metadata as Record<string, unknown> | undefined;
+        const remoteId = typeof meta?.remoteCatalogRetailerId === 'string' ? meta.remoteCatalogRetailerId.trim() : '';
+        if (!remoteId) continue;
+
+        if (product.trackStock === false) return remoteId;
 
         const stock = await this.storeStockService.getStockForStoreProduct(
           mainStoreId,
           product._id.toString(),
         );
         if (this.resolveStoreAvailableStock(stock) > 0) {
-          return this.retailerIdForProduct(product);
+          return remoteId;
         }
       }
     }
@@ -3685,7 +3692,11 @@ export class ChatbotService {
       const productRetailerIds: string[] = [];
       for (const p of fulfillable) {
         if (productRetailerIds.length >= itemsRemaining) break;
-        productRetailerIds.push(this.retailerIdForProduct(p));
+        // Only send products whose retailer_id is confirmed in the FB catalog.
+        const meta = p.metadata as Record<string, unknown> | undefined;
+        const remoteId = typeof meta?.remoteCatalogRetailerId === 'string' ? meta.remoteCatalogRetailerId.trim() : '';
+        if (!remoteId) continue;
+        productRetailerIds.push(remoteId);
       }
       if (productRetailerIds.length === 0) continue;
 
@@ -3700,13 +3711,10 @@ export class ChatbotService {
     }
 
     if (sections.length === 0) {
-      await this.whatsappService.sendInteractiveButtons({
-        phone,
-        headerText: 'Out of stock',
-        bodyText: 'Nothing is in stock right now. Check back soon.',
-        buttons: [{ id: BTN.MENU, title: '🏠 Menu' }],
-      });
-      return;
+      // No UCM-synced products available — throw so the caller falls back to
+      // the interactive category list rather than showing "Out of stock" for
+      // products that may simply not be in the FB catalog yet.
+      throw new Error('No UCM-synced products available for product_list');
     }
 
     const sent = await this.whatsappService.sendProductListMessage({
