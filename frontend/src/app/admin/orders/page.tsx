@@ -17,6 +17,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { getApiError } from '@/lib/api-error';
 import {
   Select,
   SelectContent,
@@ -233,8 +234,7 @@ export default function OrdersPage() {
       setShowCreate(false);
     },
     onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : 'Failed to create order';
-      setCreateError(msg);
+      setCreateError(getApiError(err, 'Failed to create order'));
     },
   });
 
@@ -363,8 +363,7 @@ export default function OrdersPage() {
       setEditingOrder(null);
     },
     onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : 'Failed to update order';
-      setEditError(msg);
+      setEditError(getApiError(err, 'Failed to update order'));
     },
   });
 
@@ -376,8 +375,7 @@ export default function OrdersPage() {
       setDeletingOrder(null);
     },
     onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : 'Failed to delete order';
-      toast({ title: 'Delete failed', description: msg, variant: 'destructive' });
+      toast({ title: 'Delete failed', description: getApiError(err, 'Failed to delete order'), variant: 'destructive' });
     },
   });
 
