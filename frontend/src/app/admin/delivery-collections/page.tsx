@@ -152,10 +152,10 @@ function BreakdownDialog({
                         )}
                       </td>
                       <td className="py-2.5">
-                        <p className="font-mono text-[11px] text-gray-500">#{o._id.slice(-6).toUpperCase()}</p>
-                        <p className="text-gray-700 text-xs mt-0.5 truncate max-w-[180px]">
-                          {typeof o.user === 'object' ? (o.user as any).name : '—'}
+                        <p className="text-gray-900 text-xs font-medium truncate max-w-[180px]">
+                          {o.shippingAddress?.name || (typeof o.user === 'object' ? (o.user as any).name : '—')}
                         </p>
+                        <p className="font-mono text-[10px] text-gray-400 mt-0.5">{o.orderNumber || `#${o._id.slice(-6).toUpperCase()}`}</p>
                       </td>
                       <td className="py-2.5 text-right font-medium text-gray-900">
                         {INR(o.amountCollected ?? 0)}
