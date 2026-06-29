@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { api } from '@/lib/api';
+import { getApiError } from '@/lib/api-error';
 import { formatCurrency, getProductTotalStock, useDebouncedValue } from '@/lib/utils';
 import { Product, Category } from '@/types';
 
@@ -113,8 +114,7 @@ export default function ProductsPage() {
       toast({ title: `Category updated for ${data.modifiedCount} product(s).` });
     },
     onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      toast({ title: `Failed to update category: ${msg}`, variant: 'destructive' });
+      toast({ title: 'Failed to update category', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
     },
   });
 
@@ -126,8 +126,7 @@ export default function ProductsPage() {
       toast({ title: `Deleted ${data.deletedCount} product(s).` });
     },
     onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      toast({ title: `Failed to delete products: ${msg}`, variant: 'destructive' });
+      toast({ title: 'Failed to delete products', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
     },
   });
 
@@ -305,7 +304,7 @@ export default function ProductsPage() {
                 </div>
                 <h3 className="text-sm font-medium">Unable to load products</h3>
                 <p className="text-sm text-muted-foreground max-w-sm mb-4">
-                  {error instanceof Error ? error.message : 'Check your connection.'}
+                  {getApiError(error, 'Check your connection.')}
                 </p>
                 <Button variant="outline" onClick={() => refetch()}>Try again</Button>
               </div>

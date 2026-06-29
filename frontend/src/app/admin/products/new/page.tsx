@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useDebouncedValue } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
-import axios from 'axios';
+import { getApiError } from '@/lib/api-error';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { ArrowLeft, X, Upload, AlertCircle, Plus, ChevronUp, ChevronDown, Video, Globe, Leaf, AlertTriangle, Link2, ShoppingBag, FileText } from 'lucide-react';
 import Link from 'next/link';
@@ -92,13 +92,7 @@ export default function NewProductPage() {
     mutationFn: (data: Parameters<typeof api.createProduct>[0]) => api.createProduct(data),
     onSuccess: () => router.push('/admin/products'),
     onError: (error: unknown) => {
-      if (axios.isAxiosError(error)) {
-        const data = error.response?.data as { message?: string | string[] } | undefined;
-        const msg = data?.message ? (Array.isArray(data.message) ? data.message.join(', ') : data.message) : error.message;
-        setSubmitError(msg || 'Failed to create product.');
-      } else {
-        setSubmitError(error instanceof Error ? error.message : 'Failed to create product.');
-      }
+      setSubmitError(getApiError(error, 'Failed to create product.'));
     },
   });
 

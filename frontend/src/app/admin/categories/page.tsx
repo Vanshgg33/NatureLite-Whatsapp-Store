@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, FolderTree, Image as ImageIcon } from 'lucide-react';
 import { api } from '@/lib/api';
+import { getApiError } from '@/lib/api-error';
 import { Category, CreateCategoryDto } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -72,8 +73,7 @@ export default function CategoriesPage() {
       closeDialog();
     },
     onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      toast({ title: `Failed to create category: ${msg}`, variant: 'destructive' });
+      toast({ title: 'Failed to create category', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
     },
   });
 
@@ -85,8 +85,7 @@ export default function CategoriesPage() {
       closeDialog();
     },
     onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      toast({ title: `Failed to update category: ${msg}`, variant: 'destructive' });
+      toast({ title: 'Failed to update category', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
     },
   });
 
@@ -97,8 +96,7 @@ export default function CategoriesPage() {
       setDeleteConfirm(null);
     },
     onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      toast({ title: `Failed to delete category: ${msg}`, variant: 'destructive' });
+      toast({ title: 'Failed to delete category', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
     },
   });
 
@@ -158,8 +156,7 @@ export default function CategoriesPage() {
       setFormData((prev) => ({ ...prev, image: result.secureUrl }));
       toast({ title: 'Image uploaded', description: 'Click Save to apply.' });
     } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Unknown error';
-      toast({ title: `Image upload failed: ${msg}`, variant: 'destructive' });
+      toast({ title: 'Image upload failed', description: getApiError(error, 'Please try again.'), variant: 'destructive' });
     } finally {
       setIsUploadingImage(false);
     }

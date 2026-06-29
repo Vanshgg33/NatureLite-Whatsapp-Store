@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { getApiError } from '@/lib/api-error';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BadgeCheck,
@@ -59,7 +60,7 @@ export default function UcmPage() {
     onError: (error: unknown) => {
       toast({
         title: 'Save failed',
-        description: error instanceof Error ? error.message : 'Could not save UCM settings.',
+        description: getApiError(error, 'Could not save UCM settings.'),
         variant: 'destructive',
       });
     },
@@ -78,7 +79,7 @@ export default function UcmPage() {
     onError: (error: unknown) => {
       toast({
         title: 'Pull failed',
-        description: error instanceof Error ? error.message : 'Unable to pull catalog right now.',
+        description: getApiError(error, 'Unable to pull catalog right now.'),
         variant: 'destructive',
       });
     },
@@ -97,7 +98,7 @@ export default function UcmPage() {
     onError: (error: unknown) => {
       toast({
         title: 'Push failed',
-        description: error instanceof Error ? error.message : 'Unable to push catalog right now.',
+        description: getApiError(error, 'Unable to push catalog right now.'),
         variant: 'destructive',
       });
     },
@@ -112,7 +113,7 @@ export default function UcmPage() {
     onError: (error: unknown) => {
       toast({
         title: 'Delete failed',
-        description: error instanceof Error ? error.message : 'Unable to delete catalog.',
+        description: getApiError(error, 'Unable to delete catalog.'),
         variant: 'destructive',
       });
     },

@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useRef, Fragment } from 'react';
 import { flushSync } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { getApiError } from '@/lib/api-error';
 import { motion } from 'framer-motion';
 import {
   DollarSign,
@@ -349,11 +350,10 @@ export default function AnalyticsPage() {
       setStockEdit(null);
       toast({ title: 'IMS analytics updated' });
     },
-    onError: (err: any) => {
-      const msg = err?.response?.data?.message || err?.message || 'Failed to update analytics';
+    onError: (err: unknown) => {
       toast({
         title: 'Error updating IMS analytics',
-        description: msg,
+        description: getApiError(err, 'Failed to update analytics'),
         variant: 'destructive',
       });
     },
@@ -381,11 +381,10 @@ export default function AnalyticsPage() {
       setRawEdit(null);
       toast({ title: 'Raw material analytics updated' });
     },
-    onError: (err: any) => {
-      const msg = err?.response?.data?.message || err?.message || 'Failed to update analytics';
+    onError: (err: unknown) => {
       toast({
         title: 'Error updating production analytics',
-        description: msg,
+        description: getApiError(err, 'Failed to update analytics'),
         variant: 'destructive',
       });
     },

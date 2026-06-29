@@ -276,7 +276,7 @@ export default function OrdersPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      toast({ title: 'Failed to generate PDF', description: err instanceof Error ? err.message : 'Please try again.', variant: 'destructive' });
+      toast({ title: 'Failed to generate PDF', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
     } finally {
       setBillLoadingId(null);
     }
@@ -291,8 +291,7 @@ export default function OrdersPage() {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       toast({ title: 'Invoice sent!', description: `Bill for ${order.orderNumber} sent to customer via WhatsApp.` });
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.message || (err instanceof Error ? err.message : 'Please try again.');
-      toast({ title: 'Failed to send invoice', description: msg, variant: 'destructive' });
+      toast({ title: 'Failed to send invoice', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
     } finally {
       setSendLoadingId(null);
     }

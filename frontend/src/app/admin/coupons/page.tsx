@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import axios from 'axios';
+import { getApiError } from '@/lib/api-error';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Pencil, Tag, AlertCircle } from 'lucide-react';
 import { Header } from '@/components/layout/header';
@@ -15,18 +15,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 
-/** Walk an axios error body → readable message; fall back to a generic one. */
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (axios.isAxiosError(error)) {
-    const data = error.response?.data as { message?: string | string[] } | undefined;
-    if (data?.message) {
-      return Array.isArray(data.message) ? data.message.join(', ') : data.message;
-    }
-    return error.message || fallback;
-  }
-  if (error instanceof Error && error.message) return error.message;
-  return fallback;
-}
 import {
   Table,
   TableBody,
@@ -90,7 +78,7 @@ export default function CouponsPage() {
     onError: (error: unknown) => {
       // Without this handler the dialog silently stays open and the admin
       // thinks nothing happened. Surface the actual backend reason instead.
-      setSubmitError(extractErrorMessage(error, 'Failed to create coupon.'));
+      setSubmitError(getApiError(error,'Failed to create coupon.'));
     },
   });
 
@@ -103,7 +91,7 @@ export default function CouponsPage() {
       toast({ title: 'Coupon updated' });
     },
     onError: (error: unknown) => {
-      setSubmitError(extractErrorMessage(error, 'Failed to update coupon.'));
+      setSubmitError(getApiError(error,'Failed to update coupon.'));
     },
   });
 
@@ -116,7 +104,7 @@ export default function CouponsPage() {
     },
     onError: (error: unknown) => {
       toast({
-        title: extractErrorMessage(error, 'Failed to delete coupon.'),
+        title: getApiError(error,'Failed to delete coupon.'),
         variant: 'destructive',
       });
     },
@@ -140,7 +128,7 @@ export default function CouponsPage() {
     onError: (error: unknown, _vars, ctx) => {
       if (ctx?.previous) queryClient.setQueryData(['coupons', page], ctx.previous);
       toast({
-        title: extractErrorMessage(error, 'Failed to update status.'),
+        title: getApiError(error,'Failed to update status.'),
         variant: 'destructive',
       });
     },

@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
+import { getApiError } from '@/lib/api-error';
 import { useToast } from '@/components/ui/use-toast';
 import { User, CampaignRecord } from '@/types';
 
@@ -193,8 +194,8 @@ export default function CampaignsPage() {
         clearImage(); setCaption('');
       }
     },
-    onError: (err: Error) => {
-      toast({ title: 'Failed', description: err.message, variant: 'destructive' });
+    onError: (err: unknown) => {
+      toast({ title: 'Failed', description: getApiError(err, 'Could not send campaign.'), variant: 'destructive' });
     },
   });
 

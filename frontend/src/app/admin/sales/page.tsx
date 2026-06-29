@@ -5,6 +5,7 @@ import { useDebouncedValue } from '@/lib/utils';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Receipt, Plus, Search, ShoppingBag, Trash2, Camera, Upload, X, Bell, Pencil, FileText, Printer, Download, Send, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { getApiError } from '@/lib/api-error';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { captureInvoicePdf, billFilename, base64ToBlob } from '@/lib/bill-pdf';
 import { useToast } from '@/components/ui/use-toast';
@@ -631,9 +632,8 @@ export default function SalesPage() {
       queryClient.invalidateQueries({ queryKey: ['due-reminders'] });
       toast({ title: 'Sale logged', description: `Sale ${sale.saleNumber} recorded successfully.` });
     },
-    onError: (err) => {
-      const msg = (err as any)?.response?.data?.message || (err instanceof Error ? err.message : 'Please try again.');
-      toast({ title: 'Failed to log sale', description: msg, variant: 'destructive' });
+    onError: (err: unknown) => {
+      toast({ title: 'Failed to log sale', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
     },
   });
 
@@ -671,9 +671,8 @@ export default function SalesPage() {
       setEditingSaleId(null);
       setEditingSaleStoreId(null);
     },
-    onError: (err) => {
-      const msg = (err as any)?.response?.data?.message || (err instanceof Error ? err.message : 'Please try again.');
-      toast({ title: 'Failed to update sale', description: msg, variant: 'destructive' });
+    onError: (err: unknown) => {
+      toast({ title: 'Failed to update sale', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
     },
   });
 
@@ -722,8 +721,8 @@ export default function SalesPage() {
       a.download = billFilename(sale.saleNumber);
       a.click();
       URL.revokeObjectURL(url);
-    } catch (err) {
-      toast({ title: 'Failed to generate PDF', description: err instanceof Error ? err.message : 'Please try again.', variant: 'destructive' });
+    } catch (err: unknown) {
+      toast({ title: 'Failed to generate PDF', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
     } finally {
       setBillLoadingId(null);
     }
@@ -742,8 +741,7 @@ export default function SalesPage() {
       queryClient.invalidateQueries({ queryKey: ['store-sales'] });
       toast({ title: 'Invoice sent!', description: `Bill for ${sale.saleNumber} sent to customer via WhatsApp.` });
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.message || (err instanceof Error ? err.message : 'Please try again.');
-      toast({ title: 'Failed to send invoice', description: msg, variant: 'destructive' });
+      toast({ title: 'Failed to send invoice', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
     } finally {
       setSendLoadingId(null);
     }

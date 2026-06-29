@@ -7,6 +7,7 @@ import { Mail, Lock, ArrowRight, ShieldCheck, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
+import { getApiError } from '@/lib/api-error';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { AuthBrandingPanel } from '@/components/admin/auth-branding-panel';
 
@@ -54,9 +55,8 @@ export default function AdminLoginPage() {
       } else {
         router.push('/admin/dashboard');
       }
-    } catch (err) {
-      const msg = (err as { response?: { data?: { message?: string } } }).response?.data?.message;
-      setError(msg || 'Invalid email or password');
+    } catch (err: unknown) {
+      setError(getApiError(err, 'Invalid email or password'));
     } finally {
       setLoading(false);
     }

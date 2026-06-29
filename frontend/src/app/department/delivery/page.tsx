@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { getApiError } from '@/lib/api-error';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
 import {
@@ -478,7 +479,7 @@ export default function DeliveryDashboardPage() {
       setShowConfirm(false);
       toast({
         title: 'Update failed',
-        description: err instanceof Error ? err.message : 'Please try again.',
+        description: getApiError(err, 'Please try again.'),
         variant: 'destructive',
       });
     },

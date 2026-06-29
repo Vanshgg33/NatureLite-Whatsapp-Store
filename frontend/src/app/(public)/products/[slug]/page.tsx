@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { getApiError } from '@/lib/api-error';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import Image from 'next/image';
@@ -234,10 +235,7 @@ export default function ProductDetailPage() {
       setReviewMessage(''); setReviewRating(5); setShowReviewForm(false);
       refetchReviews();
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        'Failed to submit review. Please try again.';
-      toast({ title: 'Could not submit review', description: msg, variant: 'destructive' });
+      toast({ title: 'Could not submit review', description: getApiError(err, 'Failed to submit review. Please try again.'), variant: 'destructive' });
     } finally {
       setSubmittingReview(false);
     }

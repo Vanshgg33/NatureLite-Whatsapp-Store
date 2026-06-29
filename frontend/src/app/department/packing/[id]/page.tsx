@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, AlertTriangle, CheckCircle2, Package, Phone, MapPin } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { getApiError } from '@/lib/api-error';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
@@ -42,10 +43,10 @@ export default function PackingDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['department', 'packing', 'orders'] });
       toast({ title: 'Order packed!', description: 'Ready to assign delivery boy.' });
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       toast({
         title: 'Failed to mark packed',
-        description: err?.response?.data?.message || 'Please try again.',
+        description: getApiError(err, 'Please try again.'),
         variant: 'destructive',
       });
     },

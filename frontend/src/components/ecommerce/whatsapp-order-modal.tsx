@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { getApiError } from '@/lib/api-error';
 
 const WHATSAPP_NUMBER = '918817200740';
 const DEFAULT_CITY = 'Raipur';
@@ -97,8 +98,7 @@ export function WhatsAppOrderModal({ items, total, onClose }: Props) {
       window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`, '_blank');
       onClose();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
-      setError(msg);
+      setError(getApiError(err, 'Something went wrong. Please try again.'));
     } finally {
       setSubmitting(false);
     }

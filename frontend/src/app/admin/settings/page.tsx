@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { api } from '@/lib/api';
+import { getApiError } from '@/lib/api-error';
 import { useToast } from '@/components/ui/use-toast';
 
 export default function SettingsPage() {
@@ -357,8 +358,7 @@ function ResetMetricsCard() {
       setConfirmText('');
     },
     onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      toast({ title: 'Reset failed', description: msg || 'Check that the backend is running and try again.', variant: 'destructive' });
+      toast({ title: 'Reset failed', description: getApiError(err, 'Check that the backend is running and try again.'), variant: 'destructive' });
     },
   });
 
@@ -374,8 +374,7 @@ function ResetMetricsCard() {
       setConfirmText('');
     },
     onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      toast({ title: 'Reset failed', description: msg || 'Check that the backend is running and try again.', variant: 'destructive' });
+      toast({ title: 'Reset failed', description: getApiError(err, 'Check that the backend is running and try again.'), variant: 'destructive' });
     },
   });
 
@@ -494,10 +493,9 @@ function ChangePasswordCard() {
       setConfirmPassword('');
     },
     onError: (error: unknown) => {
-      const msg = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
       toast({
         title: 'Failed to change password',
-        description: msg || 'Please check your current password',
+        description: getApiError(error, 'Please check your current password'),
         variant: 'destructive',
       });
     },

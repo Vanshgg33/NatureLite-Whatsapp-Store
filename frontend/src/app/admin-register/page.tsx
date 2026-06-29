@@ -8,6 +8,7 @@ import { User, Mail, Lock, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
+import { getApiError } from '@/lib/api-error';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { AuthBrandingPanel } from '@/components/admin/auth-branding-panel';
 
@@ -47,8 +48,7 @@ export default function AdminRegisterPage() {
       });
       router.push('/admin/dashboard');
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setError(msg || 'Registration failed. Please try again.');
+      setError(getApiError(err, 'Registration failed. Please try again.'));
     } finally {
       setLoading(false);
     }

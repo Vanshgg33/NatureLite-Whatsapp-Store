@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { KeyRound, Plus, Trash2, Eye, EyeOff, Check, X, Pencil } from 'lucide-react';
 import { api } from '@/lib/api';
+import { getApiError } from '@/lib/api-error';
 import type { AdminUser } from '@/types';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -116,10 +117,10 @@ export default function AdminLoginsPage() {
       setDepartmentType('none');
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
     },
-    onError: (err) => {
+    onError: (err: unknown) => {
       toast({
         title: 'Failed to create login',
-        description: err instanceof Error ? err.message : 'Please check details and try again.',
+        description: getApiError(err, 'Please check details and try again.'),
         variant: 'destructive',
       });
     },

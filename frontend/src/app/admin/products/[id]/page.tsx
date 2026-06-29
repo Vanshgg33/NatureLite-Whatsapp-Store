@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useDebouncedValue } from '@/lib/utils';
 import { useRouter, useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import axios from 'axios';
+import { getApiError } from '@/lib/api-error';
 import { ArrowLeft, X, Upload, Trash2, AlertCircle, Plus, ChevronUp, ChevronDown, Video, Globe, Leaf, AlertTriangle, Link2, ShoppingBag, FileText } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -24,15 +24,6 @@ import type { NutritionalFactRow, Product } from '@/types';
 type VariantRow = { name: string; sku: string; price: string; compareAtPrice: string; stock: string; images: string[] };
 type NutritionRow = NutritionalFactRow;
 
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (axios.isAxiosError(error)) {
-    const data = error.response?.data as { message?: string | string[] } | undefined;
-    if (data?.message) return Array.isArray(data.message) ? data.message.join(', ') : data.message;
-    return error.message || fallback;
-  }
-  if (error instanceof Error && error.message) return error.message;
-  return fallback;
-}
 
 function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
@@ -182,7 +173,7 @@ export default function EditProductPage() {
   const updateMutation = useMutation({
     mutationFn: (data: Parameters<typeof api.updateProduct>[1]) => api.updateProduct(productId, data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['product', productId] }); queryClient.invalidateQueries({ queryKey: ['products'] }); router.push('/admin/products'); },
-    onError: (error: Error) => setSubmitError(extractErrorMessage(error, 'Failed to update product.')),
+    onError: (error: unknown) => setSubmitError(getApiError(error, 'Failed to update product.')),
   });
 
   const deleteMutation = useMutation({
@@ -205,7 +196,7 @@ export default function EditProductPage() {
           setImageAlts((prev) => [...prev, '']);
         }
       }
-    } catch (error) { setSubmitError(extractErrorMessage(error, 'Image upload failed.')); }
+    } catch (error) { setSubmitError(getApiError(error, 'Image upload failed.')); }
     finally { setUploading(false); e.target.value = ''; }
   };
 
@@ -335,7 +326,7 @@ export default function EditProductPage() {
       const result = await api.uploadDocument(file, 'lab-reports');
       setLabReportUrl(result.secureUrl);
     } catch (error) {
-      setSubmitError(extractErrorMessage(error, 'Lab report upload failed.'));
+      setSubmitError(getApiError(error, 'Lab report upload failed.'));
     } finally {
       setLabReportUploading(false);
       e.target.value = '';
