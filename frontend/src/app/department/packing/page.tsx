@@ -20,6 +20,7 @@ export default function PackingDashboardPage() {
   const { user } = useAdminAuthStore();
   const { toast } = useToast();
   const [selectedRider, setSelectedRider] = useState<Record<string, string>>({});
+  const [search, setSearch] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['department', 'packing', 'orders'],
@@ -34,7 +35,16 @@ export default function PackingDashboardPage() {
   });
 
   const activeRiders = useMemo(() => deliveryStaff.filter((s) => s.isActive), [deliveryStaff]);
-  const orders = useMemo(() => data?.items ?? [], [data]) as Order[];
+  const allOrders = useMemo(() => data?.items ?? [], [data]) as Order[];
+  const orders = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return allOrders;
+    return allOrders.filter((o) =>
+      o.shippingAddress.name.toLowerCase().includes(q) ||
+      o.shippingAddress.phone?.includes(q) ||
+      o.orderNumber?.toLowerCase().includes(q),
+    );
+  }, [allOrders, search]);
 
   const assignDelivery = useMutation({
     mutationFn: ({ orderId, riderId }: { orderId: string; riderId: string }) => {
@@ -69,6 +79,9 @@ export default function PackingDashboardPage() {
         title="Packing"
         description="Review orders before packing."
         icon={<Package className="h-5 w-5 text-emerald-600" />}
+        searchValue={search}
+        onSearch={setSearch}
+        searchPlaceholder="Search by name, phone, order…"
       />
 
       <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-3">
@@ -78,7 +91,9 @@ export default function PackingDashboardPage() {
           </div>
         )}
         {!isLoading && orders.length === 0 && (
-          <div className="text-center text-sm text-gray-500 py-12">No orders in the packing queue.</div>
+          <div className="text-center text-sm text-gray-500 py-12">
+            {search.trim() ? `No orders matching "${search}".` : 'No orders in the packing queue.'}
+          </div>
         )}
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
