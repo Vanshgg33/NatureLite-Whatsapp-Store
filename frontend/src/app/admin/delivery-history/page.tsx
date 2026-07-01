@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Order, DeliveryLedgerRow } from '@/types';
@@ -63,10 +64,25 @@ function SummaryCard({
 }
 
 export default function DeliveryHistoryPage() {
-  const [startDate, setStartDate] = useState(() => format(startOfDay(new Date()), 'yyyy-MM-dd'));
-  const [endDate, setEndDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
-  const [search, setSearch] = useState('');
-  const [selectedBoyId, setSelectedBoyId] = useState('');
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const today = format(startOfDay(new Date()), 'yyyy-MM-dd');
+  const startDate = searchParams.get('from') ?? today;
+  const endDate = searchParams.get('to') ?? format(new Date(), 'yyyy-MM-dd');
+  const search = searchParams.get('q') ?? '';
+  const selectedBoyId = searchParams.get('boy') ?? '';
+
+  const setParam = useCallback((key: string, value: string) => {
+    const p = new URLSearchParams(searchParams.toString());
+    if (value) p.set(key, value); else p.delete(key);
+    router.replace(`?${p.toString()}`, { scroll: false });
+  }, [router, searchParams]);
+
+  const setStartDate = (v: string) => setParam('from', v);
+  const setEndDate = (v: string) => setParam('to', v);
+  const setSearch = (v: string) => setParam('q', v);
+  const setSelectedBoyId = (v: string) => setParam('boy', v);
 
   const startIso = `${startDate}T00:00:00`;
   const endIso = `${endDate}T23:59:59`;
