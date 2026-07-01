@@ -1,8 +1,7 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import Link from 'next/link';
 import { ArrowLeft, FileText, Camera, Banknote } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -13,6 +12,7 @@ import { formatCurrency, formatDate, getStatusColor } from '@/lib/utils';
 
 export default function AdminOrderDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const orderId = params.id as string;
 
   const { data: order, isLoading } = useQuery({
@@ -32,11 +32,9 @@ export default function AdminOrderDetailPage() {
     return (
       <div className="p-6">
         <p className="text-muted-foreground">Order not found.</p>
-        <Link href="/admin/orders">
-          <Button variant="outline" className="mt-4">
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back
-          </Button>
-        </Link>
+        <Button variant="outline" className="mt-4" onClick={() => router.back()}>
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back
+        </Button>
       </div>
     );
   }
@@ -56,11 +54,9 @@ export default function AdminOrderDetailPage() {
             >
               <FileText className="mr-2 h-4 w-4" /> Generate GST Invoice
             </Button>
-            <Link href="/admin/orders">
-              <Button variant="outline">
-                <ArrowLeft className="mr-2 h-4 w-4" /> Back
-              </Button>
-            </Link>
+            <Button variant="outline" onClick={() => router.back()}>
+              <ArrowLeft className="mr-2 h-4 w-4" /> Back
+            </Button>
           </div>
         }
       />
