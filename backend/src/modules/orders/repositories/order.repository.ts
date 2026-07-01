@@ -68,10 +68,14 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
       forBilling,
       forDelivery,
       deliveryUserId,
+      city,
     } = query;
     const filter: Record<string, unknown> = {};
     if (isValidObjectIdString(userId)) {
       filter.user = parseObjectId(userId, 'userId');
+    }
+    if (city?.trim()) {
+      filter['shippingAddress.city'] = { $regex: city.trim(), $options: 'i' };
     }
     if (forPacking) {
       filter.$or = [

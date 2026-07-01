@@ -728,6 +728,7 @@ class ApiClient {
     forPacking?: boolean;
     forBilling?: boolean;
     forDelivery?: boolean;
+    city?: string;
   }): Promise<PaginatedResponse<Order>> {
     const { customerId, userId, ...rest } = params;
     const query = { ...rest, userId: userId ?? customerId };

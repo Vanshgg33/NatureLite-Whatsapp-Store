@@ -260,6 +260,10 @@ export class OrderQueryDto {
   @IsString()
   @IsOptional()
   deliveryUserId?: string;
+
+  @IsString()
+  @IsOptional()
+  city?: string;
 }
 
 export class AssignDeliveryDto {

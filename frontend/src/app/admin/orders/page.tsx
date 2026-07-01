@@ -98,8 +98,9 @@ export default function OrdersPage() {
 
   // List state
   const [search, setSearch] = useState('');
-  const debouncedSearch = useDebouncedValue(search, 300);
+  const debouncedSearch = useDebouncedValue(search, 250);
   const [status, setStatus] = useState('');
+  const [cityFilter, setCityFilter] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [page, setPage] = useState(1);
@@ -163,19 +164,23 @@ export default function OrdersPage() {
   const debouncedEditProductSearch = useDebouncedValue(editProductSearch, 300);
 
   const { data: ordersData, isLoading, isFetching } = useQuery({
-    queryKey: ['orders', page, debouncedSearch, status, startDate, endDate],
+    queryKey: ['orders', page, debouncedSearch, status, cityFilter, startDate, endDate],
     queryFn: () =>
       api.getOrders({
         page,
         limit: 20,
         search: debouncedSearch,
         status: (status || undefined) as OrderStatus | undefined,
+        city: cityFilter || undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
         sortBy: 'updatedAt',
         sortOrder: 'desc',
       }),
     placeholderData: (prev) => prev,
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: productSearchResults = [] } = useQuery({
@@ -441,24 +446,31 @@ export default function OrdersPage() {
         {/* Top bar with Create Order button */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground whitespace-nowrap">Store City:</span>
+            <span className="text-xs text-muted-foreground whitespace-nowrap">City:</span>
             <select
-              className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+              className={`h-9 rounded-md border px-3 py-1 text-sm font-medium transition-colors ${cityFilter ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : 'border-input bg-background'}`}
               value={selectedStore}
               onChange={(e) => {
                 const city = e.target.value;
                 setSelectedStore(city);
+                setCityFilter(city);
+                setPage(1);
                 if (city === 'Raipur') { setAddrCity('Raipur'); setAddrState('Chhattisgarh'); }
                 else if (city === 'Bhilai') { setAddrCity('Bhilai'); setAddrState('Chhattisgarh'); }
                 else if (city === 'Durg') { setAddrCity('Durg'); setAddrState('Chhattisgarh'); }
                 else { setAddrCity(''); setAddrState('Chhattisgarh'); }
               }}
             >
-              <option value="">Select City</option>
+              <option value="">All Cities</option>
               <option value="Raipur">Raipur</option>
               <option value="Bhilai">Bhilai</option>
               <option value="Durg">Durg</option>
             </select>
+            {cityFilter && (
+              <span className="text-xs text-emerald-700 font-semibold bg-emerald-100 px-2 py-0.5 rounded-full">
+                {ordersData?.total ?? '…'} orders
+              </span>
+            )}
           </div>
           <Button onClick={() => setShowCreate(true)}>
             <Plus className="mr-2 h-4 w-4" />
@@ -475,7 +487,7 @@ export default function OrdersPage() {
                   type="search"
                   placeholder="Search by order # or phone..."
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                   className="pl-9"
                 />
               </div>
@@ -486,6 +498,7 @@ export default function OrdersPage() {
                   <select
                     value={status}
                     onChange={(e) => { setStatus(e.target.value); setPage(1); }}
+
                     className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none"
                   >
                     {statusOptions.map((option) => (
