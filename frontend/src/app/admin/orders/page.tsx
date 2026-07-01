@@ -159,6 +159,7 @@ export default function OrdersPage() {
   // Edit order — product cart state + discount
   const [editCart, setEditCart] = useState<CartItem[]>([]);
   const [editDiscount, setEditDiscount] = useState('0');
+  const [editDiscountIsPercent, setEditDiscountIsPercent] = useState(false);
   const [editProductSearch, setEditProductSearch] = useState('');
   const [editProductDropdownOpen, setEditProductDropdownOpen] = useState(false);
   const debouncedEditProductSearch = useDebouncedValue(editProductSearch, 300);
@@ -174,7 +175,7 @@ export default function OrdersPage() {
         city: cityFilter || undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
-        sortBy: 'updatedAt',
+        sortBy: 'createdAt',
         sortOrder: 'desc',
       }),
     placeholderData: (prev) => prev,
@@ -400,6 +401,7 @@ export default function OrdersPage() {
     setEditShipPincode(order.shippingAddress?.pincode || '');
     setEditError('');
     setEditDiscount(String(order.discount ?? 0));
+    setEditDiscountIsPercent(false);
     setEditProductSearch('');
     setEditCart(
       (order.items || []).map((item) => ({
@@ -430,10 +432,12 @@ export default function OrdersPage() {
           landmark: editShipLandmark.trim() || undefined,
           city: editShipCity.trim(),
           state: editShipState.trim(),
-          pincode: editShipPincode.trim(),
+          pincode: editShipPincode.trim() || undefined,
         },
-        items: editCart.map((i) => ({ productId: i.productId, variantSku: i.variantSku, quantity: i.quantity })),
-        discount: parseFloat(editDiscount) || 0,
+        items: editCart.map((i) => ({ productId: i.productId, variantSku: i.variantSku || undefined, quantity: i.quantity })),
+        discount: editDiscountIsPercent
+          ? editCart.reduce((s, i) => s + i.price * i.quantity, 0) * (Math.min(parseFloat(editDiscount) || 0, 100) / 100)
+          : (parseFloat(editDiscount) || 0),
       },
     });
   }
@@ -1289,7 +1293,9 @@ export default function OrdersPage() {
                   ))}
                   {(() => {
                     const editSubtotal = editCart.reduce((s, i) => s + i.price * i.quantity, 0);
-                    const editDiscountAmt = parseFloat(editDiscount) || 0;
+                    const editDiscountAmt = editDiscountIsPercent
+                      ? editSubtotal * (Math.min(parseFloat(editDiscount) || 0, 100) / 100)
+                      : (parseFloat(editDiscount) || 0);
                     const editTotal = Math.max(0, editSubtotal - editDiscountAmt);
                     return (
                       <div className="space-y-1 px-3 py-2 bg-muted/30 text-sm">
@@ -1299,7 +1305,7 @@ export default function OrdersPage() {
                         </div>
                         {editDiscountAmt > 0 && (
                           <div className="flex justify-between text-red-600">
-                            <span>Discount</span>
+                            <span>Discount{editDiscountIsPercent ? ` (${parseFloat(editDiscount) || 0}%)` : ''}</span>
                             <span>-₹{editDiscountAmt.toLocaleString()}</span>
                           </div>
                         )}
@@ -1315,17 +1321,27 @@ export default function OrdersPage() {
 
               {/* Discount */}
               <div>
-                <label className="text-sm font-medium block mb-1">Discount (₹)</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-sm font-medium">Discount</label>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-muted-foreground">₹</span>
+                    <Switch checked={editDiscountIsPercent} onCheckedChange={setEditDiscountIsPercent} />
+                    <span className="text-xs text-muted-foreground">%</span>
+                  </div>
+                </div>
                 <div className="relative">
                   <Input
                     type="number"
                     min="0"
+                    max={editDiscountIsPercent ? 100 : undefined}
                     value={editDiscount}
                     onChange={(e) => setEditDiscount(e.target.value)}
                     placeholder="0"
                     className="pr-7"
                   />
-                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">₹</span>
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
+                    {editDiscountIsPercent ? '%' : '₹'}
+                  </span>
                 </div>
               </div>
             </div>

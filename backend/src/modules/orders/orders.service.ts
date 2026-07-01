@@ -1258,6 +1258,7 @@ export class OrdersService implements OnModuleInit {
         ...((order.shippingAddress as any).toObject?.() || order.shippingAddress),
         ...dto.shippingAddress,
       };
+      order.markModified('shippingAddress');
     }
 
     if (dto.items && dto.items.length > 0) {
