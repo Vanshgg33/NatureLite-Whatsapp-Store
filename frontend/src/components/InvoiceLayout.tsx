@@ -85,6 +85,7 @@ export type InvoiceAmountRow = {
   label: string;
   val: string;
   bold?: boolean;
+  negative?: boolean;
 };
 
 export type InvoiceData = {
@@ -276,10 +277,12 @@ export default function InvoiceLayout({ data, invoiceRef, onPrint, onDownload, d
                       </tr>
                     </thead>
                     <tbody>
-                      {amountRows.map(({ label, val, bold }) => (
-                        <tr key={label}>
-                          <td style={{ ...TD, textAlign: 'left', fontWeight: bold ? 700 : 400 }}>{label}</td>
-                          <td style={{ ...TD, textAlign: 'right', fontWeight: bold ? 700 : 400 }}>₹ {val}</td>
+                      {amountRows.map(({ label, val, bold, negative }) => (
+                        <tr key={label} style={negative ? { background: '#fff5f5' } : undefined}>
+                          <td style={{ ...TD, textAlign: 'left', fontWeight: bold ? 700 : 400, color: negative ? '#dc2626' : undefined }}>{label}</td>
+                          <td style={{ ...TD, textAlign: 'right', fontWeight: bold ? 700 : 400, color: negative ? '#dc2626' : undefined }}>
+                            {negative ? '- ₹ ' : '₹ '}{val}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

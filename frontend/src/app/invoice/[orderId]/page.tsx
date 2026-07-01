@@ -127,6 +127,8 @@ function OrderInvoiceInner() {
   const invoiceNo = `NLF-${String(fyStart).slice(2)}-${String(fyStart + 1).slice(2)}/${order.orderNumber}`;
   const stateCode = addr.state ? (STATE_CODES[addr.state] ?? '') : '';
   const placeOfSupply = addr.state ? `${stateCode ? stateCode + '-' : ''}${addr.state}` : `${SELLER_STATE_CODE}-${SELLER_STATE}`;
+  const subtotal = order.subtotal ?? 0;
+  const discount = order.discount ?? 0;
   const shippingCharge = order.shippingCharge ?? 0;
   const total = order.total ?? 0;
   const isPaid = order.paymentStatus === 'paid';
@@ -212,7 +214,9 @@ function OrderInvoiceInner() {
     items: invoiceItems,
     taxRows: Array.from(taxGroups.entries()).sort((a, b) => b[0] - a[0]).map(([rate, { taxable, cgst, sgst }]) => ({ rate, taxable, cgst, sgst })),
     amountRows: [
-      { label: 'Sub Total', val: INR(total) },
+      { label: 'Sub Total', val: INR(subtotal) },
+      ...(shippingCharge > 0 ? [{ label: 'Shipping Charge', val: INR(shippingCharge) }] : []),
+      ...(discount > 0 ? [{ label: 'Discount', val: INR(discount), negative: true }] : []),
       { label: 'Total', val: INR(total), bold: true },
       { label: 'Advance', val: INR(advance) },
       { label: 'Balance', val: INR(balance) },
