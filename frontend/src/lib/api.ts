@@ -764,6 +764,11 @@ class ApiClient {
     return response.data.data;
   }
 
+  async assignDeliveryRider(orderId: string, deliveryUserId: string): Promise<Order> {
+    const response = await this.client.put<ApiResponse<Order>>(`/orders/${orderId}/assign-delivery`, { deliveryUserId });
+    return response.data.data;
+  }
+
   async updateOrder(id: string, data: UpdateOrderDto): Promise<Order> {
     const response = await this.client.put<ApiResponse<Order>>(`/orders/${id}`, data);
     return response.data.data;

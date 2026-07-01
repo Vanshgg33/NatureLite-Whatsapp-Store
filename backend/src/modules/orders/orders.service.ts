@@ -358,8 +358,8 @@ export class OrdersService implements OnModuleInit {
       const gstTotal = orderItems.reduce((sum, item) => sum + item.gstAmount, 0);
       const shippingCharge = subtotal >= freeShippingThreshold ? 0 : defaultShippingCharge;
 
-      // Base total before applying wallet (subtotal - discount + GST + shipping)
-      const totalBeforeWallet = subtotal - discount + gstTotal + shippingCharge;
+      // GST is included in product prices (MRP pricing) — gstTotal is informational only
+      const totalBeforeWallet = subtotal - discount + shippingCharge;
 
       // Handle wallet usage (amount provided in rupees) — only with prepaid payments
       let walletUsedPaise = 0;
@@ -1354,6 +1354,7 @@ export class OrdersService implements OnModuleInit {
 
       order.items = newItems as any;
       order.subtotal = newSubtotal;
+      order.gstTotal = newItems.reduce((sum, item) => sum + item.gstAmount, 0);
       // Apply updated discount if provided alongside item changes, else keep existing
       const effectiveDiscount = dto.discount != null ? Math.min(dto.discount, newSubtotal) : (order.discount || 0);
       order.discount = effectiveDiscount;
