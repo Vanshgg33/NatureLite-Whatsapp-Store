@@ -92,6 +92,32 @@ export class TimelineEntry {
 
 export const TimelineEntrySchema = SchemaFactory.createForClass(TimelineEntry);
 
+@Schema({ _id: false })
+export class EditChange {
+  @Prop({ required: true, enum: ['qty_changed', 'item_added', 'item_removed'] })
+  type: string;
+
+  @Prop({ required: true })
+  productId: string;
+
+  @Prop({ required: true })
+  name: string;
+
+  @Prop()
+  variantSku?: string;
+
+  @Prop()
+  variantName?: string;
+
+  @Prop()
+  oldQty?: number;
+
+  @Prop()
+  newQty?: number;
+}
+
+export const EditChangeSchema = SchemaFactory.createForClass(EditChange);
+
 @Schema({ timestamps: true })
 export class Order {
   _id: Types.ObjectId;
@@ -193,6 +219,12 @@ export class Order {
 
   @Prop()
   packedByName?: string;
+
+  @Prop({ default: false })
+  repackRequired: boolean;
+
+  @Prop({ type: [EditChangeSchema], default: [] })
+  editChanges: EditChange[];
 
   @Prop()
   billedAt?: Date;

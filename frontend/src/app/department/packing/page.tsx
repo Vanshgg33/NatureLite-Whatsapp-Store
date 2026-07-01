@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Package, ArrowRight, Truck, CheckCircle2 } from 'lucide-react';
+import { Package, ArrowRight, Truck, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
 import { Header } from '@/components/layout/header';
@@ -38,12 +38,19 @@ export default function PackingDashboardPage() {
   const allOrders = useMemo(() => data?.items ?? [], [data]) as Order[];
   const orders = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return allOrders;
-    return allOrders.filter((o) =>
-      o.shippingAddress.name.toLowerCase().includes(q) ||
-      o.shippingAddress.phone?.includes(q) ||
-      o.orderNumber?.toLowerCase().includes(q),
-    );
+    const filtered = !q
+      ? allOrders
+      : allOrders.filter((o) =>
+          o.shippingAddress.name.toLowerCase().includes(q) ||
+          o.shippingAddress.phone?.includes(q) ||
+          o.orderNumber?.toLowerCase().includes(q),
+        );
+    // Repack-required orders always float to the top
+    return [...filtered].sort((a, b) => {
+      if (a.repackRequired && !b.repackRequired) return -1;
+      if (!a.repackRequired && b.repackRequired) return 1;
+      return 0;
+    });
   }, [allOrders, search]);
 
   const assignDelivery = useMutation({
@@ -99,11 +106,22 @@ export default function PackingDashboardPage() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {orders.map((order) => {
             const isPacked = !!order.packedAt;
+            const isRepack = !!order.repackRequired;
             const riderId = selectedRider[order._id] ?? '';
+            const editChanges = order.editChanges ?? [];
 
             return (
-              <Card key={order._id} className={`shadow-sm ${isPacked ? 'border-emerald-200' : 'border-gray-100'}`}>
+              <Card key={order._id} className={`shadow-sm ${isRepack ? 'border-2 border-orange-400 bg-orange-50' : isPacked ? 'border-emerald-200' : 'border-gray-100'}`}>
                 <CardContent className="p-4 space-y-3">
+
+                  {/* REPACK BANNER */}
+                  {isRepack && (
+                    <div className="flex items-center gap-2 bg-orange-500 text-white rounded-lg px-3 py-2 -mx-0 -mt-0">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      <span className="text-xs font-black uppercase tracking-wide">Order Edited — Repack Required</span>
+                    </div>
+                  )}
+
                   <div className="flex items-start justify-between gap-2">
                     {order.source ? (
                       <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none capitalize ${
@@ -122,7 +140,7 @@ export default function PackingDashboardPage() {
                       <Badge className={getStatusColor(order.status)}>
                         {order.status.replace(/_/g, ' ').toUpperCase()}
                       </Badge>
-                      {isPacked && (
+                      {isPacked && !isRepack && (
                         <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
                           <CheckCircle2 className="h-3 w-3" /> Packed
                         </span>
@@ -142,14 +160,48 @@ export default function PackingDashboardPage() {
                   </div>
 
                   <div className="border-t border-gray-50 pt-2 space-y-1">
-                    {order.items.map((item, idx) => (
-                      <div key={idx} className="flex justify-between text-xs text-gray-600 gap-2">
-                        <span className="truncate font-medium">
-                          {item.name}{item.variantName ? ` (${item.variantName})` : ''}
+                    {/* Removed items (no longer in order.items) */}
+                    {isRepack && editChanges.filter((c) => c.type === 'item_removed').map((c, idx) => (
+                      <div key={`removed-${idx}`} className="flex justify-between text-xs gap-2 bg-red-100 border border-red-300 rounded px-2 py-1">
+                        <span className="truncate font-medium text-red-700 line-through">
+                          {c.name}{c.variantName ? ` (${c.variantName})` : ''}
                         </span>
-                        <span className="shrink-0 font-bold text-gray-700">× {item.quantity}</span>
+                        <span className="shrink-0 font-bold text-red-600 line-through">× {c.oldQty}</span>
                       </div>
                     ))}
+                    {order.items.map((item, idx) => {
+                      const change = isRepack
+                        ? editChanges.find(
+                            (c) =>
+                              c.name === item.name &&
+                              (c.variantSku || '') === (item.variantSku || '') &&
+                              c.type !== 'item_removed',
+                          )
+                        : undefined;
+                      const isAdded = change?.type === 'item_added';
+                      const isQtyChanged = change?.type === 'qty_changed';
+                      return (
+                        <div
+                          key={idx}
+                          className={`flex justify-between text-xs gap-2 rounded px-2 py-1 ${
+                            isAdded
+                              ? 'bg-green-100 border border-green-300'
+                              : isQtyChanged
+                              ? 'bg-orange-100 border border-orange-300'
+                              : 'text-gray-600'
+                          }`}
+                        >
+                          <span className={`truncate font-medium ${isAdded ? 'text-green-700' : isQtyChanged ? 'text-orange-700' : ''}`}>
+                            {item.name}{item.variantName ? ` (${item.variantName})` : ''}
+                            {isAdded && <span className="ml-1 text-[9px] font-black bg-green-600 text-white rounded px-1 py-0.5">NEW</span>}
+                          </span>
+                          <span className={`shrink-0 font-bold ${isAdded ? 'text-green-700' : isQtyChanged ? 'text-orange-700' : 'text-gray-700'}`}>
+                            {isQtyChanged && <span className="line-through text-gray-400 mr-1">× {change.oldQty}</span>}
+                            × {item.quantity}
+                          </span>
+                        </div>
+                      );
+                    })}
                     <div className="flex items-center justify-between pt-1.5 border-t border-gray-50">
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${order.paymentMethod === 'cod' ? 'bg-orange-50 text-orange-700' : 'bg-green-50 text-green-700'}`}>
                         {order.paymentMethod === 'cod' ? 'COD' : 'PREPAID'}

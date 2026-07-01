@@ -3,7 +3,7 @@
 import { useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, AlertTriangle, CheckCircle2, Package, Phone, MapPin } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, CheckCircle2, Package, Phone, MapPin, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { getApiError } from '@/lib/api-error';
@@ -72,7 +72,9 @@ export default function PackingDetailPage() {
   }
 
   const isPacked = !!order.packedAt;
-  const canPack = !isPacked && ['placed', 'confirmed', 'preparing'].includes(order.status);
+  const isRepack = !!order.repackRequired;
+  const editChanges = order.editChanges ?? [];
+  const canPack = (!isPacked || isRepack) && ['placed', 'confirmed', 'preparing'].includes(order.status);
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
@@ -90,8 +92,19 @@ export default function PackingDetailPage() {
 
       <div className="flex-1 p-3 sm:p-5 max-w-xl mx-auto w-full space-y-4">
 
+        {/* REPACK REQUIRED Banner — highest priority, always shown first */}
+        {isRepack && (
+          <div className="bg-orange-500 border-2 border-orange-600 rounded-xl px-4 py-4 flex items-start gap-3">
+            <RefreshCw className="h-6 w-6 text-white shrink-0 mt-0.5" />
+            <div>
+              <p className="text-base font-black text-white uppercase tracking-wide">Order Edited — Repack Required</p>
+              <p className="text-sm text-orange-100 mt-0.5">Admin changed this order. Check highlighted items below and repack before dispatch.</p>
+            </div>
+          </div>
+        )}
+
         {/* CRM Update Banner */}
-        {orderUpdatedByCrm && (
+        {orderUpdatedByCrm && !isRepack && (
           <div className="bg-blue-50 border border-blue-300 rounded-xl px-4 py-3 flex items-center gap-3">
             <AlertTriangle className="h-5 w-5 text-blue-500 shrink-0" />
             <div>
@@ -101,8 +114,8 @@ export default function PackingDetailPage() {
           </div>
         )}
 
-        {/* Packed Confirmation Banner */}
-        {isPacked && (
+        {/* Packed Confirmation Banner — only show if fully packed and no repack pending */}
+        {isPacked && !isRepack && (
           <div className="bg-emerald-50 border-2 border-emerald-300 rounded-xl px-4 py-4 flex items-center gap-3">
             <CheckCircle2 className="h-7 w-7 text-emerald-500 shrink-0" />
             <div>
@@ -171,32 +184,100 @@ export default function PackingDetailPage() {
         )}
 
         {/* ── PRODUCTS TO PACK ────────────────────────────── */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
-            <Package className="h-4 w-4 text-emerald-600 shrink-0" />
+        <div className={`rounded-xl shadow-sm overflow-hidden ${isRepack ? 'border-2 border-orange-300' : 'bg-white'}`}>
+          <div className={`px-4 py-3 border-b flex items-center gap-2 ${isRepack ? 'bg-orange-50 border-orange-200' : 'bg-white border-gray-100'}`}>
+            <Package className={`h-4 w-4 shrink-0 ${isRepack ? 'text-orange-600' : 'text-emerald-600'}`} />
             <span className="font-black text-gray-800 text-sm uppercase tracking-wide">Products to Pack</span>
+            {isRepack && <span className="ml-auto text-[10px] font-black text-orange-600 uppercase">Check Changes Below</span>}
           </div>
-          <div className="divide-y divide-gray-50">
-            {order.items.map((item, idx) => (
-              <div key={idx} className="flex items-center gap-4 p-4">
-                {/* Giant Quantity Display */}
-                <div className="flex flex-col items-center justify-center bg-emerald-50 border-2 border-emerald-300 rounded-xl w-20 h-20 shrink-0">
-                  <span className="text-5xl font-black text-emerald-700 leading-none">{item.quantity}</span>
-                  <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest mt-0.5">QTY</span>
+          <div className="divide-y divide-gray-50 bg-white">
+            {/* Removed items — shown first with red highlight */}
+            {isRepack && editChanges.filter((c) => c.type === 'item_removed').map((c, idx) => (
+              <div key={`removed-${idx}`} className="flex items-center gap-4 p-4 bg-red-50 border-l-4 border-red-500">
+                <div className="flex flex-col items-center justify-center bg-red-100 border-2 border-red-400 rounded-xl w-20 h-20 shrink-0">
+                  <span className="text-5xl font-black text-red-600 leading-none line-through">{c.oldQty}</span>
+                  <span className="text-[9px] font-black text-red-500 uppercase tracking-widest mt-0.5">REMOVED</span>
                 </div>
-                {/* Product Info */}
                 <div className="flex-1 min-w-0">
-                  <p className="text-base font-bold text-gray-900 leading-tight">{item.name}</p>
-                  {item.variantName && (
-                    <p className="text-sm text-gray-500 mt-0.5">{item.variantName}</p>
-                  )}
-                  <p className="text-xs text-gray-400 mt-1">{formatCurrency(item.price)} × {item.quantity}</p>
-                </div>
-                <div className="shrink-0 text-right">
-                  <p className="text-sm font-bold text-gray-800">{formatCurrency(item.total)}</p>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] font-black bg-red-600 text-white rounded px-1.5 py-0.5 uppercase">Removed</span>
+                  </div>
+                  <p className="text-base font-bold text-red-700 leading-tight line-through">{c.name}</p>
+                  {c.variantName && <p className="text-sm text-red-400 mt-0.5 line-through">{c.variantName}</p>}
+                  <p className="text-xs text-red-400 mt-1">Do not include in package</p>
                 </div>
               </div>
             ))}
+            {order.items.map((item, idx) => {
+              const change = isRepack
+                ? editChanges.find(
+                    (c) =>
+                      c.name === item.name &&
+                      (c.variantSku || '') === (item.variantSku || '') &&
+                      c.type !== 'item_removed',
+                  )
+                : undefined;
+              const isAdded = change?.type === 'item_added';
+              const isQtyChanged = change?.type === 'qty_changed';
+
+              return (
+                <div
+                  key={idx}
+                  className={`flex items-center gap-4 p-4 ${
+                    isAdded
+                      ? 'bg-green-50 border-l-4 border-green-500'
+                      : isQtyChanged
+                      ? 'bg-orange-50 border-l-4 border-orange-500'
+                      : ''
+                  }`}
+                >
+                  {/* Giant Quantity Display */}
+                  <div className={`flex flex-col items-center justify-center rounded-xl w-20 h-20 shrink-0 ${
+                    isAdded
+                      ? 'bg-green-100 border-2 border-green-400'
+                      : isQtyChanged
+                      ? 'bg-orange-100 border-2 border-orange-400'
+                      : 'bg-emerald-50 border-2 border-emerald-300'
+                  }`}>
+                    {isQtyChanged && (
+                      <span className="text-lg font-black text-gray-400 leading-none line-through">{change.oldQty}</span>
+                    )}
+                    <span className={`font-black leading-none ${isQtyChanged ? 'text-3xl' : 'text-5xl'} ${
+                      isAdded ? 'text-green-700' : isQtyChanged ? 'text-orange-700' : 'text-emerald-700'
+                    }`}>{item.quantity}</span>
+                    <span className={`text-[9px] font-bold uppercase tracking-widest mt-0.5 ${
+                      isAdded ? 'text-green-500' : isQtyChanged ? 'text-orange-500' : 'text-emerald-500'
+                    }`}>
+                      {isAdded ? 'NEW' : isQtyChanged ? 'CHANGED' : 'QTY'}
+                    </span>
+                  </div>
+                  {/* Product Info */}
+                  <div className="flex-1 min-w-0">
+                    {isAdded && (
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] font-black bg-green-600 text-white rounded px-1.5 py-0.5 uppercase">New Item</span>
+                      </div>
+                    )}
+                    {isQtyChanged && (
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] font-black bg-orange-500 text-white rounded px-1.5 py-0.5 uppercase">Qty Changed</span>
+                        <span className="text-xs text-orange-600 font-bold">{change.oldQty} → {item.quantity}</span>
+                      </div>
+                    )}
+                    <p className={`text-base font-bold leading-tight ${isAdded ? 'text-green-800' : isQtyChanged ? 'text-orange-800' : 'text-gray-900'}`}>
+                      {item.name}
+                    </p>
+                    {item.variantName && (
+                      <p className="text-sm text-gray-500 mt-0.5">{item.variantName}</p>
+                    )}
+                    <p className="text-xs text-gray-400 mt-1">{formatCurrency(item.price)} × {item.quantity}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-sm font-bold text-gray-800">{formatCurrency(item.total)}</p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -204,7 +285,7 @@ export default function PackingDetailPage() {
         <div className="pb-6">
           {canPack && (
             <Button
-              className="w-full h-14 text-base font-black gap-2 bg-emerald-600 hover:bg-emerald-700 rounded-xl"
+              className={`w-full h-14 text-base font-black gap-2 rounded-xl ${isRepack ? 'bg-orange-500 hover:bg-orange-600' : 'bg-emerald-600 hover:bg-emerald-700'}`}
               onClick={() => markPacked.mutate()}
               disabled={markPacked.isPending}
             >
@@ -216,7 +297,7 @@ export default function PackingDetailPage() {
               ) : (
                 <>
                   <CheckCircle2 className="h-5 w-5" />
-                  Mark Order as Packed
+                  {isRepack ? 'Confirm Repack Done' : 'Mark Order as Packed'}
                 </>
               )}
             </Button>

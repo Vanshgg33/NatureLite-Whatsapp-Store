@@ -155,6 +155,16 @@ export interface Product {
 }
 
 // ==================== ORDER TYPES ====================
+export interface EditChange {
+  type: 'qty_changed' | 'item_added' | 'item_removed';
+  productId: string;
+  name: string;
+  variantSku?: string;
+  variantName?: string;
+  oldQty?: number;
+  newQty?: number;
+}
+
 export interface OrderItem {
   product: Product | string;
   name: string;
@@ -261,6 +271,8 @@ export interface Order {
   settledBy?: string;
   assignedDeliveryUserId?: string;
   invoiceUrl?: string;
+  repackRequired?: boolean;
+  editChanges?: EditChange[];
   createdAt: string;
   updatedAt: string;
 }

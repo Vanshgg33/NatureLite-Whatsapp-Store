@@ -938,7 +938,7 @@ export class OrdersService implements OnModuleInit {
     if (!['placed', 'confirmed', 'preparing'].includes(order.status)) {
       throw new BadRequestException('Order cannot be marked packed at this stage.');
     }
-    if (order.packedAt) {
+    if (order.packedAt && !order.repackRequired) {
       return order;
     }
     if (order.status !== 'preparing') {
@@ -956,6 +956,8 @@ export class OrdersService implements OnModuleInit {
     if (packedByName) {
       order.packedByName = packedByName;
     }
+    order.repackRequired = false;
+    order.editChanges = [] as any;
     this.pushTimelineEntry(order, {
       status: 'preparing',
       message: packedByName
@@ -1257,6 +1259,16 @@ export class OrdersService implements OnModuleInit {
     }
 
     if (dto.items && dto.items.length > 0) {
+      // Snapshot old items for diff before overwriting
+      const oldItems = (order.items as any[]).map((i: any) => ({
+        productId: i.product.toString(),
+        variantSku: i.variantSku || '',
+        name: i.name,
+        variantName: i.variantName,
+        quantity: i.quantity,
+      }));
+      const oldMap = new Map(oldItems.map((i) => [`${i.productId}|${i.variantSku}`, i]));
+
       const products = await Promise.all(
         dto.items.map((item) => this.productsService.findById(item.productId)),
       );
@@ -1292,6 +1304,50 @@ export class OrdersService implements OnModuleInit {
           gstAmount: (lineTotal * gstPct) / 100,
         });
         newSubtotal += lineTotal;
+      }
+
+      // Compute diff: detect qty changes, additions, removals
+      const newMap = new Map(
+        newItems.map((i) => [
+          `${i.product.toString()}|${i.variantSku || ''}`,
+          i,
+        ]),
+      );
+      const editChanges: {
+        type: string;
+        productId: string;
+        name: string;
+        variantSku?: string;
+        variantName?: string;
+        oldQty?: number;
+        newQty?: number;
+      }[] = [];
+
+      for (const [key, old] of oldMap) {
+        const curr = newMap.get(key);
+        if (!curr) {
+          editChanges.push({ type: 'item_removed', productId: old.productId, name: old.name, variantSku: old.variantSku || undefined, variantName: old.variantName, oldQty: old.quantity });
+        } else if (curr.quantity !== old.quantity) {
+          editChanges.push({ type: 'qty_changed', productId: old.productId, name: old.name, variantSku: old.variantSku || undefined, variantName: old.variantName, oldQty: old.quantity, newQty: curr.quantity });
+        }
+      }
+      for (const [key, curr] of newMap) {
+        if (!oldMap.has(key)) {
+          editChanges.push({ type: 'item_added', productId: curr.product.toString(), name: curr.name, variantSku: curr.variantSku || undefined, variantName: curr.variantName, newQty: curr.quantity });
+        }
+      }
+
+      if (editChanges.length > 0) {
+        order.editChanges = editChanges as any;
+        order.repackRequired = true;
+        // Reset packing so the order re-surfaces in the packing queue
+        order.packedAt = undefined;
+        order.packedBy = undefined;
+        order.packedByName = undefined;
+        this.pushTimelineEntry(order, {
+          status: order.status,
+          message: `Order items edited by admin — repack required (${editChanges.length} change${editChanges.length > 1 ? 's' : ''})`,
+        });
       }
 
       order.items = newItems as any;
