@@ -103,8 +103,43 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
         filter.$or = searchOr;
       }
     }
-    const createdAtFilter = buildCreatedAtFilter(startDate, endDate);
-    if (createdAtFilter) filter.createdAt = createdAtFilter;
+    if (forPacking || forBilling || forDelivery) {
+      // Department views: use plain createdAt filter (no scheduledFor logic)
+      const createdAtFilter = buildCreatedAtFilter(startDate, endDate);
+      if (createdAtFilter) filter.createdAt = createdAtFilter;
+    } else {
+      const createdAtFilter = buildCreatedAtFilter(startDate, endDate);
+      if (createdAtFilter) {
+        // Date filter active: show orders created in range OR scheduled for that date range
+        const dateCondition = { $or: [{ createdAt: createdAtFilter }, { scheduledFor: createdAtFilter }] };
+        if (filter.$and) {
+          (filter.$and as unknown[]).push(dateCondition);
+        } else if (filter.$or) {
+          filter.$and = [{ $or: filter.$or as unknown[] }, dateCondition];
+          delete filter.$or;
+        } else {
+          filter.$and = [dateCondition];
+        }
+      } else {
+        // No date filter: hide future-scheduled orders from the default list
+        const now = new Date();
+        const hideFuture = {
+          $or: [
+            { scheduledFor: { $exists: false } },
+            { scheduledFor: null },
+            { scheduledFor: { $lte: now } },
+          ],
+        };
+        if (filter.$and) {
+          (filter.$and as unknown[]).push(hideFuture);
+        } else if (filter.$or) {
+          filter.$and = [{ $or: filter.$or as unknown[] }, hideFuture];
+          delete filter.$or;
+        } else {
+          filter.$and = [hideFuture];
+        }
+      }
+    }
     const skip = (page - 1) * limit;
     const sort: Record<string, 1 | -1> = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
     const [orders, total] = await Promise.all([

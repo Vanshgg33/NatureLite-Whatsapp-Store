@@ -439,6 +439,7 @@ export class OrdersService implements OnModuleInit {
         paymentGatewayAmount: paymentGatewayAmountPaise,
         total,
         notes: dto.notes,
+        scheduledFor: dto.scheduledFor ? new Date(dto.scheduledFor) : undefined,
         metadata: idem ? { idempotencyKey: idem, requestHash } : undefined,
         timeline: [
           {
@@ -688,6 +689,7 @@ export class OrdersService implements OnModuleInit {
       source: dto.source,
       orderType: dto.orderType,
       adminDiscount: dto.adminDiscount,
+      scheduledFor: dto.scheduledFor,
     };
 
     return this.create(user._id.toString(), createDto);

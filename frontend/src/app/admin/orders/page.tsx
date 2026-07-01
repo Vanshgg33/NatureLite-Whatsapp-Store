@@ -215,6 +215,7 @@ export default function OrdersPage() {
         source: 'admin',
         orderType: orderType || undefined,
         adminDiscount: discountAmount > 0 ? discountAmount : undefined,
+        scheduledFor: reminderDueAt || undefined,
       }),
     onSuccess: async (order) => {
       if (upiProofFile) {
@@ -625,10 +626,24 @@ export default function OrdersPage() {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
+                            <div className="flex flex-col gap-1">
+                              <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
+                              {order.scheduledFor && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold leading-none bg-amber-100 text-amber-700 border border-amber-300 w-fit">
+                                  SCHEDULED
+                                </span>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
-                            {formatDate(order.createdAt)}
+                            {order.scheduledFor ? (
+                              <div>
+                                <p className="font-semibold text-amber-700">{formatDate(order.scheduledFor)}</p>
+                                <p className="text-xs text-muted-foreground">sched.</p>
+                              </div>
+                            ) : (
+                              formatDate(order.createdAt)
+                            )}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-0.5">
@@ -995,12 +1010,13 @@ export default function OrdersPage() {
               </div>
             )}
 
-            {/* Reminder */}
+            {/* Reminder / Scheduled Date */}
             <div className="border rounded-lg p-3 space-y-2 bg-amber-50 border-amber-200">
               <div className="flex items-center gap-2 text-amber-700 font-medium text-sm">
                 <Bell className="h-4 w-4" />
-                <span>Set Reminder <span className="font-normal text-amber-600">(optional)</span></span>
+                <span>Schedule Order <span className="font-normal text-amber-600">(optional)</span></span>
               </div>
+              <p className="text-xs text-amber-600">Set a future date to hide this order until that day — it will appear automatically on the orders dashboard on the scheduled date.</p>
               <Input
                 placeholder="Reminder message (e.g. Call customer)"
                 value={reminderMessage}

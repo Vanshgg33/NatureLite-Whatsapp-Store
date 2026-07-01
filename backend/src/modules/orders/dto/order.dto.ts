@@ -131,6 +131,10 @@ export class CreateOrderDto {
   @IsOptional()
   @Min(0)
   adminDiscount?: number;
+
+  @IsString()
+  @IsOptional()
+  scheduledFor?: string;
 }
 
 export class UpdateOrderStatusDto {
@@ -365,6 +369,10 @@ export class GuestCreateOrderDto {
   @IsOptional()
   @Min(0)
   adminDiscount?: number;
+
+  @IsString()
+  @IsOptional()
+  scheduledFor?: string;
 }
 
 export class UpdateOrderDto {

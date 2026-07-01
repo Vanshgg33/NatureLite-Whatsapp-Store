@@ -204,6 +204,10 @@ export class Order {
   @Prop()
   expectedDeliveryDate?: Date;
 
+  /** Date the admin wants this order to be processed / dispatched. Hides it from the orders list until this date. */
+  @Prop()
+  scheduledFor?: Date;
+
   @Prop()
   deliveredAt?: Date;
 

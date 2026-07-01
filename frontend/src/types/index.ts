@@ -271,6 +271,7 @@ export interface Order {
   settledBy?: string;
   assignedDeliveryUserId?: string;
   invoiceUrl?: string;
+  scheduledFor?: string;
   repackRequired?: boolean;
   editChanges?: EditChange[];
   createdAt: string;
@@ -861,6 +862,7 @@ export interface GuestCreateOrderDto {
   source?: string;
   orderType?: string;
   adminDiscount?: number;
+  scheduledFor?: string;
 }
 
 export interface ReorderDto {
