@@ -1031,8 +1031,8 @@ export class OrdersService implements OnModuleInit {
       }
     }
 
-    if (dto.status === 'delivery_done' && !dto.deliveryProofUrl && departmentType === 'delivery') {
-      throw new BadRequestException('A delivery proof photo is required to mark the order as delivered.');
+    if (['delivery_done', 'unpaid', 'partial_payment'].includes(dto.status) && !dto.deliveryProofUrl && departmentType === 'delivery') {
+      throw new BadRequestException('A delivery proof photo is required.');
     }
 
     const previousStatus = order.status;
@@ -1043,6 +1043,8 @@ export class OrdersService implements OnModuleInit {
       paymentProofUrl: dto.paymentProofUrl,
       deliveryProofUrl: dto.deliveryProofUrl,
       amountCollected: dto.amountCollected,
+      cashAmount: dto.cashAmount,
+      upiAmount: dto.upiAmount,
       note: dto.note,
       updatedBy,
       updatedAt: new Date(),
@@ -1072,6 +1074,19 @@ export class OrdersService implements OnModuleInit {
       if (dto.amountCollected && dto.amountCollected > 0) {
         order.collectionStatus = 'pending';
       }
+    } else if (dto.status === 'unpaid') {
+      order.status = 'delivered';
+      order.deliveredAt = new Date();
+      order.deliveryProofUrl = dto.deliveryProofUrl;
+      order.amountCollected = 0;
+      order.collectionStatus = 'pending';
+    } else if (dto.status === 'partial_payment') {
+      const collected = (dto.cashAmount ?? 0) + (dto.upiAmount ?? 0);
+      order.status = 'delivered';
+      order.deliveredAt = new Date();
+      order.deliveryProofUrl = dto.deliveryProofUrl;
+      order.amountCollected = collected;
+      if (collected > 0) order.collectionStatus = 'pending';
     }
 
     this.pushTimelineEntry(order, {
@@ -1094,8 +1109,8 @@ export class OrdersService implements OnModuleInit {
     // WhatsApp notifications — non-blocking, each wrapped individually.
     const phone = saved.shippingAddress?.phone?.trim();
     if (phone) {
-      if (dto.status === 'delivery_done') {
-        // delivery_done → status changed to 'delivered'; notifyOrderStatusChanged handles it.
+      if (['delivery_done', 'unpaid', 'partial_payment'].includes(dto.status)) {
+        // delivered statuses → notifyOrderStatusChanged handles it.
         try {
           await this.notificationsService.notifyOrderStatusChanged(saved, previousStatus);
         } catch (waErr) {

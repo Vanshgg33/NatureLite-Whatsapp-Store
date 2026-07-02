@@ -2,7 +2,9 @@ export type DeliveryWorkflowStep =
   | 'delivery_done'
   | 'customer_ringing'
   | 'customer_cancelled'
-  | 'customer_tomorrow';
+  | 'customer_tomorrow'
+  | 'unpaid'
+  | 'partial_payment';
 
 export type TimelineMetadata = {
   step?: DeliveryWorkflowStep;
@@ -10,6 +12,8 @@ export type TimelineMetadata = {
   paymentProofUrl?: string;
   deliveryProofUrl?: string;
   amountCollected?: number;
+  cashAmount?: number;
+  upiAmount?: number;
 };
 
 export type DeliveryWorkflowMetadata = {
@@ -18,6 +22,8 @@ export type DeliveryWorkflowMetadata = {
   paymentProofUrl?: string;
   deliveryProofUrl?: string;
   amountCollected?: number;
+  cashAmount?: number;
+  upiAmount?: number;
   note?: string;
   updatedBy: string;
   updatedAt: Date;

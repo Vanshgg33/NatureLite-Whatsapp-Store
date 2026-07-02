@@ -284,7 +284,7 @@ export class ReorderDto {
 }
 
 export class UpdateDeliveryWorkflowDto {
-  @IsEnum(['delivery_done', 'customer_ringing', 'customer_cancelled', 'customer_tomorrow'])
+  @IsEnum(['delivery_done', 'customer_ringing', 'customer_cancelled', 'customer_tomorrow', 'unpaid', 'partial_payment'])
   status: DeliveryWorkflowStep;
 
   @IsEnum(['cash', 'upi'])
@@ -302,6 +302,14 @@ export class UpdateDeliveryWorkflowDto {
   @IsNumber()
   @IsOptional()
   amountCollected?: number;
+
+  @IsNumber()
+  @IsOptional()
+  cashAmount?: number;
+
+  @IsNumber()
+  @IsOptional()
+  upiAmount?: number;
 
   @IsString()
   @IsOptional()

@@ -822,11 +822,13 @@ class ApiClient {
   async updateDeliveryWorkflow(
     id: string,
     data: {
-      status: 'delivery_done' | 'customer_ringing' | 'customer_cancelled' | 'customer_tomorrow';
+      status: 'delivery_done' | 'customer_ringing' | 'customer_cancelled' | 'customer_tomorrow' | 'unpaid' | 'partial_payment';
       paymentMethod?: 'cash' | 'upi';
       paymentProofUrl?: string;
       deliveryProofUrl?: string;
       amountCollected?: number;
+      cashAmount?: number;
+      upiAmount?: number;
       note?: string;
     }
   ): Promise<Order> {

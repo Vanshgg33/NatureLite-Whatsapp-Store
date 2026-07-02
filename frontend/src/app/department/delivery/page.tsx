@@ -35,7 +35,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { formatCurrency } from '@/lib/utils';
 import type { Order } from '@/types';
 
-type DeliveryStatus = 'delivery_done' | 'customer_ringing' | 'customer_cancelled' | 'customer_tomorrow';
+type DeliveryStatus = 'delivery_done' | 'customer_ringing' | 'customer_cancelled' | 'customer_tomorrow' | 'unpaid' | 'partial_payment';
 
 // ─── Photo upload box ─────────────────────────────────────────────────────────
 
@@ -147,10 +147,13 @@ function PhotoUploadBox({ label, hint, required, url, uploading, onFile, onClear
 interface ConfirmDeliveryDialogProps {
   open: boolean;
   order: Order;
+  status: DeliveryStatus;
   deliveryProofUrl: string;
   paymentProofUrl: string;
   paymentMethod: 'cash' | 'upi';
   amountCollected: string;
+  cashAmount: string;
+  upiAmount: string;
   note: string;
   submitting: boolean;
   onConfirm: () => void;
@@ -160,10 +163,13 @@ interface ConfirmDeliveryDialogProps {
 function ConfirmDeliveryDialog({
   open,
   order,
+  status,
   deliveryProofUrl,
   paymentProofUrl,
   paymentMethod,
   amountCollected,
+  cashAmount,
+  upiAmount,
   note,
   submitting,
   onConfirm,
@@ -201,16 +207,40 @@ function ConfirmDeliveryDialog({
               <span className="text-xs text-gray-500">Order total</span>
               <span className="text-sm font-bold text-gray-900">{formatCurrency(order.total)}</span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-500">Amount collected</span>
-              <span className={`text-sm font-bold ${amountCollected ? 'text-green-700' : 'text-gray-400 italic'}`}>
-                {amountCollected ? `₹ ${parseFloat(amountCollected).toLocaleString('en-IN')}` : 'Not entered'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-500">Payment via</span>
-              <span className="text-xs font-semibold text-gray-700 uppercase">{paymentMethod}</span>
-            </div>
+            {status === 'unpaid' ? (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Status</span>
+                <span className="text-sm font-bold text-red-600">Unpaid — ₹0 collected</span>
+              </div>
+            ) : status === 'partial_payment' ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500">Cash collected</span>
+                  <span className="text-sm font-bold text-gray-900">₹ {(parseFloat(cashAmount) || 0).toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500">UPI collected</span>
+                  <span className="text-sm font-bold text-gray-900">₹ {(parseFloat(upiAmount) || 0).toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500">Total collected</span>
+                  <span className="text-sm font-bold text-green-700">₹ {((parseFloat(cashAmount) || 0) + (parseFloat(upiAmount) || 0)).toLocaleString('en-IN')}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500">Amount collected</span>
+                  <span className={`text-sm font-bold ${amountCollected ? 'text-green-700' : 'text-gray-400 italic'}`}>
+                    {amountCollected ? `₹ ${parseFloat(amountCollected).toLocaleString('en-IN')}` : 'Not entered'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500">Payment via</span>
+                  <span className="text-xs font-semibold text-gray-700 uppercase">{paymentMethod}</span>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Photos */}
@@ -295,6 +325,8 @@ export default function DeliveryDashboardPage() {
   const [paymentProofUrl, setPaymentProofUrl] = useState<string | undefined>();
   const [deliveryProofUrl, setDeliveryProofUrl] = useState<string | undefined>();
   const [amountCollected, setAmountCollected] = useState('');
+  const [cashAmount, setCashAmount] = useState('');
+  const [upiAmount, setUpiAmount] = useState('');
   const [note, setNote] = useState('');
   const [uploadingPayment, setUploadingPayment] = useState(false);
   const [uploadingDelivery, setUploadingDelivery] = useState(false);
@@ -326,6 +358,8 @@ export default function DeliveryDashboardPage() {
         status?: DeliveryStatus;
         paymentMethod?: 'cash' | 'upi';
         amountCollected?: string;
+        cashAmount?: string;
+        upiAmount?: string;
         note?: string;
         deliveryProofUrl?: string | null;
         paymentProofUrl?: string | null;
@@ -342,6 +376,8 @@ export default function DeliveryDashboardPage() {
       if (saved.status) setStatus(saved.status);
       if (saved.paymentMethod) setPaymentMethod(saved.paymentMethod);
       if (saved.amountCollected !== undefined) setAmountCollected(saved.amountCollected);
+      if (saved.cashAmount !== undefined) setCashAmount(saved.cashAmount);
+      if (saved.upiAmount !== undefined) setUpiAmount(saved.upiAmount);
       if (saved.note) setNote(saved.note);
       if (saved.deliveryProofUrl) setDeliveryProofUrl(saved.deliveryProofUrl);
       if (saved.paymentProofUrl) setPaymentProofUrl(saved.paymentProofUrl);
@@ -383,13 +419,15 @@ export default function DeliveryDashboardPage() {
         status,
         paymentMethod,
         amountCollected,
+        cashAmount,
+        upiAmount,
         note,
         deliveryProofUrl: deliveryProofUrl ?? null,
         paymentProofUrl: paymentProofUrl ?? null,
         savedAt: Date.now(),
       }));
     } catch {}
-  }, [selectedOrder, status, paymentMethod, amountCollected, note, deliveryProofUrl, paymentProofUrl, deliveryStateKey]);
+  }, [selectedOrder, status, paymentMethod, amountCollected, cashAmount, upiAmount, note, deliveryProofUrl, paymentProofUrl, deliveryStateKey]);
 
   const resetForm = useCallback(() => {
     try { localStorage.removeItem(deliveryStateKey); } catch {}
@@ -398,6 +436,8 @@ export default function DeliveryDashboardPage() {
     setPaymentProofUrl(undefined);
     setDeliveryProofUrl(undefined);
     setAmountCollected('');
+    setCashAmount('');
+    setUpiAmount('');
     setNote('');
     setStatus('delivery_done');
     setPaymentMethod('cash');
@@ -411,6 +451,8 @@ export default function DeliveryDashboardPage() {
     setPaymentProofUrl(undefined);
     setDeliveryProofUrl(undefined);
     setAmountCollected(isCod(o) ? '' : '0');
+    setCashAmount('');
+    setUpiAmount('');
     setNote('');
     setStatus('delivery_done');
     setPaymentMethod(o.paymentMethod === 'upi' ? 'upi' : 'cash');
@@ -446,17 +488,27 @@ export default function DeliveryDashboardPage() {
   };
 
   const isDone = status === 'delivery_done';
+  const isUnpaid = status === 'unpaid';
+  const isPartial = status === 'partial_payment';
+  const needsDeliveryProof = isDone || isUnpaid || isPartial;
 
   const updateDelivery = useMutation({
     mutationFn: async () => {
       if (!selectedOrder) throw new Error('No order selected');
       const parsedAmount = parseFloat(amountCollected);
+      const isUnpaid = status === 'unpaid';
+      const isPartial = status === 'partial_payment';
+      const needsDelivery = isDone || isUnpaid || isPartial;
+      const parsedCash = parseFloat(cashAmount) || 0;
+      const parsedUpi = parseFloat(upiAmount) || 0;
       return api.updateDeliveryWorkflow(selectedOrder._id, {
         status,
         paymentMethod: isDone ? paymentMethod : undefined,
         paymentProofUrl: isDone ? paymentProofUrl : undefined,
-        deliveryProofUrl: isDone ? deliveryProofUrl : undefined,
-        amountCollected: isDone && !isNaN(parsedAmount) ? parsedAmount : undefined,
+        deliveryProofUrl: needsDelivery ? deliveryProofUrl : undefined,
+        amountCollected: isDone && !isNaN(parsedAmount) ? parsedAmount : isPartial ? parsedCash + parsedUpi : undefined,
+        cashAmount: isPartial ? parsedCash : undefined,
+        upiAmount: isPartial ? parsedUpi : undefined,
         note,
       });
     },
@@ -490,16 +542,14 @@ export default function DeliveryDashboardPage() {
 
   const order = selectedOrder;
   const orderIsCod = order ? isCod(order) : true;
-  const photosReady = !!deliveryProofUrl && (orderIsCod ? !!paymentProofUrl : true);
+  const photosReady = !!deliveryProofUrl && (isDone && orderIsCod ? !!paymentProofUrl : true);
   const uploading = uploadingPayment || uploadingDelivery;
 
-  // For non-delivery_done statuses, allow submit directly.
-  // For delivery_done, open confirmation dialog instead.
-  const canOpenConfirm = !uploading && !!order && isDone && photosReady;
-  const canSubmitOther = !updateDelivery.isPending && !uploading && !!order && !isDone;
+  const canOpenConfirm = !uploading && !!order && needsDeliveryProof && !!deliveryProofUrl;
+  const canSubmitOther = !updateDelivery.isPending && !uploading && !!order && !needsDeliveryProof;
 
   const handlePrimaryButton = () => {
-    if (isDone) {
+    if (needsDeliveryProof) {
       setShowConfirm(true);
     } else {
       updateDelivery.mutate();
@@ -680,6 +730,8 @@ export default function DeliveryDashboardPage() {
                     { value: 'customer_ringing', label: 'No answer' },
                     { value: 'customer_cancelled', label: 'Cancelled' },
                     { value: 'customer_tomorrow', label: 'Tomorrow' },
+                    { value: 'unpaid', label: 'Unpaid' },
+                    { value: 'partial_payment', label: 'Partial Payment' },
                   ] as { value: DeliveryStatus; label: string }[]
                 ).map((opt) => (
                   <button
@@ -700,16 +752,16 @@ export default function DeliveryDashboardPage() {
               </div>
             </div>
 
-            {/* Photos — only for delivery_done */}
-            {isDone && (
+            {/* Photos — for delivery_done, unpaid, partial_payment */}
+            {needsDeliveryProof && (
               <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-5">
                 <div className="flex items-center gap-2">
                   <ImagePlus className="h-4 w-4 text-amber-600" />
                   <p className="text-sm font-semibold text-gray-800">Delivery photos</p>
                 </div>
 
-                {/* Prepaid banner */}
-                {!orderIsCod && (
+                {/* Banners only for delivery_done */}
+                {isDone && !orderIsCod && (
                   <div className="bg-green-50 border border-green-100 rounded-xl p-3 flex gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
                     <p className="text-xs text-green-700">
@@ -718,10 +770,24 @@ export default function DeliveryDashboardPage() {
                   </div>
                 )}
 
-                {orderIsCod && (
+                {isDone && orderIsCod && (
                   <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 flex gap-2">
                     <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
                     <p className="text-xs text-amber-700">Both photos are required. You will review them before confirming.</p>
+                  </div>
+                )}
+
+                {isUnpaid && (
+                  <div className="bg-red-50 border border-red-100 rounded-xl p-3 flex gap-2">
+                    <AlertCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                    <p className="text-xs text-red-700">Customer did not pay. Capture delivery proof and confirm.</p>
+                  </div>
+                )}
+
+                {isPartial && (
+                  <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 flex gap-2">
+                    <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-700">Partial payment — enter cash and UPI amounts below.</p>
                   </div>
                 )}
 
@@ -736,7 +802,7 @@ export default function DeliveryDashboardPage() {
                   onBeforeOpen={() => api.refreshAccessToken().then(() => {})}
                 />
 
-                {orderIsCod && (
+                {isDone && orderIsCod && (
                   <PhotoUploadBox
                     label="Payment proof"
                     hint="Photo of cash received or UPI payment screen"
@@ -749,8 +815,8 @@ export default function DeliveryDashboardPage() {
                   />
                 )}
 
-                {/* Amount collected — only for COD */}
-                {orderIsCod && (
+                {/* Amount collected — single input for delivery_done COD */}
+                {isDone && orderIsCod && (
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-gray-800">
                       Amount collected
@@ -779,8 +845,54 @@ export default function DeliveryDashboardPage() {
                   </div>
                 )}
 
-                {/* Payment method — only for COD */}
-                {orderIsCod && (
+                {/* Cash + UPI split inputs for partial_payment */}
+                {isPartial && (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-800">Cash amount</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium text-sm">₹</span>
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={cashAmount}
+                          onChange={(e) => setCashAmount(e.target.value)}
+                          className="pl-7 h-11 text-base font-semibold"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-800">UPI amount</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium text-sm">₹</span>
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={upiAmount}
+                          onChange={(e) => setUpiAmount(e.target.value)}
+                          className="pl-7 h-11 text-base font-semibold"
+                        />
+                      </div>
+                    </div>
+                    {(cashAmount || upiAmount) && (
+                      <div className="bg-gray-50 rounded-xl p-3 flex items-center justify-between">
+                        <span className="text-sm text-gray-600 font-medium">Total collected</span>
+                        <span className="text-base font-bold text-green-700">
+                          ₹ {((parseFloat(cashAmount) || 0) + (parseFloat(upiAmount) || 0)).toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Payment method — only for delivery_done COD */}
+                {isDone && orderIsCod && (
                   <div className="space-y-2">
                     <p className="text-sm font-medium text-gray-800">Payment method</p>
                     <div className="grid grid-cols-2 gap-2">
@@ -828,14 +940,14 @@ export default function DeliveryDashboardPage() {
             <Button
               size="lg"
               className={`w-full h-14 text-base font-semibold rounded-2xl transition-all ${
-                isDone && canOpenConfirm ? 'bg-green-600 hover:bg-green-700' : ''
+                needsDeliveryProof && canOpenConfirm ? 'bg-green-600 hover:bg-green-700' : ''
               }`}
               onClick={handlePrimaryButton}
-              disabled={isDone ? !canOpenConfirm : !canSubmitOther}
+              disabled={needsDeliveryProof ? !canOpenConfirm : !canSubmitOther}
             >
               {updateDelivery.isPending ? (
                 <><RefreshCw className="h-5 w-5 mr-2 animate-spin" /> Saving…</>
-              ) : isDone ? (
+              ) : needsDeliveryProof ? (
                 <><CheckCircle2 className="h-5 w-5 mr-2" /> Review & Confirm Delivery</>
               ) : (
                 <><CheckCircle2 className="h-5 w-5 mr-2" /> Save update</>
@@ -843,9 +955,9 @@ export default function DeliveryDashboardPage() {
             </Button>
 
             {/* Missing photo hint */}
-            {isDone && !uploading && (!deliveryProofUrl || (orderIsCod && !paymentProofUrl)) && (
+            {needsDeliveryProof && !uploading && (!deliveryProofUrl || (isDone && orderIsCod && !paymentProofUrl)) && (
               <p className="text-xs text-center text-red-500">
-                {!deliveryProofUrl && orderIsCod && !paymentProofUrl
+                {!deliveryProofUrl && isDone && orderIsCod && !paymentProofUrl
                   ? 'Both delivery and payment photos are required'
                   : !deliveryProofUrl
                   ? 'Delivery proof photo is required'
@@ -857,14 +969,17 @@ export default function DeliveryDashboardPage() {
       </div>
 
       {/* Confirmation dialog */}
-      {order && isDone && deliveryProofUrl && (orderIsCod ? !!paymentProofUrl : true) && (
+      {order && needsDeliveryProof && deliveryProofUrl && (isDone && orderIsCod ? !!paymentProofUrl : true) && (
         <ConfirmDeliveryDialog
           open={showConfirm}
           order={order}
+          status={status}
           deliveryProofUrl={deliveryProofUrl}
           paymentProofUrl={paymentProofUrl ?? ''}
           paymentMethod={paymentMethod}
           amountCollected={amountCollected}
+          cashAmount={cashAmount}
+          upiAmount={upiAmount}
           note={note}
           submitting={updateDelivery.isPending}
           onConfirm={() => updateDelivery.mutate()}
