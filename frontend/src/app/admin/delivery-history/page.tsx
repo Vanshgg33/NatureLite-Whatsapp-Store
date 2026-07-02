@@ -91,6 +91,7 @@ export default function DeliveryHistoryPage() {
   const { data: ledgerRows = [] } = useQuery<DeliveryLedgerRow[]>({
     queryKey: ['delivery-history-ledger', startDate, endDate],
     queryFn: () => api.getDeliveryLedger({ startDate: startIso, endDate: endIso }),
+    refetchInterval: 30_000,
   });
 
   const deliveryBoyMap = useMemo(

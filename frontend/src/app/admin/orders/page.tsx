@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Eye, Plus, Trash2, ShoppingCart, MessageCircle, Globe, Download, Send, Loader2, Edit, Phone, Receipt, Building2, Truck, Bell } from 'lucide-react';
 import Link from 'next/link';
@@ -178,6 +178,7 @@ export default function OrdersPage() {
     staleTime: 30_000,
     gcTime: 5 * 60_000,
     refetchOnWindowFocus: false,
+    refetchInterval: 30_000,
   });
 
   const { data: productSearchResults = [] } = useQuery({
@@ -359,25 +360,49 @@ export default function OrdersPage() {
 
   const updateOrderMutation = useMutation({
     mutationFn: (data: { id: string; payload: any }) => api.updateOrder(data.id, data.payload),
+    onMutate: async (data) => {
+      await queryClient.cancelQueries({ queryKey: ['orders'] });
+      const prev = queryClient.getQueryData(['orders', page, debouncedSearch, status, cityFilter, startDate, endDate]);
+      queryClient.setQueryData(['orders', page, debouncedSearch, status, cityFilter, startDate, endDate], (old: any) => {
+        if (!old?.items) return old;
+        return { ...old, items: old.items.map((o: any) => o._id === data.id ? { ...o, ...data.payload } : o) };
+      });
+      return { prev };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
       toast({ title: 'Order updated', description: 'The order details have been successfully updated.' });
       setEditingOrder(null);
     },
-    onError: (err: unknown) => {
+    onError: (err: unknown, _vars, context: any) => {
+      if (context?.prev) queryClient.setQueryData(['orders', page, debouncedSearch, status, cityFilter, startDate, endDate], context.prev);
       setEditError(getApiError(err, 'Failed to update order'));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
     },
   });
 
   const deleteOrderMutation = useMutation({
     mutationFn: (id: string) => api.deleteOrder(id),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['orders'] });
+      const prev = queryClient.getQueryData(['orders', page, debouncedSearch, status, cityFilter, startDate, endDate]);
+      queryClient.setQueryData(['orders', page, debouncedSearch, status, cityFilter, startDate, endDate], (old: any) => {
+        if (!old?.items) return old;
+        return { ...old, items: old.items.filter((o: any) => o._id !== id) };
+      });
+      return { prev };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
       toast({ title: 'Order deleted', description: 'The order has been permanently deleted.' });
       setDeletingOrder(null);
     },
-    onError: (err: unknown) => {
+    onError: (err: unknown, _id, context: any) => {
+      if (context?.prev) queryClient.setQueryData(['orders', page, debouncedSearch, status, cityFilter, startDate, endDate], context.prev);
       toast({ title: 'Delete failed', description: getApiError(err, 'Failed to delete order'), variant: 'destructive' });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
     },
   });
 

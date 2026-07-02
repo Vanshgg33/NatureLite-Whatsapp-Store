@@ -67,6 +67,10 @@ export default function PackingDashboardPage() {
     onMutate: async ({ orderId }) => {
       await queryClient.cancelQueries({ queryKey: ['department', 'packing', 'orders'] });
       const prev = queryClient.getQueryData(['department', 'packing', 'orders']);
+      queryClient.setQueryData(['department', 'packing', 'orders'], (old: any) => {
+        if (!old?.items) return old;
+        return { ...old, items: old.items.filter((o: any) => o._id !== orderId) };
+      });
       return { prev };
     },
     onSuccess: (_, { orderId }) => {

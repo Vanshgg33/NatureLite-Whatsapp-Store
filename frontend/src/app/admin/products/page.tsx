@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, Search, Package, Tag, X, CheckSquare, Download, Upload, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import {
@@ -54,6 +54,7 @@ export default function ProductsPage() {
     queryKey: ['products', page, debouncedSearch, filterCategory, sortBy, sortDir],
     queryFn: () => api.getProducts({ page, limit: 20, search: debouncedSearch, category: filterCategory || undefined, sortBy, sortOrder: sortDir }),
     placeholderData: (prev) => prev,
+    refetchInterval: 60_000,
   });
 
   const { data: categories } = useQuery({
@@ -107,26 +108,52 @@ export default function ProductsPage() {
   const bulkCategoryMutation = useMutation({
     mutationFn: ({ productIds, categoryId }: { productIds: string[]; categoryId: string }) =>
       api.bulkUpdateProductCategory(productIds, categoryId),
+    onMutate: async ({ productIds, categoryId }) => {
+      await queryClient.cancelQueries({ queryKey: ['products'] });
+      const queryKey = ['products', page, debouncedSearch, filterCategory, sortBy, sortDir];
+      const snapshot = queryClient.getQueryData(queryKey);
+      queryClient.setQueryData(queryKey, (old: any) => {
+        if (!old?.items) return old;
+        return { ...old, items: old.items.map((p: any) => productIds.includes(p._id) ? { ...p, category: categoryId } : p) };
+      });
+      return { snapshot, queryKey };
+    },
+    onError: (err: unknown, _vars, context: any) => {
+      if (context?.snapshot) queryClient.setQueryData(context.queryKey, context.snapshot);
+      toast({ title: 'Failed to update category', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
+    },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
       setSelected(new Set());
       setBulkCategoryId('');
       toast({ title: `Category updated for ${data.modifiedCount} product(s).` });
     },
-    onError: (err: unknown) => {
-      toast({ title: 'Failed to update category', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
     },
   });
 
   const bulkDeleteMutation = useMutation({
     mutationFn: (ids: string[]) => api.bulkDeleteProducts(ids),
+    onMutate: async (ids) => {
+      await queryClient.cancelQueries({ queryKey: ['products'] });
+      const queryKey = ['products', page, debouncedSearch, filterCategory, sortBy, sortDir];
+      const snapshot = queryClient.getQueryData(queryKey);
+      queryClient.setQueryData(queryKey, (old: any) => {
+        if (!old?.items) return old;
+        return { ...old, items: old.items.filter((p: any) => !ids.includes(p._id)), total: Math.max(0, (old.total ?? 0) - ids.length) };
+      });
+      return { snapshot, queryKey };
+    },
+    onError: (err: unknown, _ids, context: any) => {
+      if (context?.snapshot) queryClient.setQueryData(context.queryKey, context.snapshot);
+      toast({ title: 'Failed to delete products', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
+    },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
       setSelected(new Set());
       toast({ title: `Deleted ${data.deletedCount} product(s).` });
     },
-    onError: (err: unknown) => {
-      toast({ title: 'Failed to delete products', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
     },
   });
 
@@ -161,7 +188,7 @@ export default function ProductsPage() {
     }
   };
 
-  const toggleSort = (field: SortField) => {
+  const toggleSort = useCallback((field: SortField) => {
     if (sortBy === field) {
       setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
     } else {
@@ -169,24 +196,24 @@ export default function ProductsPage() {
       setSortDir('asc');
     }
     setPage(1);
-  };
+  }, [sortBy]);
 
   const items = data?.items ?? [];
   const allIds = useMemo(() => items.map((p) => p._id), [items]);
   const allSelected = useMemo(() => allIds.length > 0 && allIds.every((id) => selected.has(id)), [allIds, selected]);
   const someSelected = selected.size > 0;
 
-  const toggleAll = () => {
+  const toggleAll = useCallback(() => {
     if (allSelected) {
       setSelected((prev) => { const next = new Set(prev); allIds.forEach((id) => next.delete(id)); return next; });
     } else {
       setSelected((prev) => new Set(Array.from(prev).concat(allIds)));
     }
-  };
+  }, [allSelected, allIds]);
 
-  const toggleOne = (id: string) => {
+  const toggleOne = useCallback((id: string) => {
     setSelected((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
-  };
+  }, []);
 
   const thClass = 'cursor-pointer select-none hover:text-foreground transition-colors whitespace-nowrap';
 

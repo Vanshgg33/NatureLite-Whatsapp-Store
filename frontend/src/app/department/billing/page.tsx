@@ -104,13 +104,25 @@ export default function BillingDashboardPage() {
   const reassign = useMutation({
     mutationFn: ({ orderId, riderId }: { orderId: string; riderId: string }) =>
       api.assignDeliveryRider(orderId, riderId),
+    onMutate: async ({ orderId, riderId }) => {
+      await queryClient.cancelQueries({ queryKey: ['department', 'billing', 'dispatched'] });
+      const prev = queryClient.getQueryData(['department', 'billing', 'dispatched']);
+      queryClient.setQueryData(['department', 'billing', 'dispatched'], (old: any) => {
+        if (!old?.items) return old;
+        return { ...old, items: old.items.map((o: any) => o._id === orderId ? { ...o, assignedDeliveryUserId: riderId } : o) };
+      });
+      return { prev };
+    },
     onSuccess: (_, { orderId }) => {
       setReassignRider((prev) => { const n = { ...prev }; delete n[orderId]; return n; });
       toast({ title: 'Rider reassigned', description: 'Order moved to new delivery staff.' });
-      queryClient.invalidateQueries({ queryKey: ['department', 'billing', 'dispatched'] });
     },
-    onError: () => {
+    onError: (_err, _vars, context: any) => {
+      if (context?.prev) queryClient.setQueryData(['department', 'billing', 'dispatched'], context.prev);
       toast({ title: 'Reassign failed', variant: 'destructive' });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['department', 'billing', 'dispatched'] });
     },
   });
 

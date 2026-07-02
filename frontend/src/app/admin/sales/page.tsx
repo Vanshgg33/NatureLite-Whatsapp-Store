@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useDebouncedValue } from '@/lib/utils';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Receipt, Plus, Search, ShoppingBag, Trash2, Camera, Upload, X, Bell, Pencil, FileText, Printer, Download, Send, Loader2 } from 'lucide-react';
@@ -483,6 +483,7 @@ export default function SalesPage() {
         saleType: saleTypeFilter || undefined,
       }),
     enabled: !!selectedStoreId,
+    refetchInterval: 30_000,
   });
 
   const { data: allProductsData } = useQuery({
@@ -526,41 +527,43 @@ export default function SalesPage() {
     price: number;
     stock: number;
   };
-  const addableRows: AddableRow[] = [];
-  rawProducts.forEach((product: Product) => {
-    const hasVariants = product.variants && product.variants.length > 0;
-    if (hasVariants) {
-      product.variants.filter((v) => v.isActive).forEach((variant) => {
-        const storeStock = stockLoaded ? (storeStockMap.get(`${product._id}:${variant.sku}`) ?? 0) : variant.stock;
-        addableRows.push({
+  const productResults = useMemo<AddableRow[]>(() => {
+    const rows: AddableRow[] = [];
+    rawProducts.forEach((product: Product) => {
+      const hasVariants = product.variants && product.variants.length > 0;
+      if (hasVariants) {
+        product.variants.filter((v) => v.isActive).forEach((variant) => {
+          const storeStock = stockLoaded ? (storeStockMap.get(`${product._id}:${variant.sku}`) ?? 0) : variant.stock;
+          rows.push({
+            productId: product._id,
+            productName: product.name,
+            productSku: product.sku,
+            variantSku: variant.sku,
+            variantName: variant.name,
+            price: variant.price,
+            stock: storeStock,
+          });
+        });
+      } else {
+        const storeStock = stockLoaded ? (storeStockMap.get(product._id) ?? 0) : product.stock;
+        rows.push({
           productId: product._id,
           productName: product.name,
           productSku: product.sku,
-          variantSku: variant.sku,
-          variantName: variant.name,
-          price: variant.price,
+          variantSku: undefined,
+          variantName: undefined,
+          price: product.price,
           stock: storeStock,
         });
-      });
-    } else {
-      const storeStock = stockLoaded ? (storeStockMap.get(product._id) ?? 0) : product.stock;
-      addableRows.push({
-        productId: product._id,
-        productName: product.name,
-        productSku: product.sku,
-        variantSku: undefined,
-        variantName: undefined,
-        price: product.price,
-        stock: storeStock,
-      });
-    }
-  });
-  // In-stock products first (sorted by descending stock), out-of-stock at bottom
-  const productResults = [...addableRows].sort((a, b) => {
-    if (a.stock > 0 && b.stock <= 0) return -1;
-    if (a.stock <= 0 && b.stock > 0) return 1;
-    return b.stock - a.stock;
-  });
+      }
+    });
+    return rows.sort((a, b) => {
+      if (a.stock > 0 && b.stock <= 0) return -1;
+      if (a.stock <= 0 && b.stock > 0) return 1;
+      return b.stock - a.stock;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawProducts, stockLoaded, logSaleStockData]);
 
   const editStoreId = editingSaleStoreId || (editingSale
     ? (typeof editingSale.store === 'object' ? (editingSale.store as { _id: string })._id : editingSale.store)
@@ -617,23 +620,40 @@ export default function SalesPage() {
 
   const logSaleMutation = useMutation({
     mutationFn: (data: Parameters<typeof api.logSale>[0]) => api.logSale(data),
+    onMutate: async (data) => {
+      await queryClient.cancelQueries({ queryKey: ['store-sales', selectedStoreId] });
+      const prev = queryClient.getQueryData(['store-sales', selectedStoreId, page, debouncedSearch, saleTypeFilter]);
+      const placeholder: any = {
+        _id: `temp-${Date.now()}`,
+        saleNumber: 'Saving…',
+        saleType: data.saleType,
+        items: (data.items ?? []).map((i) => ({ name: i.productId, quantity: i.quantity, price: 0 })),
+        customerName: data.customerName,
+        customerPhone: data.customerPhone,
+        subtotal: data.items?.reduce((s: number, i: any) => s + (i.price ?? 0) * i.quantity, 0) ?? 0,
+        total: 0,
+        discount: data.discount ?? 0,
+        paymentMethod: data.paymentMethod,
+        createdAt: new Date().toISOString(),
+        store: selectedStoreId,
+      };
+      queryClient.setQueryData(['store-sales', selectedStoreId, page, debouncedSearch, saleTypeFilter], (old: any) => {
+        if (!old?.items) return old;
+        return { ...old, items: [placeholder, ...old.items], total: (old.total ?? 0) + 1 };
+      });
+      return { prev };
+    },
     onSuccess: (sale) => {
-      // Instantly prepend to every cached page of the sales list so it appears immediately
-      queryClient.setQueriesData<PaginatedResponse<StoreSale>>(
-        { queryKey: ['store-sales'], exact: false },
-        (old) => {
-          if (!old) return old;
-          return { ...old, items: [sale, ...old.items], total: old.total + 1 };
-        },
-      );
-      // Background refetch to sync accurate order/pagination
+      toast({ title: 'Sale logged', description: `Sale ${sale.saleNumber} recorded successfully.` });
+    },
+    onError: (err: unknown, _vars, context: any) => {
+      if (context?.prev) queryClient.setQueryData(['store-sales', selectedStoreId, page, debouncedSearch, saleTypeFilter], context.prev);
+      toast({ title: 'Failed to log sale', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['store-sales'] });
       queryClient.invalidateQueries({ queryKey: ['store-stock'] });
       queryClient.invalidateQueries({ queryKey: ['due-reminders'] });
-      toast({ title: 'Sale logged', description: `Sale ${sale.saleNumber} recorded successfully.` });
-    },
-    onError: (err: unknown) => {
-      toast({ title: 'Failed to log sale', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
     },
   });
 
@@ -664,15 +684,34 @@ export default function SalesPage() {
         notes: editNotes || undefined,
       });
     },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['store-sales', selectedStoreId] });
+      const prev = queryClient.getQueryData(['store-sales', selectedStoreId, page, debouncedSearch, saleTypeFilter]);
+      queryClient.setQueryData(['store-sales', selectedStoreId, page, debouncedSearch, saleTypeFilter], (old: any) => {
+        if (!old?.items) return old;
+        return {
+          ...old,
+          items: old.items.map((s: any) =>
+            s._id === editingSaleId
+              ? { ...s, saleType: editSaleType, customerName: editCustomerName, customerPhone: editCustomerPhone, paymentMethod: editPaymentMethod }
+              : s,
+          ),
+        };
+      });
+      return { prev };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['store-sales'] });
-      queryClient.invalidateQueries({ queryKey: ['store-stock'] });
-      queryClient.invalidateQueries({ queryKey: ['sale', editingSaleId] });
       setEditingSaleId(null);
       setEditingSaleStoreId(null);
     },
-    onError: (err: unknown) => {
+    onError: (err: unknown, _vars, context: any) => {
+      if (context?.prev) queryClient.setQueryData(['store-sales', selectedStoreId, page, debouncedSearch, saleTypeFilter], context.prev);
       toast({ title: 'Failed to update sale', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['store-sales'] });
+      queryClient.invalidateQueries({ queryKey: ['store-stock'] });
+      queryClient.invalidateQueries({ queryKey: ['sale', editingSaleId] });
     },
   });
 
@@ -747,7 +786,7 @@ export default function SalesPage() {
     }
   }
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setSaleType('walk_in');
     setCartItems([]);
     setProductSearch('');
@@ -767,7 +806,8 @@ export default function SalesPage() {
     setAddrCity('');
     setAddrState(stateOptions[0] ?? 'Maharashtra');
     setAddrPincode('');
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleUpiProofFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -785,7 +825,7 @@ export default function SalesPage() {
     }
   };
 
-  const addToCart = (row: AddableRow) => {
+  const addToCart = useCallback((row: AddableRow) => {
     const name = row.variantName
       ? `${row.productName} – ${row.variantName}`
       : row.productName;
@@ -814,7 +854,7 @@ export default function SalesPage() {
       ]);
     }
     setProductSearch('');
-  };
+  }, [cartItems]);
 
   const subtotal = cartItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
   const discountAmount = discountIsPercent

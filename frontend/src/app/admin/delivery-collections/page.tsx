@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { DeliveryLedgerRow, Order } from '@/types';
@@ -62,15 +62,29 @@ function BreakdownDialog({
 
   const settle = useMutation({
     mutationFn: (ids: string[]) => api.settleDeliveryCollection(ids),
+    onMutate: async (ids) => {
+      await qc.cancelQueries({ queryKey: ['delivery-breakdown', row.deliveryUserId, startDate, endDate] });
+      const prev = qc.getQueryData(['delivery-breakdown', row.deliveryUserId, startDate, endDate]);
+      qc.setQueryData(['delivery-breakdown', row.deliveryUserId, startDate, endDate], (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((o: any) => ids.includes(o._id) ? { ...o, collectionStatus: 'settled' } : o);
+      });
+      return { prev };
+    },
+    onError: (_err: unknown, _ids, context: any) => {
+      if (context?.prev) qc.setQueryData(['delivery-breakdown', row.deliveryUserId, startDate, endDate], context.prev);
+    },
     onSuccess: () => {
+      onClose();
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['delivery-ledger'] });
       qc.invalidateQueries({ queryKey: ['delivery-summary'] });
       qc.invalidateQueries({ queryKey: ['delivery-breakdown', row.deliveryUserId] });
-      onClose();
     },
   });
 
-  const pending = orders.filter((o) => o.collectionStatus === 'pending');
+  const pending = useMemo(() => orders.filter((o) => o.collectionStatus === 'pending'), [orders]);
   const allPendingIds = pending.map((o) => o._id);
 
   const toggle = (id: string) => {
@@ -224,11 +238,13 @@ export default function DeliveryCollectionsPage() {
   const { data: summary } = useQuery({
     queryKey: ['delivery-summary', startDate, endDate],
     queryFn: () => api.getDeliveryLedgerSummary(startIso, endIso),
+    refetchInterval: 30_000,
   });
 
   const { data: rows = [], isLoading } = useQuery<DeliveryLedgerRow[]>({
     queryKey: ['delivery-ledger', startDate, endDate],
     queryFn: () => api.getDeliveryLedger({ startDate: startIso, endDate: endIso }),
+    refetchInterval: 30_000,
   });
 
   return (

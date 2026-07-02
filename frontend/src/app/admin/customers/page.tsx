@@ -38,6 +38,7 @@ export default function CustomersPage() {
     queryKey: ['customers', page, debouncedSearch],
     queryFn: () => api.getUsers({ page, limit: 20, search: debouncedSearch }),
     placeholderData: (prev) => prev,
+    refetchInterval: 30_000,
   });
 
   const blockMutation = useMutation({
