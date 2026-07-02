@@ -36,13 +36,9 @@ import { OrderStatus, Product, Order } from '@/types';
 const statusOptions = [
   { value: '', label: 'All Statuses' },
   { value: 'placed', label: 'Placed' },
-  { value: 'confirmed', label: 'Confirmed' },
-  { value: 'preparing', label: 'Preparing' },
+  { value: 'confirmed', label: 'Packed' },
   { value: 'out_for_delivery', label: 'Out for delivery' },
   { value: 'delivered', label: 'Delivered' },
-  { value: 'cancelled', label: 'Cancelled' },
-  { value: 'returned', label: 'Returned' },
-  { value: 'refunded', label: 'Refunded' },
 ];
 
 type CartItem = {
@@ -1156,13 +1152,9 @@ export default function OrdersPage() {
                   className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 >
                   <option value="placed">Placed</option>
-                  <option value="confirmed">Confirmed</option>
-                  <option value="preparing">Preparing</option>
+                  <option value="confirmed">Packed</option>
                   <option value="out_for_delivery">Out for Delivery</option>
                   <option value="delivered">Delivered</option>
-                  <option value="cancelled">Cancelled</option>
-                  <option value="returned">Returned</option>
-                  <option value="refunded">Refunded</option>
                 </select>
               </div>
 
