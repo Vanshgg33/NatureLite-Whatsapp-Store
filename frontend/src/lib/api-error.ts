@@ -28,7 +28,7 @@ export function getApiError(error: unknown, fallback = 'Something went wrong. Pl
     case 422:
       return backendMsg || 'Invalid request. Please check your input.';
     case 401:
-      return 'Your session has expired. Please log in again.';
+      return (backendMsg && backendMsg !== 'Unauthorized') ? backendMsg : 'Your session has expired. Please log in again.';
     case 403:
       return "You don't have permission to do this.";
     case 404:
