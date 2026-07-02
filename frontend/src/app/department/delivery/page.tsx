@@ -344,7 +344,12 @@ export default function DeliveryDashboardPage() {
   const filteredBilledOrders = useMemo(() => {
     if (!orderNumber.trim()) return billedOrders;
     const q = orderNumber.trim().toLowerCase();
-    return billedOrders.filter(o => o.shippingAddress.name.toLowerCase().includes(q));
+    return billedOrders.filter(o =>
+      o.shippingAddress.name.toLowerCase().includes(q) ||
+      o.shippingAddress.phone.includes(q) ||
+      (o.shippingAddress.alternatePhone ?? '').includes(q) ||
+      o.orderNumber.toLowerCase().includes(q)
+    );
   }, [billedOrders, orderNumber]);
 
   // Restore state from localStorage on mount (handles Android camera-kill page reload)
@@ -461,13 +466,12 @@ export default function DeliveryDashboardPage() {
 
   const searchOrder = () => {
     if (!orderNumber.trim()) return;
-    const match = filteredBilledOrders[0];
-    if (match) {
-      selectOrder(match);
-    } else {
-      setSelectedOrder(null);
-      toast({ title: 'Customer not found', description: 'No assigned order found with that customer name.', variant: 'destructive' });
+    if (filteredBilledOrders.length === 1) {
+      selectOrder(filteredBilledOrders[0]);
+    } else if (filteredBilledOrders.length === 0) {
+      toast({ title: 'Not found', description: 'No assigned order matches that search.', variant: 'destructive' });
     }
+    // multiple results → list stays visible, delivery boy picks manually
   };
 
   const uploadPhoto = async (
@@ -578,7 +582,7 @@ export default function DeliveryDashboardPage() {
         <div className="bg-white rounded-2xl border border-gray-100 p-3 flex gap-2 items-center shadow-sm">
           <Search className="h-4 w-4 text-gray-400 shrink-0" />
           <Input
-            placeholder="Search by customer name"
+            placeholder="Search by name, phone or order number"
             value={orderNumber}
             onChange={(e) => setOrderNumber(e.target.value)}
             className="border-0 shadow-none h-9 p-0 focus-visible:ring-0"
@@ -599,7 +603,7 @@ export default function DeliveryDashboardPage() {
               <p className="text-sm text-gray-400 text-center py-8">No orders assigned to you yet.</p>
             )}
             {billedOrders.length > 0 && filteredBilledOrders.length === 0 && (
-              <p className="text-sm text-gray-400 text-center py-8">No orders matching that customer name.</p>
+              <p className="text-sm text-gray-400 text-center py-8">No orders matching that search.</p>
             )}
             {filteredBilledOrders.length > 0 && (
               <div className="space-y-2">
