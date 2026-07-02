@@ -1201,8 +1201,6 @@ export class OrdersService implements OnModuleInit {
 
   async deleteOrder(id: string): Promise<{ deleted: boolean }> {
     const idObj = parseObjectId(id, 'id');
-    const order = await this.orderRepository.findById(idObj);
-    if (!order) throw new NotFoundException('Order not found');
 
     // Void any linked store sale so sales log stays consistent
     try {
