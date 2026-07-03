@@ -4,7 +4,7 @@ import { useMemo, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { Order, DeliveryLedgerRow } from '@/types';
+import { Order, DeliveryLedgerRow, AdminUser } from '@/types';
 import { format, startOfDay } from 'date-fns';
 import {
   Truck,
@@ -87,22 +87,38 @@ export default function DeliveryHistoryPage() {
   const startIso = `${startDate}T00:00:00`;
   const endIso = `${endDate}T23:59:59`;
 
-  // Get delivery boy list for the dropdown + name mapping
+  // All delivery staff — used to populate the dropdown regardless of date range
+  const { data: allStaff = [] } = useQuery<AdminUser[]>({
+    queryKey: ['delivery-staff'],
+    queryFn: () => api.getDeliveryStaff(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Ledger rows for the selected date range — used for name mapping + order fetching
   const { data: ledgerRows = [] } = useQuery<DeliveryLedgerRow[]>({
     queryKey: ['delivery-history-ledger', startDate, endDate],
     queryFn: () => api.getDeliveryLedger({ startDate: startIso, endDate: endIso }),
     refetchInterval: 30_000,
   });
 
-  const deliveryBoyMap = useMemo(
-    () => new Map(ledgerRows.map((r) => [r.deliveryUserId, r.name])),
-    [ledgerRows],
+  // Name map: prefer ledger (has delivery-period data), fall back to full staff list
+  const deliveryBoyMap = useMemo(() => {
+    const map = new Map<string, string>(allStaff.map((s) => [s._id, s.name]));
+    ledgerRows.forEach((r) => map.set(r.deliveryUserId, r.name));
+    return map;
+  }, [ledgerRows, allStaff]);
+
+  // Stable key for "all boys" mode — changes when the set of boys changes, forcing
+  // the orders query to re-execute with fresh ledgerRows instead of the stale closure.
+  const allBoysKey = useMemo(
+    () => (selectedBoyId ? '' : ledgerRows.map((r) => r.deliveryUserId).sort().join(',')),
+    [selectedBoyId, ledgerRows],
   );
 
-  // If a specific boy is selected → getDeliveryBreakdown
+  // If a specific boy is selected → getDeliveryBreakdown for that boy only
   // If "All" → fire getDeliveryBreakdown for each boy in parallel
   const { data: orders = [], isLoading } = useQuery<Order[]>({
-    queryKey: ['delivery-history-orders', selectedBoyId, startDate, endDate],
+    queryKey: ['delivery-history-orders', selectedBoyId, startDate, endDate, allBoysKey],
     queryFn: async () => {
       if (selectedBoyId) {
         return api.getDeliveryBreakdown(selectedBoyId, startIso, endIso);
@@ -116,18 +132,20 @@ export default function DeliveryHistoryPage() {
     enabled: ledgerRows.length > 0 || !!selectedBoyId,
   });
 
-  // Client-side filter by customer name or phone
+  // Client-side filter — name, phone, alternate phone, order number, user name
   const filtered = useMemo(() => {
     if (!search.trim()) return orders;
     const q = search.trim().toLowerCase();
     return orders.filter((o) => {
       const name = (o.shippingAddress?.name ?? '').toLowerCase();
       const phone = (o.shippingAddress?.phone ?? '').toLowerCase();
+      const altPhone = (o.shippingAddress?.alternatePhone ?? '').toLowerCase();
+      const orderNum = (o.orderNumber ?? '').toLowerCase();
       const customerName =
         typeof o.user === 'object' && o.user !== null
           ? ((o.user as any).name ?? '').toLowerCase()
           : '';
-      return name.includes(q) || phone.includes(q) || customerName.includes(q);
+      return name.includes(q) || phone.includes(q) || altPhone.includes(q) || orderNum.includes(q) || customerName.includes(q);
     });
   }, [orders, search]);
 
@@ -178,9 +196,9 @@ export default function DeliveryHistoryPage() {
               className="border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 appearance-none bg-white min-w-[180px]"
             >
               <option value="">All Delivery Boys</option>
-              {ledgerRows.map((r) => (
-                <option key={r.deliveryUserId} value={r.deliveryUserId}>
-                  {r.name}
+              {allStaff.map((s) => (
+                <option key={s._id} value={s._id}>
+                  {s.name}
                 </option>
               ))}
             </select>
@@ -193,7 +211,7 @@ export default function DeliveryHistoryPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Name or phone number…"
+              placeholder="Name, phone, or order number…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -261,7 +279,9 @@ export default function DeliveryHistoryPage() {
                       : '—');
                   const customerPhone = order.shippingAddress?.phone ?? '—';
                   const deliveryBoyName =
-                    deliveryBoyMap.get(order.assignedDeliveryUserId ?? '') ?? '—';
+                    deliveryBoyMap.get(order.assignedDeliveryUserId ?? '') ??
+                    (order as any).assignedToName ??
+                    '—';
                   const deliveredDate = order.deliveredAt
                     ? format(new Date(order.deliveredAt), 'dd MMM yyyy, hh:mm a')
                     : order.updatedAt

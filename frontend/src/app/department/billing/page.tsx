@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { FileText, ArrowRight, CheckCircle2, Truck, Search, ArrowLeftRight } from 'lucide-react';
+import { FileText, ArrowRight, CheckCircle2, Truck, Search, ArrowLeftRight, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
@@ -12,7 +12,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { formatCurrency, getStatusColor } from '@/lib/utils';
+import { formatCurrency, formatDate, getStatusColor } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 import type { Order, AdminUser } from '@/types';
 
@@ -126,6 +126,30 @@ export default function BillingDashboardPage() {
     },
   });
 
+  const deleteOrder = useMutation({
+    mutationFn: (orderId: string) => api.deleteOrder(orderId),
+    onMutate: async (orderId) => {
+      await queryClient.cancelQueries({ queryKey: ['department', 'billing', 'orders'] });
+      await queryClient.cancelQueries({ queryKey: ['department', 'billing', 'dispatched'] });
+      const prevOrders = queryClient.getQueryData(['department', 'billing', 'orders']);
+      const prevDispatched = queryClient.getQueryData(['department', 'billing', 'dispatched']);
+      queryClient.setQueryData(['department', 'billing', 'orders'], (old: any) => {
+        if (!old?.items) return old;
+        return { ...old, items: old.items.filter((o: any) => o._id !== orderId) };
+      });
+      queryClient.setQueryData(['department', 'billing', 'dispatched'], (old: any) => {
+        if (!old?.items) return old;
+        return { ...old, items: old.items.filter((o: any) => o._id !== orderId) };
+      });
+      return { prevOrders, prevDispatched };
+    },
+    onError: (_err, _vars, context: any) => {
+      if (context?.prevOrders) queryClient.setQueryData(['department', 'billing', 'orders'], context.prevOrders);
+      if (context?.prevDispatched) queryClient.setQueryData(['department', 'billing', 'dispatched'], context.prevDispatched);
+      toast({ title: 'Failed to delete order', variant: 'destructive' });
+    },
+  });
+
   const getRiderName = (order: Order) => {
     const rider = activeRiders.find((r) => r._id === order.assignedDeliveryUserId);
     return rider?.name ?? 'Unknown rider';
@@ -197,8 +221,18 @@ export default function BillingDashboardPage() {
                       ) : (
                         <span />
                       )}
-                      <Badge className={getStatusColor(order.status)}>{order.status.replace(/_/g, ' ').toUpperCase()}</Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Badge className={getStatusColor(order.status)}>{order.status.replace(/_/g, ' ').toUpperCase()}</Badge>
+                        <button
+                          onClick={() => deleteOrder.mutate(order._id)}
+                          className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
+
+                    <p className="text-[10px] text-gray-400">{formatDate(order.createdAt)}</p>
 
                     <div className="space-y-0.5">
                       <p className="text-sm font-semibold text-gray-800">
@@ -319,8 +353,18 @@ export default function BillingDashboardPage() {
                       ) : (
                         <span />
                       )}
-                      <Badge className={getStatusColor(order.status)}>{order.status.replace(/_/g, ' ').toUpperCase()}</Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Badge className={getStatusColor(order.status)}>{order.status.replace(/_/g, ' ').toUpperCase()}</Badge>
+                        <button
+                          onClick={() => deleteOrder.mutate(order._id)}
+                          className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
+
+                    <p className="text-[10px] text-gray-400">{formatDate(order.createdAt)}</p>
 
                     <div className="space-y-0.5">
                       <p className="text-sm font-semibold text-gray-800">

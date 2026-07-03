@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Package, ArrowRight, Truck, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Package, ArrowRight, Truck, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
 import { Header } from '@/components/layout/header';
@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { formatCurrency, getStatusColor } from '@/lib/utils';
+import { formatCurrency, formatDate, getStatusColor } from '@/lib/utils';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import type { Order, AdminUser } from '@/types';
 
@@ -84,6 +84,23 @@ export default function PackingDashboardPage() {
     },
   });
 
+  const deleteOrder = useMutation({
+    mutationFn: (orderId: string) => api.deleteOrder(orderId),
+    onMutate: async (orderId) => {
+      await queryClient.cancelQueries({ queryKey: ['department', 'packing', 'orders'] });
+      const prev = queryClient.getQueryData(['department', 'packing', 'orders']);
+      queryClient.setQueryData(['department', 'packing', 'orders'], (old: any) => {
+        if (!old?.items) return old;
+        return { ...old, items: old.items.filter((o: any) => o._id !== orderId) };
+      });
+      return { prev };
+    },
+    onError: (_err, _vars, context: any) => {
+      if (context?.prev) queryClient.setQueryData(['department', 'packing', 'orders'], context.prev);
+      toast({ title: 'Failed to delete order', variant: 'destructive' });
+    },
+  });
+
   return (
     <div className="flex flex-col h-screen">
       <Header
@@ -140,17 +157,27 @@ export default function PackingDashboardPage() {
                     ) : (
                       <span />
                     )}
-                    <div className="flex flex-col items-end gap-1">
-                      <Badge className={getStatusColor(order.status)}>
-                        {order.status.replace(/_/g, ' ').toUpperCase()}
-                      </Badge>
-                      {isPacked && !isRepack && (
-                        <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
-                          <CheckCircle2 className="h-3 w-3" /> Packed
-                        </span>
-                      )}
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex flex-col items-end gap-1">
+                        <Badge className={getStatusColor(order.status)}>
+                          {order.status.replace(/_/g, ' ').toUpperCase()}
+                        </Badge>
+                        {isPacked && !isRepack && (
+                          <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3" /> Packed
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => deleteOrder.mutate(order._id)}
+                        className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   </div>
+
+                  <p className="text-[10px] text-gray-400">{formatDate(order.createdAt)}</p>
 
                   <div className="space-y-0.5">
                     <p className="text-sm font-semibold text-gray-800">{order.shippingAddress.name}</p>
