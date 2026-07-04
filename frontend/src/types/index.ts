@@ -274,6 +274,14 @@ export interface Order {
   scheduledFor?: string;
   repackRequired?: boolean;
   editChanges?: EditChange[];
+  metadata?: {
+    deliveryWorkflow?: {
+      paymentMethod?: 'cash' | 'upi';
+      amountCollected?: number;
+      cashAmount?: number;
+      upiAmount?: number;
+    };
+  };
   createdAt: string;
   updatedAt: string;
 }

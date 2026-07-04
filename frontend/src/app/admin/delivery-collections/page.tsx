@@ -151,6 +151,7 @@ function BreakdownDialog({
               <tbody>
                 {orders.map((o) => {
                   const isPending = o.collectionStatus === 'pending';
+                  const pm = o.metadata?.deliveryWorkflow?.paymentMethod === 'upi' ? 'upi' : o.paymentMethod;
                   return (
                     <tr key={o._id} className="border-b last:border-0 hover:bg-gray-50">
                       <td className="py-2.5">
@@ -180,12 +181,12 @@ function BreakdownDialog({
                       <td className="py-2.5 text-right">
                         <span
                           className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                            o.paymentMethod === 'upi'
+                            pm === 'upi'
                               ? 'bg-blue-50 text-blue-700'
                               : 'bg-yellow-50 text-yellow-700'
                           }`}
                         >
-                          {o.paymentMethod?.toUpperCase() ?? '—'}
+                          {pm?.toUpperCase() ?? '—'}
                         </span>
                       </td>
                       <td className="py-2.5 text-right">

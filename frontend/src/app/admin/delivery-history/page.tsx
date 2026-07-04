@@ -149,13 +149,18 @@ export default function DeliveryHistoryPage() {
     });
   }, [orders, search]);
 
+  // Use metadata.deliveryWorkflow.paymentMethod as source of truth (handles old orders
+  // where order.paymentMethod was never updated from 'cod' on delivery).
+  const effectivePM = (o: Order) =>
+    o.metadata?.deliveryWorkflow?.paymentMethod === 'upi' ? 'upi' : o.paymentMethod;
+
   // Summary totals from filtered rows
   const totalDeliveries = filtered.length;
   const totalCash = filtered
-    .filter((o) => ['cod', 'cash'].includes(o.paymentMethod))
+    .filter((o) => effectivePM(o) !== 'upi')
     .reduce((s, o) => s + (o.amountCollected ?? 0), 0);
   const totalUpi = filtered
-    .filter((o) => o.paymentMethod === 'upi')
+    .filter((o) => effectivePM(o) === 'upi')
     .reduce((s, o) => s + (o.amountCollected ?? 0), 0);
   const pendingCount = filtered.filter((o) => o.collectionStatus === 'pending').length;
 
@@ -312,7 +317,7 @@ export default function DeliveryHistoryPage() {
                         {order.amountCollected != null ? INR(order.amountCollected) : '—'}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <StatusBadge status={order.paymentMethod} />
+                        <StatusBadge status={effectivePM(order)} />
                       </td>
                       <td className="px-4 py-3 text-center">
                         {order.collectionStatus === 'settled' ? (
