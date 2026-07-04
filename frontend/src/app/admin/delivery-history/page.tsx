@@ -152,7 +152,7 @@ export default function DeliveryHistoryPage() {
   // Summary totals from filtered rows
   const totalDeliveries = filtered.length;
   const totalCash = filtered
-    .filter((o) => o.paymentMethod === 'cod')
+    .filter((o) => ['cod', 'cash'].includes(o.paymentMethod))
     .reduce((s, o) => s + (o.amountCollected ?? 0), 0);
   const totalUpi = filtered
     .filter((o) => o.paymentMethod === 'upi')
