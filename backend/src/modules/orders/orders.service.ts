@@ -1074,8 +1074,8 @@ export class OrdersService implements OnModuleInit {
       if (dto.amountCollected && dto.amountCollected > 0) {
         order.collectionStatus = 'pending';
       }
-      if (dto.paymentMethod) {
-        order.paymentMethod = dto.paymentMethod;
+      if (dto.paymentMethod === 'upi') {
+        order.paymentMethod = 'upi';
       }
     } else if (dto.status === 'unpaid') {
       order.status = 'delivered';
