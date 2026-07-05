@@ -231,18 +231,8 @@ export class ChatbotService {
 
   private formatOrderListDate(dateValue?: Date | string | null): string {
     const date = dateValue ? new Date(dateValue) : new Date();
-    if (Number.isNaN(date.getTime())) return 'Recent order';
-
-    const datePart = date.toLocaleDateString('en-IN', {
-      day: 'numeric',
-      month: 'short',
-    });
-    const timePart = date.toLocaleTimeString('en-IN', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-    });
-    return `${datePart}, ${timePart}`;
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   }
 
   private formatOrderItemsForList(items: Array<{ name: string; quantity: number }>): string {
@@ -595,7 +585,6 @@ export class ChatbotService {
                 `*Total: ${this.formatCurrency(order.total)}* · Cash on Delivery\n` +
                 `We’ll confirm shortly. Track anytime by replying *orders*.`,
               buttons: [
-                { id: 'orders', title: '📦 Track order' },
                 { id: BTN.BROWSE, title: '🛍 Shop more' },
               ],
             });
@@ -2453,7 +2442,6 @@ export class ChatbotService {
         bodyText: `${summary}\n\nWe'll notify you when it ships. \uD83D\uDE9A`,
         footerText: 'Cash on delivery',
         buttons: [
-          { id: Btn.order(order._id.toString()), title: '\uD83D\uDCE6 Track order' },
           { id: BTN.BROWSE, title: '\uD83D\uDECD Keep shopping' },
         ],
       });
@@ -2495,7 +2483,6 @@ export class ChatbotService {
           bodyText: body,
           footerText: payUrl ? 'Link expires in 48 hours' : undefined,
           buttons: [
-            { id: Btn.order(order._id.toString()), title: '\uD83D\uDCE6 Track order' },
             { id: BTN.BROWSE, title: '\uD83D\uDECD Keep shopping' },
           ],
         });
@@ -4812,9 +4799,11 @@ export class ChatbotService {
     const rows = slice.map((order) => {
       const statusLabel = this.formatOrderStatusForCustomer(order);
       const itemsPreview = this.formatOrderItemsForList(order.items);
+      const dateShort = this.formatOrderListDate(order.createdAt);
+      const totalStr = (order as any).total != null ? this.formatCurrency((order as any).total) : '';
       return {
         id: Btn.order(order._id.toString()),
-        title: clip(`#${order.orderNumber}  ·  ${this.formatOrderListDate(order.createdAt)}`, WA.LIST_ROW_TITLE),
+        title: clip([dateShort, totalStr].filter(Boolean).join('  ·  '), WA.LIST_ROW_TITLE),
         description: clip(`${statusLabel}  ·  ${itemsPreview}`, WA.LIST_ROW_DESC),
       };
     });
