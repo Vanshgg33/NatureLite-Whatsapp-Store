@@ -272,7 +272,9 @@ export class AuthService {
       await this.redisService.del(`otp:${dto.phone}`);
     }
 
-    let user = await this.userRepository.findOneByPhone(dto.phone);
+    // Chatbot users are stored as 91XXXXXXXXXX; OTP login sends 10-digit — check both
+    let user = await this.userRepository.findOneByPhone(dto.phone)
+      ?? await this.userRepository.findOneByPhone(`91${dto.phone}`);
 
     if (!user) {
       user = await this.userRepository.create({ phone: dto.phone } as any);
