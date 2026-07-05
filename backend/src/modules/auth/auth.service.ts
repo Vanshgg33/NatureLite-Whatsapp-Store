@@ -21,6 +21,7 @@ import {
 import { JwtPayload } from '../../common/decorators/current-user.decorator';
 import { parseObjectId } from '../../common/utils/objectid.util';
 import { RedisService } from '../redis/redis.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 
 @Injectable()
 export class AuthService {
@@ -34,6 +35,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private readonly redisService: RedisService,
+    private readonly whatsappService: WhatsAppService,
   ) {}
 
   private hashToken(token: string): string {
@@ -416,6 +418,16 @@ export class AuthService {
     await this.redisService.set(rateLimitKey, String(Date.now()), 60);
 
     this.logger.log(`Sending OTP to ${phone}`);
+
+    const messageId = await this.whatsappService.sendTextMessage({
+      phone: `91${phone}`,
+      message: `Your NatureLite verification code is: *${otp}*\n\nThis code expires in 5 minutes. Do not share it with anyone.`,
+    });
+
+    if (!messageId) {
+      throw new BadRequestException('Could not send OTP via WhatsApp. Please check your number and try again.');
+    }
+
     return {
       success: true,
       message: 'OTP sent successfully',

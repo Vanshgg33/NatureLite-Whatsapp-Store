@@ -9,6 +9,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { AdminModule } from '../admin/admin.module';
 import { UsersModule } from '../users/users.module';
 import { StoresModule } from '../stores/stores.module';
+import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { RefreshToken, RefreshTokenSchema } from './schemas/refresh-token.schema';
 import { RefreshTokenRepository } from './repositories/refresh-token.repository';
 
@@ -28,6 +29,7 @@ import { RefreshTokenRepository } from './repositories/refresh-token.repository'
     AdminModule,
     UsersModule,
     StoresModule,
+    WhatsAppModule,
     MongooseModule.forFeature([{ name: RefreshToken.name, schema: RefreshTokenSchema }]),
   ],
   controllers: [AuthController],
