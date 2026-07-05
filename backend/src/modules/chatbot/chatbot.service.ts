@@ -4949,7 +4949,6 @@ export class ChatbotService {
         bodyText: welcomeBody,
         footerText: 'naturelitefoods.com',
         buttons: [
-          { id: BTN.ORDERS, title: '\uD83D\uDCE6 My Orders' },
           { id: BTN.SUPPORT, title: '\uD83D\uDCAC Talk to Us' },
         ],
       });
