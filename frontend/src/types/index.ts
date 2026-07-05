@@ -276,6 +276,7 @@ export interface Order {
   editChanges?: EditChange[];
   metadata?: {
     deliveryWorkflow?: {
+      status?: string;
       paymentMethod?: 'cash' | 'upi';
       amountCollected?: number;
       cashAmount?: number;

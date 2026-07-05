@@ -31,6 +31,7 @@ function StatusBadge({ status }: { status: string }) {
     cod: 'bg-yellow-50 text-yellow-700',
     upi: 'bg-blue-50 text-blue-700',
     prepaid: 'bg-purple-50 text-purple-700',
+    partial: 'bg-orange-50 text-orange-700',
   };
   return (
     <span className={`text-[10px] px-2 py-0.5 rounded font-semibold uppercase ${map[status] ?? 'bg-gray-50 text-gray-600'}`}>
@@ -149,19 +150,29 @@ export default function DeliveryHistoryPage() {
     });
   }, [orders, search]);
 
-  // Use metadata.deliveryWorkflow.paymentMethod as source of truth (handles old orders
-  // where order.paymentMethod was never updated from 'cod' on delivery).
-  const effectivePM = (o: Order) =>
-    o.metadata?.deliveryWorkflow?.paymentMethod === 'upi' ? 'upi' : o.paymentMethod;
+  const isPartialPayment = (o: Order) =>
+    o.metadata?.deliveryWorkflow?.status === 'partial_payment' ||
+    (!!(o.metadata?.deliveryWorkflow?.cashAmount) && !!(o.metadata?.deliveryWorkflow?.upiAmount));
 
-  // Summary totals from filtered rows
+  // Use metadata.deliveryWorkflow as source of truth.
+  // paymentMethod is only set for single-method deliveries; partial payment has neither.
+  const effectivePM = (o: Order) => {
+    if (isPartialPayment(o)) return 'partial';
+    return o.metadata?.deliveryWorkflow?.paymentMethod === 'upi' ? 'upi' : o.paymentMethod;
+  };
+
+  // Summary totals — partial payments split into their cash and UPI portions separately.
   const totalDeliveries = filtered.length;
-  const totalCash = filtered
-    .filter((o) => effectivePM(o) !== 'upi')
-    .reduce((s, o) => s + (o.amountCollected ?? 0), 0);
-  const totalUpi = filtered
-    .filter((o) => effectivePM(o) === 'upi')
-    .reduce((s, o) => s + (o.amountCollected ?? 0), 0);
+  const totalCash = filtered.reduce((s, o) => {
+    if (isPartialPayment(o)) return s + (o.metadata?.deliveryWorkflow?.cashAmount ?? 0);
+    if (effectivePM(o) !== 'upi') return s + (o.amountCollected ?? 0);
+    return s;
+  }, 0);
+  const totalUpi = filtered.reduce((s, o) => {
+    if (isPartialPayment(o)) return s + (o.metadata?.deliveryWorkflow?.upiAmount ?? 0);
+    if (effectivePM(o) === 'upi') return s + (o.amountCollected ?? 0);
+    return s;
+  }, 0);
   const pendingCount = filtered.filter((o) => o.collectionStatus === 'pending').length;
 
   return (
@@ -313,8 +324,17 @@ export default function DeliveryHistoryPage() {
                       <td className="px-4 py-3 text-right font-medium text-gray-900">
                         {INR(order.total)}
                       </td>
-                      <td className="px-4 py-3 text-right font-medium text-gray-900">
-                        {order.amountCollected != null ? INR(order.amountCollected) : '—'}
+                      <td className="px-4 py-3 text-right">
+                        <p className="font-medium text-gray-900">
+                          {order.amountCollected != null ? INR(order.amountCollected) : '—'}
+                        </p>
+                        {isPartialPayment(order) && (
+                          <p className="text-[10px] text-gray-400 mt-0.5">
+                            {INR(order.metadata?.deliveryWorkflow?.cashAmount ?? 0)} cash
+                            {' + '}
+                            {INR(order.metadata?.deliveryWorkflow?.upiAmount ?? 0)} UPI
+                          </p>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <StatusBadge status={effectivePM(order)} />
