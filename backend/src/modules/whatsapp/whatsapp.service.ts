@@ -769,7 +769,11 @@ export class WhatsAppService implements OnModuleInit {
       type: 'interactive' as const,
       interactive: {
         type: 'button' as const,
-        header: dto.headerText ? { type: 'text' as const, text: dto.headerText } : undefined,
+        header: dto.headerImageUrl
+          ? { type: 'image' as const, image: { link: dto.headerImageUrl } }
+          : dto.headerText
+            ? { type: 'text' as const, text: dto.headerText }
+            : undefined,
         body: { text: safeBody },
         footer: dto.footerText ? { text: dto.footerText } : undefined,
         action: { buttons },

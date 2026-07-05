@@ -4855,9 +4855,6 @@ export class ChatbotService {
     session: ChatSessionDocument,
     notice?: string,
   ): Promise<void> {
-    const flow = CHATBOT_FLOWS.main_menu;
-    const action = flow.action;
-
     const name = firstName(session.metadata?.contactName);
 
     let cartCount = 0;
@@ -4871,6 +4868,44 @@ export class ChatbotService {
     }
     const cartLabel = cartCount > 0 ? `\uD83D\uDED2 Cart \u00B7 ${cartCount}` : '\uD83D\uDED2 My Cart';
 
+    const welcomeImageUrl = this.configService.get<string>('chatbot.welcomeImageUrl') || '';
+
+    if (!session.hasReceivedWelcome) {
+      // First-time welcome: full brand message with image header and catalogue link
+      const welcomeBody =
+        `${notice ? `${notice}\n\n` : ''}` +
+        `\uD83C\uDF3F *Namaste! Welcome to Nature Lite Foods* \uD83D\uDE4F\n\n` +
+        `\u0906\u092A\u0915\u093E \u0938\u094D\u0935\u093E\u0917\u0924 \u0939\u0948 \u2014 *You\u2019re in the right place.*\n\n` +
+        `We bring your kitchen the *purest, chemical-free* staples \u2014 made the *old way*, by hand, for your family\u2019s health. \uD83C\uDFBA\n\n` +
+        `\uD83D\uDED2 *What we offer:*\n` +
+        `\u2022 \uD83E\uDED9 *Bilona A2 Ghee* \u2014 traditional hand-churned, Vedic method\n` +
+        `\u2022 \uD83C\uDF3E *Wood-Pressed Oils* \u2014 Groundnut & Mustard, extracted below 50\u00B0C, no chemicals\n` +
+        `\u2022 \uD83E\uDD5C *Premium Dry Fruits*\n\n` +
+        `\u2705 FSSAI Certified\n` +
+        `\u2705 NABL Lab Tested \u2014 every single batch\n` +
+        `\u2705 5,000+ happy families trust us\n` +
+        `\u2705 Free delivery \u2014 Raipur \u00B7 Bhilai \u00B7 Durg \u00B7 Bilaspur \u00B7 Rajnangaon\n\n` +
+        `\uD83D\uDCCB *View our full catalogue \u2192* https://wa.me/c/918817200740\n\n` +
+        `_\u201CThe old way is the right way \u2014 From Farm to Table\u201D_ \uD83C\uDF31`;
+
+      session.hasReceivedWelcome = true;
+      await session.save();
+
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        ...(welcomeImageUrl ? { headerImageUrl: welcomeImageUrl } : { headerText: 'Nature Lite Foods' }),
+        bodyText: welcomeBody,
+        footerText: 'naturelitefoods.com',
+        buttons: [
+          { id: BTN.BROWSE, title: '\uD83D\uDECD Browse Products' },
+          { id: BTN.ORDERS, title: '\uD83D\uDCE6 My Orders' },
+          { id: BTN.SUPPORT, title: '\uD83D\uDCAC Talk to Us' },
+        ],
+      });
+      return;
+    }
+
+    // Returning user: short personalized menu
     const body =
       `${notice ? `${notice}\n\n` : ''}Hey ${name} \uD83D\uDC4B\n` +
       `What are you in the mood for today?\n\n` +
@@ -4878,13 +4913,13 @@ export class ChatbotService {
 
     await this.whatsappService.sendInteractiveButtons({
       phone,
-      headerText: clip(action.header, WA.HEADER) || undefined,
+      ...(welcomeImageUrl ? { headerImageUrl: welcomeImageUrl } : { headerText: 'Nature Lite Foods' }),
       bodyText: body,
-      footerText: clip(action.footer, WA.FOOTER) || undefined,
+      footerText: 'Type menu anytime',
       buttons: [
         { id: BTN.BROWSE, title: '\uD83D\uDECD Shop Now' },
         { id: BTN.CART, title: clip(cartLabel, WA.BUTTON_TITLE) },
-        { id: BTN.ORDERS, title: '\uD83D\uDCE6 Apka last order' },
+        { id: BTN.ORDERS, title: '\uD83D\uDCE6 My Orders' },
       ],
     });
   }

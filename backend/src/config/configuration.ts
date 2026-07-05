@@ -105,6 +105,7 @@ export interface Configuration {
   delivery: DeliveryConfig;
   redis: RedisConfig;
   frontendUrl: string;
+  chatbot: { welcomeImageUrl: string };
 }
 
 export default (): Configuration => ({
@@ -212,4 +213,7 @@ export default (): Configuration => ({
   })(),
   // Frontend URL used for CORS/CSRF checks. Must be set explicitly in env.
   frontendUrl: process.env.FRONTEND_URL || '',
+  chatbot: {
+    welcomeImageUrl: process.env.CHATBOT_WELCOME_IMAGE_URL || '',
+  },
 });

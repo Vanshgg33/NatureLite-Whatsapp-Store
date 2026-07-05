@@ -85,6 +85,9 @@ export class ChatSession {
   messageCount: number;
 
   @Prop({ default: false })
+  hasReceivedWelcome: boolean;
+
+  @Prop({ default: false })
   isExpired: boolean;
 
   /** Set when isExpired flips to true. MongoDB TTL index auto-deletes 90 days after this date. */

@@ -68,6 +68,10 @@ export class SendInteractiveButtonDto {
   headerText?: string;
 
   @IsString()
+  @IsOptional()
+  headerImageUrl?: string;
+
+  @IsString()
   @IsNotEmpty()
   bodyText: string;
 
