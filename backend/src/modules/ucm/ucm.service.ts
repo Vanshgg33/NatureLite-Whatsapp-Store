@@ -384,6 +384,15 @@ export class UcmService {
       if (activeVariants.length > 0) {
         // Sync each active variant as a separate catalog item grouped under the parent
         const parentRetailerId = this.resolveRemoteRetailerId(product);
+
+        // Archive the bare parent item so any previously-synced entry is hidden —
+        // the variants replace it; leaving it visible would cause duplicates.
+        const archivedParent = this.buildCatalogItem(product, true, 0);
+        if (!seenRetailerIds.has(String(archivedParent.retailer_id))) {
+          seenRetailerIds.add(String(archivedParent.retailer_id));
+          items.push({ product, item: archivedParent });
+        }
+
         for (const variant of activeVariants) {
           const variantItem = this.buildVariantCatalogItem(product, variant, parentRetailerId, false);
           const rid = String(variantItem.retailer_id);
