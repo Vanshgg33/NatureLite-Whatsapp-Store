@@ -421,7 +421,7 @@ export class AuthService {
 
     const messageId = await this.whatsappService.sendTemplateMessage({
       phone: `91${phone}`,
-      templateName: 'otp_verification',
+      templateName: 'otp',
       bodyParams: [otp],
       languageCode: 'en',
     });
