@@ -1343,8 +1343,30 @@ class ApiClient {
     rating?: number;
     message: string;
     images?: string[];
+    videos?: string[];
   }): Promise<Feedback> {
     const response = await this.client.post<ApiResponse<Feedback>>('/feedback', data);
+    return response.data.data;
+  }
+
+  async uploadReviewMedia(file: File): Promise<{ url: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await this.client.post<ApiResponse<{ url: string }>>('/feedback/upload-media', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data.data;
+  }
+
+  async adminCreateReview(data: {
+    productId: string;
+    reviewerName: string;
+    rating: number;
+    message: string;
+    images?: string[];
+    videos?: string[];
+  }): Promise<Feedback> {
+    const response = await this.client.post<ApiResponse<Feedback>>('/feedback/admin-create', data);
     return response.data.data;
   }
 

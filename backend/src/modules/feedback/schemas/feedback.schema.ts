@@ -10,8 +10,8 @@ export type FeedbackStatus = 'pending' | 'acknowledged' | 'resolved' | 'closed';
 export class Feedback {
   _id: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
-  user: Types.ObjectId;
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  user?: Types.ObjectId;
 
   @Prop({ type: Types.ObjectId, ref: 'Order' })
   order?: Types.ObjectId;
@@ -30,6 +30,15 @@ export class Feedback {
 
   @Prop({ type: [String], default: [] })
   images: string[];
+
+  @Prop({ type: [String], default: [] })
+  videos: string[];
+
+  @Prop()
+  reviewerName?: string;
+
+  @Prop({ default: false })
+  isAdminCurated: boolean;
 
   @Prop({ default: 'pending' })
   status: FeedbackStatus;

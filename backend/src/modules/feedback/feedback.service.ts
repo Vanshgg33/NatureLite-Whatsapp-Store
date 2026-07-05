@@ -3,6 +3,7 @@ import { Feedback } from './schemas/feedback.schema';
 import { FeedbackRepository } from './repositories/feedback.repository';
 import {
   CreateFeedbackDto,
+  AdminCreateReviewDto,
   RespondToFeedbackDto,
   UpdateFeedbackStatusDto,
   FeedbackQueryDto,
@@ -39,11 +40,31 @@ export class FeedbackService {
       rating: dto.rating,
       message: dto.message,
       images: dto.images || [],
+      videos: dto.videos || [],
       isPublic: dto.type === 'product_review',
       metadata:
         dto.type === 'product_review'
           ? { verifiedPurchase }
           : {},
+    };
+    const saved = await this.feedbackRepository.create(data as Partial<Feedback>);
+    this.clearChatbotCache();
+    return saved as Feedback;
+  }
+
+  async adminCreate(dto: AdminCreateReviewDto): Promise<Feedback> {
+    const data = {
+      type: 'product_review' as const,
+      product: parseObjectId(dto.productId, 'productId'),
+      rating: dto.rating,
+      message: dto.message,
+      images: dto.images || [],
+      videos: dto.videos || [],
+      reviewerName: dto.reviewerName,
+      isAdminCurated: true,
+      isPublic: true,
+      status: 'acknowledged' as const,
+      metadata: { verifiedPurchase: false },
     };
     const saved = await this.feedbackRepository.create(data as Partial<Feedback>);
     this.clearChatbotCache();

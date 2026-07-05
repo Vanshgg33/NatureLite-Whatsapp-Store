@@ -955,6 +955,9 @@ export interface Feedback {
   rating?: number;
   message: string;
   images: string[];
+  videos: string[];
+  reviewerName?: string;
+  isAdminCurated?: boolean;
   status: FeedbackStatus;
   adminResponse?: string;
   respondedAt?: string;
@@ -968,8 +971,12 @@ export interface ProductReview {
   _id: string;
   user: { name?: string };
   userId?: { name?: string };
+  reviewerName?: string;
+  isAdminCurated?: boolean;
   rating?: number;
   message: string;
+  images?: string[];
+  videos?: string[];
   adminResponse?: string;
   createdAt: string;
 }

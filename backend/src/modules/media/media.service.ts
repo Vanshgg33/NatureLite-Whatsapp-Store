@@ -88,6 +88,35 @@ export class MediaService {
     });
   }
 
+  async uploadVideoStream(
+    file: Express.Multer.File,
+    folder: string = 'reviews',
+  ): Promise<UploadResult> {
+    return new Promise((resolve, reject) => {
+      cloudinary.uploader
+        .upload_stream(
+          { folder, resource_type: 'video' },
+          (error: UploadApiErrorResponse | undefined, result: UploadApiResponse | undefined) => {
+            if (error || !result) {
+              this.logger.error('Video stream upload failed', error);
+              reject(new BadRequestException('Failed to upload video'));
+              return;
+            }
+            resolve({
+              publicId: result.public_id,
+              url: result.url,
+              secureUrl: result.secure_url,
+              format: result.format,
+              width: result.width || 0,
+              height: result.height || 0,
+              bytes: result.bytes,
+            });
+          },
+        )
+        .end(file.buffer);
+    });
+  }
+
   async uploadFromUrl(
     url: string,
     folder: string = 'products',

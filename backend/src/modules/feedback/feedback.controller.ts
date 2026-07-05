@@ -1,11 +1,17 @@
-import { Controller, Get, Post, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller, Get, Post, Put, Body, Param, Query,
+  UseGuards, UseInterceptors, UploadedFile, BadRequestException,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { FeedbackService } from './feedback.service';
+import { MediaService } from '../media/media.service';
 import {
   CreateFeedbackDto,
+  AdminCreateReviewDto,
   RespondToFeedbackDto,
   UpdateFeedbackStatusDto,
   FeedbackQueryDto,
@@ -13,7 +19,30 @@ import {
 
 @Controller('feedback')
 export class FeedbackController {
-  constructor(private readonly feedbackService: FeedbackService) {}
+  constructor(
+    private readonly feedbackService: FeedbackService,
+    private readonly mediaService: MediaService,
+  ) {}
+
+  @Post('upload-media')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 100 * 1024 * 1024 } }))
+  async uploadReviewMedia(
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<{ url: string }> {
+    if (!file) throw new BadRequestException('No file provided');
+    const isVideo = file.mimetype.startsWith('video/');
+    const result = isVideo
+      ? await this.mediaService.uploadVideoStream(file, 'reviews')
+      : await this.mediaService.uploadImage(file, 'reviews');
+    return { url: result.secureUrl };
+  }
+
+  @Post('admin-create')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  async adminCreate(@Body() dto: AdminCreateReviewDto) {
+    return this.feedbackService.adminCreate(dto);
+  }
 
   @Post()
   async create(

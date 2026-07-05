@@ -27,6 +27,37 @@ export class CreateFeedbackDto {
   @IsArray()
   @IsOptional()
   images?: string[];
+
+  @IsArray()
+  @IsOptional()
+  videos?: string[];
+}
+
+export class AdminCreateReviewDto {
+  @IsMongoId()
+  @IsNotEmpty()
+  productId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  reviewerName: string;
+
+  @IsNumber()
+  @Min(1)
+  @Max(5)
+  rating: number;
+
+  @IsString()
+  @IsNotEmpty()
+  message: string;
+
+  @IsArray()
+  @IsOptional()
+  images?: string[];
+
+  @IsArray()
+  @IsOptional()
+  videos?: string[];
 }
 
 export class RespondToFeedbackDto {

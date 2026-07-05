@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, Star, Truck, ShieldCheck, Leaf, Heart, Check,
-  ChevronLeft, ChevronRight, Minus, Plus, FileText, Download,
+  ChevronLeft, ChevronRight, Minus, Plus, FileText, Download, Camera, X,
 } from 'lucide-react';
 import { QuantitySelector } from '@/components/ecommerce/quantity-selector';
 import { useAddToCartAnimation } from '@/components/ecommerce/add-to-cart-animation';
@@ -107,6 +107,7 @@ export default function ProductDetailPage() {
   const [showReviewForm,      setShowReviewForm]      = useState(false);
   const [reviewRating,        setReviewRating]        = useState(5);
   const [reviewMessage,       setReviewMessage]       = useState('');
+  const [reviewMedia,         setReviewMedia]         = useState<{ file: File; preview: string }[]>([]);
   const [submittingReview,    setSubmittingReview]    = useState(false);
 
   const addItem           = useCartStore((s) => s.addItem);
@@ -230,9 +231,17 @@ export default function ProductDetailPage() {
     if (!reviewMessage.trim()) return;
     setSubmittingReview(true);
     try {
-      await api.createFeedback({ type: 'product_review', productId: product!._id, rating: reviewRating, message: reviewMessage });
+      const images: string[] = [];
+      const videos: string[] = [];
+      for (const { file } of reviewMedia) {
+        const { url } = await api.uploadReviewMedia(file);
+        if (file.type.startsWith('video/')) videos.push(url);
+        else images.push(url);
+      }
+      reviewMedia.forEach(({ preview }) => URL.revokeObjectURL(preview));
+      await api.createFeedback({ type: 'product_review', productId: product!._id, rating: reviewRating, message: reviewMessage, images, videos });
       toast({ title: 'Review submitted!', description: 'Thank you for your feedback.' });
-      setReviewMessage(''); setReviewRating(5); setShowReviewForm(false);
+      setReviewMessage(''); setReviewRating(5); setShowReviewForm(false); setReviewMedia([]);
       refetchReviews();
     } catch (err: unknown) {
       toast({ title: 'Could not submit review', description: getApiError(err, 'Failed to submit review. Please try again.'), variant: 'destructive' });
@@ -948,6 +957,54 @@ export default function ProductDetailPage() {
                     onBlur={(e) => (e.currentTarget.style.borderColor = 'rgba(26,40,16,0.10)')}
                   />
                 </div>
+                <div>
+                  <p className="text-[11px] font-black mb-2 uppercase tracking-[0.16em]" style={{ color: 'rgba(26,40,16,0.40)' }}>
+                    Photos & Videos (optional)
+                  </p>
+                  <label
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl cursor-pointer text-sm font-medium transition-all hover:opacity-75"
+                    style={{ background: 'rgba(26,40,16,0.06)', border: '1px solid rgba(26,40,16,0.12)', color: '#1a2810' }}
+                  >
+                    <Camera className="w-4 h-4" />
+                    Add Photos / Videos
+                    <input
+                      type="file"
+                      accept="image/*,video/*"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        const items = Array.from(e.target.files || []).map((f) => ({ file: f, preview: URL.createObjectURL(f) }));
+                        setReviewMedia((prev) => [...prev, ...items].slice(0, 6));
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                  {reviewMedia.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {reviewMedia.map(({ file, preview }, i) => (
+                        <div key={i} className="relative w-20 h-20 rounded-xl overflow-hidden" style={{ border: '1px solid rgba(26,40,16,0.10)' }}>
+                          {file.type.startsWith('video/') ? (
+                            <video src={preview} className="w-full h-full object-cover" muted />
+                          ) : (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={preview} alt="" className="w-full h-full object-cover" />
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              URL.revokeObjectURL(preview);
+                              setReviewMedia((prev) => prev.filter((_, j) => j !== i));
+                            }}
+                            className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center text-white text-xs"
+                            style={{ background: 'rgba(0,0,0,0.55)' }}
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <div className="flex gap-3">
                   <button
                     onClick={handleSubmitReview}
@@ -958,7 +1015,13 @@ export default function ProductDetailPage() {
                     {submittingReview ? 'Submitting…' : 'Submit Review'}
                   </button>
                   <button
-                    onClick={() => setShowReviewForm(false)}
+                    onClick={() => {
+                      reviewMedia.forEach(({ preview }) => URL.revokeObjectURL(preview));
+                      setReviewMedia([]);
+                      setReviewMessage('');
+                      setReviewRating(5);
+                      setShowReviewForm(false);
+                    }}
                     className="px-7 py-3 rounded-full text-sm font-medium transition-all"
                     style={{ border: '1.5px solid rgba(26,40,16,0.14)', color: 'rgba(26,40,16,0.48)', background: 'transparent' }}
                   >
@@ -989,8 +1052,13 @@ export default function ProductDetailPage() {
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <span className="text-sm font-bold" style={{ color: '#1a2810' }}>
-                      {review.user?.name ?? review.userId?.name ?? 'Customer'}
+                      {review.reviewerName ?? review.user?.name ?? review.userId?.name ?? 'Customer'}
                     </span>
+                    {review.isAdminCurated && (
+                      <span className="ml-2 text-[10px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded" style={{ background: 'rgba(200,150,12,0.12)', color: '#8a6200' }}>
+                        Verified
+                      </span>
+                    )}
                     <div className="flex items-center gap-0.5 mt-1.5">
                       {[...Array(5)].map((_, i) => (
                         <Star
@@ -1011,6 +1079,19 @@ export default function ProductDetailPage() {
                 <p className="text-[13.5px] leading-[1.72]" style={{ color: 'rgba(26,40,16,0.60)' }}>
                   {review.message}
                 </p>
+                {((review.images && review.images.length > 0) || (review.videos && review.videos.length > 0)) && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {review.images?.map((url, i) => (
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt="Review photo" className="w-20 h-20 object-cover rounded-xl transition-opacity hover:opacity-80" style={{ border: '1px solid rgba(26,40,16,0.08)' }} />
+                      </a>
+                    ))}
+                    {review.videos?.map((url, i) => (
+                      <video key={i} src={url} controls className="rounded-xl object-cover" style={{ maxWidth: '100%', height: 120, border: '1px solid rgba(26,40,16,0.08)' }} />
+                    ))}
+                  </div>
+                )}
                 {review.adminResponse && (
                   <div className="mt-4 pl-4 pt-3" style={{ borderLeft: '2.5px solid rgba(200,150,12,0.48)' }}>
                     <p className="text-[10px] font-black mb-1 uppercase tracking-widest" style={{ color: '#8a6200' }}>
