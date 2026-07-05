@@ -425,6 +425,7 @@ export class AuthService {
       phone: `91${phone}`,
       templateName: 'otp',
       bodyParams: [otp],
+      urlButtonParams: [otp],
       languageCode: 'en',
     });
 

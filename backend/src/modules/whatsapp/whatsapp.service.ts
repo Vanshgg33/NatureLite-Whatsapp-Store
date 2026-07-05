@@ -704,6 +704,17 @@ export class WhatsAppService implements OnModuleInit {
       });
     }
 
+    if (dto.urlButtonParams && dto.urlButtonParams.length > 0) {
+      dto.urlButtonParams.forEach((param, index) => {
+        components.push({
+          type: 'button',
+          sub_type: 'url',
+          index,
+          parameters: [{ type: 'text', text: param }],
+        } as any);
+      });
+    }
+
     const payload = {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
