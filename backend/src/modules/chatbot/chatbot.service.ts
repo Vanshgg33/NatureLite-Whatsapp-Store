@@ -4877,15 +4877,13 @@ export class ChatbotService {
         `\uD83C\uDF3F *Namaste! Welcome to Nature Lite Foods* \uD83D\uDE4F\n\n` +
         `\u0906\u092A\u0915\u093E \u0938\u094D\u0935\u093E\u0917\u0924 \u0939\u0948 \u2014 *You\u2019re in the right place.*\n\n` +
         `We bring your kitchen the *purest, chemical-free* staples \u2014 made the *old way*, by hand, for your family\u2019s health. \uD83C\uDFBA\n\n` +
-        `\uD83D\uDED2 *What we offer:*\n` +
-        `\u2022 \uD83E\uDED9 *Bilona A2 Ghee* \u2014 traditional hand-churned, Vedic method\n` +
-        `\u2022 \uD83C\uDF3E *Wood-Pressed Oils* \u2014 Groundnut & Mustard, extracted below 50\u00B0C, no chemicals\n` +
-        `\u2022 \uD83E\uDD5C *Premium Dry Fruits*\n\n` +
-        `\u2705 FSSAI Certified\n` +
-        `\u2705 NABL Lab Tested \u2014 every single batch\n` +
-        `\u2705 5,000+ happy families trust us\n` +
-        `\u2705 Free delivery \u2014 Raipur \u00B7 Bhilai \u00B7 Durg \u00B7 Bilaspur \u00B7 Rajnangaon\n\n` +
-        `\uD83D\uDCCB *View our full catalogue \u2192* https://wa.me/c/918817200740\n\n` +
+        `\uD83D\uDCCB *Our Menu \u2192* https://wa.me/c/918817200740\n\n` +
+        `\uD83D\uDE9A *Free home delivery* on orders above \u20B9300\n` +
+        `_(Below \u20B9300 \u2014 \u20B940 delivery charge applies)_\n\n` +
+        `\uD83C\uDF10 naturelitefoods.com\n` +
+        `\uD83D\uDCCD Store \u2192 https://maps.app.goo.gl/D8G3EQVRB5eckFcw7\n\n` +
+        `\uD83D\uDCAC *Questions?* Message or call us directly on this number.\n\n` +
+        `\uD83D\uDCCB *Order now \u2192* https://wa.me/c/918817200740\n\n` +
         `_\u201CThe old way is the right way \u2014 From Farm to Table\u201D_ \uD83C\uDF31`;
 
       session.hasReceivedWelcome = true;
@@ -4897,7 +4895,6 @@ export class ChatbotService {
         bodyText: welcomeBody,
         footerText: 'naturelitefoods.com',
         buttons: [
-          { id: BTN.BROWSE, title: '\uD83D\uDECD Browse Products' },
           { id: BTN.ORDERS, title: '\uD83D\uDCE6 My Orders' },
           { id: BTN.SUPPORT, title: '\uD83D\uDCAC Talk to Us' },
         ],
