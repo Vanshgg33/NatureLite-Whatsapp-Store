@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, forwardRef, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef, BadRequestException, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../redis/redis.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -61,7 +61,7 @@ class TtlCache<T> {
 }
 
 @Injectable()
-export class ChatbotService {
+export class ChatbotService implements OnModuleInit {
   private readonly logger = new Logger(ChatbotService.name);
 
   /**
@@ -127,6 +127,11 @@ export class ChatbotService {
         'FRONTEND_URL is not set but Razorpay is configured — WhatsApp pay links cannot be generated. Set FRONTEND_URL on the backend service.',
       );
     }
+  }
+
+  async onModuleInit(): Promise<void> {
+    // Warm Redis with the static welcome message so it survives server restarts.
+    void this.redisService.set('chatbot:msg:welcome', this.buildWelcomeBody(), 24 * 3600);
   }
 
   private readonly catalogIdCache = new TtlCache<string>(60_000);
@@ -3576,15 +3581,10 @@ export class ChatbotService {
   }
 
   private async findCatalogThumbnailRetailerId(): Promise<string | undefined> {
-    let categories = this.categoryCache.get();
-    if (!categories) {
-      categories = await this.categoriesService.findActiveCategories();
-      this.categoryCache.set(categories);
-    }
-
+    const categories = await this.getActiveCategories();
     const mainStoreId = await this.getMainStoreId();
     for (const cat of categories) {
-      const products = await this.productsService.findByCategory(cat._id.toString());
+      const products = await this.getProductsByCategory(cat._id.toString());
       for (const product of products) {
         if (product.isActive === false) continue;
         // Only use products confirmed to exist in the FB catalog (UCM-synced).
@@ -3623,11 +3623,7 @@ export class ChatbotService {
     const MAX_SECTIONS = 10;
     const MAX_ITEMS_TOTAL = 30;
 
-    let categories = this.categoryCache.get();
-    if (!categories) {
-      categories = await this.categoriesService.findActiveCategories();
-      this.categoryCache.set(categories);
-    }
+    const categories = await this.getActiveCategories();
     if (categories.length === 0) {
       await this.whatsappService.sendTextMessage({
         phone,
@@ -3649,7 +3645,7 @@ export class ChatbotService {
       }
       let products: Product[] = [];
       try {
-        products = await this.productsService.findByCategory(cat._id.toString());
+        products = await this.getProductsByCategory(cat._id.toString());
       } catch (error) {
         this.logger.warn(
           `catalog browse: findByCategory failed for ${cat._id.toString()}: ${error instanceof Error ? error.message : 'unknown'}`,
@@ -3911,12 +3907,45 @@ export class ChatbotService {
     await this.sendFlowResponse(phone, 'coupon_prompt', session);
   }
 
-  private async sendCategoryList(phone: string, session: ChatSessionDocument): Promise<void> {
-    let categories = this.categoryCache.get();
-    if (!categories) {
-      categories = await this.categoriesService.findActiveCategories();
-      this.categoryCache.set(categories);
+  /** Categories: L1 in-memory (TtlCache) → L2 Redis → MongoDB. TTL 2 min each layer. */
+  private async getActiveCategories(): Promise<Category[]> {
+    const l1 = this.categoryCache.get();
+    if (l1) return l1;
+    const result = await this.redisService.cached<Category[]>(
+      'chatbot:cache:categories',
+      120,
+      () => this.categoriesService.findActiveCategories() as Promise<Category[]>,
+    );
+    this.categoryCache.set(result);
+    return result;
+  }
+
+  /** Products: L1 in-memory (TtlCache per category) → L2 Redis → MongoDB. TTL 2 min each layer. */
+  private async getProductsByCategory(categoryId: string): Promise<Product[]> {
+    let entry = this.productCache.get(categoryId);
+    if (entry) {
+      const l1 = entry.get();
+      if (l1) return l1;
     }
+    const result = await this.redisService.cached<Product[]>(
+      `chatbot:cache:products:${categoryId}`,
+      120,
+      () => this.productsService.findByCategory(categoryId) as Promise<Product[]>,
+    );
+    if (!entry) {
+      if (this.productCache.size >= this.productCacheMaxSize) {
+        const firstKey = this.productCache.keys().next().value;
+        if (firstKey !== undefined) this.productCache.delete(firstKey);
+      }
+      entry = new TtlCache<Product[]>(2 * 60_000);
+      this.productCache.set(categoryId, entry);
+    }
+    entry.set(result);
+    return result;
+  }
+
+  private async sendCategoryList(phone: string, session: ChatSessionDocument): Promise<void> {
+    const categories = await this.getActiveCategories();
 
     if (categories.length === 0) {
       await this.whatsappService.sendTextMessage({
@@ -3968,36 +3997,23 @@ export class ChatbotService {
     categoryId: string,
     session: ChatSessionDocument,
   ): Promise<void> {
-    let productCacheEntry = this.productCache.get(categoryId);
-    if (!productCacheEntry) {
-      // Evict oldest entries if cache is full.
-      if (this.productCache.size >= this.productCacheMaxSize) {
-        const firstKey = this.productCache.keys().next().value;
-        if (firstKey !== undefined) this.productCache.delete(firstKey);
-      }
-      productCacheEntry = new TtlCache<Product[]>(2 * 60_000);
-      this.productCache.set(categoryId, productCacheEntry);
-    }
-    let products = productCacheEntry.get();
-    if (!products) {
-      try {
-        products = await this.productsService.findByCategory(categoryId);
-        productCacheEntry.set(products);
-      } catch (err) {
-        // Category id may be stale (deleted while user was browsing).
-        this.logger.warn(
-          `findByCategory failed for ${categoryId}: ${err instanceof Error ? err.message : 'unknown'}`,
-        );
-        this.productCache.delete(categoryId);
-        session.currentCategoryId = undefined;
-        await this.saveSession(session);
-        await this.whatsappService.sendTextMessage({
-          phone,
-          message: 'That category is no longer available. Showing all categories.',
-        });
-        await this.sendCategoryList(phone, session);
-        return;
-      }
+    let products: Product[];
+    try {
+      products = await this.getProductsByCategory(categoryId);
+    } catch (err) {
+      this.logger.warn(
+        `findByCategory failed for ${categoryId}: ${err instanceof Error ? err.message : 'unknown'}`,
+      );
+      this.productCache.delete(categoryId);
+      void this.redisService.del(`chatbot:cache:products:${categoryId}`);
+      session.currentCategoryId = undefined;
+      await this.saveSession(session);
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: 'That category is no longer available. Showing all categories.',
+      });
+      await this.sendCategoryList(phone, session);
+      return;
     }
 
     if (products.length === 0) {
@@ -4909,15 +4925,8 @@ export class ChatbotService {
    * Personalised main menu: uses contactName and live cart count.
    * Called internally by sendFlowResponse whenever state === 'main_menu'.
    */
-  private async sendMainMenu(
-    phone: string,
-    session: ChatSessionDocument,
-    notice?: string,
-  ): Promise<void> {
-    const welcomeImageUrl = this.configService.get<string>('chatbot.welcomeImageUrl') || '';
-
-    const body =
-      `${notice ? `${notice}\n\n` : ''}` +
+  private buildWelcomeBody(): string {
+    return (
       `\uD83C\uDF3F *Namaste! Welcome to Nature Lite Foods* \uD83D\uDE4F\n\n` +
       `\u0906\u092A\u0915\u093E \u0938\u094D\u0935\u093E\u0917\u0924 \u0939\u0948 \u2014 *You\u2019re in the right place.*\n\n` +
       `We bring your kitchen the *purest, chemical-free* staples \u2014 made the *old way*, by hand, for your family\u2019s health. \uD83C\uDFBA\n\n` +
@@ -4928,7 +4937,18 @@ export class ChatbotService {
       `\uD83D\uDCCD Store \u2192 https://maps.app.goo.gl/D8G3EQVRB5eckFcw7\n\n` +
       `\uD83D\uDCAC *Questions?* Message or call us directly on this number.\n\n` +
       `\uD83D\uDCCB *Order now \u2192* https://wa.me/c/918817200740\n\n` +
-      `_\u201CThe old way is the right way \u2014 From Farm to Table\u201D_ \uD83C\uDF31`;
+      `_\u201CThe old way is the right way \u2014 From Farm to Table\u201D_ \uD83C\uDF31`
+    );
+  }
+
+  private async sendMainMenu(
+    phone: string,
+    session: ChatSessionDocument,
+    notice?: string,
+  ): Promise<void> {
+    const welcomeImageUrl = this.configService.get<string>('chatbot.welcomeImageUrl') || '';
+    const staticBody = (await this.redisService.get('chatbot:msg:welcome')) || this.buildWelcomeBody();
+    const body = notice ? `${notice}\n\n${staticBody}` : staticBody;
 
     await this.whatsappService.sendInteractiveButtons({
       phone,
