@@ -378,15 +378,34 @@ export class UcmService {
       const stockForItem = stockMap.has(product._id.toString())
         ? stockMap.get(product._id.toString())!
         : product.trackStock === false ? null : 0;
-      const item = this.buildCatalogItem(product, false, stockForItem);
-      const rid = String(item.retailer_id);
-      if (seenRetailerIds.has(rid)) {
-        this.logger.warn(`Skipping product ${product._id} — duplicate retailer_id "${rid}" in sync batch`);
-        details.push({ retailerId: rid, status: 'skipped', message: 'duplicate retailer_id' });
-        continue;
+
+      const activeVariants = (product.variants || []).filter((v) => v.isActive !== false);
+
+      if (activeVariants.length > 0) {
+        // Sync each active variant as a separate catalog item grouped under the parent
+        const parentRetailerId = this.resolveRemoteRetailerId(product);
+        for (const variant of activeVariants) {
+          const variantItem = this.buildVariantCatalogItem(product, variant, parentRetailerId, false);
+          const rid = String(variantItem.retailer_id);
+          if (seenRetailerIds.has(rid)) {
+            this.logger.warn(`Skipping variant ${rid} — duplicate retailer_id in sync batch`);
+            details.push({ retailerId: rid, status: 'skipped', message: 'duplicate retailer_id' });
+            continue;
+          }
+          seenRetailerIds.add(rid);
+          items.push({ product, item: variantItem });
+        }
+      } else {
+        const item = this.buildCatalogItem(product, false, stockForItem);
+        const rid = String(item.retailer_id);
+        if (seenRetailerIds.has(rid)) {
+          this.logger.warn(`Skipping product ${product._id} — duplicate retailer_id "${rid}" in sync batch`);
+          details.push({ retailerId: rid, status: 'skipped', message: 'duplicate retailer_id' });
+          continue;
+        }
+        seenRetailerIds.add(rid);
+        items.push({ product, item });
       }
-      seenRetailerIds.add(rid);
-      items.push({ product, item });
     }
 
     const chunkSize = 25;
@@ -421,7 +440,7 @@ export class UcmService {
 
     const summary: SyncSummary = {
       mode,
-      totalProducts: products.length,
+      totalProducts: items.length,
       syncedProducts,
       failedProducts,
       remoteCatalogId,
@@ -820,6 +839,68 @@ export class UcmService {
       item.product_type = categoryName;
     } else if (categorySlug) {
       item.product_type = categorySlug;
+    }
+
+    return item;
+  }
+
+  private buildVariantCatalogItem(
+    product: ProductDocument,
+    variant: ProductDocument['variants'][number],
+    parentRetailerId: string,
+    archived: boolean,
+  ): Record<string, unknown> {
+    const catalogConfig = this.configService.get<CatalogConfig>('catalog')!;
+    const frontendUrl = this.configService.get<string>('frontendUrl') || '';
+    const baseUrl = frontendUrl.split(',')[0]?.trim().replace(/\/$/, '') || '';
+
+    const outOfStock = archived || product.isActive === false || (product.trackStock !== false && (variant.stock ?? 0) <= 0);
+    const variantRetailerId = `${parentRetailerId}-${variant.sku}`;
+
+    const variantPrice = variant.price ?? product.price;
+    const variantCompare = variant.compareAtPrice ?? product.compareAtPrice ?? 0;
+
+    const item: Record<string, unknown> = {
+      retailer_id: variantRetailerId,
+      item_group_id: parentRetailerId,
+      title: `${product.name} - ${variant.name}`,
+      description: (product.description || product.shortDescription || '').toString().slice(0, 5000),
+      availability: outOfStock ? 'out of stock' : 'in stock',
+      visibility: outOfStock ? 'hidden' : 'published',
+      condition: 'new',
+      custom_label_1: variant.sku,
+    };
+
+    if (variantCompare > variantPrice) {
+      item.price = `${variantCompare.toFixed(2)} INR`;
+      item.sale_price = `${variantPrice.toFixed(2)} INR`;
+    } else {
+      item.price = `${variantPrice.toFixed(2)} INR`;
+      item.sale_price = `${variantPrice.toFixed(2)} INR`;
+    }
+
+    const image = variant.images?.[0] || product.images?.[0];
+    if (image) item.image_link = image;
+
+    if (baseUrl) item.link = `${baseUrl}/products/${product.slug}`;
+
+    if (product.trackStock !== false) item.inventory = Math.max(0, variant.stock ?? 0);
+
+    if (catalogConfig.businessId) item.custom_label_0 = catalogConfig.businessId;
+
+    const categoryName = typeof product.category === 'object' && product.category && 'name' in product.category
+      ? String((product.category as { name?: string }).name || '')
+      : '';
+    if (categoryName) item.product_type = categoryName;
+
+    // Sync variant attributes (size, weight, color, etc.) as Meta variant fields
+    if (variant.attributes && typeof variant.attributes === 'object') {
+      for (const [key, value] of Object.entries(variant.attributes)) {
+        const metaKey = key.toLowerCase();
+        if (['size', 'color', 'gender', 'age_group', 'material', 'pattern'].includes(metaKey)) {
+          item[metaKey] = value;
+        }
+      }
     }
 
     return item;
