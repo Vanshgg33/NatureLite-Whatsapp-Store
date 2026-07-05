@@ -419,9 +419,11 @@ export class AuthService {
 
     this.logger.log(`Sending OTP to ${phone}`);
 
-    const messageId = await this.whatsappService.sendTextMessage({
+    const messageId = await this.whatsappService.sendTemplateMessage({
       phone: `91${phone}`,
-      message: `Your NatureLite verification code is: *${otp}*\n\nThis code expires in 5 minutes. Do not share it with anyone.`,
+      templateName: 'otp_verification',
+      bodyParams: [otp],
+      languageCode: 'en',
     });
 
     if (!messageId) {
