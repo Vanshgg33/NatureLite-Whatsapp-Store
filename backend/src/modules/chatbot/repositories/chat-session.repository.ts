@@ -120,4 +120,8 @@ export class ChatSessionRepository extends BaseRepository<ChatSessionDocument> {
     ).exec();
     return { modifiedCount: result.modifiedCount };
   }
+
+  hydrate(doc: Record<string, unknown>): ChatSessionDocument {
+    return this.model.hydrate(doc) as ChatSessionDocument;
+  }
 }

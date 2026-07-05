@@ -1,5 +1,6 @@
 import { Injectable, Logger, Inject, forwardRef, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { RedisService } from '../redis/redis.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import * as crypto from 'crypto';
 import { Types } from 'mongoose';
@@ -90,8 +91,11 @@ export class ChatbotService {
     page: number,
   ): Promise<void> {
     session.context = mergeChatContext(session.context, { [key]: Math.max(0, page) });
-    await session.save();
+    await this.saveSession(session);
   }
+
+  private static readonly SESSION_TTL = 1800; // 30 min — matches chatbot session expiry
+  private readonly sessKey = (phone: string) => `chatbot:sess:${phone}`;
 
   constructor(
     private readonly chatSessionRepository: ChatSessionRepository,
@@ -111,6 +115,7 @@ export class ChatbotService {
     private readonly storeStockService: StoreStockService,
     private readonly couponsService: CouponsService,
     private readonly ucmService: UcmService,
+    private readonly redisService: RedisService,
   ) {
     // Loud boot-time warning if FRONTEND_URL is unset while Razorpay is wired
     // up. Without it, the chatbot prepaid flow falls back to a "sign in to
@@ -452,7 +457,7 @@ export class ChatbotService {
 
       const session = await this.getOrCreateSession(message.phone);
 
-      await this.updateSessionActivity(session._id.toString());
+      void this.updateSessionActivity(session._id.toString());
 
       const inputText = this.extractInputText(message);
 
@@ -461,7 +466,7 @@ export class ChatbotService {
         if (session.isHandedOffToSupport) {
           session.isHandedOffToSupport = false;
           session.supportHandoffExpiresAt = undefined;
-          await session.save();
+          await this.saveSession(session);
         }
         await this.transitionToState(session, 'main_menu');
         await this.sendFlowResponse(message.phone, 'main_menu', session);
@@ -478,7 +483,7 @@ export class ChatbotService {
         if (expiresAt > 0 && Date.now() >= expiresAt) {
           session.isHandedOffToSupport = false;
           session.supportHandoffExpiresAt = undefined;
-          await session.save();
+          await this.saveSession(session);
           await this.whatsappService.sendTextMessage({
             phone: message.phone,
             message:
@@ -534,7 +539,7 @@ export class ChatbotService {
           throw new Error(`No local product matched retailer_id ${rawRetailerId}`);
         }
         session.currentProductId = product._id.toString();
-        await session.save();
+        await this.saveSession(session);
         await this.transitionToState(session, 'product_detail');
         await this.sendProductDetail(message.phone, product._id.toString(), session);
         return;
@@ -594,7 +599,7 @@ export class ChatbotService {
                 ? (order.user as unknown as { _id: Types.ObjectId })._id
                 : (order.user as unknown as Types.ObjectId);
               session.user = uid;
-              await session.save();
+              await this.saveSession(session);
             }
             return;
           }
@@ -662,7 +667,7 @@ export class ChatbotService {
     }
     if (transitionKey === 'orders') {
       session.context = mergeChatContext(session.context, { ordersPage: 0 });
-      await session.save();
+      await this.saveSession(session);
       await this.transitionToState(session, 'order_tracking');
       await this.sendOrdersList(message.phone, session);
       return;
@@ -836,7 +841,7 @@ export class ChatbotService {
 
       case 'orders':
         session.context = mergeChatContext(session.context, { ordersPage: 0 });
-        await session.save();
+        await this.saveSession(session);
         await this.transitionToState(session, 'order_tracking');
         await this.sendOrdersList(phone, session);
         break;
@@ -929,7 +934,7 @@ export class ChatbotService {
     if (btn.kind === 'category') {
       session.currentCategoryId = btn.id;
       session.context = mergeChatContext(session.context, { productPage: 0 });
-      await session.save();
+      await this.saveSession(session);
       await this.sendProductList(phone, btn.id, session);
       return;
     }
@@ -1075,7 +1080,7 @@ export class ChatbotService {
               `Auto-apply coupon ${best.code} failed: ${err instanceof Error ? err.message : 'unknown'}`,
             );
             session.context = mergeChatContext(session.context, { couponFlowTarget: 'checkout' });
-            await session.save();
+            await this.saveSession(session);
             await this.transitionToState(session, 'coupon_prompt');
             await this.sendFlowResponse(phone, 'coupon_prompt', session);
             return;
@@ -1161,7 +1166,7 @@ export class ChatbotService {
       const applicable = await this.findApplicableCoupons(session);
       const best = applicable[0];
       session.context = mergeChatContext(session.context, { couponFlowTarget: 'cart' });
-      await session.save();
+      await this.saveSession(session);
       if (!best) {
         await this.transitionToState(session, 'coupon_prompt');
         await this.sendAvailableCouponsList(phone, session);
@@ -1178,7 +1183,7 @@ export class ChatbotService {
     // used after Checkout.
     if (input === BTN.COUPON_LIST) {
       session.context = mergeChatContext(session.context, { couponFlowTarget: 'cart' });
-      await session.save();
+      await this.saveSession(session);
       await this.transitionToState(session, 'coupon_prompt');
       await this.sendAvailableCouponsList(phone, session);
       return;
@@ -1442,7 +1447,7 @@ export class ChatbotService {
 
     if (suggestion) {
       session.context = mergeChatContext(session.context, { suggestedCoupon: suggestion.code });
-      await session.save();
+      await this.saveSession(session);
 
       const applyTitle = clip(`\u2705 Apply ${suggestion.code}`, WA.BUTTON_TITLE);
       // Show "See all" when there's more than one choice; otherwise surface
@@ -1903,7 +1908,7 @@ export class ChatbotService {
         return;
       }
       session.context = mergeChatContext(session.context, { selectedAddressIndex: btn.idx });
-      await session.save();
+      await this.saveSession(session);
       this.analytics.track('chatbot.checkout_started', {
         userId: session.user?.toString(),
         addressIdx: btn.idx,
@@ -2152,7 +2157,7 @@ export class ChatbotService {
       const user = await this.usersService.findById(session.user.toString());
       const newIdx = Math.max(0, user.addresses.length - 1);
       session.context = mergeChatContext(session.context, { selectedAddressIndex: newIdx });
-      await session.save();
+      await this.saveSession(session);
       await this.transitionToState(session, 'payment_selection');
       await this.sendFlowResponse(phone, 'payment_selection', session);
     }
@@ -2260,7 +2265,7 @@ export class ChatbotService {
 
     if (input === 'another_yes') {
       session.context = mergeChatContext(session.context, { allowAnotherOrderOnce: true });
-      await session.save();
+      await this.saveSession(session);
       await this.sendFlowResponse(phone, 'payment_selection', session, 'Got it. Please select a payment method to place another order.');
       return;
     }
@@ -2268,7 +2273,7 @@ export class ChatbotService {
     if (input === 'another_no') {
       if (session.context.allowAnotherOrderOnce) {
         session.context = mergeChatContext(session.context, { allowAnotherOrderOnce: false });
-        await session.save();
+        await this.saveSession(session);
       }
       await this.whatsappService.sendTextMessage({
         phone,
@@ -2346,7 +2351,7 @@ export class ChatbotService {
       // Consume the one-time override (only for this attempt).
       if (ctx.allowAnotherOrderOnce) {
         session.context = mergeChatContext(session.context, { allowAnotherOrderOnce: false });
-        await session.save();
+        await this.saveSession(session);
       }
       // Re-validate coupon right before order creation — it may have expired, hit
       // its usage cap, or been deleted since the cart applied it.
@@ -2522,7 +2527,7 @@ export class ChatbotService {
     // customer explicitly leaves payment to adjust delivery details.
     if (session.context.allowAnotherOrderOnce) {
       session.context = mergeChatContext(session.context, { allowAnotherOrderOnce: false });
-      await session.save();
+      await this.saveSession(session);
     }
 
     if (!session.user) {
@@ -2731,7 +2736,7 @@ export class ChatbotService {
       // Persist the selected order id so "Reorder" works even when providers
       // (e.g. 360dialog fallbacks) don't echo back dynamic button ids.
       session.pendingOrderId = orderId;
-      await session.save();
+      await this.saveSession(session);
 
       await this.whatsappService.sendInteractiveButtons({
         phone,
@@ -2791,7 +2796,7 @@ export class ChatbotService {
       // Backward compatibility: older messages embed reorder_<orderId>.
       const orderId = btn.id;
       session.pendingOrderId = orderId;
-      await session.save();
+      await this.saveSession(session);
       await this.transitionToState(session, 'reorder');
       await this.sendFlowResponse(phone, 'reorder', session);
       return;
@@ -2896,7 +2901,7 @@ export class ChatbotService {
       }
 
       session.pendingOrderId = undefined;
-      await session.save();
+      await this.saveSession(session);
 
       if (addedCount === 0) {
         await this.whatsappService.sendInteractiveButtons({
@@ -3031,7 +3036,7 @@ export class ChatbotService {
     if (this.isMenuCommand(input)) {
       session.isHandedOffToSupport = false;
       session.supportHandoffExpiresAt = undefined;
-      await session.save();
+      await this.saveSession(session);
       await this.transitionToState(session, 'main_menu');
       await this.sendFlowResponse(phone, 'main_menu', session);
       return;
@@ -3095,7 +3100,7 @@ export class ChatbotService {
   ): Promise<void> {
     if (transitionKey === 'back') {
       session.context = mergeChatContext(session.context, { editingField: undefined });
-      await session.save();
+      await this.saveSession(session);
       await this.transitionToState(session, 'account');
       await this.sendAccountSummary(phone, session);
       return;
@@ -3104,7 +3109,7 @@ export class ChatbotService {
     // User tapped "Change Name" or "Change Email" — enter input mode.
     if (transitionKey === 'edit_name') {
       session.context = mergeChatContext(session.context, { editingField: 'name' });
-      await session.save();
+      await this.saveSession(session);
       await this.whatsappService.sendTextMessage({
         phone,
         message: `${bold('Enter your new name:')}\n\n${italic('Type *back* to cancel.')}`,
@@ -3114,7 +3119,7 @@ export class ChatbotService {
 
     if (transitionKey === 'edit_email') {
       session.context = mergeChatContext(session.context, { editingField: 'email' });
-      await session.save();
+      await this.saveSession(session);
       await this.whatsappService.sendTextMessage({
         phone,
         message: `${bold('Enter your new email:')}\n\n${italic('Type *back* to cancel.')}`,
@@ -3131,7 +3136,7 @@ export class ChatbotService {
       // the prompt is a plain text message with no buttons.
       if (/^(back|cancel|menu)$/i.test(value)) {
         session.context = mergeChatContext(session.context, { editingField: undefined });
-        await session.save();
+        await this.saveSession(session);
         await this.sendProfileEditOptions(phone, session);
         return;
       }
@@ -3169,7 +3174,7 @@ export class ChatbotService {
         return;
       }
       session.context = mergeChatContext(session.context, { editingField: undefined });
-      await session.save();
+      await this.saveSession(session);
 
       await this.whatsappService.sendTextMessage({
         phone,
@@ -3235,7 +3240,7 @@ export class ChatbotService {
       }
 
       session.context = mergeChatContext(session.context, { editingAddressIndex: idx });
-      await session.save();
+      await this.saveSession(session);
       await this.transitionToState(session, 'account_address_edit');
 
       const defaultTag = address.isDefault ? '  \u2605 Default' : '';
@@ -3859,7 +3864,7 @@ export class ChatbotService {
 
     if (messageId) {
       session.context = mergeChatContext(session.context, { lastCatalogOrderMessageId: messageId });
-      await session.save();
+      await this.saveSession(session);
     }
 
     // Re-apply the preserved coupon. If the new cart no longer qualifies
@@ -3985,7 +3990,7 @@ export class ChatbotService {
         );
         this.productCache.delete(categoryId);
         session.currentCategoryId = undefined;
-        await session.save();
+        await this.saveSession(session);
         await this.whatsappService.sendTextMessage({
           phone,
           message: 'That category is no longer available. Showing all categories.',
@@ -4119,7 +4124,7 @@ export class ChatbotService {
         `findById product failed for ${productId}: ${err instanceof Error ? err.message : 'unknown'}`,
       );
       session.currentProductId = undefined;
-      await session.save();
+      await this.saveSession(session);
       await this.whatsappService.sendInteractiveButtons({
         phone,
         headerText: 'Product unavailable',
@@ -4936,7 +4941,26 @@ export class ChatbotService {
     });
   }
 
+  /** Save a session to MongoDB and refresh the Redis cache. */
+  private async saveSession(session: ChatSessionDocument): Promise<void> {
+    await session.save();
+    void this.redisService.setJson(
+      this.sessKey(session.phone),
+      session.toObject(),
+      ChatbotService.SESSION_TTL,
+    );
+  }
+
   private async getOrCreateSession(phone: string): Promise<ChatSessionDocument> {
+    const cached = await this.redisService.getJson<Record<string, unknown>>(this.sessKey(phone));
+    if (cached) {
+      try {
+        return this.chatSessionRepository.hydrate(cached);
+      } catch {
+        // fall through to MongoDB on hydration failure
+      }
+    }
+
     const user = await this.usersService.findOrCreateByPhone(phone);
     let session: ChatSessionDocument;
     try {
@@ -4970,7 +4994,14 @@ export class ChatbotService {
       session.awaitingInputFor = undefined;
       session.isHandedOffToSupport = false;
       session.supportHandoffExpiresAt = undefined;
-      await session.save();
+      await this.saveSession(session);
+    } else {
+      // Prime the cache for next message
+      void this.redisService.setJson(
+        this.sessKey(phone),
+        session.toObject(),
+        ChatbotService.SESSION_TTL,
+      );
     }
 
     return session;
@@ -4982,7 +5013,7 @@ export class ChatbotService {
   ): Promise<void> {
     session.previousState = session.currentState;
     session.currentState = newState;
-    await session.save();
+    await this.saveSession(session);
   }
 
   private async updateSessionActivity(sessionId: string): Promise<void> {
