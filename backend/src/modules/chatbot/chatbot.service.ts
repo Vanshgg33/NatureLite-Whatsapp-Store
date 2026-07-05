@@ -451,7 +451,6 @@ export class ChatbotService {
     session.previousState = session.currentState;
     session.currentState = 'payment_selection';
     await session.save();
-    await this.sendOrderBillSummary(phone, session);
     await this.sendFlowResponse(phone, 'payment_selection', session);
   }
 
@@ -1921,7 +1920,6 @@ export class ChatbotService {
         addressIdx: btn.idx,
       });
       await this.transitionToState(session, 'payment_selection');
-      await this.sendOrderBillSummary(phone, session);
       await this.sendFlowResponse(phone, 'payment_selection', session);
       return;
     }
@@ -2167,7 +2165,6 @@ export class ChatbotService {
       session.context = mergeChatContext(session.context, { selectedAddressIndex: newIdx });
       await session.save();
       await this.transitionToState(session, 'payment_selection');
-      await this.sendOrderBillSummary(phone, session);
       await this.sendFlowResponse(phone, 'payment_selection', session);
     }
   }
@@ -4564,6 +4561,83 @@ export class ChatbotService {
     });
   }
 
+  private async sendPaymentSelectionScreen(
+    phone: string,
+    session: ChatSessionDocument,
+    notice?: string,
+  ): Promise<void> {
+    if (!session.user) return;
+
+    try {
+      const [cart, user] = await Promise.all([
+        this.cartService.getCart(session.user.toString()),
+        this.usersService.findById(session.user.toString()),
+      ]);
+
+      const selectedIndex = session.context.selectedAddressIndex;
+      const address =
+        selectedIndex != null && user.addresses[selectedIndex]
+          ? user.addresses[selectedIndex]
+          : user.addresses.find((a) => a.isDefault) || user.addresses[0];
+
+      // Bill summary — cap items at 4 to stay within 1024-char body limit.
+      const itemLines = cart.items
+        .slice(0, 4)
+        .map((item) => `• ${item.product.name} ×${item.quantity} — ${this.formatCurrency(item.total)}`)
+        .join('\n');
+      const more = cart.items.length > 4 ? `\n_… and ${cart.items.length - 4} more_` : '';
+
+      const billingLines: string[] = [`Subtotal: ${this.formatCurrency(cart.subtotal)}`];
+      if (cart.discount > 0) {
+        billingLines.push(`🏷 ${cart.couponCode || 'Discount'}: −${this.formatCurrency(cart.discount)}`);
+      }
+      const FREE_SHIP_THRESHOLD = 300;
+      billingLines.push(
+        cart.subtotal >= FREE_SHIP_THRESHOLD
+          ? `🎉 Free delivery included`
+          : `🚚 Delivery: ₹40`,
+      );
+      billingLines.push(bold(`You pay: ${this.formatCurrency(cart.total)}`));
+
+      const addressLine = address
+        ? `📍 ${address.street}, ${address.city} — ${address.pincode}`
+        : '';
+
+      const body =
+        `${notice ? `${notice}\n\n` : ''}` +
+        `🧾 *Order Summary*\n${itemLines}${more}\n\n` +
+        `${billingLines.join('\n')}` +
+        `${addressLine ? `\n\n${addressLine}` : ''}\n\n` +
+        `How would you like to pay?`;
+
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        headerText: 'Payment',
+        bodyText: body,
+        footerText: 'Secure · Razorpay',
+        buttons: [
+          { id: BTN.COD, title: '💵 Cash on Delivery' },
+          { id: BTN.PREPAID, title: '💳 UPI / Card' },
+          { id: BTN.CHANGE_ADDRESS, title: '📍 Change address' },
+        ],
+      });
+    } catch (err) {
+      this.logger.warn(`sendPaymentSelectionScreen failed: ${err instanceof Error ? err.message : 'unknown'}`);
+      // Fallback to static screen so the user isn't left stuck.
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        headerText: 'Payment',
+        bodyText: `${notice ? `${notice}\n\n` : ''}How would you like to pay?`,
+        footerText: 'Secure · Razorpay',
+        buttons: [
+          { id: BTN.COD, title: '💵 Cash on Delivery' },
+          { id: BTN.PREPAID, title: '💳 UPI / Card' },
+          { id: BTN.CHANGE_ADDRESS, title: '📍 Change address' },
+        ],
+      });
+    }
+  }
+
   private async sendOrderBillSummary(phone: string, session: ChatSessionDocument): Promise<void> {
     if (!session.user) return;
     try {
@@ -4632,21 +4706,6 @@ export class ChatbotService {
     }
 
     const user = await this.usersService.findById(session.user.toString());
-
-    // Auto-pick when the choice is unambiguous: exactly one saved address,
-    // or one explicitly marked default. Skips address selection entirely.
-    // `forceShowList` overrides this for the explicit change path.
-    if (!options.forceShowList && user.addresses.length > 0) {
-      const defaultIdx = user.addresses.findIndex((a) => a.isDefault);
-      const autoIdx = user.addresses.length === 1 ? 0 : defaultIdx;
-      if (autoIdx >= 0) {
-        session.context = mergeChatContext(session.context, { selectedAddressIndex: autoIdx });
-        await session.save();
-        await this.transitionToState(session, 'payment_selection');
-        await this.sendFlowResponse(phone, 'payment_selection', session, notice);
-        return;
-      }
-    }
 
     // For Meta Cloud API with a Flow configured, use WhatsApp Flows UI.
     const flowId = this.configService.get<string>('whatsapp.flowId');
@@ -4787,6 +4846,12 @@ export class ChatbotService {
     // Main menu renders dynamically (personalized greeting + live cart count).
     if (state === 'main_menu') {
       await this.sendMainMenu(phone, session, notice);
+      return;
+    }
+
+    // Payment selection renders dynamically to show live address + bill summary.
+    if (state === 'payment_selection') {
+      await this.sendPaymentSelectionScreen(phone, session, notice);
       return;
     }
 
