@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { getApiError } from '@/lib/api-error';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -97,6 +97,7 @@ function LoadingSkeleton() {
 export default function ProductDetailPage() {
   const params = useParams();
   const slug   = params.slug as string;
+  const router = useRouter();
 
   const [quantity,            setQuantity]            = useState(1);
   const [selectedImageIndex,  setSelectedImageIndex]  = useState(0);
@@ -110,8 +111,9 @@ export default function ProductDetailPage() {
   const [reviewMedia,         setReviewMedia]         = useState<{ file: File; preview: string }[]>([]);
   const [submittingReview,    setSubmittingReview]    = useState(false);
 
-  const addItem           = useCartStore((s) => s.addItem);
-  const isAuthenticated   = useCustomerStore((s) => s.isAuthenticated);
+  const addItem              = useCartStore((s) => s.addItem);
+  const isAuthenticated      = useCustomerStore((s) => s.isAuthenticated);
+  const setLastVisitedPage   = useCustomerStore((s) => s.setLastVisitedPage);
   const { toast }         = useToast();
   const wishlistToggle    = useWishlistStore((s) => s.toggle);
   const flyAnimation      = useAddToCartAnimation();
@@ -886,9 +888,16 @@ export default function ProductDetailPage() {
               </div>
             )}
 
-            {isAuthenticated && !showReviewForm && (
+            {!showReviewForm && (
               <button
-                onClick={() => setShowReviewForm(true)}
+                onClick={() => {
+                  if (!isAuthenticated) {
+                    setLastVisitedPage(`/products/${product.slug}`);
+                    router.push('/login');
+                    return;
+                  }
+                  setShowReviewForm(true);
+                }}
                 className="px-5 py-2.5 rounded-full text-sm font-bold transition-all hover:bg-[#1a2810] hover:text-[#e8c84a] hover:border-[#1a2810]"
                 style={{ border: '1.5px solid rgba(26,40,16,0.20)', color: '#1a2810', background: 'transparent' }}
               >
