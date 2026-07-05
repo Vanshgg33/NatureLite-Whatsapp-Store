@@ -4909,67 +4909,29 @@ export class ChatbotService {
     session: ChatSessionDocument,
     notice?: string,
   ): Promise<void> {
-    const name = firstName(session.metadata?.contactName);
-
-    let cartCount = 0;
-    if (session.user) {
-      try {
-        const cart = await this.cartService.getCart(session.user.toString());
-        cartCount = cart.itemCount ?? 0;
-      } catch {
-        cartCount = 0;
-      }
-    }
-    const cartLabel = cartCount > 0 ? `\uD83D\uDED2 Cart \u00B7 ${cartCount}` : '\uD83D\uDED2 My Cart';
-
     const welcomeImageUrl = this.configService.get<string>('chatbot.welcomeImageUrl') || '';
 
-    if (!session.hasReceivedWelcome) {
-      // First-time welcome: full brand message with image header and catalogue link
-      const welcomeBody =
-        `${notice ? `${notice}\n\n` : ''}` +
-        `\uD83C\uDF3F *Namaste! Welcome to Nature Lite Foods* \uD83D\uDE4F\n\n` +
-        `\u0906\u092A\u0915\u093E \u0938\u094D\u0935\u093E\u0917\u0924 \u0939\u0948 \u2014 *You\u2019re in the right place.*\n\n` +
-        `We bring your kitchen the *purest, chemical-free* staples \u2014 made the *old way*, by hand, for your family\u2019s health. \uD83C\uDFBA\n\n` +
-        `\uD83D\uDCCB *Our Menu \u2192* https://wa.me/c/918817200740\n\n` +
-        `\uD83D\uDE9A *Free home delivery* on orders above \u20B9300\n` +
-        `_(Below \u20B9300 \u2014 \u20B940 delivery charge applies)_\n\n` +
-        `\uD83C\uDF10 naturelitefoods.com\n` +
-        `\uD83D\uDCCD Store \u2192 https://maps.app.goo.gl/D8G3EQVRB5eckFcw7\n\n` +
-        `\uD83D\uDCAC *Questions?* Message or call us directly on this number.\n\n` +
-        `\uD83D\uDCCB *Order now \u2192* https://wa.me/c/918817200740\n\n` +
-        `_\u201CThe old way is the right way \u2014 From Farm to Table\u201D_ \uD83C\uDF31`;
-
-      session.hasReceivedWelcome = true;
-      await session.save();
-
-      await this.whatsappService.sendInteractiveButtons({
-        phone,
-        ...(welcomeImageUrl ? { headerImageUrl: welcomeImageUrl } : { headerText: 'Nature Lite Foods' }),
-        bodyText: welcomeBody,
-        footerText: 'naturelitefoods.com',
-        buttons: [
-          { id: BTN.SUPPORT, title: '\uD83D\uDCAC Talk to Us' },
-        ],
-      });
-      return;
-    }
-
-    // Returning user: short personalized menu
     const body =
-      `${notice ? `${notice}\n\n` : ''}Hey ${name} \uD83D\uDC4B\n` +
-      `What are you in the mood for today?\n\n` +
-      `Quick access: ${bold('orders')} \u00B7 ${bold('account')} \u00B7 ${bold('help')}`;
+      `${notice ? `${notice}\n\n` : ''}` +
+      `\uD83C\uDF3F *Namaste! Welcome to Nature Lite Foods* \uD83D\uDE4F\n\n` +
+      `\u0906\u092A\u0915\u093E \u0938\u094D\u0935\u093E\u0917\u0924 \u0939\u0948 \u2014 *You\u2019re in the right place.*\n\n` +
+      `We bring your kitchen the *purest, chemical-free* staples \u2014 made the *old way*, by hand, for your family\u2019s health. \uD83C\uDFBA\n\n` +
+      `\uD83D\uDCCB *Our Menu \u2192* https://wa.me/c/918817200740\n\n` +
+      `\uD83D\uDE9A *Free home delivery* on orders above \u20B9300\n` +
+      `_(Below \u20B9300 \u2014 \u20B940 delivery charge applies)_\n\n` +
+      `\uD83C\uDF10 naturelitefoods.com\n` +
+      `\uD83D\uDCCD Store \u2192 https://maps.app.goo.gl/D8G3EQVRB5eckFcw7\n\n` +
+      `\uD83D\uDCAC *Questions?* Message or call us directly on this number.\n\n` +
+      `\uD83D\uDCCB *Order now \u2192* https://wa.me/c/918817200740\n\n` +
+      `_\u201CThe old way is the right way \u2014 From Farm to Table\u201D_ \uD83C\uDF31`;
 
     await this.whatsappService.sendInteractiveButtons({
       phone,
       ...(welcomeImageUrl ? { headerImageUrl: welcomeImageUrl } : { headerText: 'Nature Lite Foods' }),
       bodyText: body,
-      footerText: 'Type menu anytime',
+      footerText: 'naturelitefoods.com',
       buttons: [
-        { id: BTN.BROWSE, title: '\uD83D\uDECD Shop Now' },
-        { id: BTN.CART, title: clip(cartLabel, WA.BUTTON_TITLE) },
-        { id: BTN.ORDERS, title: '\uD83D\uDCE6 My Orders' },
+        { id: BTN.SUPPORT, title: '\uD83D\uDCAC Talk to Us' },
       ],
     });
   }
