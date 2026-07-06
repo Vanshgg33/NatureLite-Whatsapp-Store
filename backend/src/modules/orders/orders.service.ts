@@ -1088,11 +1088,17 @@ export class OrdersService implements OnModuleInit {
       order.collectionStatus = 'pending';
     } else if (dto.status === 'partial_payment') {
       const collected = (dto.cashAmount ?? 0) + (dto.upiAmount ?? 0);
+      if (collected <= 0) {
+        throw new BadRequestException(
+          'Partial payment requires at least one non-zero amount (cash or UPI).',
+        );
+      }
       order.status = 'delivered';
       order.deliveredAt = new Date();
       order.deliveryProofUrl = dto.deliveryProofUrl;
+      order.paymentProofUrl = dto.paymentProofUrl;
       order.amountCollected = collected;
-      if (collected > 0) order.collectionStatus = 'pending';
+      order.collectionStatus = 'pending';
     }
 
     this.pushTimelineEntry(order, {
