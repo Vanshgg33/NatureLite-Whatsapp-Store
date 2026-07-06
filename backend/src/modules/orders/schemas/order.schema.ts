@@ -304,3 +304,9 @@ OrderSchema.index(
 OrderSchema.index({ status: 1, createdAt: -1 });
 OrderSchema.index({ paymentStatus: 1 });
 OrderSchema.index({ createdAt: -1 });
+// Department dashboard queries — all sort by updatedAt and filter by status
+OrderSchema.index({ status: 1, updatedAt: -1 });
+// Delivery: also filters by assignedDeliveryUserId per delivery agent
+OrderSchema.index({ status: 1, assignedDeliveryUserId: 1, updatedAt: -1 });
+// Billing: filters status=preparing + packedAt exists
+OrderSchema.index({ status: 1, packedAt: 1, updatedAt: -1 });
