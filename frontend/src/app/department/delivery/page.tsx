@@ -149,7 +149,7 @@ interface ConfirmDeliveryDialogProps {
   order: Order;
   status: DeliveryStatus;
   deliveryProofUrl: string;
-  paymentProofUrl: string;
+  paymentProofUrl: string | undefined;
   paymentMethod: 'cash' | 'upi';
   amountCollected: string;
   cashAmount: string;
@@ -508,7 +508,7 @@ export default function DeliveryDashboardPage() {
       return api.updateDeliveryWorkflow(selectedOrder._id, {
         status,
         paymentMethod: isDone ? paymentMethod : undefined,
-        paymentProofUrl: isDone ? paymentProofUrl : undefined,
+        paymentProofUrl: (isDone || isPartial) ? paymentProofUrl : undefined,
         deliveryProofUrl: needsDelivery ? deliveryProofUrl : undefined,
         amountCollected: isDone && !isNaN(parsedAmount) ? parsedAmount : isPartial ? parsedCash + parsedUpi : undefined,
         cashAmount: isPartial ? parsedCash : undefined,
@@ -546,10 +546,9 @@ export default function DeliveryDashboardPage() {
 
   const order = selectedOrder;
   const orderIsCod = order ? isCod(order) : true;
-  const photosReady = !!deliveryProofUrl && (isDone && orderIsCod ? !!paymentProofUrl : true);
   const uploading = uploadingPayment || uploadingDelivery;
-
-  const canOpenConfirm = !uploading && !!order && needsDeliveryProof && !!deliveryProofUrl;
+  const partialAmountsValid = !isPartial || (parseFloat(cashAmount) || 0) + (parseFloat(upiAmount) || 0) > 0;
+  const canOpenConfirm = !uploading && !!order && needsDeliveryProof && !!deliveryProofUrl && partialAmountsValid;
   const canSubmitOther = !updateDelivery.isPending && !uploading && !!order && !needsDeliveryProof;
 
   const handlePrimaryButton = () => {
@@ -806,11 +805,11 @@ export default function DeliveryDashboardPage() {
                   onBeforeOpen={() => api.refreshAccessToken().then(() => {})}
                 />
 
-                {isDone && orderIsCod && (
+                {(isDone && orderIsCod || isPartial) && (
                   <PhotoUploadBox
                     label="Payment proof"
-                    hint="Photo of cash received or UPI payment screen"
-                    required
+                    hint={isPartial ? "Photo of cash or UPI payment received (optional)" : "Photo of cash received or UPI payment screen"}
+                    required={isDone && orderIsCod}
                     url={paymentProofUrl}
                     uploading={uploadingPayment}
                     onFile={(f) => uploadPhoto(f, 'delivery-payments', setPaymentProofUrl, setUploadingPayment)}
@@ -968,6 +967,12 @@ export default function DeliveryDashboardPage() {
                   : 'Payment proof photo is required'}
               </p>
             )}
+            {/* Partial payment — amounts hint */}
+            {isPartial && !uploading && deliveryProofUrl && !partialAmountsValid && (
+              <p className="text-xs text-center text-red-500">
+                Enter at least one amount (cash or UPI) for partial payment
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -979,7 +984,7 @@ export default function DeliveryDashboardPage() {
           order={order}
           status={status}
           deliveryProofUrl={deliveryProofUrl}
-          paymentProofUrl={paymentProofUrl ?? ''}
+          paymentProofUrl={paymentProofUrl}
           paymentMethod={paymentMethod}
           amountCollected={amountCollected}
           cashAmount={cashAmount}
