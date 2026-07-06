@@ -726,18 +726,16 @@ export class ChatbotService implements OnModuleInit {
       if (handled) return;
     }
 
-    // Free-text product search: if the user typed non-button text that wasn't
-    // recognised as a navigation alias, and it's not a menu-command, treat it as
-    // a search query from states where that makes sense.
+    // Unrecognized free text in any non-input state → show fallback menu
     if (
       !buttonId &&
-      inputText.length >= 3 &&
+      inputText.length >= 2 &&
       !this.isMenuCommand(inputText) &&
-      this.isSearchCapableState(currentState) &&
+      !this.isTextInputState(currentState) &&
       !this.isValidTransitionKeyForState(currentState, transitionKey)
     ) {
-      const handled = await this.tryProductSearch(message.phone, session, inputText);
-      if (handled) return;
+      await this.sendFallbackMenu(message.phone, session);
+      return;
     }
 
     if (transitionKey === 'support') {
@@ -5311,15 +5309,9 @@ export class ChatbotService implements OnModuleInit {
     return ['menu', 'start', 'hi', 'hello', 'hey', '/start', '/menu'].includes(normalized);
   }
 
-  /** States from which free-text is safe to interpret as a product search. */
-  private isSearchCapableState(state: SessionState): boolean {
-    return (
-      state === 'main_menu' ||
-      state === 'browsing' ||
-      state === 'product_detail' ||
-      state === 'cart' ||
-      state === 'order_tracking'
-    );
+  /** States where the user is actively typing free text (address, coupon, name/email) — do not intercept. */
+  private isTextInputState(state: SessionState): boolean {
+    return state === 'address_input' || state === 'coupon_input' || state === 'account_edit';
   }
 
   /**
@@ -5403,84 +5395,22 @@ export class ChatbotService implements OnModuleInit {
     return true;
   }
 
-  /** Strip common conversational prefixes so "I want ghee" searches "ghee". */
-  private stripSearchIntentPrefix(text: string): string {
-    const stripped = text.replace(
-      /^(?:i want|i need|want to order|get me|send me|give me|looking for|do you have|do you sell|can i get|can i order|order|add|buy|get)\s+/i,
-      '',
-    ).trim();
-    return stripped.length >= 3 ? stripped : text;
-  }
+  private async sendFallbackMenu(phone: string, _session: ChatSessionDocument): Promise<void> {
+    const body =
+      `👋 Here's everything in one place!\n\n` +
+      `📋 *Browse Catalogue*\nhttps://wa.me/c/918817200740\n\n` +
+      `🌐 *Shop on Website*\nhttps://naturelitefoods.com\n\n` +
+      `📍 *Find Our Store*\nhttps://maps.app.goo.gl/D8G3EQVRB5eckFcw7`;
 
-  /**
-   * Search products by free text and render the results as an interactive list.
-   * Returns true if a response was sent (search ran), false if the query was
-   * skipped (e.g. too few letters).
-   */
-  private async tryProductSearch(
-    phone: string,
-    session: ChatSessionDocument,
-    query: string,
-  ): Promise<boolean> {
-    const trimmed = this.stripSearchIntentPrefix(query.trim());
-    if (trimmed.length < 3) return false;
-
-    let products: Product[] = [];
-    try {
-      products = await this.productsService.searchProducts(trimmed, 20);
-    } catch (err) {
-      this.logger.warn('Product search failed', err);
-      return false;
-    }
-
-    // Apply the same Raipur-store fulfillment filter used by the category
-    // browse flow. Without this, search would show products that fail
-    // immediately when the user taps Add to Cart — an inconsistent UX.
-    if (products.length > 0) {
-      const mainStoreId = await this.getMainStoreId();
-      const trackedIds = products
-        .filter((p) => p.trackStock !== false)
-        .map((p) => p._id.toString());
-      const stockMap = await this.storeStockService.getStockMapForStoreProducts(
-        mainStoreId,
-        trackedIds,
-      );
-      products = products.filter((p) => {
-        if (p.trackStock === false) return true;
-        const entry = stockMap.get(p._id.toString());
-        return this.resolveStoreAvailableStock(entry) > 0;
-      });
-    }
-
-    if (products.length === 0) {
-      await this.whatsappService.sendInteractiveButtons({
-        phone,
-        bodyText:
-          `_No products found for "${trimmed.slice(0, 30)}"._\n\n` +
-          `Browse our full range to find what you're looking for 👇`,
-        buttons: [
-          { id: BTN.BROWSE, title: '🛍 Browse products' },
-          { id: BTN.MENU, title: '🏠 Menu' },
-        ],
-      });
-      return true;
-    }
-
-    const rows = products.slice(0, WA.MAX_ROWS_PER_SECTION).map((prod) => ({
-      id: Btn.product(prod._id.toString()),
-      title: clip(prod.name, WA.LIST_ROW_TITLE),
-      description: clip(this.formatCurrency(prod.price), WA.LIST_ROW_DESC),
-    }));
-
-    await this.transitionToState(session, 'browsing');
-    await this.whatsappService.sendInteractiveList({
+    await this.whatsappService.sendInteractiveButtons({
       phone,
-      headerText: `Results for "${trimmed.slice(0, 40)}"`,
-      bodyText: 'Tap a product to view details.',
-      buttonText: 'View results',
-      sections: [{ title: 'Matches', rows }],
+      bodyText: body,
+      buttons: [
+        { id: 'menu', title: '🏠 Main Menu' },
+        { id: 'reorder', title: '🔄 Reorder' },
+        { id: 'orders', title: '📦 My Orders' },
+      ],
     });
-    return true;
   }
 
   async getSession(phone: string): Promise<ChatSession | null> {
