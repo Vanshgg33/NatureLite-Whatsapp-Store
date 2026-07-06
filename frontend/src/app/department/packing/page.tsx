@@ -25,7 +25,7 @@ export default function PackingDashboardPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['department', 'packing', 'orders'],
     queryFn: () => api.getOrders({ forPacking: true, page: 1, limit: 50, sortBy: 'updatedAt', sortOrder: 'desc' }),
-    refetchInterval: 5_000,
+    refetchInterval: 10_000,
   });
 
   const { data: deliveryStaff = [] } = useQuery<AdminUser[]>({
