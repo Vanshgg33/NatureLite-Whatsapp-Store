@@ -1059,8 +1059,11 @@ export class OrdersService implements OnModuleInit {
         if (order.paymentMethod === 'cod') {
           order.paymentStatus = 'paid';
         } else {
-          throw new BadRequestException(
-            'Cannot mark as delivered: payment is not yet paid. Complete payment or reconcile first.',
+          // Non-COD order reached delivery without paid status — Razorpay webhook likely failed.
+          // Order already cleared packing + billing, so allow delivery and flag for finance reconciliation.
+          order.paymentStatus = 'paid';
+          this.logger.warn(
+            `prepaid_delivery_webhook_miss order=${order._id} method=${order.paymentMethod} — auto-reconciled at delivery`,
           );
         }
       }
