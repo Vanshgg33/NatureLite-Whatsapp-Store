@@ -74,7 +74,10 @@ export default function PackingDetailPage() {
   const isPacked = !!order.packedAt;
   const isRepack = !!order.repackRequired;
   const editChanges = order.editChanges ?? [];
-  const canPack = (!isPacked || isRepack) && ['placed', 'confirmed', 'preparing'].includes(order.status);
+  const allowedPackStatuses = isRepack
+    ? ['placed', 'confirmed', 'preparing', 'out_for_delivery']
+    : ['placed', 'confirmed', 'preparing'];
+  const canPack = (!isPacked || isRepack) && allowedPackStatuses.includes(order.status);
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">

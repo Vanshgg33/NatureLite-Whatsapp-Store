@@ -575,16 +575,18 @@ export default function CheckoutPage() {
                   </div>
                 </div>
 
-                <label className="flex items-center gap-2 mt-4 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    {...register('saveAddress')}
-                    className="w-4 h-4 rounded border-brand-border text-brand-mustard focus:ring-brand-mustard"
-                  />
-                  <span className="font-body text-sm text-brand-text">
-                    Save this address to my account
-                  </span>
-                </label>
+                {isAuthenticated && (
+                  <label className="flex items-center gap-2 mt-4 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      {...register('saveAddress')}
+                      className="w-4 h-4 rounded border-brand-border text-brand-mustard focus:ring-brand-mustard"
+                    />
+                    <span className="font-body text-sm text-brand-text">
+                      Save this address to my account
+                    </span>
+                  </label>
+                )}
               </motion.div>
 
               {/* Payment Method */}

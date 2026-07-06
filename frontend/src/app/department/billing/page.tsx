@@ -52,8 +52,8 @@ export default function BillingDashboardPage() {
     const q = search.trim().toLowerCase();
     return allOrders.filter((o) =>
       o.shippingAddress.name.toLowerCase().includes(q) ||
-      o.shippingAddress.phone.includes(q) ||
-      o.orderNumber.toLowerCase().includes(q),
+      o.shippingAddress.phone?.includes(q) ||
+      o.orderNumber?.toLowerCase().includes(q),
     );
   }, [allOrders, search]);
 
@@ -62,8 +62,8 @@ export default function BillingDashboardPage() {
     const q = search.trim().toLowerCase();
     return dispatchedOrders.filter((o) =>
       o.shippingAddress.name.toLowerCase().includes(q) ||
-      o.shippingAddress.phone.includes(q) ||
-      o.orderNumber.toLowerCase().includes(q),
+      o.shippingAddress.phone?.includes(q) ||
+      o.orderNumber?.toLowerCase().includes(q),
     );
   }, [dispatchedOrders, search]);
 
@@ -143,15 +143,22 @@ export default function BillingDashboardPage() {
       });
       return { prevOrders, prevDispatched };
     },
+    onSuccess: () => {
+      toast({ title: 'Order deleted' });
+    },
     onError: (_err, _vars, context: any) => {
       if (context?.prevOrders) queryClient.setQueryData(['department', 'billing', 'orders'], context.prevOrders);
       if (context?.prevDispatched) queryClient.setQueryData(['department', 'billing', 'dispatched'], context.prevDispatched);
       toast({ title: 'Failed to delete order', variant: 'destructive' });
     },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['department', 'billing', 'orders'] });
+      queryClient.invalidateQueries({ queryKey: ['department', 'billing', 'dispatched'] });
+    },
   });
 
   const getRiderName = (order: Order) => {
-    const rider = activeRiders.find((r) => r._id === order.assignedDeliveryUserId);
+    const rider = deliveryStaff.find((r) => r._id === order.assignedDeliveryUserId);
     return rider?.name ?? 'Unknown rider';
   };
 
@@ -224,7 +231,7 @@ export default function BillingDashboardPage() {
                       <div className="flex items-center gap-1.5">
                         <Badge className={getStatusColor(order.status)}>{order.status.replace(/_/g, ' ').toUpperCase()}</Badge>
                         <button
-                          onClick={() => deleteOrder.mutate(order._id)}
+                          onClick={() => { if (window.confirm('Delete this order? This cannot be undone.')) deleteOrder.mutate(order._id); }}
                           className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -293,7 +300,7 @@ export default function BillingDashboardPage() {
                     <div className="flex gap-2">
                       <Button
                         className="flex-1 h-12 text-sm font-semibold gap-2"
-                        disabled={!canSend || markBilled.isPending}
+                        disabled={!canSend || (markBilled.isPending && markBilled.variables?.orderId === order._id)}
                         onClick={() => markBilled.mutate({ orderId: order._id, riderId })}
                       >
                         <CheckCircle2 className="h-4 w-4 shrink-0" />
@@ -356,7 +363,7 @@ export default function BillingDashboardPage() {
                       <div className="flex items-center gap-1.5">
                         <Badge className={getStatusColor(order.status)}>{order.status.replace(/_/g, ' ').toUpperCase()}</Badge>
                         <button
-                          onClick={() => deleteOrder.mutate(order._id)}
+                          onClick={() => { if (window.confirm('Delete this order? This cannot be undone.')) deleteOrder.mutate(order._id); }}
                           className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -419,7 +426,7 @@ export default function BillingDashboardPage() {
                       <Button
                         variant="outline"
                         className="flex-1 h-10 text-sm font-semibold gap-2 border-amber-300 text-amber-700 hover:bg-amber-50"
-                        disabled={!canReassign || reassign.isPending}
+                        disabled={!canReassign || (reassign.isPending && reassign.variables?.orderId === order._id)}
                         onClick={() => reassign.mutate({ orderId: order._id, riderId: newRiderId })}
                       >
                         <ArrowLeftRight className="h-4 w-4 shrink-0" />

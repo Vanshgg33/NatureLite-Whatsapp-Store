@@ -182,6 +182,7 @@ export default function OrderDetailPage() {
           }
         },
         theme: { color: '#D4A574' },
+        modal: { ondismiss: () => setIsPaying(false) },
       };
 
       const rzp = new window.Razorpay(options);
@@ -246,7 +247,7 @@ export default function OrderDetailPage() {
       : (Math.min(currentStepIndex, statusSteps.length - 1) / (statusSteps.length - 1)) * 100;
   const canCancel = cancellableStatuses.includes(order.status);
   const canReorder = order.status === 'delivered' || order.status === 'cancelled';
-  const canPayNow = order.paymentMethod === 'prepaid' && order.paymentStatus !== 'paid';
+  const canPayNow = order.paymentMethod === 'prepaid' && order.paymentStatus !== 'paid' && !['cancelled', 'returned', 'refunded'].includes(order.status);
   const canRequestReturn =
     order.status === 'delivered' &&
     order.paymentStatus === 'paid' &&
@@ -373,7 +374,7 @@ export default function OrderDetailPage() {
       )}
 
       {/* Status Timeline */}
-      {order.status !== 'cancelled' && (
+      {!['cancelled', 'returned', 'refunded'].includes(order.status) && (
         <motion.div
           className="bg-white rounded-2xl p-6 shadow-brand-sm"
           initial={{ opacity: 0, y: 20 }}

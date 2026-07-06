@@ -95,9 +95,15 @@ export default function PackingDashboardPage() {
       });
       return { prev };
     },
+    onSuccess: () => {
+      toast({ title: 'Order deleted' });
+    },
     onError: (_err, _vars, context: any) => {
       if (context?.prev) queryClient.setQueryData(['department', 'packing', 'orders'], context.prev);
       toast({ title: 'Failed to delete order', variant: 'destructive' });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['department', 'packing', 'orders'] });
     },
   });
 
@@ -169,7 +175,7 @@ export default function PackingDashboardPage() {
                         )}
                       </div>
                       <button
-                        onClick={() => deleteOrder.mutate(order._id)}
+                        onClick={() => { if (window.confirm('Delete this order? This cannot be undone.')) deleteOrder.mutate(order._id); }}
                         className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -270,7 +276,7 @@ export default function PackingDashboardPage() {
                       <div className="flex gap-2">
                         <Button
                           className="flex-1 h-10 text-sm font-semibold gap-2"
-                          disabled={!riderId || assignDelivery.isPending}
+                          disabled={!riderId || (assignDelivery.isPending && assignDelivery.variables?.orderId === order._id)}
                           onClick={() => assignDelivery.mutate({ orderId: order._id, riderId })}
                         >
                           <Truck className="h-4 w-4 shrink-0" />
