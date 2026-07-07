@@ -20,6 +20,8 @@ const SiteSettingsContext = createContext<SiteSettingsContextType>({
 export const useSiteSettings = () => useContext(SiteSettingsContext);
 
 const THEME_CACHE_KEY = 'naturelite-active-theme';
+const BANNER_CACHE_KEY = 'naturelite-banner-settings';
+const BANNER_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
 function applyTheme(themeName: string) {
   const preset = THEME_PRESETS[themeName as keyof typeof THEME_PRESETS];
@@ -30,10 +32,35 @@ function applyTheme(themeName: string) {
   });
 }
 
+function readBannerCache(): BannerSettings | null {
+  try {
+    const raw = localStorage.getItem(BANNER_CACHE_KEY);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw) as { data: BannerSettings; ts: number };
+    if (Date.now() - ts > BANNER_CACHE_TTL) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function writeBannerCache(banners: BannerSettings): void {
+  try {
+    localStorage.setItem(BANNER_CACHE_KEY, JSON.stringify({ data: banners, ts: Date.now() }));
+  } catch {}
+}
+
 export function SiteSettingsProvider({ children }: { children: ReactNode }) {
   const [appearance, setAppearance] = useState<AppearanceSettings | null>(null);
-  const [banners, setBanners] = useState<BannerSettings | null>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
+  // Read banner cache synchronously on first render so images can preload without waiting for API
+  const [banners, setBanners] = useState<BannerSettings | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return readBannerCache();
+  });
+  const [isLoaded, setIsLoaded] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return readBannerCache() !== null;
+  });
 
   // Apply cached theme immediately to prevent flash
   useEffect(() => {
@@ -65,7 +92,10 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        if (ban) setBanners(ban);
+        if (ban) {
+          setBanners(ban);
+          writeBannerCache(ban);
+        }
       } catch (error) {
         console.error('Failed to load site settings:', error);
       } finally {

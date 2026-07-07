@@ -19,7 +19,7 @@ import { MarqueeTicker } from '@/components/ui/marquee-ticker';
 import WhatsAppStrip from '@/components/ecommerce/whatsapp-strip';
 import { MapPin } from 'lucide-react';
 
-const LOADER_DURATION = 2000;
+const LOADER_DURATION = 600;
 
 // ─── Loading Screen ───────────────────────────────────────────────────────────
 
@@ -96,8 +96,8 @@ function LoadingScreen({ onDone }: { onDone: () => void }) {
     };
     raf = requestAnimationFrame(tick);
 
-    const t1 = setTimeout(() => setExiting(true), LOADER_DURATION + 200);
-    const t2 = setTimeout(onDone, LOADER_DURATION + 900);
+    const t1 = setTimeout(() => setExiting(true), LOADER_DURATION + 100);
+    const t2 = setTimeout(onDone, LOADER_DURATION + 400);
     return () => { cancelAnimationFrame(raf); clearTimeout(t1); clearTimeout(t2); };
   }, [onDone]);
 
@@ -111,7 +111,7 @@ function LoadingScreen({ onDone }: { onDone: () => void }) {
       className="fixed inset-0 z-[100] flex flex-col items-center justify-center"
       style={{
         background: 'linear-gradient(168deg, #020a02 0%, #041003 40%, #060c02 100%)',
-        transition: exiting ? 'opacity 0.7s cubic-bezier(0.4,0,0.2,1)' : undefined,
+        transition: exiting ? 'opacity 0.3s ease-out' : undefined,
         opacity: exiting ? 0 : 1,
         pointerEvents: exiting ? 'none' : undefined,
       }}
@@ -459,14 +459,10 @@ const sectionVariants = {
 // ─── Home Page ────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
-  const [loaderExited, setLoaderExited] = useState(false);
+  const [loaderExited, setLoaderExited] = useState(
+    () => typeof window !== 'undefined' && sessionStorage.getItem('nl_intro_seen') === '1',
+  );
   const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (sessionStorage.getItem('nl_intro_seen') === '1') {
-      setLoaderExited(true);
-    }
-  }, []);
 
   const { data: productsData } = useQuery({
     queryKey: ['homepage-products'],
