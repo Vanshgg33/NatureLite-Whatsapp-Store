@@ -78,8 +78,8 @@ export default function ImmersiveHeroSection() {
 
   return (
     <div
-      className="relative w-full overflow-hidden h-[52vh] sm:h-[62vh] md:h-[70vh]"
-      style={{ minHeight: 220 }}
+      className="relative w-full overflow-hidden aspect-video sm:aspect-auto sm:h-[62vh] md:h-[70vh]"
+      style={{ minHeight: 160 }}
     >
       <AnimatePresence mode="sync">
         <motion.div
