@@ -14,7 +14,7 @@ export default function ShortPayLinkPage() {
       setError('Invalid payment link.');
       return;
     }
-    const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, '');
+    const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7001/api/v1').replace(/\/$/, '');
     fetch(`${apiUrl}/payments/p/${encodeURIComponent(code)}`, { cache: 'no-store' })
       .then((res) => {
         if (!res.ok) throw new Error('Payment link not found or expired.');
