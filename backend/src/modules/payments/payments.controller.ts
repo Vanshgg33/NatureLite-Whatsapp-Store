@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Param, Headers, HttpCode, UseGuards, Req, RawBodyRequest } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Headers, HttpCode, UseGuards, Req, RawBodyRequest, NotFoundException } from '@nestjs/common';
 import { Request } from 'express';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -56,6 +56,15 @@ export class PaymentsController {
   async verifyWhatsAppCheckout(@Body() dto: WhatsAppCheckoutVerifyDto) {
     await this.paymentsService.verifyWhatsAppCheckoutPayment(dto);
     return { ok: true };
+  }
+
+  /** Resolves a short pay-link code to {orderId, token}. Used by the /p/[code] frontend page. */
+  @Public()
+  @Get('p/:code')
+  async resolveShortPayLink(@Param('code') code: string) {
+    const result = await this.paymentsService.resolveShortPayLink(code);
+    if (!result) throw new NotFoundException('Payment link not found or expired');
+    return result;
   }
 
   @Post(':orderId/refund')

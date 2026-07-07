@@ -2456,18 +2456,10 @@ export class ChatbotService implements OnModuleInit {
     } else {
       let payUrl = '';
       try {
-        const payToken = this.paymentsService.signWhatsAppPayToken(
+        payUrl = await this.paymentsService.generateShortPayUrl(
           order._id.toString(),
           session.user.toString(),
         );
-        const base = this.resolveFrontendBaseUrl();
-        if (base) {
-          payUrl = `${base}/pay/${encodeURIComponent(order._id.toString())}?t=${encodeURIComponent(payToken)}`;
-        } else {
-          this.logger.error(
-            `FRONTEND_URL missing \u2014 cannot build pay link for order ${order._id.toString()}`,
-          );
-        }
       } catch (signErr) {
         this.logger.warn('WhatsApp pay token failed', signErr);
         payUrl = '';
@@ -2622,14 +2614,10 @@ export class ChatbotService implements OnModuleInit {
 
     let payUrl = '';
     try {
-      const payToken = this.paymentsService.signWhatsAppPayToken(
+      payUrl = await this.paymentsService.generateShortPayUrl(
         order._id.toString(),
         session.user.toString(),
       );
-      const base = this.resolveFrontendBaseUrl();
-      if (base) {
-        payUrl = `${base}/pay/${encodeURIComponent(order._id.toString())}?t=${encodeURIComponent(payToken)}`;
-      }
     } catch (signErr) {
       this.logger.warn('Re-issue WhatsApp pay token failed', signErr);
     }

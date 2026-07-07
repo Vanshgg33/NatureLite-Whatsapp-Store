@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
+import { RedisService } from '../redis/redis.service';
 import { PaymentRepository } from './repositories/payment.repository';
 import { OrderRepository } from '../orders/repositories/order.repository';
 import { OrdersService } from '../orders/orders.service';
@@ -50,6 +51,7 @@ export class PaymentsService {
     private configService: ConfigService,
     private readonly walletService: WalletService,
     private readonly storeSalesService: StoreSalesService,
+    private readonly redisService: RedisService,
   ) {
     const keyId = this.configService.get<string>('razorpay.keyId');
     const keySecret = this.configService.get<string>('razorpay.keySecret');
@@ -286,6 +288,32 @@ export class PaymentsService {
       .update(payloadB64)
       .digest('base64url');
     return `${payloadB64}.${sig}`;
+  }
+
+  private resolvePayBaseUrl(): string {
+    const payBase = (this.configService.get<string>('payBaseUrl') ?? '').trim();
+    if (payBase) return payBase.replace(/\/$/, '');
+    const frontendUrl = (this.configService.get<string>('frontendUrl') ?? '').trim();
+    return frontendUrl.split(',')[0]?.trim().replace(/\/$/, '') ?? '';
+  }
+
+  /**
+   * Signs a pay token, stores it under a short 8-char code in Redis (48h TTL),
+   * and returns a short URL: {PAY_BASE_URL}/p/{code}.
+   */
+  async generateShortPayUrl(orderId: string, userId: string): Promise<string> {
+    const token = this.signWhatsAppPayToken(orderId, userId);
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    const bytes = crypto.randomBytes(8);
+    const code = Array.from(bytes).map((b) => chars[b % chars.length]).join('');
+    await this.redisService.setJson(`paylink:${code}`, { orderId, token }, 48 * 60 * 60);
+    const base = this.resolvePayBaseUrl();
+    if (!base) throw new Error('PAY_BASE_URL / FRONTEND_URL not configured — cannot build pay link');
+    return `${base}/p/${code}`;
+  }
+
+  async resolveShortPayLink(code: string): Promise<{ orderId: string; token: string } | null> {
+    return this.redisService.getJson<{ orderId: string; token: string }>(`paylink:${code}`);
   }
 
   verifyWhatsAppPayToken(token: string): WhatsAppPayTokenPayload | null {

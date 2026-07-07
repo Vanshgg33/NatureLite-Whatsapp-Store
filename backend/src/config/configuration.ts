@@ -105,6 +105,8 @@ export interface Configuration {
   delivery: DeliveryConfig;
   redis: RedisConfig;
   frontendUrl: string;
+  /** Override base URL used for WhatsApp pay links. Set PAY_BASE_URL=https://naturelitefoods.com */
+  payBaseUrl: string;
   chatbot: { welcomeImageUrl: string };
 }
 
@@ -213,6 +215,9 @@ export default (): Configuration => ({
   })(),
   // Frontend URL used for CORS/CSRF checks. Must be set explicitly in env.
   frontendUrl: process.env.FRONTEND_URL || '',
+  // Override base domain for WhatsApp payment short links (e.g. https://naturelitefoods.com).
+  // Falls back to first FRONTEND_URL origin when not set.
+  payBaseUrl: process.env.PAY_BASE_URL || '',
   chatbot: {
     welcomeImageUrl: process.env.CHATBOT_WELCOME_IMAGE_URL || '',
   },
