@@ -33,21 +33,26 @@ export default function FeaturedProductsSection({ products }: FeaturedProductsSe
       {/* Promotional banner — above the green section */}
       {activeProme && (
         <div style={{ background: '#f2ece0' }}>
-          <div className="overflow-hidden">
+          {/* Fixed-height container so object-fit:cover works on all devices */}
+          <div className="relative h-[200px] sm:h-[300px] overflow-hidden">
             {activeProme.linkUrl ? (
-              <Link href={activeProme.linkUrl} className="block">
+              <Link href={activeProme.linkUrl} className="absolute inset-0">
                 {activeProme.videoUrl ? (
-                  <video src={activeProme.videoUrl} className="w-full object-cover max-h-[300px]" autoPlay muted loop playsInline />
+                  <video src={activeProme.videoUrl} autoPlay muted loop playsInline
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={activeProme.imageUrl} alt="Promotional banner" className="w-full object-cover max-h-[300px]" />
+                  <img src={activeProme.imageUrl} alt="Promotional banner"
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
                 )}
               </Link>
             ) : activeProme.videoUrl ? (
-              <video src={activeProme.videoUrl} className="w-full object-cover max-h-[300px]" autoPlay muted loop playsInline />
+              <video src={activeProme.videoUrl} autoPlay muted loop playsInline
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={activeProme.imageUrl} alt="Promotional banner" className="w-full object-cover max-h-[300px]" />
+              <img src={activeProme.imageUrl} alt="Promotional banner"
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
             )}
           </div>
         </div>

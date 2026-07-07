@@ -91,8 +91,7 @@ export default function ImmersiveHeroSection() {
           transition={{ duration: 0.6 }}
         >
           {banner.videoUrl ? (
-            /* Wrapper so the old-school absolute-center trick works for iOS Safari */
-            <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#000' }}>
+            <div style={{ position: 'absolute', inset: 0, background: '#000' }}>
               <video
                 src={banner.videoUrl}
                 autoPlay
@@ -102,14 +101,9 @@ export default function ImmersiveHeroSection() {
                 preload="auto"
                 style={{
                   position: 'absolute',
-                  top: '50%',
-                  left: '50%',
-                  /* objectFit:cover polyfill for iOS Safari < 12 */
-                  minWidth: '100%',
-                  minHeight: '100%',
-                  width: 'auto',
-                  height: 'auto',
-                  transform: 'translate(-50%,-50%)',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
                   objectFit: 'cover',
                 }}
                 onEnded={activeBanners.length > 1 ? next : undefined}

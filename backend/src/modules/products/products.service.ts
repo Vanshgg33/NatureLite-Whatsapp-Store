@@ -269,6 +269,22 @@ export class ProductsService implements OnModuleInit {
     const byMetadata = await this.productRepository.findOneByRemoteRetailerId(trimmed);
     if (byMetadata) return byMetadata as Product;
 
+    // Variant retailer_id format: {parentRetailerId}-{variantSku}
+    // UCM push builds this as `${parentRetailerId}-${variant.sku}` so we
+    // need to strip the suffix and match the parent product.
+    const lastDash = trimmed.lastIndexOf('-');
+    if (lastDash > 0) {
+      const parentPart = trimmed.slice(0, lastDash);
+      const variantSku = trimmed.slice(lastDash + 1);
+      if (variantSku) {
+        const parent = await this.findByRetailerId(parentPart);
+        if (parent && Array.isArray(parent.variants)) {
+          const hasVariant = parent.variants.some((v) => v.sku === variantSku);
+          if (hasVariant) return parent;
+        }
+      }
+    }
+
     return null;
   }
 
