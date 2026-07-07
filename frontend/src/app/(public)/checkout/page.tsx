@@ -96,11 +96,14 @@ export default function CheckoutPage() {
     defaultShippingCharge: publicSettings?.store?.defaultShippingCharge ?? 50,
   };
 
+  // BUG 26 FIX: staleTime was 60_000 (60 seconds). On the checkout page the user
+  // is about to pay — showing a 60-second-old balance could cause them to apply
+  // more wallet credit than they actually have. Always fetch fresh.
   const { data: wallet }: { data: WalletBalance | undefined } = useQuery({
     queryKey: ['wallet-balance'],
     queryFn: () => api.getWallet(),
     enabled: isAuthenticated,
-    staleTime: 60 * 1000,
+    staleTime: 0,
   });
 
   const {

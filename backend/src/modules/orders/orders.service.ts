@@ -49,7 +49,8 @@ import { parseObjectId } from '../../common/utils/objectid.util';
 @Injectable()
 export class OrdersService implements OnModuleInit {
   private readonly logger = new Logger(OrdersService.name);
-  private static readonly MAX_ORDER_NUMBER_RETRIES = 3;
+  // BUG 9 fix: increased to 10 retries + jitter to reduce collision probability under concurrency
+  private static readonly MAX_ORDER_NUMBER_RETRIES = 10;
 
   private getDuplicateKeyPattern(err: Error): Record<string, number> | null {
     const withPattern = err as Error & { keyPattern?: Record<string, number> };
@@ -468,6 +469,10 @@ export class OrdersService implements OnModuleInit {
           if (!keyPattern || keyPattern.orderNumber !== 1) {
             throw err;
           }
+          // BUG 9 fix: jitter delay between retries to reduce thundering-herd collisions
+          if (attempt < OrdersService.MAX_ORDER_NUMBER_RETRIES - 1) {
+            await new Promise((resolve) => setTimeout(resolve, Math.floor(Math.random() * 50) + 10));
+          }
         }
       }
 
@@ -495,6 +500,12 @@ export class OrdersService implements OnModuleInit {
           const productId = item.product.toString();
           if (!mainStoreId) return;
           if (tracksStockByProductId.get(productId) === false) return;
+          // BUG 5 fix note: getStockForStoreProduct is called inside the open transaction but without
+          // the session, so it is not a snapshot read. TODO: extend StoreStockService.getStockForStoreProduct
+          // to accept an optional ClientSession parameter so this existence check is part of the
+          // transaction snapshot and cannot race with a concurrent delete of the StoreStock row.
+          // The actual oversell guard is in decrementStock (atomic conditional $inc), which already
+          // uses the session and will throw if stock < quantity.
           const existingStoreStock = await this.storeStockService.getStockForStoreProduct(
             mainStoreId,
             productId,
@@ -580,11 +591,16 @@ export class OrdersService implements OnModuleInit {
         this.logger.warn(`Failed to auto-log website sale: ${saleError.message}`);
       }
 
-      // Send order confirmation email (non-blocking, after transaction)
+      // BUG 8 fix: sendOrderConfirmation must be awaited so async errors are caught; order
+      // creation still succeeds even if email delivery fails.
       try {
         const user = await this.usersService.findById(userId);
         if (user?.email) {
-          this.emailService.sendOrderConfirmation(savedOrder.toObject(), user.email);
+          try {
+            await this.emailService.sendOrderConfirmation(savedOrder.toObject(), user.email);
+          } catch (emailErr) {
+            this.logger.error('Order confirmation email failed', emailErr);
+          }
         }
       } catch (emailError) {
         this.logger.warn(`Failed to send order confirmation email: ${emailError.message}`);
@@ -772,22 +788,33 @@ export class OrdersService implements OnModuleInit {
     this.clearChatbotCache();
   }
 
+  /**
+   * BUG 7 fix: replaced read-check-mutate-save with a single atomic findOneAndUpdate filtered
+   * on paymentStatus != 'refunded'. If the document was already marked refunded by a prior
+   * webhook delivery, findOneAndUpdate returns null and we return early — preventing double
+   * wallet credit and duplicate timeline entries.
+   */
   async recordRefundOnOrder(orderId: string, refundAmount: number): Promise<void> {
     const idObj = parseObjectId(orderId, 'orderId');
-    const order = await this.orderRepository.findById(idObj);
-    if (!order) {
+    const updated = await this.orderRepository.getModel().findOneAndUpdate(
+      { _id: idObj, paymentStatus: { $ne: 'refunded' } },
+      {
+        $set: { paymentStatus: 'refunded', status: 'refunded' },
+        $push: {
+          timeline: {
+            status: 'refunded',
+            message: `Refund of ₹${refundAmount} initiated`,
+            timestamp: new Date(),
+          },
+        },
+      },
+      { new: true },
+    ).exec();
+
+    if (!updated) {
+      // Order not found or already marked refunded — idempotent, nothing to do
       return;
     }
-    if (order.status === 'refunded' && order.paymentStatus === 'refunded') {
-      return;
-    }
-    order.paymentStatus = 'refunded';
-    order.status = 'refunded';
-    this.pushTimelineEntry(order, {
-      status: 'refunded',
-      message: `Refund of ₹${refundAmount} initiated`,
-    });
-    await order.save();
     this.clearChatbotCache();
   }
 
@@ -805,6 +832,10 @@ export class OrdersService implements OnModuleInit {
   /**
    * Fulfilment status changes: `order.status` and the matching timeline row are updated together here only
    * (see `pushTimelineEntry`). Use this path for admin API and department billing transitions.
+   *
+   * BUG 13 fix: replaced load-mutate-save (last-write-wins race) with a single atomic findOneAndUpdate
+   * that filters on the current status. If another request changed the status between our validation read
+   * and the write, findOneAndUpdate returns null and we surface a ConflictException.
    */
   async updateStatus(
     id: string,
@@ -850,28 +881,44 @@ export class OrdersService implements OnModuleInit {
     this.assertPackedBeforeOutForDelivery(order, dto.status, dto.updatedBy);
 
     const previousStatus = order.status;
-    order.status = dto.status;
-    this.pushTimelineEntry(order, {
-      status: dto.status,
+
+    // BUG 13 fix: build the update atomically — filter includes the current status so a concurrent
+    // update that already moved the order to a different status causes this findOneAndUpdate to
+    // return null, which we surface as a ConflictException rather than silently overwriting.
+    const timelineEntry = {
+      status: dto.status as OrderStatus,
       message: dto.message || `Order status updated to ${dto.status}`,
+      timestamp: new Date(),
       updatedBy: dto.updatedBy,
-    });
+    };
+
+    const setFields: Record<string, any> = { status: dto.status };
 
     if (dto.status === 'out_for_delivery') {
-      order.outForDeliveryAt = new Date();
+      setFields.outForDeliveryAt = new Date();
       if (dto.updatedBy) {
-        order.billedAt = new Date();
-        order.billedBy = dto.updatedBy;
+        setFields.billedAt = new Date();
+        setFields.billedBy = dto.updatedBy;
       }
       if (dto.assignedTo) {
-        order.assignedDeliveryUserId = dto.assignedTo;
-        order.assignedDeliveryAt = new Date();
+        setFields.assignedDeliveryUserId = dto.assignedTo;
+        setFields.assignedDeliveryAt = new Date();
       }
     } else if (dto.status === 'delivered') {
-      order.deliveredAt = new Date();
+      setFields.deliveredAt = new Date();
     }
 
-    const savedOrder = await order.save();
+    const savedOrder = await this.orderRepository.getModel().findOneAndUpdate(
+      { _id: idObj, status: previousStatus },
+      { $set: setFields, $push: { timeline: timelineEntry } },
+      { new: true },
+    ).exec();
+
+    if (!savedOrder) {
+      throw new ConflictException(
+        'Order status was modified concurrently. Please reload and retry.',
+      );
+    }
 
     // Fire-and-forget: email + WhatsApp run after response is sent
     const orderObj = savedOrder.toObject() as Order;
@@ -1165,6 +1212,49 @@ export class OrdersService implements OnModuleInit {
     order.cancelledAt = new Date();
     order.cancelReason = dto.reason;
 
+    // BUG 1 fix: restore stock for all items on cancellation
+    let cancelMainStore: Awaited<ReturnType<typeof this.storesService.findMainStore>> | null = null;
+    try {
+      cancelMainStore = await this.storesService.findMainStore();
+    } catch {
+      // Main store not configured — skip stock restore
+    }
+    if (cancelMainStore) {
+      const cancelStoreId = cancelMainStore._id.toString();
+      await Promise.all(
+        order.items.map(async (item) => {
+          try {
+            await this.storeStockService.incrementStock(
+              cancelStoreId,
+              item.product.toString(),
+              item.quantity,
+              item.variantSku,
+            );
+          } catch (stockErr) {
+            this.logger.warn(
+              `cancelOrder: failed to restore stock for product ${item.product.toString()} on order ${id}: ${stockErr.message}`,
+            );
+          }
+        }),
+      );
+    }
+
+    // BUG 2 fix: credit wallet back if wallet was used for this order
+    if (order.walletUsed && order.walletUsed > 0) {
+      try {
+        await this.walletService.credit(
+          order.user.toString(),
+          order.walletUsed,
+          'order_cancelled',
+          { orderId: order._id as Types.ObjectId },
+        );
+      } catch (walletErr) {
+        this.logger.warn(
+          `cancelOrder: failed to refund wallet for order ${id}: ${walletErr.message}`,
+        );
+      }
+    }
+
     this.pushTimelineEntry(order, {
       status: 'cancelled',
       message: `Order cancelled: ${dto.reason}`,
@@ -1376,6 +1466,63 @@ export class OrdersService implements OnModuleInit {
           status: order.status,
           message: `Order items edited by admin — repack required (${editChanges.length} change${editChanges.length > 1 ? 's' : ''})`,
         });
+
+        // BUG 12 fix: sync inventory for the changed items so store stock stays accurate
+        // after admin edits. Runs best-effort after the order is saved; failures are logged
+        // but do not block the response.
+        let stockSyncStore: Awaited<ReturnType<typeof this.storesService.findMainStore>> | null = null;
+        try {
+          stockSyncStore = await this.storesService.findMainStore();
+        } catch {
+          // Main store not configured — skip stock sync
+        }
+        if (stockSyncStore) {
+          const stockSyncStoreId = stockSyncStore._id.toString();
+          for (const change of editChanges) {
+            try {
+              if (change.type === 'item_removed') {
+                // Item no longer in order — return full old quantity to stock
+                await this.storeStockService.incrementStock(
+                  stockSyncStoreId,
+                  change.productId,
+                  change.oldQty!,
+                  change.variantSku,
+                );
+              } else if (change.type === 'item_added') {
+                // New item added to order — decrement stock by new quantity
+                await this.storeStockService.decrementStock(
+                  stockSyncStoreId,
+                  change.productId,
+                  change.newQty!,
+                  change.variantSku,
+                );
+              } else if (change.type === 'qty_changed') {
+                const delta = change.newQty! - change.oldQty!;
+                if (delta > 0) {
+                  // More ordered — decrement stock by the additional quantity
+                  await this.storeStockService.decrementStock(
+                    stockSyncStoreId,
+                    change.productId,
+                    delta,
+                    change.variantSku,
+                  );
+                } else if (delta < 0) {
+                  // Fewer ordered — return the released quantity to stock
+                  await this.storeStockService.incrementStock(
+                    stockSyncStoreId,
+                    change.productId,
+                    Math.abs(delta),
+                    change.variantSku,
+                  );
+                }
+              }
+            } catch (stockErr) {
+              this.logger.warn(
+                `updateOrder: stock sync failed for product ${change.productId} (${change.type}): ${stockErr.message}`,
+              );
+            }
+          }
+        }
       }
 
       order.items = newItems as any;
@@ -1622,6 +1769,10 @@ export class OrdersService implements OnModuleInit {
   private async generateOrderNumber(): Promise<string> {
     const today = new Date();
     const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+    // BUG 9 note: this read-then-increment pattern is not atomic. Callers wrap it in a
+    // retry loop (MAX_ORDER_NUMBER_RETRIES=10) with jitter so duplicate-key collisions
+    // resolve without user-visible errors. TODO: replace with a Counter collection +
+    // findOneAndUpdate($inc) for fully atomic generation when a Counter model is available.
     const lastOrder = await this.orderRepository.findOneByOrderNumberPrefix(`ORD${dateStr}`);
     let sequence = 1;
     if (lastOrder) {
@@ -1683,6 +1834,13 @@ export class OrdersService implements OnModuleInit {
    * 48h with no payment we cancel the order, increment the main-store stock
    * back, and push the fresh availability to Meta so the catalog reflects it.
    * Runs every 30 minutes; capped at 50 per tick to avoid bursts.
+   *
+   * BUG 3 fix: order status is saved BEFORE stock increments so a failed save cannot
+   * cause a double-increment on the next cron tick. The order document is updated
+   * atomically with findOneAndUpdate (status != 'cancelled' guard) before any stock
+   * changes; if the update fails the item is skipped and will be retried next tick.
+   * TODO: when StoreStockService.incrementStock gains a ClientSession parameter, wrap
+   * both the order update and stock increments in a single MongoDB transaction.
    */
   @Cron('*/30 * * * *')
   async releaseAbandonedPrepaidStock(): Promise<void> {
@@ -1713,6 +1871,35 @@ export class OrdersService implements OnModuleInit {
 
     for (const order of orders) {
       try {
+        // BUG 3 fix: persist the cancellation atomically FIRST (with a guard so a concurrent
+        // cron tick that already cancelled this order becomes a no-op). Only increment stock
+        // after the cancel is confirmed — this prevents double-increment if order.save() had
+        // previously failed after stock was already incremented.
+        const cancelledOrder = await this.orderRepository.getModel().findOneAndUpdate(
+          { _id: order._id, status: { $ne: 'cancelled' } },
+          {
+            $set: {
+              status: 'cancelled',
+              cancelledAt: new Date(),
+              cancelReason: 'Payment not received within 48 hours',
+            },
+            $push: {
+              timeline: {
+                status: 'cancelled',
+                message: 'Auto-cancelled: payment not received within 48 hours',
+                timestamp: new Date(),
+              },
+            },
+          },
+          { new: true },
+        ).exec();
+
+        if (!cancelledOrder) {
+          // Already cancelled by another cron tick — skip stock increment
+          continue;
+        }
+
+        // Order is now confirmed cancelled — safe to increment stock
         for (const item of order.items) {
           try {
             await this.storeStockService.incrementStock(
@@ -1730,14 +1917,6 @@ export class OrdersService implements OnModuleInit {
           }
         }
 
-        order.status = 'cancelled';
-        order.cancelledAt = new Date();
-        order.cancelReason = 'Payment not received within 48 hours';
-        this.pushTimelineEntry(order, {
-          status: 'cancelled',
-          message: 'Auto-cancelled: payment not received within 48 hours',
-        });
-        await order.save();
         released += 1;
       } catch (err) {
         this.logger.warn(

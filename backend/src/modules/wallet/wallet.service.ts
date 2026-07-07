@@ -16,12 +16,12 @@ export class WalletService {
   /**
    * Returns wallet for user, creating it if necessary.
    */
-  async getOrCreateWallet(userId: string): Promise<WalletDocument> {
+  async getOrCreateWallet(userId: string, session?: ClientSession): Promise<WalletDocument> {
     const userObjId = parseObjectId(userId, 'userId');
     const wallet = await this.walletRepository.getModel().findOneAndUpdate(
       { user: userObjId },
       { $setOnInsert: { user: userObjId, balance: 0 } },
-      { upsert: true, new: true },
+      { upsert: true, new: true, setDefaultsOnInsert: true, session },
     );
     return wallet!;
   }
@@ -46,7 +46,7 @@ export class WalletService {
     }
 
     const userObjId = parseObjectId(userId, 'userId');
-    const wallet = await this.getOrCreateWallet(userId);
+    const wallet = await this.getOrCreateWallet(userId, session);
 
     const updated = await this.walletRepository.getModel().findOneAndUpdate(
       { _id: wallet._id },
@@ -92,7 +92,7 @@ export class WalletService {
     }
 
     const userObjId = parseObjectId(userId, 'userId');
-    const wallet = await this.getOrCreateWallet(userId);
+    const wallet = await this.getOrCreateWallet(userId, session);
 
     const updated = await this.walletRepository.getModel().findOneAndUpdate(
       { _id: wallet._id, balance: { $gte: amountPaise } },

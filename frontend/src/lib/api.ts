@@ -80,12 +80,17 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7001/api/v1
 
 class ApiClient {
   private client: AxiosInstance;
-  private isRefreshing = false;
+  // BUG 16 FIX: use the promise itself as the flag — no separate isRefreshing boolean.
+  // This closes the race window where isRefreshing=false (set in .finally) before
+  // refreshPromise=null (set after the outer await), allowing a second 401 to start
+  // a concurrent refresh that invalidates the first one's tokens.
   private refreshPromise: Promise<void> | null = null;
 
   constructor() {
     this.client = axios.create({
       baseURL: API_URL,
+      // BUG 18 FIX: add a default 30s timeout so hung requests don't block indefinitely.
+      timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -159,9 +164,12 @@ class ApiClient {
             return Promise.reject(error);
           }
 
-          if (!this.isRefreshing) {
-            this.isRefreshing = true;
-
+          // BUG 16 FIX: use the promise itself as the flag.
+          // When refreshPromise is non-null a refresh is already in-flight — all
+          // concurrent 401s simply await it instead of starting a second refresh.
+          // .finally() clears the flag atomically so there is no gap between
+          // "refresh done" and "flag cleared" that a new 401 could slip through.
+          if (!this.refreshPromise) {
             const failedRouteIsAdmin = failedUrl.startsWith('admin/') || failedUrl.startsWith('admin?') || failedUrl === 'admin';
             // Admin, department, and invoice pages all use the admin token but may call
             // non-admin-prefixed API routes (e.g. /orders/…), so check the page path too.
@@ -212,12 +220,15 @@ class ApiClient {
               })
               .catch(() => false as const)
               .finally(() => {
-                this.isRefreshing = false;
+                // Single cleanup point — no separate assignment after the outer await.
+                this.refreshPromise = null;
               }) as unknown as Promise<void>;
           }
 
           const refreshed = (await this.refreshPromise) as unknown as boolean;
-          this.refreshPromise = null;
+          // refreshPromise is cleared inside .finally() — do NOT set it to null here.
+          // Doing so from multiple concurrent awaiters could null out a fresh refresh
+          // that a subsequent 401 started during the microtask window.
 
           if (refreshed) {
             return this.client(originalRequest);
@@ -266,24 +277,47 @@ class ApiClient {
   // Proactively refreshes the access token and persists the new token to
   // localStorage. Call this before opening a file/camera picker on Android so
   // that a fresh token is stored before the renderer can be killed.
+  // BUG 17 FIX: now handles both admin and customer token contexts.
   async refreshAccessToken(): Promise<boolean> {
     try {
       let refreshTokenToSend: string | undefined;
+      let isAdminRefresh = false;
       if (typeof window !== 'undefined') {
+        // Try admin token first
         try {
-          const storage = localStorage.getItem('admin-auth-storage');
-          if (storage) {
-            const parsed = JSON.parse(storage);
-            if (parsed?.state?.refreshToken) refreshTokenToSend = parsed.state.refreshToken;
+          const adminStorage = localStorage.getItem('admin-auth-storage');
+          if (adminStorage) {
+            const parsed = JSON.parse(adminStorage);
+            if (parsed?.state?.refreshToken) {
+              refreshTokenToSend = parsed.state.refreshToken;
+              isAdminRefresh = true;
+            }
           }
         } catch { /* ignore */ }
+        // Fall back to customer token if no admin token found
+        if (!refreshTokenToSend) {
+          try {
+            const customerStorage = localStorage.getItem('customer-auth-storage');
+            if (customerStorage) {
+              const parsed = JSON.parse(customerStorage);
+              if (parsed?.state?.refreshToken) {
+                refreshTokenToSend = parsed.state.refreshToken;
+              }
+            }
+          } catch { /* ignore */ }
+        }
       }
       const payload = refreshTokenToSend ? { refreshToken: refreshTokenToSend } : {};
       const res = await axios.post(`${API_URL}/auth/refresh`, payload, { withCredentials: true });
       const newTokens = res.data?.data;
       if (newTokens && typeof window !== 'undefined') {
-        const { useAdminAuthStore } = await import('./admin-store');
-        useAdminAuthStore.getState().setTokens(newTokens.accessToken, newTokens.refreshToken);
+        if (isAdminRefresh || newTokens.user?.role !== 'customer') {
+          const { useAdminAuthStore } = await import('./admin-store');
+          useAdminAuthStore.getState().setTokens(newTokens.accessToken, newTokens.refreshToken);
+        } else {
+          const { useCustomerStore } = await import('./customer-store');
+          useCustomerStore.getState().setTokens(newTokens.accessToken, newTokens.refreshToken);
+        }
       }
       return true;
     } catch {

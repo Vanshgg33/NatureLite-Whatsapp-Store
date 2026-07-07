@@ -67,37 +67,44 @@ export class CartService {
     if (!cart.items.length) return;
     let mutated = false;
     const deadProductIds = new Set<string>();
-    for (const item of cart.items) {
-      try {
-        const product = await this.productsService.findById(item.product.toString());
-        if (!product?.isActive) {
-          deadProductIds.add(item.product.toString());
-          mutated = true;
-          continue;
-        }
-        let livePrice = product.price;
-        if (item.variantSku) {
-          const variant = product.variants.find((v) => v.sku === item.variantSku);
-          if (variant && Number.isFinite(variant.price) && variant.price > 0) {
-            livePrice = variant.price;
-          }
-        }
-        if (
-          Number.isFinite(livePrice) &&
-          livePrice > 0 &&
-          Math.abs((item.price ?? 0) - livePrice) > 0.005
-        ) {
-          item.price = livePrice;
-          item.priceCapturedAt = new Date();
-          mutated = true;
-        }
-      } catch {
-        // Product deleted — remove from cart so the customer never hits a
-        // cryptic "Not found" error at order creation.
+
+    // BUG 30 fix: fetch all products in parallel instead of sequential N+1 queries
+    const productResults = await Promise.allSettled(
+      cart.items.map((item) => this.productsService.findById(item.product.toString())),
+    );
+
+    for (let i = 0; i < cart.items.length; i++) {
+      const item = cart.items[i];
+      const result = productResults[i];
+      if (result.status === 'rejected') {
         deadProductIds.add(item.product.toString());
+        mutated = true;
+        continue;
+      }
+      const product = result.value;
+      if (!product?.isActive) {
+        deadProductIds.add(item.product.toString());
+        mutated = true;
+        continue;
+      }
+      let livePrice = product.price;
+      if (item.variantSku) {
+        const variant = product.variants.find((v) => v.sku === item.variantSku);
+        if (variant && Number.isFinite(variant.price) && variant.price > 0) {
+          livePrice = variant.price;
+        }
+      }
+      if (
+        Number.isFinite(livePrice) &&
+        livePrice > 0 &&
+        Math.abs((item.price ?? 0) - livePrice) > 0.005
+      ) {
+        item.price = livePrice;
+        item.priceCapturedAt = new Date();
         mutated = true;
       }
     }
+
     if (deadProductIds.size > 0) {
       cart.items = cart.items.filter(
         (item) => !deadProductIds.has(item.product.toString()),
@@ -106,10 +113,23 @@ export class CartService {
         `Pruned ${deadProductIds.size} deleted/inactive product(s) from cart ${cart._id}`,
       );
     }
+
     if (mutated) {
       this.recalculateCart(cart);
       await this.revalidateOrClearCoupon(cart, userId);
-      await cart.save();
+      // BUG 30 fix: atomic partial update prevents clobbering concurrent addItem saves
+      await this.cartRepository.getModel().findOneAndUpdate(
+        { _id: cart._id },
+        {
+          $set: {
+            items: cart.items,
+            subtotal: cart.subtotal,
+            discount: cart.discount,
+            total: cart.total,
+            couponCode: cart.couponCode,
+          },
+        },
+      );
     }
   }
 
@@ -387,17 +407,12 @@ export class CartService {
 
   private async findOrCreateCart(userId: string): Promise<CartDocument> {
     const userObjId = parseObjectId(userId, 'userId');
-    let cart = await this.cartRepository.findOneByUser(userObjId);
-    if (!cart) {
-      cart = await this.cartRepository.create({
-        user: userObjId,
-        items: [],
-        subtotal: 0,
-        discount: 0,
-        total: 0,
-      } as Partial<CartDocument>);
-    }
-    return cart;
+    const cart = await this.cartRepository.getModel().findOneAndUpdate(
+      { user: userObjId },
+      { $setOnInsert: { user: userObjId, items: [], subtotal: 0, discount: 0, total: 0 } },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+    return cart!;
   }
 
   /**

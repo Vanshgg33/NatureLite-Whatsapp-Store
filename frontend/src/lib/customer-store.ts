@@ -83,20 +83,19 @@ export const useCustomerStore = create<CustomerAuthState>()(
         });
       },
 
+      // BUG 29 FIX: replaced forEach+in-place mutation with map() so each address
+      // gets a new object reference. Mutating the existing objects from the shallow
+      // [...addresses] copy means Zustand/React sees the same references and won't
+      // detect the change, causing stale renders.
       updateAddress: (index, address) => {
         const currentCustomer = get().customer;
         if (!currentCustomer) return;
 
-        const newAddresses = [...currentCustomer.addresses];
-
-        // If setting as default, remove default from others
-        if (address.isDefault) {
-          newAddresses.forEach((a, i) => {
-            if (i !== index) a.isDefault = false;
-          });
-        }
-
-        newAddresses[index] = address;
+        const newAddresses = currentCustomer.addresses.map((a, i) => {
+          if (i === index) return address;
+          if (address.isDefault) return { ...a, isDefault: false };
+          return { ...a };
+        });
 
         set({
           customer: {

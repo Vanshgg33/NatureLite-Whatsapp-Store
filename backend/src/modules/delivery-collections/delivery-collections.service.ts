@@ -33,7 +33,7 @@ export class DeliveryCollectionsService {
       { $match: match },
       {
         $group: {
-          _id: '$assignedDeliveryUserId',
+          _id: { $toString: '$assignedDeliveryUserId' },
           totalOrders: { $sum: 1 },
           totalCashCollected: {
             $sum: {
@@ -76,7 +76,7 @@ export class DeliveryCollectionsService {
       },
       {
         $group: {
-          _id: '$assignedDeliveryUserId',
+          _id: { $toString: '$assignedDeliveryUserId' },
           totalOutstanding: { $sum: '$amountCollected' },
         },
       },

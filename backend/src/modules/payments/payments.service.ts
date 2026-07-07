@@ -29,6 +29,15 @@ export interface WhatsAppCheckoutPrepareResult {
   customerPhone?: string;
 }
 
+/** Wraps a promise with a hard timeout so stalled Razorpay SDK calls do not hang indefinitely. */
+const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> =>
+  Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Razorpay API timeout after ${ms}ms`)), ms),
+    ),
+  ]);
+
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
@@ -144,18 +153,21 @@ export class PaymentsService {
     const customerName = (order.shippingAddress?.name ?? '').slice(0, 100);
     const customerPhone = (order.shippingAddress?.phone ?? '').slice(0, 20);
 
-    const razorpayOrder = await razorpay.orders.create({
-      amount: amountPaise,
-      currency: 'INR',
-      receipt: order.orderNumber,
-      notes: {
-        orderId,
-        userId,
-        orderNumber: order.orderNumber,
-        ...(customerName ? { customerName } : {}),
-        ...(customerPhone ? { customerPhone } : {}),
-      },
-    });
+    const razorpayOrder = await withTimeout(
+      razorpay.orders.create({
+        amount: amountPaise,
+        currency: 'INR',
+        receipt: order.orderNumber,
+        notes: {
+          orderId,
+          userId,
+          orderNumber: order.orderNumber,
+          ...(customerName ? { customerName } : {}),
+          ...(customerPhone ? { customerPhone } : {}),
+        },
+      }),
+      15000,
+    );
 
     await this.paymentRepository.createOne({
       order: orderIdObj,
@@ -198,7 +210,7 @@ export class PaymentsService {
     const razorpay = this.getRazorpayOrThrow();
     let rzpPayment: RazorpayFetchedPayment;
     try {
-      rzpPayment = await razorpay.payments.fetch(data.razorpay_payment_id);
+      rzpPayment = await withTimeout(razorpay.payments.fetch(data.razorpay_payment_id), 15000);
     } catch (err) {
       throw new BadRequestException('Could not verify payment with gateway');
     }
@@ -546,10 +558,13 @@ export class PaymentsService {
     }
 
     try {
-      const refund = await razorpay.payments.refund(razorpayPaymentId, {
-        amount: amountPaise,
-        notes: { reason: `Order ${orderStatus} before capture - auto-refund` },
-      });
+      const refund = await withTimeout(
+        razorpay.payments.refund(razorpayPaymentId, {
+          amount: amountPaise,
+          notes: { reason: `Order ${orderStatus} before capture - auto-refund` },
+        }),
+        15000,
+      );
       const payment = await this.paymentRepository.findOneByGatewayPaymentId(razorpayPaymentId);
       if (payment) {
         await this.paymentRepository.findByIdAndUpdateDoc(payment._id, {
@@ -757,10 +772,21 @@ export class PaymentsService {
 
     const refundAmount = amount || payment.amount;
 
-    const refund = await razorpay.payments.refund(payment.gatewayPaymentId, {
-      amount: Math.round(refundAmount * 100),
-      notes: { reason: reason || 'Order refund' },
-    });
+    // BUG 6 fix: idempotency — skip Razorpay call if refund was already initiated
+    if (payment.refundId) {
+      this.logger.warn(
+        `initiateRefund called but refundId already exists on payment ${payment._id} (refundId=${payment.refundId}) — skipping duplicate Razorpay call`,
+      );
+      return { refundId: payment.refundId, amount: payment.refundAmount ?? refundAmount };
+    }
+
+    const refund = await withTimeout(
+      razorpay.payments.refund(payment.gatewayPaymentId, {
+        amount: Math.round(refundAmount * 100),
+        notes: { reason: reason || 'Order refund' },
+      }),
+      15000,
+    );
 
     await this.paymentRepository.findByIdAndUpdateDoc(payment._id, {
       status: 'refunded',
@@ -770,21 +796,30 @@ export class PaymentsService {
       refundReason: reason,
     });
 
-    // Also restore any wallet portion used on this order when doing a full refund
-    const order = await this.orderRepository.findById(orderIdObj);
-    if (order && !amount && typeof order.walletUsed === 'number' && order.walletUsed > 0) {
-      const walletUsedPaise = order.walletUsed;
-      if (walletUsedPaise > 0) {
-        await this.walletService.credit(
-          payment.user.toString(),
-          walletUsedPaise,
-          'order_refund',
-          { orderId: orderIdObj },
-        );
+    // BUG 6 fix: wrap post-refund DB updates in try-catch — if wallet/order update fails
+    // after Razorpay already processed the refund, log CRITICAL for manual reconciliation.
+    try {
+      // Also restore any wallet portion used on this order when doing a full refund
+      const order = await this.orderRepository.findById(orderIdObj);
+      if (order && !amount && typeof order.walletUsed === 'number' && order.walletUsed > 0) {
+        const walletUsedPaise = order.walletUsed;
+        if (walletUsedPaise > 0) {
+          await this.walletService.credit(
+            payment.user.toString(),
+            walletUsedPaise,
+            'order_refund',
+            { orderId: orderIdObj },
+          );
+        }
       }
+      await this.ordersService.recordRefundOnOrder(payment.order.toString(), refundAmount);
+    } catch (postRefundErr) {
+      this.logger.error(
+        'CRITICAL: Razorpay refund succeeded but wallet/order update failed — manual reconciliation required',
+        { orderId, refundId: refund.id, amount: refundAmount, error: postRefundErr },
+      );
+      throw postRefundErr;
     }
-
-    await this.ordersService.recordRefundOnOrder(payment.order.toString(), refundAmount);
 
     try {
       await this.storeSalesService.voidByLinkedOrder(orderId, 'order_refunded');

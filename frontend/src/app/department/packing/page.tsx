@@ -53,6 +53,12 @@ export default function PackingDashboardPage() {
     });
   }, [allOrders, search]);
 
+  // BUG 21 FIX: added onSettled with invalidateQueries (moved from onSuccess) so
+  // the query is always re-fetched whether the mutation succeeds or fails.
+  // This prevents a stale rollback snapshot from becoming permanent if the server
+  // state diverges.  cancelQueries + fresh getQueryData in onMutate ensures
+  // concurrent mutation rollbacks never restore a snapshot that another mutation
+  // already removed items from.
   const assignDelivery = useMutation({
     mutationFn: ({ orderId, riderId }: { orderId: string; riderId: string }) => {
       const rider = activeRiders.find((r) => r._id === riderId);
@@ -76,11 +82,13 @@ export default function PackingDashboardPage() {
     onSuccess: (_, { orderId }) => {
       setSelectedRider((prev) => { const n = { ...prev }; delete n[orderId]; return n; });
       toast({ title: 'Sent for delivery', description: 'Delivery staff notified.' });
-      queryClient.invalidateQueries({ queryKey: ['department', 'packing', 'orders'] });
     },
     onError: (_err, _vars, context: any) => {
       if (context?.prev) queryClient.setQueryData(['department', 'packing', 'orders'], context.prev);
       toast({ title: 'Failed to assign delivery', variant: 'destructive' });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['department', 'packing', 'orders'] });
     },
   });
 

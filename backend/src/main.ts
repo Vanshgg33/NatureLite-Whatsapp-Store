@@ -13,7 +13,22 @@ const mongoSanitize = require('express-mongo-sanitize');
 
 const logger = new Logger('Bootstrap');
 
-let cachedServer: any;
+// Promise-based singleton: ensures concurrent cold-start requests share the same
+// initialization promise so only one NestJS instance is ever bootstrapped (BUG 15 fix).
+let serverInitPromise: Promise<any> | null = null;
+
+function getOrCreateServer(): Promise<any> {
+  if (!serverInitPromise) {
+    serverInitPromise = createApp().then(({ app, configService }) => {
+      const server = app.getHttpAdapter().getInstance();
+      logger.log(
+        `Nest initialized. API: ${configService.get<string>('app.apiPrefix')}`,
+      );
+      return server;
+    });
+  }
+  return serverInitPromise;
+}
 
 function validateProductionConfig(configService: ConfigService): void {
   const nodeEnv = configService.get<string>('app.nodeEnv');
@@ -145,16 +160,10 @@ async function createApp() {
   return { app, configService };
 }
 
-// Vercel serverless: export handler for each request
+// Serverless handler: each request goes through the singleton server
 export default async function handler(req: any, res: any) {
-  if (!cachedServer) {
-    const { app, configService } = await createApp();
-    cachedServer = app.getHttpAdapter().getInstance();
-    logger.log(
-      `Nest initialized (serverless). API: ${configService.get<string>('app.apiPrefix')}`,
-    );
-  }
-  return cachedServer(req, res);
+  const server = await getOrCreateServer();
+  return server(req, res);
 }
 
 // Local dev: run HTTP server

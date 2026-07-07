@@ -332,6 +332,10 @@ export default function DeliveryDashboardPage() {
   const [uploadingDelivery, setUploadingDelivery] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  // BUG 23 FIX: track which order IDs have an in-flight "mark delivered" mutation.
+  // This closes the micro-gap between mutate() being called and isPending becoming
+  // true, preventing a double-tap from firing two concurrent submissions.
+  const [submittingIds, setSubmittingIds] = useState<Set<string>>(new Set());
 
   const { data: billedData, isLoading: loadingBilled } = useQuery({
     queryKey: ['department', 'delivery', 'orders'],
@@ -415,23 +419,27 @@ export default function DeliveryDashboardPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persist form state to localStorage so a camera-triggered page reload can recover
+  // BUG 24 FIX: debounce localStorage writes by 500ms so rapid state changes
+  // (e.g. every keystroke in a text field) don't thrash the storage layer.
   useEffect(() => {
     if (!selectedOrder) return;
-    try {
-      localStorage.setItem(deliveryStateKey, JSON.stringify({
-        orderId: selectedOrder._id,
-        status,
-        paymentMethod,
-        amountCollected,
-        cashAmount,
-        upiAmount,
-        note,
-        deliveryProofUrl: deliveryProofUrl ?? null,
-        paymentProofUrl: paymentProofUrl ?? null,
-        savedAt: Date.now(),
-      }));
-    } catch {}
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(deliveryStateKey, JSON.stringify({
+          orderId: selectedOrder._id,
+          status,
+          paymentMethod,
+          amountCollected,
+          cashAmount,
+          upiAmount,
+          note,
+          deliveryProofUrl: deliveryProofUrl ?? null,
+          paymentProofUrl: paymentProofUrl ?? null,
+          savedAt: Date.now(),
+        }));
+      } catch {}
+    }, 500);
+    return () => clearTimeout(timer);
   }, [selectedOrder, status, paymentMethod, amountCollected, cashAmount, upiAmount, note, deliveryProofUrl, paymentProofUrl, deliveryStateKey]);
 
   const resetForm = useCallback(() => {
@@ -540,6 +548,15 @@ export default function DeliveryDashboardPage() {
       });
     },
     onSettled: () => {
+      // BUG 23 FIX: clear the submitting guard on settle (success or error).
+      if (selectedOrder) {
+        const orderId = selectedOrder._id;
+        setSubmittingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(orderId);
+          return next;
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ['department', 'delivery', 'orders'] });
     },
   });
@@ -550,12 +567,23 @@ export default function DeliveryDashboardPage() {
   const partialAmountsValid = !isPartial || (parseFloat(cashAmount) || 0) + (parseFloat(upiAmount) || 0) > 0;
   const canOpenConfirm = !uploading && !!order && needsDeliveryProof && !!deliveryProofUrl && partialAmountsValid;
   const canSubmitOther = !updateDelivery.isPending && !uploading && !!order && !needsDeliveryProof;
+  // BUG 23: also block when submittingIds already has this order
+  const isOrderSubmitting = !!order && submittingIds.has(order._id);
+
+  // BUG 23 FIX: guard mutate() calls with the submittingIds set to prevent
+  // double-submission in the micro-window between click and isPending becoming true.
+  const fireDeliveryMutation = useCallback(() => {
+    if (!order || submittingIds.has(order._id)) return;
+    setSubmittingIds((prev) => new Set(prev).add(order._id));
+    updateDelivery.mutate();
+  }, [order, submittingIds, updateDelivery]);
 
   const handlePrimaryButton = () => {
+    if (!order || isOrderSubmitting) return;
     if (needsDeliveryProof) {
       setShowConfirm(true);
     } else {
-      updateDelivery.mutate();
+      fireDeliveryMutation();
     }
   };
 
@@ -946,9 +974,9 @@ export default function DeliveryDashboardPage() {
                 needsDeliveryProof && canOpenConfirm ? 'bg-green-600 hover:bg-green-700' : ''
               }`}
               onClick={handlePrimaryButton}
-              disabled={needsDeliveryProof ? !canOpenConfirm : !canSubmitOther}
+              disabled={(needsDeliveryProof ? !canOpenConfirm : !canSubmitOther) || isOrderSubmitting}
             >
-              {updateDelivery.isPending ? (
+              {updateDelivery.isPending || isOrderSubmitting ? (
                 <><RefreshCw className="h-5 w-5 mr-2 animate-spin" /> Saving…</>
               ) : needsDeliveryProof ? (
                 <><CheckCircle2 className="h-5 w-5 mr-2" /> Review & Confirm Delivery</>
@@ -990,8 +1018,8 @@ export default function DeliveryDashboardPage() {
           cashAmount={cashAmount}
           upiAmount={upiAmount}
           note={note}
-          submitting={updateDelivery.isPending}
-          onConfirm={() => updateDelivery.mutate()}
+          submitting={updateDelivery.isPending || isOrderSubmitting}
+          onConfirm={fireDeliveryMutation}
           onCancel={() => setShowConfirm(false)}
         />
       )}

@@ -51,6 +51,10 @@ export const useCartStore = create<CartState>()(
       isSynced: false,
 
       addItem: async (item, quantity = 1) => {
+        // BUG 20 FIX: capture prev state before optimistic update so we can revert
+        // if both the API call AND the subsequent syncWithServer both fail.
+        const prevItems = get().items;
+
         // Optimistic update for local state
         set((state) => {
           const existingItemIndex = state.items.findIndex(
@@ -76,7 +80,13 @@ export const useCartStore = create<CartState>()(
         } catch (error) {
           console.error('Failed to sync cart with server:', error);
           // For authenticated users, try to resync full cart
-          await get().syncWithServer();
+          try {
+            await get().syncWithServer();
+          } catch {
+            // syncWithServer also failed — revert the optimistic update so the
+            // UI reflects the true (unknown) server state rather than a ghost item.
+            set({ items: prevItems });
+          }
         }
       },
 
@@ -171,10 +181,11 @@ export const useCartStore = create<CartState>()(
           discountType: null,
         });
 
+        // BUG 25 FIX: removed the redundant syncWithServer() call after api.clearCart().
+        // The cart is known to be empty — a re-fetch adds a pointless network round-trip
+        // and can race with in-flight state updates.
         try {
           await api.clearCart();
-          // Ensure local state matches server after clear
-          await get().syncWithServer();
         } catch (error) {
           console.error('Failed to clear server cart:', error);
         }
