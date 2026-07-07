@@ -315,7 +315,20 @@ export class PaymentsService {
   }
 
   async resolveShortPayLink(code: string): Promise<string | null> {
-    return this.redisService.get(`paylink:${code}`);
+    const raw = await this.redisService.get(`paylink:${code}`);
+    if (!raw) return null;
+    // Old format stored {orderId, token} JSON; new format stores the full redirect URL
+    if (raw.startsWith('{')) {
+      try {
+        const { orderId, token } = JSON.parse(raw) as { orderId: string; token: string };
+        const base = this.resolvePayBaseUrl();
+        if (!base) return null;
+        return `${base}/pay/${encodeURIComponent(orderId)}?t=${encodeURIComponent(token)}`;
+      } catch {
+        return null;
+      }
+    }
+    return raw;
   }
 
   verifyWhatsAppPayToken(token: string): WhatsAppPayTokenPayload | null {
