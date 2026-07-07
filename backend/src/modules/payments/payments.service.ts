@@ -306,14 +306,16 @@ export class PaymentsService {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
     const bytes = crypto.randomBytes(8);
     const code = Array.from(bytes).map((b) => chars[b % chars.length]).join('');
-    await this.redisService.setJson(`paylink:${code}`, { orderId, token }, 48 * 60 * 60);
     const base = this.resolvePayBaseUrl();
     if (!base) throw new Error('PAY_BASE_URL / FRONTEND_URL not configured — cannot build pay link');
+    // Store the full target URL so the resolve endpoint can 302 directly — token never touches frontend JS
+    const targetUrl = `${base}/pay/${encodeURIComponent(orderId)}?t=${encodeURIComponent(token)}`;
+    await this.redisService.set(`paylink:${code}`, targetUrl, 48 * 60 * 60);
     return `${base}/p/${code}`;
   }
 
-  async resolveShortPayLink(code: string): Promise<{ orderId: string; token: string } | null> {
-    return this.redisService.getJson<{ orderId: string; token: string }>(`paylink:${code}`);
+  async resolveShortPayLink(code: string): Promise<string | null> {
+    return this.redisService.get(`paylink:${code}`);
   }
 
   verifyWhatsAppPayToken(token: string): WhatsAppPayTokenPayload | null {

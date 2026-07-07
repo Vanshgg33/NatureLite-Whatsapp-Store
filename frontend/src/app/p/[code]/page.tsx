@@ -1,11 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 
 export default function ShortPayLinkPage() {
   const params = useParams();
-  const router = useRouter();
   const code = typeof params.code === 'string' ? params.code : '';
   const [error, setError] = useState<string | null>(null);
 
@@ -15,18 +14,10 @@ export default function ShortPayLinkPage() {
       return;
     }
     const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7001/api/v1').replace(/\/$/, '');
-    fetch(`${apiUrl}/payments/p/${encodeURIComponent(code)}`, { cache: 'no-store' })
-      .then((res) => {
-        if (!res.ok) throw new Error('Payment link not found or expired.');
-        return res.json() as Promise<{ orderId: string; token: string }>;
-      })
-      .then(({ orderId, token }) => {
-        router.replace(`/pay/${encodeURIComponent(orderId)}?t=${encodeURIComponent(token)}`);
-      })
-      .catch((err: Error) => {
-        setError(err.message ?? 'Payment link expired or invalid.');
-      });
-  }, [code, router]);
+    // Navigate the browser directly to the backend resolve endpoint.
+    // The backend looks up Redis and issues a 302 to the full pay URL — token never passes through frontend JS.
+    window.location.replace(`${apiUrl}/payments/p/${encodeURIComponent(code)}`);
+  }, [code]);
 
   if (error) {
     return (

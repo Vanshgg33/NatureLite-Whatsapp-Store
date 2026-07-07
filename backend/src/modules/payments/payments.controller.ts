@@ -1,5 +1,5 @@
-import { Controller, Post, Get, Body, Param, Headers, HttpCode, UseGuards, Req, RawBodyRequest, NotFoundException } from '@nestjs/common';
-import { Request } from 'express';
+import { Controller, Post, Get, Body, Param, Headers, HttpCode, UseGuards, Req, Res, RawBodyRequest, NotFoundException } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
@@ -58,13 +58,15 @@ export class PaymentsController {
     return { ok: true };
   }
 
-  /** Resolves a short pay-link code to {orderId, token}. Used by the /p/[code] frontend page. */
+  /** Resolves a short pay-link code and issues a 302 redirect to the full pay URL. */
   @Public()
   @Get('p/:code')
-  async resolveShortPayLink(@Param('code') code: string) {
-    const result = await this.paymentsService.resolveShortPayLink(code);
-    if (!result) throw new NotFoundException('Payment link not found or expired');
-    return result;
+  async resolveShortPayLink(@Param('code') code: string, @Res() res: Response) {
+    const url = await this.paymentsService.resolveShortPayLink(code);
+    if (!url) {
+      return res.status(404).json({ message: 'Payment link not found or expired' });
+    }
+    return res.redirect(302, url);
   }
 
   @Post(':orderId/refund')
