@@ -305,6 +305,35 @@ function ConfirmDeliveryDialog({
   );
 }
 
+function compressImage(file: File, maxWidth = 1200, quality = 0.75): Promise<File> {
+  return new Promise((resolve) => {
+    const img = new window.Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d')?.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) { resolve(file); return; }
+          resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
+        },
+        'image/jpeg',
+        quality,
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 const DELIVERY_STATE_BASE_KEY = 'nl-delivery-form';
@@ -490,10 +519,11 @@ export default function DeliveryDashboardPage() {
   ) => {
     setLoading(true);
     try {
-      const result = await api.uploadImage(file, folder);
+      const compressed = await compressImage(file);
+      const result = await api.uploadImage(compressed, folder);
       setUrl(result.secureUrl || result.url);
     } catch {
-      toast({ title: 'Upload failed', description: 'Please try again or capture a clearer photo.', variant: 'destructive' });
+      toast({ title: 'Upload failed', description: 'Check your internet connection and try again.', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -518,7 +548,7 @@ export default function DeliveryDashboardPage() {
         paymentMethod: isDone ? paymentMethod : undefined,
         paymentProofUrl: (isDone || isPartial) ? paymentProofUrl : undefined,
         deliveryProofUrl: needsDelivery ? deliveryProofUrl : undefined,
-        amountCollected: isDone && !isNaN(parsedAmount) ? parsedAmount : isPartial ? parsedCash + parsedUpi : undefined,
+        amountCollected: isDone && isCod(selectedOrder) && !isNaN(parsedAmount) ? parsedAmount : isPartial ? parsedCash + parsedUpi : undefined,
         cashAmount: isPartial ? parsedCash : undefined,
         upiAmount: isPartial ? parsedUpi : undefined,
         note,
@@ -565,7 +595,7 @@ export default function DeliveryDashboardPage() {
   const orderIsCod = order ? isCod(order) : true;
   const uploading = uploadingPayment || uploadingDelivery;
   const partialAmountsValid = !isPartial || (parseFloat(cashAmount) || 0) + (parseFloat(upiAmount) || 0) > 0;
-  const canOpenConfirm = !uploading && !!order && needsDeliveryProof && !!deliveryProofUrl && partialAmountsValid;
+  const canOpenConfirm = !uploading && !!order && needsDeliveryProof && !!deliveryProofUrl && partialAmountsValid && (!isDone || !orderIsCod || !!paymentProofUrl);
   const canSubmitOther = !updateDelivery.isPending && !uploading && !!order && !needsDeliveryProof;
   // BUG 23: also block when submittingIds already has this order
   const isOrderSubmitting = !!order && submittingIds.has(order._id);

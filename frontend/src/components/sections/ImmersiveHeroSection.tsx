@@ -76,10 +76,14 @@ export default function ImmersiveHeroSection() {
 
   const banner = activeBanners[index];
 
+  const isVideo = !!banner.videoUrl;
+
   return (
     <div
-      className="relative w-full overflow-hidden aspect-video sm:aspect-auto sm:h-[62vh] md:h-[70vh]"
-      style={{ minHeight: 160 }}
+      className={`relative w-full overflow-hidden sm:aspect-auto sm:h-[62vh] md:h-[70vh] ${
+        isVideo ? 'aspect-video' : 'h-[52vh]'
+      }`}
+      style={{ minHeight: isVideo ? 160 : 220 }}
     >
       <AnimatePresence mode="sync">
         <motion.div

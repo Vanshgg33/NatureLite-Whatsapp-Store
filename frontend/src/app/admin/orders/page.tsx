@@ -939,9 +939,8 @@ export default function OrdersPage() {
                             )}
                             <button
                               type="button"
-                              disabled={outOfStock}
-                              onMouseDown={(e) => { if (outOfStock) return; e.preventDefault(); addToCart(row); setProductSearch(''); }}
-                              className={`w-full flex items-center justify-between px-3 py-2.5 text-sm text-left border-b last:border-b-0 ${outOfStock ? 'opacity-40 cursor-not-allowed bg-gray-50' : 'hover:bg-green-50 bg-white'}`}
+                              onMouseDown={(e) => { e.preventDefault(); addToCart(row); setProductSearch(''); }}
+                              className={`w-full flex items-center justify-between px-3 py-2.5 text-sm text-left border-b last:border-b-0 ${outOfStock ? 'bg-gray-50 hover:bg-red-50' : 'hover:bg-green-50 bg-white'}`}
                             >
                               <span className="flex items-center gap-2">
                                 {!outOfStock && <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />}
@@ -1263,9 +1262,8 @@ export default function OrdersPage() {
                         <button
                           key={`${row.productId}-${row.variantSku ?? 'main'}`}
                           type="button"
-                          disabled={outOfStock}
-                          onMouseDown={(e) => { if (outOfStock) return; e.preventDefault(); addToEditCart(row); }}
-                          className={`w-full flex items-center justify-between px-3 py-2.5 text-sm text-left border-b last:border-b-0 ${outOfStock ? 'opacity-40 cursor-not-allowed bg-gray-50' : 'hover:bg-green-50 bg-white'}`}
+                          onMouseDown={(e) => { e.preventDefault(); addToEditCart(row); }}
+                          className={`w-full flex items-center justify-between px-3 py-2.5 text-sm text-left border-b last:border-b-0 ${outOfStock ? 'bg-gray-50 hover:bg-red-50' : 'hover:bg-green-50 bg-white'}`}
                         >
                           <span>
                             {row.name}
