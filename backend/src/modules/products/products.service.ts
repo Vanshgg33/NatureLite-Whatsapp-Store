@@ -270,19 +270,23 @@ export class ProductsService implements OnModuleInit {
     if (byMetadata) return byMetadata as Product;
 
     // Variant retailer_id format: {parentRetailerId}-{variantSku}
-    // UCM push builds this as `${parentRetailerId}-${variant.sku}` so we
-    // need to strip the suffix and match the parent product.
-    const lastDash = trimmed.lastIndexOf('-');
-    if (lastDash > 0) {
-      const parentPart = trimmed.slice(0, lastDash);
-      const variantSku = trimmed.slice(lastDash + 1);
+    // Scan left-to-right (not lastIndexOf) so variant skus that contain
+    // dashes (e.g. "NL-500g") are still matched correctly. Using lastIndexOf
+    // would split "...id-NL-500g" into parent="...id-NL", sku="500g" — wrong.
+    // Use String() coercion in the sku comparison in case old data stored
+    // numeric skus (e.g. 3 instead of "3") before the schema enforced strings.
+    let dash = trimmed.indexOf('-');
+    while (dash > 0) {
+      const parentPart = trimmed.slice(0, dash);
+      const variantSku = trimmed.slice(dash + 1);
       if (variantSku) {
         const parent = await this.findByRetailerId(parentPart);
-        if (parent && Array.isArray(parent.variants)) {
-          const hasVariant = parent.variants.some((v) => v.sku === variantSku);
+        if (parent && Array.isArray(parent.variants) && parent.variants.length > 0) {
+          const hasVariant = parent.variants.some((v) => String(v.sku) === variantSku);
           if (hasVariant) return parent;
         }
       }
+      dash = trimmed.indexOf('-', dash + 1);
     }
 
     return null;

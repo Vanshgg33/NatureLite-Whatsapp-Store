@@ -3784,6 +3784,22 @@ export class ChatbotService implements OnModuleInit {
         continue;
       }
 
+      // Determine which variant sku this retailer_id maps to (if any).
+      // findByRetailerId returns the parent product; we re-derive the matched
+      // variant sku here so addItem gets the correct price and stock.
+      let matchedVariantSku: string | undefined;
+      if (Array.isArray(product.variants) && product.variants.length > 0) {
+        let vDash = retailerId.indexOf('-');
+        while (vDash > 0) {
+          const candidateSku = retailerId.slice(vDash + 1);
+          if (product.variants.some((v) => String(v.sku) === candidateSku)) {
+            matchedVariantSku = candidateSku;
+            break;
+          }
+          vDash = retailerId.indexOf('-', vDash + 1);
+        }
+      }
+
       // Prefer the price the customer actually saw on WhatsApp's catalog
       // (Meta echoes it back as item_price in the order webhook). Falls
       // through to the local product/variant price if Meta omitted it.
@@ -3801,14 +3817,18 @@ export class ChatbotService implements OnModuleInit {
       // (rare; means our DB lags Meta) since charging less is safer.
       let catalogPrice = rawCatalogPrice;
       if (typeof rawCatalogPrice === 'number' && rawCatalogPrice > 0) {
-        const dbPrice = product.price;
+        const matchedVariant = matchedVariantSku
+          ? product.variants.find((v) => String(v.sku) === matchedVariantSku)
+          : undefined;
+        const dbPrice = matchedVariant ? matchedVariant.price : product.price;
         if (dbPrice > 0 && rawCatalogPrice < dbPrice * 0.9) {
           this.logger.warn(
-            `catalog_price_mismatch product=${product._id.toString()} catalog=${rawCatalogPrice} db=${dbPrice}`,
+            `catalog_price_mismatch product=${product._id.toString()} variant=${matchedVariantSku ?? 'none'} catalog=${rawCatalogPrice} db=${dbPrice}`,
           );
           this.analytics.track('chatbot.catalog_price_mismatch', {
             userId,
             productId: product._id.toString(),
+            variantSku: matchedVariantSku,
             catalogPrice: rawCatalogPrice,
             dbPrice,
           });
@@ -3826,6 +3846,7 @@ export class ChatbotService implements OnModuleInit {
           {
             productId: product._id.toString(),
             quantity: qty,
+            ...(matchedVariantSku ? { variantSku: matchedVariantSku } : {}),
           },
           { unitPriceOverride: catalogPrice },
         );
