@@ -78,10 +78,20 @@ export default function OrderDetailPage() {
         description: 'Your order has been cancelled successfully.',
       });
     },
-    onError: () => {
+    onError: (error: any) => {
+      // Refresh order data — the cancel may have failed because status changed (e.g., admin cancelled it)
+      queryClient.invalidateQueries({ queryKey: ['order', orderId] });
+      queryClient.invalidateQueries({ queryKey: ['my-orders'] });
+      const backendMessage = error?.response?.data?.message;
+      const description =
+        typeof backendMessage === 'string'
+          ? backendMessage
+          : Array.isArray(backendMessage)
+          ? backendMessage[0]
+          : 'Could not cancel order. Please try again or contact support.';
       toast({
         title: 'Cancellation Failed',
-        description: 'Could not cancel order. Please try again or contact support.',
+        description,
         variant: 'destructive',
       });
     },
@@ -100,6 +110,8 @@ export default function OrderDetailPage() {
       });
     },
     onError: () => {
+      queryClient.invalidateQueries({ queryKey: ['order', orderId] });
+      queryClient.invalidateQueries({ queryKey: ['my-orders'] });
       toast({
         title: 'Return request failed',
         description: 'Could not submit return request. Please try again or contact support.',
@@ -113,19 +125,26 @@ export default function OrderDetailPage() {
 
     setIsReordering(true);
     try {
-      // Add all items from this order to cart
       for (const item of order.items) {
-        const productId = typeof item.product === 'string' ? item.product : item.product._id;
+        const productObj = typeof item.product === 'object' && item.product !== null
+          ? (item.product as any)
+          : null;
+        const productId = productObj ? (productObj._id ?? '') : (item.product as string);
+        const slug = productObj?.slug ?? '';
+        // Derive actual GST rate from the recorded gstAmount and line total
+        const gstPercentage = item.total > 0
+          ? Math.round((item.gstAmount / item.total) * 100)
+          : (productObj?.gstPercentage ?? productObj?.category?.gstPercentage ?? 5);
         await addItem(
           {
             productId,
             name: item.name,
-            slug: '', // Will be updated when viewing cart
+            slug,
             image: item.image || '',
             price: item.price,
             variantSku: item.variantSku,
             variantName: item.variantName,
-            gstPercentage: 5, // Default GST
+            gstPercentage,
           },
           item.quantity
         );
@@ -387,9 +406,9 @@ export default function OrderDetailPage() {
           <div className="relative">
             <div className="absolute top-4 left-4 right-4 h-0.5 bg-brand-sand" />
             <div
-              className="absolute top-4 left-4 h-0.5 bg-brand-mustard transition-all"
+              className="absolute top-4 left-4 right-4 h-0.5 bg-brand-mustard transition-all origin-left"
               style={{
-                width: `${statusBarPct}%`,
+                transform: `scaleX(${statusBarPct / 100})`,
               }}
             />
             <div className="relative flex justify-between">
@@ -598,7 +617,7 @@ export default function OrderDetailPage() {
       </div>
 
       {/* Cancel Order Dialog */}
-      <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+      <Dialog open={showCancelDialog} onOpenChange={(open) => !cancelMutation.isPending && setShowCancelDialog(open)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -646,7 +665,7 @@ export default function OrderDetailPage() {
       </Dialog>
 
       {/* Request Return Dialog */}
-      <Dialog open={showReturnDialog} onOpenChange={setShowReturnDialog}>
+      <Dialog open={showReturnDialog} onOpenChange={(open) => !returnMutation.isPending && setShowReturnDialog(open)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">

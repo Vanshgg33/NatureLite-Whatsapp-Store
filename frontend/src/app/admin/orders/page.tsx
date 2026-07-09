@@ -37,8 +37,12 @@ const statusOptions = [
   { value: '', label: 'All Statuses' },
   { value: 'placed', label: 'Placed' },
   { value: 'confirmed', label: 'Packed' },
+  { value: 'preparing', label: 'Preparing' },
   { value: 'out_for_delivery', label: 'Out for delivery' },
   { value: 'delivered', label: 'Delivered' },
+  { value: 'cancelled', label: 'Cancelled' },
+  { value: 'returned', label: 'Returned' },
+  { value: 'refunded', label: 'Refunded' },
 ];
 
 type CartItem = {
@@ -250,7 +254,6 @@ export default function OrdersPage() {
     setCustAltPhone('');
     setAddrStreet('');
     setAddrLandmark('');
-    setSelectedStore('');
     setAddrCity('');
     setAddrState('Chhattisgarh');
     setAddrPincode('');
@@ -277,8 +280,10 @@ export default function OrdersPage() {
       const a = document.createElement('a');
       a.href = url;
       a.download = billFilename(order.shippingAddress.name);
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
       toast({ title: 'Failed to generate PDF', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
     } finally {
@@ -587,7 +592,7 @@ export default function OrdersPage() {
                 </div>
                 <h3 className="text-sm font-medium">No orders found</h3>
                 <p className="text-sm text-muted-foreground max-w-sm">
-                  {search || status ? 'Try adjusting your filters.' : 'Orders will appear here once customers start purchasing.'}
+                  {search || status || cityFilter || startDate || endDate ? 'Try adjusting your filters.' : 'Orders will appear here once customers start purchasing.'}
                 </p>
               </div>
             ) : (
@@ -766,7 +771,7 @@ export default function OrdersPage() {
       </div>
 
       {/* Create Order Dialog */}
-      <Dialog open={showCreate} onOpenChange={(open) => { if (!open) resetCreateForm(); setShowCreate(open); }}>
+      <Dialog open={showCreate} onOpenChange={(open) => { if (createOrderMutation.isPending) return; if (!open) resetCreateForm(); setShowCreate(open); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create Order</DialogTitle>
@@ -928,8 +933,13 @@ export default function OrdersPage() {
                     <p className="px-3 py-4 text-sm text-muted-foreground text-center">No products found</p>
                   ) : (
                     (() => {
-                      const firstOutIdx = productRows.findIndex((r) => r.trackStock && r.stock <= 0);
-                      return productRows.map((row, idx) => {
+                      const sorted = [...productRows].sort((a, b) => {
+                        const aOut = a.trackStock && a.stock <= 0 ? 1 : 0;
+                        const bOut = b.trackStock && b.stock <= 0 ? 1 : 0;
+                        return aOut - bOut;
+                      });
+                      const firstOutIdx = sorted.findIndex((r) => r.trackStock && r.stock <= 0);
+                      return sorted.map((row, idx) => {
                         const outOfStock = row.trackStock && row.stock <= 0;
                         const showDivider = firstOutIdx !== -1 && idx === firstOutIdx;
                         return (
@@ -1145,7 +1155,7 @@ export default function OrdersPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => { resetCreateForm(); setShowCreate(false); }}>
+            <Button variant="outline" disabled={createOrderMutation.isPending} onClick={() => { resetCreateForm(); setShowCreate(false); }}>
               Cancel
             </Button>
             <Button
@@ -1159,7 +1169,7 @@ export default function OrdersPage() {
       </Dialog>
 
       {/* Edit Order Dialog */}
-      <Dialog open={editingOrder !== null} onOpenChange={(open) => { if (!open) setEditingOrder(null); }}>
+      <Dialog open={editingOrder !== null} onOpenChange={(open) => { if (updateOrderMutation.isPending) return; if (!open) setEditingOrder(null); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Order {editingOrder?.orderNumber}</DialogTitle>
@@ -1177,8 +1187,12 @@ export default function OrdersPage() {
                 >
                   <option value="placed">Placed</option>
                   <option value="confirmed">Packed</option>
+                  <option value="preparing">Preparing</option>
                   <option value="out_for_delivery">Out for Delivery</option>
                   <option value="delivered">Delivered</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="returned">Returned</option>
+                  <option value="refunded">Refunded</option>
                 </select>
               </div>
 
@@ -1443,7 +1457,7 @@ export default function OrdersPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingOrder(null)}>
+            <Button variant="outline" disabled={updateOrderMutation.isPending} onClick={() => setEditingOrder(null)}>
               Cancel
             </Button>
             <Button
@@ -1466,7 +1480,7 @@ export default function OrdersPage() {
       </Dialog>
 
       {/* Delete confirm dialog */}
-      <Dialog open={!!deletingOrder} onOpenChange={(open) => { if (!open) setDeletingOrder(null); }}>
+      <Dialog open={!!deletingOrder} onOpenChange={(open) => { if (deleteOrderMutation.isPending) return; if (!open) setDeletingOrder(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Delete Order</DialogTitle>

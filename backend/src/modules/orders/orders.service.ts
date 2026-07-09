@@ -1263,21 +1263,18 @@ export class OrdersService implements OnModuleInit {
 
     const savedOrder = await order.save();
 
-    try {
-      await this.storeSalesService.voidByLinkedOrder(id, 'order_cancelled');
-    } catch (voidErr) {
+    // Fire-and-forget: these don't affect the cancel outcome so don't block the response.
+    this.storeSalesService.voidByLinkedOrder(id, 'order_cancelled').catch((voidErr: Error) => {
       this.logger.warn(`Failed to void store sale for cancelled order: ${voidErr.message}`);
-    }
+    });
 
-    // Send cancellation email (non-blocking)
-    try {
-      const user = await this.usersService.findById(order.user.toString());
+    this.usersService.findById(order.user.toString()).then((user) => {
       if (user?.email) {
         this.emailService.sendOrderCancelled(savedOrder.toObject(), user.email);
       }
-    } catch (emailError) {
+    }).catch((emailError: Error) => {
       this.logger.warn(`Failed to send cancellation email: ${emailError.message}`);
-    }
+    });
 
     return savedOrder;
   }
