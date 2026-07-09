@@ -182,3 +182,4 @@ ProductSchema.index({ tags: 1 });
 ProductSchema.index({ price: 1 });
 ProductSchema.index({ createdAt: -1 });
 ProductSchema.index({ name: 'text', description: 'text' });
+ProductSchema.index({ 'metadata.remoteCatalogRetailerId': 1 }, { sparse: true });

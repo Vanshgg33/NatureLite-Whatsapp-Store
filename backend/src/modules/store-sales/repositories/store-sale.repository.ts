@@ -26,7 +26,7 @@ export class StoreSaleRepository extends BaseRepository<StoreSaleDocument> {
         .find(filter)
         .populate('store', 'name code')
         .populate('loggedBy', 'name')
-        .sort({ createdAt: -1 })
+        .sort({ createdAt: -1, _id: -1 })
         .skip(skip)
         .limit(limit)
         .exec(),
@@ -48,7 +48,7 @@ export class StoreSaleRepository extends BaseRepository<StoreSaleDocument> {
         .find(filter)
         .populate('store', 'name code')
         .populate('loggedBy', 'name')
-        .sort({ createdAt: -1 })
+        .sort({ createdAt: -1, _id: -1 })
         .skip(skip)
         .limit(limit)
         .exec(),

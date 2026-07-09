@@ -62,3 +62,4 @@ export const AuditLogSchema = SchemaFactory.createForClass(AuditLog);
 AuditLogSchema.index({ action: 1, createdAt: -1 });
 AuditLogSchema.index({ performedBy: 1, createdAt: -1 });
 AuditLogSchema.index({ targetId: 1 });
+AuditLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 180 * 24 * 60 * 60 });

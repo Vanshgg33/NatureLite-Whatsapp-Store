@@ -49,7 +49,7 @@ export class FeedbackRepository extends BaseRepository<FeedbackDocument> {
       .exec();
   }
 
-  async findPublicReviewsByProduct(productId: Types.ObjectId): Promise<unknown[]> {
+  async findPublicReviewsByProduct(productId: Types.ObjectId, limit = 50): Promise<unknown[]> {
     return this.model
       .find({
         product: productId,
@@ -58,16 +58,18 @@ export class FeedbackRepository extends BaseRepository<FeedbackDocument> {
       })
       .populate('user', 'name')
       .sort({ createdAt: -1 })
+      .limit(limit)
       .lean()
       .exec();
   }
 
-  async findUserFeedback(userId: Types.ObjectId): Promise<unknown[]> {
+  async findUserFeedback(userId: Types.ObjectId, limit = 50): Promise<unknown[]> {
     return this.model
       .find({ user: userId })
       .populate('product', 'name slug')
       .populate('order', 'orderNumber')
       .sort({ createdAt: -1 })
+      .limit(limit)
       .lean()
       .exec();
   }

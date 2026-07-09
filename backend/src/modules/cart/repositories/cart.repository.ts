@@ -22,8 +22,8 @@ export class CartRepository extends BaseRepository<CartDocument> {
 
   async pullProductFromAllCarts(productId: Types.ObjectId): Promise<void> {
     await this.model.updateMany(
-      { 'items.productId': productId },
-      { $pull: { items: { productId } } },
+      { 'items.product': productId },
+      { $pull: { items: { product: productId } } },
     ).exec();
   }
 

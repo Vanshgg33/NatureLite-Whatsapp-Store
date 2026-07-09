@@ -103,7 +103,8 @@ export class ProductRepository extends BaseRepository<ProductDocument> {
     if (tags?.length) filter.tags = { $in: tags };
 
     const skip = (page - 1) * limit;
-    const sort: Record<string, 1 | -1> = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
+    const sortDir = sortOrder === 'asc' ? 1 : -1;
+    const sort: Record<string, 1 | -1> = { [sortBy]: sortDir, _id: sortDir };
 
     const [products, total] = await Promise.all([
       this.model
@@ -131,10 +132,11 @@ export class ProductRepository extends BaseRepository<ProductDocument> {
     return this.model.findOne({ sku }).populate('category', 'gstPercentage').exec();
   }
 
-  async findByCategoryId(categoryId: Types.ObjectId): Promise<ProductDocument[]> {
+  async findByCategoryId(categoryId: Types.ObjectId, limit = 100): Promise<ProductDocument[]> {
     return this.model
       .find({ category: categoryId, isActive: true })
-      .sort({ createdAt: -1 })
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit)
       .exec();
   }
 

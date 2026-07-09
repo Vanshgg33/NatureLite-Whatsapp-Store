@@ -145,7 +145,8 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
       }
     }
     const skip = (page - 1) * limit;
-    const sort: Record<string, 1 | -1> = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
+    const sortDir = sortOrder === 'asc' ? 1 : -1;
+    const sort: Record<string, 1 | -1> = { [sortBy]: sortDir, _id: sortDir };
     const [orders, total] = await Promise.all([
       this.model
         .find(filter)

@@ -310,3 +310,4 @@ OrderSchema.index({ status: 1, updatedAt: -1 });
 OrderSchema.index({ status: 1, assignedDeliveryUserId: 1, updatedAt: -1 });
 // Billing: filters status=preparing + packedAt exists
 OrderSchema.index({ status: 1, packedAt: 1, updatedAt: -1 });
+OrderSchema.index({ 'shippingAddress.city': 1, createdAt: -1 });

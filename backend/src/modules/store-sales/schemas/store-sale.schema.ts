@@ -111,3 +111,4 @@ export const StoreSaleSchema = SchemaFactory.createForClass(StoreSale);
 StoreSaleSchema.index({ store: 1, createdAt: -1 });
 StoreSaleSchema.index({ saleType: 1 });
 StoreSaleSchema.index({ store: 1, saleType: 1, createdAt: -1 });
+StoreSaleSchema.index({ linkedOrder: 1 }, { sparse: true });
