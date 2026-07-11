@@ -90,7 +90,7 @@ export default function CampaignsPage() {
 
   // ── Customer list query ──────────────────────────────────────────────────
   const { data: usersData, isFetching: usersLoading, refetch: refetchUsers } = useQuery({
-    queryKey: ['campaign-users', customerSearch, recipientFilter],
+    queryKey: ['campaign-users', customerSearch],
     queryFn: () => api.getUsers({
       limit: 200,
       search: customerSearch || undefined,
@@ -233,11 +233,15 @@ export default function CampaignsPage() {
     },
   });
 
+  const tplImageReady =
+    tplImageMethod === 'none' ||
+    (tplImageMethod === 'upload' ? !!tplImageFile : !!tplImageUrl.trim());
+
   const canSend =
     finalPhones.length > 0 &&
     !broadcastMutation.isPending &&
     (messageType === 'template'
-      ? !!templateName.trim()
+      ? !!templateName.trim() && tplImageReady
       : imageMethod === 'upload' ? !!imageFile : !!imageUrl.trim());
 
   // ─────────────────────────────────────────────────────────────────────────
