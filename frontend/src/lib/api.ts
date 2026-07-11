@@ -1322,11 +1322,13 @@ class ApiClient {
     phones: string[],
     imageUrl: string,
     caption?: string,
+    mediaType?: string,
   ): Promise<{ campaignId: string }> {
     const response = await this.client.post<ApiResponse<{ campaignId: string }>>('/notifications/broadcast/media', {
       phones,
       imageUrl,
       caption,
+      mediaType,
     });
     return response.data.data;
   }

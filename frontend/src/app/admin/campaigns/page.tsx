@@ -19,6 +19,7 @@ import { User, CampaignRecord } from '@/types';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type MessageType = 'template' | 'media';
+type MediaMethod = 'upload' | 'url' | 'pdf';
 type ImageInputMethod = 'upload' | 'url';
 type RecipientFilter = 'all' | 'ordered' | 'manual';
 
@@ -65,12 +66,14 @@ export default function CampaignsPage() {
   const [bodyParams, setBodyParams]       = useState('');
   const [buttonParams, setButtonParams]   = useState('');
 
-  // Image fields (media campaign)
-  const [imageMethod, setImageMethod]     = useState<ImageInputMethod>('upload');
+  // Image/media fields
+  const [imageMethod, setImageMethod]     = useState<MediaMethod>('upload');
   const [imageFile, setImageFile]         = useState<File | null>(null);
   const [imagePreview, setImagePreview]   = useState('');
   const [imageUrl, setImageUrl]           = useState('');
   const [caption, setCaption]             = useState('');
+  const [pdfFile, setPdfFile]             = useState<File | null>(null);
+  const pdfFileInputRef                   = useRef<HTMLInputElement>(null);
 
   // Template header image (optional)
   const [tplImageMethod, setTplImageMethod] = useState<'none' | ImageInputMethod>('none');
@@ -160,7 +163,17 @@ export default function CampaignsPage() {
     setImageFile(null);
     setImagePreview('');
     setImageUrl('');
+    setPdfFile(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    if (pdfFileInputRef.current) pdfFileInputRef.current.value = '';
+  };
+
+  const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { toast({ title: 'File too large', description: 'Max 10 MB', variant: 'destructive' }); return; }
+    if (file.type !== 'application/pdf') { toast({ title: 'Only PDF files allowed', variant: 'destructive' }); return; }
+    setPdfFile(file);
   };
 
   const handleTplFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -187,6 +200,11 @@ export default function CampaignsPage() {
       if (finalPhones.length === 0) throw new Error('No valid recipients');
 
       if (messageType === 'media') {
+        if (imageMethod === 'pdf') {
+          if (!pdfFile) throw new Error('Please select a PDF file');
+          const result = await api.uploadDocument(pdfFile, 'campaigns');
+          return api.sendMediaBroadcast(finalPhones, result.secureUrl, caption || undefined, 'document');
+        }
         let resolvedUrl = imageUrl.trim();
         if (imageMethod === 'upload') {
           if (!imageFile) throw new Error('Please select an image');
@@ -195,7 +213,7 @@ export default function CampaignsPage() {
         } else {
           if (!resolvedUrl) throw new Error('Please enter an image URL');
         }
-        return api.sendMediaBroadcast(finalPhones, resolvedUrl, caption || undefined);
+        return api.sendMediaBroadcast(finalPhones, resolvedUrl, caption || undefined, 'image');
       }
 
       const template = templateName.trim();
@@ -237,12 +255,15 @@ export default function CampaignsPage() {
     tplImageMethod === 'none' ||
     (tplImageMethod === 'upload' ? !!tplImageFile : !!tplImageUrl.trim());
 
+  const mediaReady =
+    imageMethod === 'upload' ? !!imageFile :
+    imageMethod === 'url'    ? !!imageUrl.trim() :
+    /* pdf */                  !!pdfFile;
+
   const canSend =
     finalPhones.length > 0 &&
     !broadcastMutation.isPending &&
-    (messageType === 'template'
-      ? !!templateName.trim() && tplImageReady
-      : imageMethod === 'upload' ? !!imageFile : !!imageUrl.trim());
+    (messageType === 'template' ? !!templateName.trim() && tplImageReady : mediaReady);
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
@@ -405,26 +426,23 @@ export default function CampaignsPage() {
               <div className="space-y-4">
                 {/* Upload method tabs */}
                 <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
-                  <button
-                    onClick={() => { setImageMethod('upload'); clearImage(); }}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                      imageMethod === 'upload'
-                        ? 'bg-background shadow text-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <Upload className="h-3.5 w-3.5" /> Upload file
-                  </button>
-                  <button
-                    onClick={() => { setImageMethod('url'); clearImage(); }}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                      imageMethod === 'url'
-                        ? 'bg-background shadow text-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <LinkIcon className="h-3.5 w-3.5" /> Image URL
-                  </button>
+                  {([
+                    { value: 'upload', icon: <Upload className="h-3.5 w-3.5" />, label: 'Upload image' },
+                    { value: 'url',    icon: <LinkIcon className="h-3.5 w-3.5" />, label: 'Image URL' },
+                    { value: 'pdf',    icon: <span className="text-xs font-bold">PDF</span>, label: 'Document' },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => { setImageMethod(opt.value); clearImage(); }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                        imageMethod === opt.value
+                          ? 'bg-background shadow text-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {opt.icon} {opt.label}
+                    </button>
+                  ))}
                 </div>
 
                 {/* Upload */}
@@ -487,6 +505,41 @@ export default function CampaignsPage() {
                       </div>
                     )}
                   </div>
+                )}
+
+                {/* PDF upload */}
+                {imageMethod === 'pdf' && (
+                  !pdfFile ? (
+                    <div
+                      className="border-2 border-dashed border-muted-foreground/25 rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer hover:border-muted-foreground/40 transition-colors"
+                      onClick={() => pdfFileInputRef.current?.click()}
+                    >
+                      <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center">
+                        <span className="text-red-500 font-bold text-sm">PDF</span>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-medium">Click to upload a PDF document</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">PDF · Max 10 MB</p>
+                      </div>
+                      <Button type="button" variant="outline" size="sm">
+                        <Upload className="mr-2 h-4 w-4" /> Choose PDF
+                      </Button>
+                      <input ref={pdfFileInputRef} type="file" accept="application/pdf" onChange={handlePdfChange} className="hidden" />
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3 p-4 rounded-xl border bg-red-50/50">
+                      <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center shrink-0">
+                        <span className="text-red-600 font-bold text-xs">PDF</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{pdfFile.name}</p>
+                        <p className="text-xs text-muted-foreground">{(pdfFile.size / 1024 / 1024).toFixed(1)} MB</p>
+                      </div>
+                      <button onClick={() => { setPdfFile(null); if (pdfFileInputRef.current) pdfFileInputRef.current.value = ''; }} className="p-1.5 rounded-full hover:bg-red-100 text-red-500 transition-colors">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )
                 )}
 
                 {/* Caption */}
@@ -772,27 +825,43 @@ export default function CampaignsPage() {
                 {/* ── Image / media preview ── */}
                 {messageType === 'media' && (
                   <>
-                    {!imagePreview && !imageUrl.trim() ? (
+                    {imageMethod === 'pdf' ? (
+                      pdfFile ? (
+                        <div className="bg-white rounded-lg shadow-sm max-w-[90%] overflow-hidden">
+                          <div className="flex items-center gap-3 px-3 py-3 border-b">
+                            <div className="w-9 h-9 rounded bg-red-100 flex items-center justify-center shrink-0">
+                              <span className="text-red-600 font-bold text-[10px]">PDF</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[11px] font-medium truncate">{pdfFile.name}</p>
+                              <p className="text-[10px] text-gray-400">{(pdfFile.size / 1024 / 1024).toFixed(1)} MB · PDF</p>
+                            </div>
+                          </div>
+                          {caption && <p className="text-[11px] text-gray-700 px-3 pt-1.5 whitespace-pre-wrap">{caption}</p>}
+                          <div className="flex justify-end px-3 pb-1.5 pt-1">
+                            <span className="text-[10px] text-gray-400">12:00 PM ✓✓</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center h-48 text-xs text-gray-500">
+                          Select a PDF to preview
+                        </div>
+                      )
+                    ) : !imagePreview && !imageUrl.trim() ? (
                       <div className="flex items-center justify-center h-48 text-xs text-gray-500">
                         Add an image to preview
                       </div>
                     ) : (
                       <div className="bg-white rounded-lg shadow-sm max-w-[90%] overflow-hidden">
-                        {/* Image */}
-                        <div className="relative">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={imagePreview || imageUrl}
-                            alt="Campaign preview"
-                            className="w-full max-h-48 object-cover"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                          />
-                        </div>
-                        {/* Caption + timestamp */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={imagePreview || imageUrl}
+                          alt="Campaign preview"
+                          className="w-full max-h-48 object-cover"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
                         <div className="px-3 pt-1.5 pb-1.5">
-                          {caption && (
-                            <p className="text-[11px] text-gray-700 mb-0.5 whitespace-pre-wrap">{caption}</p>
-                          )}
+                          {caption && <p className="text-[11px] text-gray-700 mb-0.5 whitespace-pre-wrap">{caption}</p>}
                           <div className="flex justify-end">
                             <span className="text-[10px] text-gray-400">12:00 PM ✓✓</span>
                           </div>

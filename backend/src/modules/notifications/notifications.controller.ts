@@ -57,6 +57,10 @@ class MediaBroadcastDto {
   @IsString()
   @IsOptional()
   caption?: string;
+
+  @IsString()
+  @IsOptional()
+  mediaType?: string;
 }
 
 @Controller('notifications')
@@ -84,7 +88,7 @@ export class NotificationsController {
   async sendMediaBroadcast(
     @Body() dto: MediaBroadcastDto,
   ): Promise<{ campaignId: string }> {
-    return this.notificationsService.enqueueMediaBroadcast(dto.phones, dto.imageUrl, dto.caption);
+    return this.notificationsService.enqueueMediaBroadcast(dto.phones, dto.imageUrl, dto.caption, dto.mediaType);
   }
 
   @Get('campaigns')

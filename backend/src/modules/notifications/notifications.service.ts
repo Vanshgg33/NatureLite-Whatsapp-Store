@@ -639,16 +639,19 @@ export class NotificationsService {
     phones: string[],
     imageUrl: string,
     caption?: string,
+    mediaType: string = 'image',
   ): Promise<{ campaignId: string }> {
     const normalized = this.normalizePhones(phones);
+    const typeLabel = mediaType === 'document' ? 'Document' : 'Image';
     const campaign = await this.campaignModel.create({
-      label: caption?.trim() ? `Image: ${caption.trim().slice(0, 60)}` : `Image Campaign ${new Date().toLocaleDateString('en-IN')}`,
+      label: caption?.trim() ? `${typeLabel}: ${caption.trim().slice(0, 60)}` : `${typeLabel} Campaign ${new Date().toLocaleDateString('en-IN')}`,
       type: 'media',
       status: 'queued',
       totalPhones: normalized.length,
       phones: normalized,
       imageUrl,
       caption,
+      mediaType,
     });
     await this.notifQueue.add(
       NOTIFICATION_JOBS.BROADCAST_MEDIA,
@@ -729,7 +732,7 @@ export class NotificationsService {
         try {
           const messageId = await this.whatsappService.sendMediaMessage({
             phone,
-            mediaType: 'image',
+            mediaType: (campaign.mediaType as 'image' | 'document') || 'image',
             mediaUrl: campaign.imageUrl!,
             caption: campaign.caption,
             meta: { idempotencyKey },
