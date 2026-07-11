@@ -120,7 +120,7 @@ export default function ImmersiveHeroSection() {
               fill
               priority={index === 0}
               sizes="100vw"
-              style={{ objectFit: 'cover' }}
+              style={{ objectFit: 'cover', objectPosition: 'top' }}
             />
           )}
         </motion.div>
