@@ -76,7 +76,8 @@ export default function CampaignsPage() {
   const [recipientFilter, setRecipientFilter] = useState<RecipientFilter>('manual');
   const [manualPhones, setManualPhones]   = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
-  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+  // null = all selected (implicit); new Set() = none; Set([...ids]) = specific subset
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string> | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -123,7 +124,7 @@ export default function CampaignsPage() {
       return parsePhones(manualPhones).valid;
     }
     const fromDb = customersWithPhone
-      .filter((u: User) => selectedUserIds.size === 0 || selectedUserIds.has(u._id))
+      .filter((u: User) => selectedUserIds === null || selectedUserIds.has(u._id))
       .map((u: User) => u.phone.replace(/[^\d]/g, ''))
       .filter((p) => p.length >= 10);
     return Array.from(new Set(fromDb));
@@ -187,7 +188,7 @@ export default function CampaignsPage() {
       toast({ title: 'Campaign queued', description: 'Messages are being sent in the background.' });
       // reset form
       setManualPhones('');
-      setSelectedUserIds(new Set());
+      setSelectedUserIds(null);
       if (messageType === 'template') {
         setTemplateName(''); setHeaderParams(''); setBodyParams(''); setButtonParams('');
       } else {
@@ -389,7 +390,7 @@ export default function CampaignsPage() {
 
             {/* ── Send button ───────────────────────────────────────── */}
             <div className="flex items-center gap-3 pt-2 border-t">
-              <Button onClick={() => broadcastMutation.mutate()} disabled={!canSend} size="default">
+              <Button onClick={() => { if (window.confirm(`Send this campaign to ${finalPhones.length} recipient${finalPhones.length !== 1 ? 's' : ''}?`)) broadcastMutation.mutate(); }} disabled={!canSend} size="default">
                 <Send className="mr-2 h-4 w-4" />
                 {broadcastMutation.isPending ? 'Queuing…' : `Send to ${finalPhones.length} recipient${finalPhones.length !== 1 ? 's' : ''}`}
               </Button>
@@ -426,7 +427,7 @@ export default function CampaignsPage() {
               ] as const).map((tab) => (
                 <button
                   key={tab.value}
-                  onClick={() => { setRecipientFilter(tab.value); setSelectedUserIds(new Set()); }}
+                  onClick={() => { setRecipientFilter(tab.value); setSelectedUserIds(null); }}
                   className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-all ${
                     recipientFilter === tab.value
                       ? 'bg-background shadow text-foreground'
@@ -480,15 +481,12 @@ export default function CampaignsPage() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => {
-                        if (selectedUserIds.size === customersWithPhone.length) {
-                          setSelectedUserIds(new Set());
-                        } else {
-                          setSelectedUserIds(new Set(customersWithPhone.map((u: User) => u._id)));
-                        }
+                        const isAll = selectedUserIds === null || selectedUserIds.size === customersWithPhone.length;
+                        setSelectedUserIds(isAll ? new Set() : null);
                       }}
                       className="text-xs text-primary hover:underline"
                     >
-                      {selectedUserIds.size === customersWithPhone.length ? 'Deselect all' : 'Select all'}
+                      {selectedUserIds === null || selectedUserIds.size === customersWithPhone.length ? 'Deselect all' : 'Select all'}
                     </button>
                     <button onClick={() => refetchUsers()} className="hover:text-foreground transition-colors">
                       <RefreshCw className={`h-3 w-3 ${usersLoading ? 'animate-spin' : ''}`} />
@@ -508,9 +506,7 @@ export default function CampaignsPage() {
                     </div>
                   )}
                   {customersWithPhone.map((user: User) => {
-                    const checked = selectedUserIds.size === 0
-                      ? true
-                      : selectedUserIds.has(user._id);
+                    const checked = selectedUserIds === null || selectedUserIds.has(user._id);
                     return (
                       <label
                         key={user._id}
@@ -523,17 +519,16 @@ export default function CampaignsPage() {
                           className="h-3.5 w-3.5 accent-primary"
                           checked={checked}
                           onChange={() => {
-                            const next = new Set(
-                              selectedUserIds.size === 0
-                                ? customersWithPhone.map((u: User) => u._id)
-                                : selectedUserIds,
-                            );
+                            const base = selectedUserIds === null
+                              ? new Set(customersWithPhone.map((u: User) => u._id))
+                              : new Set(selectedUserIds);
                             if (checked) {
-                              next.delete(user._id);
+                              base.delete(user._id);
                             } else {
-                              next.add(user._id);
+                              base.add(user._id);
                             }
-                            setSelectedUserIds(next);
+                            // If all are now checked, collapse back to null (all-implicit)
+                            setSelectedUserIds(base.size === customersWithPhone.length ? null : base);
                           }}
                         />
                         <div className="flex-1 min-w-0">
@@ -550,10 +545,13 @@ export default function CampaignsPage() {
                   })}
                 </div>
 
-                {selectedUserIds.size > 0 && selectedUserIds.size < customersWithPhone.length && (
+                {selectedUserIds !== null && selectedUserIds.size > 0 && selectedUserIds.size < customersWithPhone.length && (
                   <p className="text-xs text-muted-foreground text-center">
                     {selectedUserIds.size} of {customersWithPhone.length} selected
                   </p>
+                )}
+                {selectedUserIds !== null && selectedUserIds.size === 0 && (
+                  <p className="text-xs text-amber-500 text-center">No recipients selected</p>
                 )}
               </div>
             )}
