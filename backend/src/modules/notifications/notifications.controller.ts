@@ -6,24 +6,56 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { IsArray, IsOptional, IsString, IsNotEmpty } from 'class-validator';
 import { NotificationsService } from './notifications.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 
 class BroadcastDto {
+  @IsArray()
+  @IsString({ each: true })
   phones: string[];
+
+  @IsString()
+  @IsNotEmpty()
   templateName: string;
+
+  @IsString()
+  @IsOptional()
   languageCode?: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
   headerParams?: string[];
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
   bodyParams?: string[];
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
   buttonParams?: string[];
+
+  @IsString()
+  @IsOptional()
   headerImageUrl?: string;
 }
 
 class MediaBroadcastDto {
+  @IsArray()
+  @IsString({ each: true })
   phones: string[];
+
+  @IsString()
+  @IsNotEmpty()
   imageUrl: string;
+
+  @IsString()
+  @IsOptional()
   caption?: string;
 }
 
