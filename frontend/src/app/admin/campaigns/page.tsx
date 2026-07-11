@@ -87,7 +87,6 @@ export default function CampaignsPage() {
     queryFn: () => api.getUsers({
       limit: 200,
       search: customerSearch || undefined,
-      isBlocked: false,
       sortBy: 'totalOrders',
       sortOrder: 'desc',
     }),
@@ -108,7 +107,7 @@ export default function CampaignsPage() {
   });
 
   const customers = useMemo(() => {
-    const all = usersData?.items ?? [];
+    const all = (usersData?.items ?? []).filter((u) => !u.isBlocked);
     if (recipientFilter === 'ordered') return all.filter((u) => u.totalOrders > 0);
     return all;
   }, [usersData, recipientFilter]);
