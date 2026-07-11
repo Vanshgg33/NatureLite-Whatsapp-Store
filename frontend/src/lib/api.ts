@@ -831,6 +831,16 @@ class ApiClient {
     return response.data.data;
   }
 
+  async dismissOrderFromView(id: string, view: 'packing' | 'billing'): Promise<Order> {
+    const response = await this.client.patch<ApiResponse<Order>>(`/orders/${id}/dismiss-view`, { view });
+    return response.data.data;
+  }
+
+  async restoreOrderToView(id: string, view: 'packing' | 'billing'): Promise<Order> {
+    const response = await this.client.patch<ApiResponse<Order>>(`/orders/${id}/restore-view`, { view });
+    return response.data.data;
+  }
+
   async requestReturn(id: string, reason: string): Promise<Order> {
     const response = await this.client.post<ApiResponse<Order>>(`/orders/${id}/request-return`, {
       reason,

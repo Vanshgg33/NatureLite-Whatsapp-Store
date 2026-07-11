@@ -127,7 +127,7 @@ export default function BillingDashboardPage() {
   });
 
   const deleteOrder = useMutation({
-    mutationFn: (orderId: string) => api.deleteOrder(orderId),
+    mutationFn: (orderId: string) => api.dismissOrderFromView(orderId, 'billing'),
     onMutate: async (orderId) => {
       await queryClient.cancelQueries({ queryKey: ['department', 'billing', 'orders'] });
       await queryClient.cancelQueries({ queryKey: ['department', 'billing', 'dispatched'] });
@@ -144,17 +144,16 @@ export default function BillingDashboardPage() {
       return { prevOrders, prevDispatched };
     },
     onSuccess: () => {
-      toast({ title: 'Order deleted' });
+      toast({ title: 'Order removed from billing queue' });
     },
     onError: (_err, _vars, context: any) => {
       if (context?.prevOrders) queryClient.setQueryData(['department', 'billing', 'orders'], context.prevOrders);
       if (context?.prevDispatched) queryClient.setQueryData(['department', 'billing', 'dispatched'], context.prevDispatched);
-      toast({ title: 'Failed to delete order', variant: 'destructive' });
+      toast({ title: 'Failed to remove order', variant: 'destructive' });
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['department', 'billing', 'orders'] });
       queryClient.invalidateQueries({ queryKey: ['department', 'billing', 'dispatched'] });
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
     },
   });
 

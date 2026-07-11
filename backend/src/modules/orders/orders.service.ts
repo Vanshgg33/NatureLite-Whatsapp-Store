@@ -1327,6 +1327,25 @@ export class OrdersService implements OnModuleInit {
     return { deleted: true };
   }
 
+  async dismissFromView(id: string, view: string): Promise<Order> {
+    const idObj = parseObjectId(id, 'id');
+    const order = await this.orderRepository.findById(idObj);
+    if (!order) throw new NotFoundException('Order not found');
+    if (!order.dismissedFromViews) order.dismissedFromViews = [];
+    if (!order.dismissedFromViews.includes(view)) {
+      order.dismissedFromViews.push(view);
+    }
+    return order.save();
+  }
+
+  async restoreToView(id: string, view: string): Promise<Order> {
+    const idObj = parseObjectId(id, 'id');
+    const order = await this.orderRepository.findById(idObj);
+    if (!order) throw new NotFoundException('Order not found');
+    order.dismissedFromViews = (order.dismissedFromViews || []).filter(v => v !== view);
+    return order.save();
+  }
+
   async updateOrder(id: string, dto: UpdateOrderDto): Promise<Order> {
     const idObj = parseObjectId(id, 'id');
     const order = await this.orderRepository.findById(idObj);

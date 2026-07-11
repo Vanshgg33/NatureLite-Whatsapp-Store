@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Eye, Plus, Trash2, ShoppingCart, MessageCircle, Globe, Download, Send, Loader2, Edit, Phone, Receipt, Building2, Truck, Bell } from 'lucide-react';
+import { Search, Eye, Plus, Trash2, ShoppingCart, MessageCircle, Globe, Download, Send, Loader2, Edit, Phone, Receipt, Building2, Truck, Bell, RotateCcw } from 'lucide-react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -411,6 +411,18 @@ export default function OrdersPage() {
     },
   });
 
+  const restoreOrderMutation = useMutation({
+    mutationFn: ({ id, view }: { id: string; view: 'packing' | 'billing' }) =>
+      api.restoreOrderToView(id, view),
+    onSuccess: (_data, { view }) => {
+      toast({ title: `Order sent back to ${view} queue` });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+    },
+    onError: () => {
+      toast({ title: 'Failed to restore order', variant: 'destructive' });
+    },
+  });
+
   function startEditing(order: Order) {
     setEditingOrder(order);
     setEditStatus(order.status || '');
@@ -716,6 +728,28 @@ export default function OrdersPage() {
                               >
                                 <Edit className="h-4 w-4" />
                               </Button>
+                              {order.dismissedFromViews?.includes('packing') && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  title="Send back to packing"
+                                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                  onClick={() => restoreOrderMutation.mutate({ id: order._id, view: 'packing' })}
+                                >
+                                  <RotateCcw className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {order.dismissedFromViews?.includes('billing') && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  title="Send back to billing"
+                                  className="text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                                  onClick={() => restoreOrderMutation.mutate({ id: order._id, view: 'billing' })}
+                                >
+                                  <RotateCcw className="h-4 w-4" />
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="icon"

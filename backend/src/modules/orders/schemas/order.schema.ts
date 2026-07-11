@@ -227,6 +227,9 @@ export class Order {
   @Prop({ default: false })
   repackRequired: boolean;
 
+  @Prop({ type: [String], default: [] })
+  dismissedFromViews: string[];
+
   @Prop({ type: [EditChangeSchema], default: [] })
   editChanges: EditChange[];
 

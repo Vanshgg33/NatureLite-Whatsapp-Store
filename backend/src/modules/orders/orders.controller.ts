@@ -4,6 +4,7 @@ import {
   Delete,
   ForbiddenException,
   Get,
+  Patch,
   Post,
   Put,
   Param,
@@ -206,6 +207,26 @@ export class OrdersController {
     @CurrentUser() user: JwtPayload,
   ): Promise<Order> {
     return this.ordersService.updateDeliveryWorkflow(id, dto, user.sub, user.departmentType);
+  }
+
+  @Patch(':id/dismiss-view')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  async dismissFromView(
+    @Param('id') id: string,
+    @Body('view') view: string,
+  ) {
+    return this.ordersService.dismissFromView(id, view);
+  }
+
+  @Patch(':id/restore-view')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  async restoreToView(
+    @Param('id') id: string,
+    @Body('view') view: string,
+  ) {
+    return this.ordersService.restoreToView(id, view);
   }
 
   @Post(':id/cancel')

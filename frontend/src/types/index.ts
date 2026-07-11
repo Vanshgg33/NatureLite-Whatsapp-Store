@@ -273,6 +273,7 @@ export interface Order {
   invoiceUrl?: string;
   scheduledFor?: string;
   repackRequired?: boolean;
+  dismissedFromViews?: string[];
   editChanges?: EditChange[];
   metadata?: {
     deliveryWorkflow?: {
