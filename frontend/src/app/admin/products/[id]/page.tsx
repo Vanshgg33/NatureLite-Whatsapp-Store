@@ -298,6 +298,7 @@ export default function EditProductPage() {
         name: v.name, sku: v.sku,
         price: parseFloat(v.price),
         compareAtPrice: v.compareAtPrice ? parseFloat(v.compareAtPrice) : undefined,
+        stock: parseInt(v.stock) || 0,
         attributes: {},
         images: v.images,
       })),
