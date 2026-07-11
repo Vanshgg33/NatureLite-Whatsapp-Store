@@ -29,6 +29,7 @@ export class Campaign {
   @Prop() imageUrl?: string;
   @Prop() caption?: string;
   @Prop({ default: 'image' }) mediaType?: string;
+  @Prop() mediaFilename?: string;
 
   // Full phone list (used by processor, excluded from list responses)
   @Prop({ type: [String], default: [] }) phones: string[];

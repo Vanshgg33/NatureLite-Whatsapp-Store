@@ -203,7 +203,7 @@ export default function CampaignsPage() {
         if (imageMethod === 'pdf') {
           if (!pdfFile) throw new Error('Please select a PDF file');
           const result = await api.uploadDocument(pdfFile, 'campaigns');
-          return api.sendMediaBroadcast(finalPhones, result.secureUrl, caption || undefined, 'document');
+          return api.sendMediaBroadcast(finalPhones, result.secureUrl, caption || undefined, 'document', pdfFile.name);
         }
         let resolvedUrl = imageUrl.trim();
         if (imageMethod === 'upload') {

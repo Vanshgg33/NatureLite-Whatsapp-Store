@@ -640,6 +640,7 @@ export class NotificationsService {
     imageUrl: string,
     caption?: string,
     mediaType: string = 'image',
+    mediaFilename?: string,
   ): Promise<{ campaignId: string }> {
     const normalized = this.normalizePhones(phones);
     const typeLabel = mediaType === 'document' ? 'Document' : 'Image';
@@ -652,6 +653,7 @@ export class NotificationsService {
       imageUrl,
       caption,
       mediaType,
+      mediaFilename,
     });
     await this.notifQueue.add(
       NOTIFICATION_JOBS.BROADCAST_MEDIA,
@@ -735,6 +737,7 @@ export class NotificationsService {
             mediaType: (campaign.mediaType as 'image' | 'document') || 'image',
             mediaUrl: campaign.imageUrl!,
             caption: campaign.caption,
+            filename: campaign.mediaFilename,
             meta: { idempotencyKey },
           });
           if (messageId) sent++; else skipped++;
