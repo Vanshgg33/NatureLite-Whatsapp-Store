@@ -4,7 +4,7 @@ import { useMemo, useState, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2, Megaphone, Phone, Send, Users, Image as ImageIcon,
-  Upload, X, Search, LinkIcon, RefreshCw, Clock, AlertCircle,
+  Upload, X, Search, LinkIcon, RefreshCw, Clock, AlertCircle, Smartphone,
 } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { Input } from '@/components/ui/input';
@@ -554,6 +554,137 @@ export default function CampaignsPage() {
                 )}
               </div>
             )}
+          </div>
+        </div>
+
+        {/* ── WhatsApp Preview ──────────────────────────────────────────── */}
+        <div className="rounded-xl border bg-card p-6">
+          <div className="flex items-center gap-2 mb-5">
+            <Smartphone className="h-5 w-5 text-muted-foreground" />
+            <h2 className="font-semibold text-base">Preview</h2>
+            <span className="text-xs text-muted-foreground">— how recipients will see your message</span>
+          </div>
+
+          <div className="flex justify-center">
+            {/* Phone shell */}
+            <div className="w-72 rounded-[2rem] border-[6px] border-gray-800 shadow-2xl overflow-hidden bg-gray-800">
+
+              {/* Status bar */}
+              <div className="bg-gray-800 px-5 py-1 flex justify-between items-center">
+                <span className="text-white text-[10px] font-medium">9:41</span>
+                <div className="flex gap-1 items-center">
+                  <div className="w-3 h-1.5 border border-white rounded-[2px] relative"><div className="absolute inset-[1px] bg-white rounded-[1px] w-2/3" /></div>
+                  <svg className="w-3 h-3 text-white fill-white" viewBox="0 0 24 24"><path d="M1 1l22 22M16.72 11.06A10.94 10.94 0 0119 12.55M5 5a10.94 10.94 0 00-1.91 1.49M10.71 5.05A16 16 0 0122.56 9M1.42 9a15.91 15.91 0 014.7-2.88M8.53 16.11a6 6 0 016.95 0M12 20h.01" stroke="white" strokeWidth="2" strokeLinecap="round" fill="none"/></svg>
+                </div>
+              </div>
+
+              {/* WA header bar */}
+              <div className="bg-[#075e54] text-white px-3 py-2.5 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-emerald-300 flex items-center justify-center text-[#075e54] font-bold text-sm shrink-0">NL</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold leading-tight">NatureLite</p>
+                  <p className="text-[10px] opacity-75">Business Account</p>
+                </div>
+                <Phone className="h-4 w-4 opacity-75" />
+              </div>
+
+              {/* Chat background */}
+              <div
+                className="min-h-[320px] p-3 flex flex-col justify-end gap-2"
+                style={{ background: '#e5ddd5' }}
+              >
+                {/* ── Template preview ── */}
+                {messageType === 'template' && (
+                  <>
+                    {!templateName ? (
+                      <div className="flex items-center justify-center h-48 text-xs text-gray-500">
+                        Fill in template details to preview
+                      </div>
+                    ) : (
+                      <div className="bg-white rounded-lg shadow-sm max-w-[90%] overflow-hidden text-[11px]">
+                        {/* Header params */}
+                        {headerParams.trim() && (
+                          <div className="bg-gray-50 border-b px-3 py-2">
+                            {parseList(headerParams).map((p, i) => (
+                              <p key={i} className="font-semibold text-gray-800 leading-snug">{p}</p>
+                            ))}
+                          </div>
+                        )}
+                        {/* Body */}
+                        <div className="px-3 pt-2 pb-1 space-y-1">
+                          <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Template · {languageCode || 'en'}</p>
+                          <p className="font-mono text-gray-700 font-medium">{templateName}</p>
+                          {bodyParams.trim() && (
+                            <div className="mt-1.5 space-y-0.5">
+                              {parseList(bodyParams).map((p, i) => (
+                                <p key={i} className="text-gray-600">
+                                  <span className="text-gray-400 font-mono">{`{{${i + 1}}}`}</span> {p}
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        {/* Buttons */}
+                        {buttonParams.trim() && (
+                          <div className="border-t mt-1">
+                            {parseList(buttonParams).map((btn, i) => (
+                              <div key={i} className="border-b last:border-0 px-3 py-1.5 text-center text-[#128c7e] font-medium text-[11px]">
+                                {btn}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {/* Timestamp */}
+                        <div className="flex justify-end px-2 pb-1.5">
+                          <span className="text-[10px] text-gray-400">12:00 PM ✓✓</span>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* ── Image / media preview ── */}
+                {messageType === 'media' && (
+                  <>
+                    {!imagePreview && !imageUrl.trim() ? (
+                      <div className="flex items-center justify-center h-48 text-xs text-gray-500">
+                        Add an image to preview
+                      </div>
+                    ) : (
+                      <div className="bg-white rounded-lg shadow-sm max-w-[90%] overflow-hidden">
+                        {/* Image */}
+                        <div className="relative">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={imagePreview || imageUrl}
+                            alt="Campaign preview"
+                            className="w-full max-h-48 object-cover"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          />
+                        </div>
+                        {/* Caption + timestamp */}
+                        <div className="px-3 pt-1.5 pb-1.5">
+                          {caption && (
+                            <p className="text-[11px] text-gray-700 mb-0.5 whitespace-pre-wrap">{caption}</p>
+                          )}
+                          <div className="flex justify-end">
+                            <span className="text-[10px] text-gray-400">12:00 PM ✓✓</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* WA input bar */}
+              <div className="bg-[#f0f0f0] px-3 py-2 flex items-center gap-2 border-t">
+                <div className="flex-1 bg-white rounded-full px-3 py-1.5 text-[10px] text-gray-400">Message</div>
+                <div className="w-7 h-7 rounded-full bg-[#128c7e] flex items-center justify-center shrink-0">
+                  <Send className="h-3 w-3 text-white" />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
