@@ -3,23 +3,19 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Package, ArrowRight, Truck, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react';
+import { Package, ArrowRight, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatCurrency, formatDate, getStatusColor } from '@/lib/utils';
-import { useAdminAuthStore } from '@/lib/admin-store';
-import type { Order, AdminUser } from '@/types';
+import type { Order } from '@/types';
 
 export default function PackingDashboardPage() {
   const queryClient = useQueryClient();
-  const { user } = useAdminAuthStore();
   const { toast } = useToast();
-  const [selectedRider, setSelectedRider] = useState<Record<string, string>>({});
   const [search, setSearch] = useState('');
 
   const { data, isLoading } = useQuery({
@@ -28,13 +24,6 @@ export default function PackingDashboardPage() {
     refetchInterval: 10_000,
   });
 
-  const { data: deliveryStaff = [] } = useQuery<AdminUser[]>({
-    queryKey: ['delivery-staff'],
-    queryFn: () => api.getDeliveryStaff(),
-    staleTime: 10 * 60 * 1000,
-  });
-
-  const activeRiders = useMemo(() => deliveryStaff.filter((s) => s.isActive), [deliveryStaff]);
   const allOrders = useMemo(() => data?.items ?? [], [data]) as Order[];
   const orders = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -52,45 +41,6 @@ export default function PackingDashboardPage() {
       return 0;
     });
   }, [allOrders, search]);
-
-  // BUG 21 FIX: added onSettled with invalidateQueries (moved from onSuccess) so
-  // the query is always re-fetched whether the mutation succeeds or fails.
-  // This prevents a stale rollback snapshot from becoming permanent if the server
-  // state diverges.  cancelQueries + fresh getQueryData in onMutate ensures
-  // concurrent mutation rollbacks never restore a snapshot that another mutation
-  // already removed items from.
-  const assignDelivery = useMutation({
-    mutationFn: ({ orderId, riderId }: { orderId: string; riderId: string }) => {
-      const rider = activeRiders.find((r) => r._id === riderId);
-      return api.updateOrderStatus(orderId, {
-        status: 'out_for_delivery',
-        updatedBy: user?.id,
-        assignedTo: riderId,
-        assignedToName: rider?.name,
-        assignedToPhone: rider?.phone,
-      });
-    },
-    onMutate: async ({ orderId }) => {
-      await queryClient.cancelQueries({ queryKey: ['department', 'packing', 'orders'] });
-      const prev = queryClient.getQueryData(['department', 'packing', 'orders']);
-      queryClient.setQueryData(['department', 'packing', 'orders'], (old: any) => {
-        if (!old?.items) return old;
-        return { ...old, items: old.items.filter((o: any) => o._id !== orderId) };
-      });
-      return { prev };
-    },
-    onSuccess: (_, { orderId }) => {
-      setSelectedRider((prev) => { const n = { ...prev }; delete n[orderId]; return n; });
-      toast({ title: 'Sent for delivery', description: 'Delivery staff notified.' });
-    },
-    onError: (_err, _vars, context: any) => {
-      if (context?.prev) queryClient.setQueryData(['department', 'packing', 'orders'], context.prev);
-      toast({ title: 'Failed to assign delivery', variant: 'destructive' });
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['department', 'packing', 'orders'] });
-    },
-  });
 
   const deleteOrder = useMutation({
     mutationFn: (orderId: string) => api.dismissOrderFromView(orderId, 'packing'),
@@ -142,7 +92,6 @@ export default function PackingDashboardPage() {
           {orders.map((order) => {
             const isPacked = !!order.packedAt;
             const isRepack = !!order.repackRequired;
-            const riderId = selectedRider[order._id] ?? '';
             const editChanges = order.editChanges ?? [];
 
             return (
@@ -255,49 +204,12 @@ export default function PackingDashboardPage() {
                     </div>
                   </div>
 
-                  {!isPacked ? (
-                    <Link href={`/department/packing/${order._id}`} className="block">
-                      <Button className="w-full h-12 text-sm font-semibold gap-2 bg-emerald-600 hover:bg-emerald-700">
-                        <ArrowRight className="h-4 w-4 shrink-0" />
-                        View Details
-                      </Button>
-                    </Link>
-                  ) : (
-                    <div className="space-y-2">
-                      {activeRiders.length === 0 && (
-                        <p className="text-xs text-amber-600 text-center">No active riders — add delivery staff first.</p>
-                      )}
-                      <Select
-                        value={riderId}
-                        onValueChange={(v) => setSelectedRider((prev) => ({ ...prev, [order._id]: v }))}
-                        disabled={activeRiders.length === 0}
-                      >
-                        <SelectTrigger className="h-10 text-sm">
-                          <SelectValue placeholder={activeRiders.length === 0 ? 'No riders available' : 'Select delivery boy…'} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {activeRiders.map((rider) => (
-                            <SelectItem key={rider._id} value={rider._id}>{rider.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <div className="flex gap-2">
-                        <Button
-                          className="flex-1 h-10 text-sm font-semibold gap-2"
-                          disabled={!riderId || (assignDelivery.isPending && assignDelivery.variables?.orderId === order._id)}
-                          onClick={() => assignDelivery.mutate({ orderId: order._id, riderId })}
-                        >
-                          <Truck className="h-4 w-4 shrink-0" />
-                          {!riderId ? 'Select rider' : 'Assign Delivery Boy'}
-                        </Button>
-                        <Link href={`/department/packing/${order._id}`}>
-                          <Button variant="outline" className="h-10 px-3">
-                            <ArrowRight className="h-4 w-4" />
-                          </Button>
-                        </Link>
-                      </div>
-                    </div>
-                  )}
+                  <Link href={`/department/packing/${order._id}`} className="block">
+                    <Button className="w-full h-12 text-sm font-semibold gap-2 bg-emerald-600 hover:bg-emerald-700">
+                      <ArrowRight className="h-4 w-4 shrink-0" />
+                      View Details
+                    </Button>
+                  </Link>
                 </CardContent>
               </Card>
             );
