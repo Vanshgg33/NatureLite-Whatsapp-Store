@@ -1307,6 +1307,7 @@ class ApiClient {
       headerParams?: string[];
       bodyParams?: string[];
       buttonParams?: string[];
+      headerImageUrl?: string;
     }
   ): Promise<{ campaignId: string }> {
     const response = await this.client.post<ApiResponse<{ campaignId: string }>>('/notifications/broadcast', {

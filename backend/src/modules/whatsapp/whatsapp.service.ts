@@ -679,7 +679,12 @@ export class WhatsAppService implements OnModuleInit {
 
     const components: TemplateComponent[] = [];
 
-    if (dto.headerParams && dto.headerParams.length > 0) {
+    if (dto.headerImageUrl) {
+      components.push({
+        type: 'header',
+        parameters: [{ type: 'image', image: { link: dto.headerImageUrl } }],
+      } as any);
+    } else if (dto.headerParams && dto.headerParams.length > 0) {
       components.push({
         type: 'header',
         parameters: dto.headerParams.map((text) => ({ type: 'text', text })),

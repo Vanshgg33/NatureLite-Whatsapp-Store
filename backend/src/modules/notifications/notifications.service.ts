@@ -19,6 +19,7 @@ interface NotificationPayload {
   headerParams?: string[];
   bodyParams?: string[];
   buttonParams?: string[];
+  headerImageUrl?: string;
   text?: string;
   orderId?: string;
   idempotencyKey?: string;
@@ -609,6 +610,7 @@ export class NotificationsService {
       headerParams?: string[];
       bodyParams?: string[];
       buttonParams?: string[];
+      headerImageUrl?: string;
     } = {},
   ): Promise<{ campaignId: string }> {
     const normalized = this.normalizePhones(phones);
@@ -623,6 +625,7 @@ export class NotificationsService {
       headerParams: options.headerParams ?? [],
       bodyParams: options.bodyParams ?? [],
       buttonParams: options.buttonParams ?? [],
+      headerImageUrl: options.headerImageUrl,
     });
     await this.notifQueue.add(
       NOTIFICATION_JOBS.BROADCAST_TEMPLATE,
@@ -686,6 +689,7 @@ export class NotificationsService {
             headerParams: campaign.headerParams,
             bodyParams: campaign.bodyParams,
             buttonParams: campaign.buttonParams,
+            headerImageUrl: campaign.headerImageUrl,
             idempotencyKey,
           });
           if (ok) sent++; else skipped++;
@@ -785,6 +789,7 @@ export class NotificationsService {
         headerParams: payload.headerParams,
         bodyParams: payload.bodyParams ?? payload.params,
         buttonParams: payload.buttonParams,
+        headerImageUrl: payload.headerImageUrl,
         meta: payload.idempotencyKey ? { idempotencyKey: payload.idempotencyKey } : undefined,
       });
 

@@ -65,12 +65,19 @@ export default function CampaignsPage() {
   const [bodyParams, setBodyParams]       = useState('');
   const [buttonParams, setButtonParams]   = useState('');
 
-  // Image fields
+  // Image fields (media campaign)
   const [imageMethod, setImageMethod]     = useState<ImageInputMethod>('upload');
   const [imageFile, setImageFile]         = useState<File | null>(null);
   const [imagePreview, setImagePreview]   = useState('');
   const [imageUrl, setImageUrl]           = useState('');
   const [caption, setCaption]             = useState('');
+
+  // Template header image (optional)
+  const [tplImageMethod, setTplImageMethod] = useState<'none' | ImageInputMethod>('none');
+  const [tplImageFile, setTplImageFile]     = useState<File | null>(null);
+  const [tplImagePreview, setTplImagePreview] = useState('');
+  const [tplImageUrl, setTplImageUrl]       = useState('');
+  const tplFileInputRef = useRef<HTMLInputElement>(null);
 
   // Recipients
   const [recipientFilter, setRecipientFilter] = useState<RecipientFilter>('manual');
@@ -156,6 +163,24 @@ export default function CampaignsPage() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const handleTplFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast({ title: 'File too large', description: 'Max 5 MB', variant: 'destructive' }); return; }
+    if (!file.type.startsWith('image/')) { toast({ title: 'Not an image', variant: 'destructive' }); return; }
+    setTplImageFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setTplImagePreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const clearTplImage = () => {
+    setTplImageFile(null);
+    setTplImagePreview('');
+    setTplImageUrl('');
+    if (tplFileInputRef.current) tplFileInputRef.current.value = '';
+  };
+
   // ── Send ─────────────────────────────────────────────────────────────────
   const broadcastMutation = useMutation({
     mutationFn: async () => {
@@ -175,11 +200,19 @@ export default function CampaignsPage() {
 
       const template = templateName.trim();
       if (!template) throw new Error('Template name is required');
+      let resolvedTplImageUrl: string | undefined;
+      if (tplImageMethod === 'upload' && tplImageFile) {
+        const result = await api.uploadImage(tplImageFile, 'campaigns');
+        resolvedTplImageUrl = result.secureUrl;
+      } else if (tplImageMethod === 'url' && tplImageUrl.trim()) {
+        resolvedTplImageUrl = tplImageUrl.trim();
+      }
       return api.sendBroadcast(finalPhones, template, {
         languageCode: languageCode.trim() || 'en',
         headerParams: parseList(headerParams),
         bodyParams: parseList(bodyParams),
         buttonParams: parseList(buttonParams),
+        headerImageUrl: resolvedTplImageUrl,
       });
     },
     onSuccess: () => {
@@ -190,6 +223,7 @@ export default function CampaignsPage() {
       setSelectedUserIds(null);
       if (messageType === 'template') {
         setTemplateName(''); setHeaderParams(''); setBodyParams(''); setButtonParams('');
+        setTplImageMethod('none'); clearTplImage();
       } else {
         clearImage(); setCaption('');
       }
@@ -280,6 +314,84 @@ export default function CampaignsPage() {
                       />
                     </div>
                   ))}
+                </div>
+
+                {/* Header image (optional) */}
+                <div className="space-y-2 pt-1 border-t">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium flex items-center gap-1.5">
+                      <ImageIcon className="h-3.5 w-3.5" /> Header image
+                      <span className="text-muted-foreground font-normal">(optional)</span>
+                    </label>
+                    <div className="flex gap-1 p-0.5 bg-muted rounded-md">
+                      {([
+                        { value: 'none',   label: 'None' },
+                        { value: 'upload', label: 'Upload' },
+                        { value: 'url',    label: 'URL' },
+                      ] as const).map((opt) => (
+                        <button
+                          key={opt.value}
+                          onClick={() => { setTplImageMethod(opt.value); clearTplImage(); }}
+                          className={`px-3 py-1 rounded text-xs font-medium transition-all ${
+                            tplImageMethod === opt.value
+                              ? 'bg-background shadow text-foreground'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {tplImageMethod === 'upload' && (
+                    <>
+                      {!tplImagePreview ? (
+                        <div
+                          className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-5 flex items-center gap-3 cursor-pointer hover:border-muted-foreground/40 transition-colors"
+                          onClick={() => tplFileInputRef.current?.click()}
+                        >
+                          <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center shrink-0">
+                            <Upload className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium">Click to upload header image</p>
+                            <p className="text-xs text-muted-foreground">PNG, JPG · Max 5 MB</p>
+                          </div>
+                          <input ref={tplFileInputRef} type="file" accept="image/*" onChange={handleTplFileChange} className="hidden" />
+                        </div>
+                      ) : (
+                        <div className="relative rounded-lg overflow-hidden border">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={tplImagePreview} alt="Header" className="w-full max-h-40 object-cover" />
+                          <button onClick={clearTplImage} className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center text-white">
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {tplImageMethod === 'url' && (
+                    <div className="space-y-2">
+                      <Input
+                        placeholder="https://example.com/header-image.jpg"
+                        value={tplImageUrl}
+                        onChange={(e) => setTplImageUrl(e.target.value)}
+                      />
+                      {tplImageUrl && (
+                        <div className="relative rounded-lg overflow-hidden border">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={tplImageUrl}
+                            alt="Header preview"
+                            className="w-full max-h-40 object-cover"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -602,8 +714,18 @@ export default function CampaignsPage() {
                       </div>
                     ) : (
                       <div className="bg-white rounded-lg shadow-sm max-w-[90%] overflow-hidden text-[11px]">
-                        {/* Header params */}
-                        {headerParams.trim() && (
+                        {/* Header image */}
+                        {(tplImagePreview || tplImageUrl) && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={tplImagePreview || tplImageUrl}
+                            alt="Header"
+                            className="w-full max-h-32 object-cover"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          />
+                        )}
+                        {/* Header text params (only if no image) */}
+                        {!tplImagePreview && !tplImageUrl && headerParams.trim() && (
                           <div className="bg-gray-50 border-b px-3 py-2">
                             {parseList(headerParams).map((p, i) => (
                               <p key={i} className="font-semibold text-gray-800 leading-snug">{p}</p>

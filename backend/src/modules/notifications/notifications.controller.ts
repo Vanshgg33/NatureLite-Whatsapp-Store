@@ -18,6 +18,7 @@ class BroadcastDto {
   headerParams?: string[];
   bodyParams?: string[];
   buttonParams?: string[];
+  headerImageUrl?: string;
 }
 
 class MediaBroadcastDto {
@@ -41,6 +42,7 @@ export class NotificationsController {
       headerParams: dto.headerParams,
       bodyParams: dto.bodyParams,
       buttonParams: dto.buttonParams,
+      headerImageUrl: dto.headerImageUrl,
     });
   }
 

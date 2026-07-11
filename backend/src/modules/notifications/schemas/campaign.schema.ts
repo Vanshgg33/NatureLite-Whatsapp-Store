@@ -23,6 +23,7 @@ export class Campaign {
   @Prop({ type: [String], default: [] }) headerParams: string[];
   @Prop({ type: [String], default: [] }) bodyParams: string[];
   @Prop({ type: [String], default: [] }) buttonParams: string[];
+  @Prop() headerImageUrl?: string;
 
   // Media-specific
   @Prop() imageUrl?: string;

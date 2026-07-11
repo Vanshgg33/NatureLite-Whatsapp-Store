@@ -53,6 +53,10 @@ export class SendTemplateMessageDto {
   @IsOptional()
   urlButtonParams?: string[];
 
+  @IsString()
+  @IsOptional()
+  headerImageUrl?: string;
+
   @IsObject()
   @IsOptional()
   meta?: OutboundMessageMetaDto;
