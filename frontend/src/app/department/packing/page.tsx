@@ -112,6 +112,7 @@ export default function PackingDashboardPage() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['department', 'packing', 'orders'] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
     },
   });
 

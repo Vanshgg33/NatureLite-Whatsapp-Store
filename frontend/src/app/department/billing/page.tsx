@@ -154,6 +154,7 @@ export default function BillingDashboardPage() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['department', 'billing', 'orders'] });
       queryClient.invalidateQueries({ queryKey: ['department', 'billing', 'dispatched'] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
     },
   });
 
