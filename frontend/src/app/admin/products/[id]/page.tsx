@@ -272,9 +272,6 @@ export default function EditProductPage() {
       specialOfferLabel: formData.specialOfferLabel || undefined,
       specialOfferActive: formData.specialOfferActive,
       sku: formData.sku,
-      stock: parseInt(formData.stock),
-      trackStock: formData.trackStock,
-      lowStockThreshold: parseInt(formData.lowStockThreshold),
       isActive: formData.isActive,
       isFeatured: formData.isFeatured,
       hsnCode: formData.hsnCode || undefined,
@@ -301,7 +298,6 @@ export default function EditProductPage() {
         name: v.name, sku: v.sku,
         price: parseFloat(v.price),
         compareAtPrice: v.compareAtPrice ? parseFloat(v.compareAtPrice) : undefined,
-        stock: parseInt(v.stock) || 0,
         attributes: {},
         images: v.images,
       })),
@@ -535,7 +531,6 @@ export default function EditProductPage() {
                           <div className="space-y-1"><Label className="text-xs">SKU *</Label><Input placeholder="OIL-500ML" value={variant.sku} onChange={(e) => updateVariant(index, 'sku', e.target.value.toUpperCase())} /></div>
                           <div className="space-y-1"><Label className="text-xs">MRP (₹)</Label><Input type="number" min="0" step="0.01" value={variant.compareAtPrice} onChange={(e) => updateVariant(index, 'compareAtPrice', e.target.value)} /></div>
                           <div className="space-y-1"><Label className="text-xs">Sale Price (₹) *</Label><Input type="number" min="0" step="0.01" value={variant.price} onChange={(e) => updateVariant(index, 'price', e.target.value)} /></div>
-                          <div className="space-y-1"><Label className="text-xs">Stock</Label><Input type="number" min="0" value={variant.stock} onChange={(e) => updateVariant(index, 'stock', e.target.value)} /></div>
                         </div>
                         <div className="flex items-center gap-3">
                           <div className="flex-1">
@@ -736,20 +731,6 @@ export default function EditProductPage() {
                 <div className="flex items-center justify-between">
                   <Label>Featured</Label>
                   <Toggle checked={formData.isFeatured} onChange={(v) => set('isFeatured', v)} label="Featured" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader><CardTitle>Stock</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label>Track stock</Label>
-                  <Toggle checked={formData.trackStock} onChange={(v) => set('trackStock', v)} label="Track stock" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1"><Label className="text-xs">Stock</Label><Input type="number" min="0" value={formData.stock} onChange={(e) => set('stock', e.target.value)} /></div>
-                  <div className="space-y-1"><Label className="text-xs">Low stock at</Label><Input type="number" min="0" value={formData.lowStockThreshold} onChange={(e) => set('lowStockThreshold', e.target.value)} /></div>
                 </div>
               </CardContent>
             </Card>

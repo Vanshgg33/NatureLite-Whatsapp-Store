@@ -35,7 +35,7 @@ export function PincodeChecker() {
   const close = () => { setOpen(false); reset(); };
 
   return (
-    <div className="fixed z-[60] hidden sm:block" style={{ top: 120, left: 16 }}>
+    <div className="fixed z-[60]" style={{ top: 120, left: 16 }}>
       <AnimatePresence mode="wait">
 
         {/* ── Pill button ───────────────────────────────────────── */}
