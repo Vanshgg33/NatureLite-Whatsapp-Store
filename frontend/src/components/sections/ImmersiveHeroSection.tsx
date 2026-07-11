@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
@@ -78,23 +77,22 @@ export default function ImmersiveHeroSection() {
 
   const isVideo = !!banner.videoUrl;
 
-  return (
-    <div
-      className={`relative w-full overflow-hidden sm:aspect-auto sm:h-[62vh] md:h-[70vh] ${
-        isVideo ? 'aspect-video' : 'h-[52vh]'
-      }`}
-      style={{ minHeight: isVideo ? 160 : 220 }}
-    >
-      <AnimatePresence mode="sync">
-        <motion.div
-          key={banner.id}
-          className="absolute inset-0"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.6 }}
-        >
-          {banner.videoUrl ? (
+  /* ── Video banner: fixed viewport height (unchanged) ── */
+  if (isVideo) {
+    return (
+      <div
+        className="relative w-full overflow-hidden aspect-video sm:aspect-auto sm:h-[62vh] md:h-[70vh]"
+        style={{ minHeight: 160 }}
+      >
+        <AnimatePresence mode="sync">
+          <motion.div
+            key={banner.id}
+            className="absolute inset-0"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.6 }}
+          >
             <div style={{ position: 'absolute', inset: 0, background: '#000' }}>
               <video
                 src={banner.videoUrl}
@@ -103,47 +101,50 @@ export default function ImmersiveHeroSection() {
                 loop
                 playsInline
                 preload="auto"
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                }}
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                 onEnded={activeBanners.length > 1 ? next : undefined}
               />
             </div>
-          ) : (
-            <Image
-              src={banner.imageUrl}
-              alt={banner.headline || ''}
-              fill
-              priority={index === 0}
-              sizes="100vw"
-              style={{ objectFit: 'cover', objectPosition: 'top' }}
-            />
-          )}
+          </motion.div>
+        </AnimatePresence>
+        {activeBanners.length > 1 && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1 z-10">
+            {activeBanners.map((_, i) => (
+              <button key={i} onClick={() => setIndex(i)} aria-label={`Go to slide ${i + 1}`} className="p-2.5 flex items-center justify-center">
+                <span className="block rounded-full transition-all duration-200" style={{ width: i === index ? 20 : 8, height: 8, background: i === index ? '#fff' : 'rgba(255,255,255,0.45)' }} />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  /* ── Photo banner: natural image height, no cropping ── */
+  return (
+    <div className="relative w-full overflow-hidden">
+      <AnimatePresence mode="sync">
+        <motion.div
+          key={banner.id}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.6 }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={banner.imageUrl}
+            alt={banner.headline || ''}
+            style={{ width: '100%', height: 'auto', display: 'block' }}
+            loading={index === 0 ? 'eager' : 'lazy'}
+          />
         </motion.div>
       </AnimatePresence>
-
-      {/* Dot indicators — only when multiple banners */}
       {activeBanners.length > 1 && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1 z-10">
           {activeBanners.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setIndex(i)}
-              aria-label={`Go to slide ${i + 1}`}
-              className="p-2.5 flex items-center justify-center"
-            >
-              <span
-                className="block rounded-full transition-all duration-200"
-                style={{
-                  width: i === index ? 20 : 8,
-                  height: 8,
-                  background: i === index ? '#fff' : 'rgba(255,255,255,0.45)',
-                }}
-              />
+            <button key={i} onClick={() => setIndex(i)} aria-label={`Go to slide ${i + 1}`} className="p-2.5 flex items-center justify-center">
+              <span className="block rounded-full transition-all duration-200" style={{ width: i === index ? 20 : 8, height: 8, background: i === index ? '#fff' : 'rgba(255,255,255,0.45)' }} />
             </button>
           ))}
         </div>
