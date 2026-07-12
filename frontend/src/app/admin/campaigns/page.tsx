@@ -65,12 +65,13 @@ export default function CampaignsPage() {
   const [headerParams, setHeaderParams]   = useState('');
   const [buttonParams, setButtonParams]   = useState('');
 
-  type BodyParamRow = { value: string; field: 'static' | 'customer_name' };
-  const [bodyParamRows, setBodyParamRows] = useState<BodyParamRow[]>([{ value: '', field: 'static' }]);
-  const addBodyRow    = () => setBodyParamRows(prev => [...prev, { value: '', field: 'static' }]);
-  const removeBodyRow = (i: number) => setBodyParamRows(prev => prev.filter((_, idx) => idx !== i));
-  const updateBodyRow = (i: number, patch: Partial<BodyParamRow>) =>
-    setBodyParamRows(prev => prev.map((r, idx) => idx === i ? { ...r, ...patch } : r));
+  type BodyParamRow = { id: number; value: string; field: 'static' | 'customer_name' };
+  const nextRowId = useRef(1);
+  const [bodyParamRows, setBodyParamRows] = useState<BodyParamRow[]>([{ id: 0, value: '', field: 'static' }]);
+  const addBodyRow    = () => setBodyParamRows(prev => [...prev, { id: nextRowId.current++, value: '', field: 'static' }]);
+  const removeBodyRow = (id: number) => setBodyParamRows(prev => prev.filter(r => r.id !== id));
+  const updateBodyRow = (id: number, patch: Partial<BodyParamRow>) =>
+    setBodyParamRows(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r));
 
   const loadPreset = (preset: TemplatePreset) => {
     setTemplateName(preset.templateName);
@@ -79,12 +80,16 @@ export default function CampaignsPage() {
     setButtonParams(preset.buttonParams || '');
     setBodyParamRows(
       preset.bodyParamRows?.length
-        ? preset.bodyParamRows.map(r => ({ value: r.value, field: r.field as 'static' | 'customer_name' }))
-        : [{ value: '', field: 'static' }]
+        ? preset.bodyParamRows.map(r => ({ id: nextRowId.current++, value: r.value, field: r.field as 'static' | 'customer_name' }))
+        : [{ id: nextRowId.current++, value: '', field: 'static' }]
     );
-    setTplImageMethod((preset.tplImageMethod as 'none' | 'upload' | 'url') || 'none');
-    setTplImageUrl(preset.tplImageUrl || '');
-    clearTplImage();
+    // 'upload' method can't be restored (no file) — fall back to 'none'
+    setTplImageMethod(preset.tplImageMethod === 'url' ? 'url' : 'none');
+    // Reset file/preview first, then set URL so it isn't overwritten
+    setTplImageFile(null);
+    setTplImagePreview('');
+    if (tplFileInputRef.current) tplFileInputRef.current.value = '';
+    setTplImageUrl(preset.tplImageMethod === 'url' ? preset.tplImageUrl || '' : '');
   };
 
   // Image/media fields
@@ -298,7 +303,7 @@ export default function CampaignsPage() {
       setManualPhones('');
       setSelectedUserIds(null);
       if (messageType === 'template') {
-        setTemplateName(''); setHeaderParams(''); setBodyParamRows([{ value: '', field: 'static' }]); setButtonParams('');
+        setTemplateName(''); setHeaderParams(''); setBodyParamRows([{ id: nextRowId.current++, value: '', field: 'static' }]); setButtonParams('');
         setTplImageMethod('none'); clearTplImage();
       } else {
         clearImage(); setCaption('');
@@ -423,19 +428,19 @@ export default function CampaignsPage() {
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Body values</label>
                   {bodyParamRows.map((row, i) => (
-                    <div key={i} className="flex items-center gap-2">
+                    <div key={row.id} className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground font-mono w-8 shrink-0 text-center">{`{{${i + 1}}}`}</span>
                       <Input
                         className="flex-1 h-8 text-sm"
                         placeholder={row.field === 'customer_name' ? "Will use customer's name from DB" : 'Enter static value…'}
                         value={row.field === 'customer_name' ? '' : row.value}
                         disabled={row.field === 'customer_name'}
-                        onChange={(e) => updateBodyRow(i, { value: e.target.value })}
+                        onChange={(e) => updateBodyRow(row.id, { value: e.target.value })}
                       />
                       <button
                         type="button"
                         title={row.field === 'customer_name' ? 'Remove name binding' : 'Bind to customer name'}
-                        onClick={() => updateBodyRow(i, { field: row.field === 'customer_name' ? 'static' : 'customer_name', value: '' })}
+                        onClick={() => updateBodyRow(row.id, { field: row.field === 'customer_name' ? 'static' : 'customer_name', value: '' })}
                         className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border transition-colors whitespace-nowrap ${
                           row.field === 'customer_name'
                             ? 'bg-emerald-500 text-white border-emerald-500'
@@ -445,7 +450,7 @@ export default function CampaignsPage() {
                         👤 Name
                       </button>
                       {bodyParamRows.length > 1 && (
-                        <button type="button" onClick={() => removeBodyRow(i)} className="text-muted-foreground hover:text-destructive transition-colors">
+                        <button type="button" onClick={() => removeBodyRow(row.id)} className="text-muted-foreground hover:text-destructive transition-colors">
                           <X className="h-3.5 w-3.5" />
                         </button>
                       )}
@@ -1019,36 +1024,38 @@ export default function CampaignsPage() {
           ) : (
             <div className="space-y-2">
               {campaigns.map((c) => (
-                <div key={c._id} className="flex items-center justify-between gap-4 rounded-lg bg-muted/40 px-4 py-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium truncate">{c.label}</p>
-                      <StatusBadge status={c.status} />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {fmtTime(c.createdAt)} · {c.totalPhones} target{c.totalPhones !== 1 ? 's' : ''}
-                      {c.type === 'template' ? ' · template' : ' · image'}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {c.status === 'queued' && (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Clock className="h-3 w-3" /> Waiting
+                <div key={c._id} className="rounded-lg bg-muted/40 px-4 py-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium truncate">{c.label}</p>
+                        <StatusBadge status={c.status} />
                       </div>
-                    )}
-                    {c.status === 'sending' && (
-                      <p className="text-xs text-muted-foreground">{c.sent + c.skipped} / {c.totalPhones}</p>
-                    )}
-                    {(c.status === 'done' || c.status === 'failed') && (
-                      <>
-                        <Badge variant="default" className="text-xs">{c.sent} sent</Badge>
-                        {c.skipped > 0 && (
-                          <Badge variant="secondary" className="text-xs flex items-center gap-1">
-                            <AlertCircle className="h-2.5 w-2.5" />{c.skipped} skipped
-                          </Badge>
-                        )}
-                      </>
-                    )}
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {fmtTime(c.createdAt)} · {c.totalPhones} target{c.totalPhones !== 1 ? 's' : ''}
+                        {c.type === 'template' ? ' · template' : ' · image'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {c.status === 'queued' && (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Clock className="h-3 w-3" /> Waiting
+                        </div>
+                      )}
+                      {c.status === 'sending' && (
+                        <p className="text-xs text-muted-foreground">{c.sent + c.skipped} / {c.totalPhones}</p>
+                      )}
+                      {(c.status === 'done' || c.status === 'failed') && (
+                        <>
+                          <Badge variant="default" className="text-xs">{c.sent} sent</Badge>
+                          {c.skipped > 0 && (
+                            <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                              <AlertCircle className="h-2.5 w-2.5" />{c.skipped} skipped
+                            </Badge>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
                   {c.errorSummary && (
                     <p className="mt-1.5 text-xs text-red-600 flex items-start gap-1">
