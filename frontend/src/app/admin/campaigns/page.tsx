@@ -188,6 +188,34 @@ export default function CampaignsPage() {
     return () => clearTimeout(timer);
   }, [templateName, messageType]);
 
+  // When a template is fetched, auto-sync body row count to match {{N}} placeholders.
+  // Preserves existing row values — only adds/trims rows to match the template.
+  useEffect(() => {
+    if (!fetchedTemplate) return;
+    const bodyComp = fetchedTemplate.components.find(c => c.type === 'BODY');
+    const varCount = (bodyComp?.text?.match(/\{\{\d+\}\}/g) ?? []).length;
+    setBodyParamRows(prev => {
+      if (prev.length === varCount) return prev;
+      if (varCount === 0) return [];
+      if (varCount > prev.length) {
+        const extra = Array.from({ length: varCount - prev.length }, () => ({
+          id: nextRowId.current++, value: '', field: 'static' as const,
+        }));
+        return [...prev, ...extra];
+      }
+      return prev.slice(0, varCount);
+    });
+  }, [fetchedTemplate]);
+
+  // Show header/button value fields only when the fetched template actually needs them
+  const showHeaderValue = !fetchedTemplate ||
+    fetchedTemplate.components.some(c => c.type === 'HEADER' && c.format === 'TEXT' && c.text?.includes('{{'));
+
+  const showButtonValue = !fetchedTemplate ||
+    fetchedTemplate.components.some(c =>
+      c.type === 'BUTTONS' && c.buttons?.some(b => b.url?.includes('{{') || b.type === 'COPY_CODE')
+    );
+
   const activeBodyRows = useMemo(
     () => bodyParamRows.filter(r => r.field === 'customer_name' || r.value.trim() !== ''),
     [bodyParamRows],
@@ -575,16 +603,22 @@ export default function CampaignsPage() {
                     <p className="text-xs text-muted-foreground">e.g. en, hi, en_US</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Header values</label>
-                    <Textarea rows={3} placeholder="One per line" value={headerParams} onChange={(e) => setHeaderParams(e.target.value)} className="resize-none text-sm" />
+                {(showHeaderValue || showButtonValue) && (
+                  <div className={showHeaderValue && showButtonValue ? 'grid grid-cols-2 gap-3' : ''}>
+                    {showHeaderValue && (
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">Header values</label>
+                        <Textarea rows={3} placeholder="One per line" value={headerParams} onChange={(e) => setHeaderParams(e.target.value)} className="resize-none text-sm" />
+                      </div>
+                    )}
+                    {showButtonValue && (
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">Button values</label>
+                        <Textarea rows={3} placeholder="Dynamic URL or coupon" value={buttonParams} onChange={(e) => setButtonParams(e.target.value)} className="resize-none text-sm" />
+                      </div>
+                    )}
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Button values</label>
-                    <Textarea rows={3} placeholder="Dynamic URL or coupon" value={buttonParams} onChange={(e) => setButtonParams(e.target.value)} className="resize-none text-sm" />
-                  </div>
-                </div>
+                )}
 
                 {/* Body param rows — per-slot with optional customer name binding */}
                 <div className="space-y-2">
@@ -617,11 +651,18 @@ export default function CampaignsPage() {
                     </div>
                   ))}
                   {bodyParamRows.length === 0 && (
-                    <p className="text-xs text-muted-foreground">Only add variables if your template body has <span className="font-mono">{`{{1}}`}</span>, <span className="font-mono">{`{{2}}`}</span>… placeholders.</p>
+                    <p className="text-xs text-muted-foreground">
+                      {fetchedTemplate
+                        ? 'This template has no body variables.'
+                        : <>Only add variables if your template body has <span className="font-mono">{`{{1}}`}</span>, <span className="font-mono">{`{{2}}`}</span>… placeholders.</>
+                      }
+                    </p>
                   )}
-                  <button type="button" onClick={addBodyRow} className="text-xs text-primary hover:underline">
-                    + Add variable
-                  </button>
+                  {(!fetchedTemplate || bodyParamRows.length < 10) && (
+                    <button type="button" onClick={addBodyRow} className="text-xs text-primary hover:underline">
+                      + Add variable
+                    </button>
+                  )}
                   {bodyParamRows.some(r => r.field === 'customer_name') && recipientFilter === 'manual' && (
                     <p className="text-xs text-amber-500 flex items-center gap-1 mt-1">
                       <AlertCircle className="h-3 w-3 shrink-0" />
