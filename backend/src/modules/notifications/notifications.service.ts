@@ -688,6 +688,11 @@ export class NotificationsService {
       .exec();
   }
 
+  async clearCampaignHistory(): Promise<{ deleted: number }> {
+    const result = await this.campaignModel.deleteMany({}).exec();
+    return { deleted: result.deletedCount };
+  }
+
   async upsertTemplatePreset(data: {
     templateName: string;
     languageCode: string;

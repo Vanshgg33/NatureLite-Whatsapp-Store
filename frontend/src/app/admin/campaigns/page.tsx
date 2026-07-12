@@ -159,6 +159,17 @@ export default function CampaignsPage() {
     onSuccess: () => refetchPresets(),
   });
 
+  const [clearHistoryConfirm, setClearHistoryConfirm] = useState(false);
+  const clearHistoryMutation = useMutation({
+    mutationFn: () => api.clearCampaignHistory(),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+      setClearHistoryConfirm(false);
+      toast({ title: 'History cleared', description: `${data.deleted} campaign${data.deleted !== 1 ? 's' : ''} deleted.` });
+    },
+    onError: () => toast({ title: 'Failed to clear history', variant: 'destructive' }),
+  });
+
   const [fetchedTemplate, setFetchedTemplate] = useState<WaTemplate | null>(null);
   const [templateFetching, setTemplateFetching] = useState(false);
   const [templateFetchResult, setTemplateFetchResult] = useState<'idle' | 'found' | 'not_found'>('idle');
@@ -1115,7 +1126,32 @@ export default function CampaignsPage() {
         <div className="rounded-xl border bg-card p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-base">Campaign History</h2>
-            {campaignsLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+            <div className="flex items-center gap-2">
+              {campaignsLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+              {campaigns.length > 0 && (
+                clearHistoryConfirm ? (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-muted-foreground">Sure?</span>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-7 text-xs px-2"
+                      disabled={clearHistoryMutation.isPending}
+                      onClick={() => clearHistoryMutation.mutate()}
+                    >
+                      {clearHistoryMutation.isPending ? 'Clearing…' : 'Yes, clear'}
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs px-2" onClick={() => setClearHistoryConfirm(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground hover:text-destructive px-2" onClick={() => setClearHistoryConfirm(true)}>
+                    Clear history
+                  </Button>
+                )
+              )}
+            </div>
           </div>
 
           {campaigns.length === 0 && !campaignsLoading ? (

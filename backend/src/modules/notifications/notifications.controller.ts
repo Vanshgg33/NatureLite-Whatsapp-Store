@@ -6,6 +6,7 @@ import {
   Body,
   Query,
   Param,
+  HttpCode,
   UseGuards,
 } from '@nestjs/common';
 import { IsArray, IsOptional, IsString, IsNotEmpty } from 'class-validator';
@@ -117,6 +118,14 @@ export class NotificationsController {
   ): Promise<unknown[]> {
     const parsed = limit ? parseInt(limit, 10) : 50;
     return this.notificationsService.listCampaigns(Number.isFinite(parsed) ? parsed : 50);
+  }
+
+  @Delete('campaigns')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  async clearCampaignHistory(): Promise<{ deleted: number }> {
+    return this.notificationsService.clearCampaignHistory();
   }
 
   @Get('template-presets')

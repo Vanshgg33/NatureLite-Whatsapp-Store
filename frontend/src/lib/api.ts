@@ -1344,6 +1344,11 @@ class ApiClient {
     return response.data.data;
   }
 
+  async clearCampaignHistory(): Promise<{ deleted: number }> {
+    const response = await this.client.delete<ApiResponse<{ deleted: number }>>('/notifications/campaigns');
+    return response.data.data;
+  }
+
   async getTemplatePresets(): Promise<TemplatePreset[]> {
     const response = await this.client.get<ApiResponse<TemplatePreset[]>>('/notifications/template-presets');
     return response.data.data;
