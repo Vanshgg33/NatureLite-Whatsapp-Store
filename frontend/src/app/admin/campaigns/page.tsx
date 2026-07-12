@@ -212,7 +212,7 @@ export default function CampaignsPage() {
       if (varCount === 0) return [];
       if (varCount > prev.length) {
         const extra = Array.from({ length: varCount - prev.length }, () => ({
-          id: nextRowId.current++, value: '', field: 'static' as const,
+          id: nextRowId.current++, value: '', field: 'static' as const, paramName: '',
         }));
         return [...prev, ...extra];
       }
