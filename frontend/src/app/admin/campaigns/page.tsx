@@ -367,10 +367,28 @@ export default function CampaignsPage() {
               <div className="space-y-4">
 
                 {/* Saved presets */}
-                {presets.length > 0 && (
+                {(presets.length > 0 || templateName.trim()) && (
                   <div className="space-y-1.5">
-                    <label className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Saved configs</label>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Saved configs</label>
+                      <button
+                        type="button"
+                        disabled={!templateName.trim() || savePresetMutation.isPending}
+                        onClick={() => savePresetMutation.mutate({
+                          templateName: templateName.trim(),
+                          languageCode,
+                          headerParams,
+                          buttonParams,
+                          bodyParamRows,
+                          tplImageMethod,
+                          tplImageUrl,
+                        })}
+                        className="text-xs text-primary hover:underline disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+                      >
+                        {savePresetMutation.isPending ? <RefreshCw className="h-3 w-3 animate-spin" /> : '💾'} Save config
+                      </button>
+                    </div>
+                    {presets.length > 0 && <div className="flex flex-wrap gap-2">
                       {presets.map((p) => (
                         <div key={p._id} className="flex items-center gap-1 rounded-full border bg-muted/50 pl-3 pr-1 py-1">
                           <button
@@ -389,7 +407,7 @@ export default function CampaignsPage() {
                           </button>
                         </div>
                       ))}
-                    </div>
+                    </div>}
                   </div>
                 )}
 
