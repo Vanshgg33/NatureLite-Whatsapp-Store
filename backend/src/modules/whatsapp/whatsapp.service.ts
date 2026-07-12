@@ -1104,9 +1104,13 @@ export class WhatsAppService implements OnModuleInit {
     try {
       if (this.is360DialogProvider) {
         const response = await this.httpClient.get('/configs/templates');
+        const raw = response.data;
         const templates: Record<string, any>[] =
-          response.data?.waba_templates ?? response.data?.templates ?? [];
-        return templates.find((t: Record<string, any>) => t.name === templateName) ?? null;
+          raw?.waba_templates ?? raw?.templates ?? [];
+        this.logger.debug(`fetchTemplate [360dialog]: got ${templates.length} templates, keys=${Object.keys(raw ?? {}).join(',')}`);
+        const found = templates.find((t: Record<string, any>) => t.name === templateName) ?? null;
+        if (!found) this.logger.warn(`fetchTemplate [360dialog]: "${templateName}" not found in ${templates.length} templates`);
+        return found;
       } else {
         const response = await axios.get(
           `${this.config.apiUrl}/${this.config.businessAccountId}/message_templates`,
