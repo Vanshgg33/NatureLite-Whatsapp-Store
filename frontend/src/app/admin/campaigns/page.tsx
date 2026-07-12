@@ -28,13 +28,21 @@ type RecipientFilter = 'all' | 'ordered' | 'manual';
 const parseList = (value: string) =>
   value.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
 
+const normalizeIndianPhone = (raw: string): string | null => {
+  const digits = raw.replace(/[^\d]/g, '');
+  let n = digits;
+  if (n.length === 10) n = '91' + n;
+  else if (n.length === 11 && n.startsWith('0')) n = '91' + n.slice(1);
+  return n.length >= 10 ? n : null;
+};
+
 const parsePhones = (value: string) => {
   const seen = new Set<string>();
   const valid: string[] = [];
   let invalid = 0;
   for (const raw of parseList(value)) {
-    const phone = raw.replace(/[^\d]/g, '');
-    if (phone.length < 10) { invalid++; continue; }
+    const phone = normalizeIndianPhone(raw);
+    if (!phone) { invalid++; continue; }
     if (!seen.has(phone)) { seen.add(phone); valid.push(phone); }
   }
   return { valid, invalid };
@@ -121,7 +129,7 @@ export default function CampaignsPage() {
   const { data: usersData, isFetching: usersLoading, refetch: refetchUsers } = useQuery({
     queryKey: ['campaign-users', customerSearch],
     queryFn: () => api.getUsers({
-      limit: 200,
+      limit: 5000,
       search: customerSearch || undefined,
       sortBy: 'totalOrders',
       sortOrder: 'desc',
@@ -255,8 +263,8 @@ export default function CampaignsPage() {
     }
     const fromDb = customersWithPhone
       .filter((u: User) => selectedUserIds === null || selectedUserIds.has(u._id))
-      .map((u: User) => u.phone.replace(/[^\d]/g, ''))
-      .filter((p) => p.length >= 10);
+      .map((u: User) => normalizeIndianPhone(u.phone))
+      .filter((p): p is string => p !== null);
     return Array.from(new Set(fromDb));
   }, [recipientFilter, manualPhones, customersWithPhone, selectedUserIds]);
 
@@ -353,8 +361,8 @@ export default function CampaignsPage() {
       const recipients = hasNameBinding && recipientFilter !== 'manual'
         ? customersWithPhone
             .filter((u: User) => selectedUserIds === null || selectedUserIds.has(u._id))
-            .map((u: User) => ({ phone: u.phone.replace(/[^\d]/g, ''), name: u.name || '' }))
-            .filter(r => r.phone.length >= 10)
+            .map((u: User) => ({ phone: normalizeIndianPhone(u.phone), name: u.name || '' }))
+            .filter((r): r is { phone: string; name: string } => r.phone !== null)
         : undefined;
       const hasParamNames = activeBodyRows.some(r => r.paramName?.trim());
       return api.sendBroadcast(finalPhones, template, {

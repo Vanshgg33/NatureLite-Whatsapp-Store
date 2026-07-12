@@ -599,8 +599,11 @@ export class NotificationsService {
     const seen = new Set<string>();
     const result: string[] = [];
     for (const p of phones) {
-      const n = String(p || '').replace(/[^\d]/g, '');
-      if (n.length >= 8 && !seen.has(n)) { seen.add(n); result.push(n); }
+      const digits = String(p || '').replace(/[^\d]/g, '');
+      let n = digits;
+      if (n.length === 10) n = '91' + n;
+      else if (n.length === 11 && n.startsWith('0')) n = '91' + n.slice(1);
+      if (n.length >= 10 && !seen.has(n)) { seen.add(n); result.push(n); }
     }
     return result;
   }
