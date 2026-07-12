@@ -2,8 +2,10 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
   Body,
   Query,
+  Param,
   UseGuards,
 } from '@nestjs/common';
 import { IsArray, IsOptional, IsString, IsNotEmpty } from 'class-validator';
@@ -115,5 +117,34 @@ export class NotificationsController {
   ): Promise<unknown[]> {
     const parsed = limit ? parseInt(limit, 10) : 50;
     return this.notificationsService.listCampaigns(Number.isFinite(parsed) ? parsed : 50);
+  }
+
+  @Get('template-presets')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  async listTemplatePresets(): Promise<unknown[]> {
+    return this.notificationsService.listTemplatePresets();
+  }
+
+  @Post('template-presets')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  async upsertTemplatePreset(@Body() body: {
+    templateName: string;
+    languageCode: string;
+    headerParams: string;
+    buttonParams: string;
+    bodyParamRows: { value: string; field: string }[];
+    tplImageMethod: string;
+    tplImageUrl: string;
+  }): Promise<unknown> {
+    return this.notificationsService.upsertTemplatePreset(body);
+  }
+
+  @Delete('template-presets/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  async deleteTemplatePreset(@Param('id') id: string): Promise<void> {
+    return this.notificationsService.deleteTemplatePreset(id);
   }
 }

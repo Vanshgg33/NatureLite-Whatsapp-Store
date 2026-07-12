@@ -1342,6 +1342,20 @@ class ApiClient {
     return response.data.data;
   }
 
+  async getTemplatePresets(): Promise<TemplatePreset[]> {
+    const response = await this.client.get<ApiResponse<TemplatePreset[]>>('/notifications/template-presets');
+    return response.data.data;
+  }
+
+  async upsertTemplatePreset(preset: Omit<TemplatePreset, '_id' | 'updatedAt'>): Promise<TemplatePreset> {
+    const response = await this.client.post<ApiResponse<TemplatePreset>>('/notifications/template-presets', preset);
+    return response.data.data;
+  }
+
+  async deleteTemplatePreset(id: string): Promise<void> {
+    await this.client.delete(`/notifications/template-presets/${id}`);
+  }
+
   // ==================== PAYMENTS ====================
   async createPaymentOrder(orderId: string): Promise<{
     razorpayOrderId: string;

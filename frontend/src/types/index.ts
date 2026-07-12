@@ -479,6 +479,18 @@ export interface MessageLog {
 }
 
 // ==================== CAMPAIGNS ====================
+export interface TemplatePreset {
+  _id: string;
+  templateName: string;
+  languageCode: string;
+  headerParams: string;
+  buttonParams: string;
+  bodyParamRows: { value: string; field: string }[];
+  tplImageMethod: string;
+  tplImageUrl: string;
+  updatedAt: string;
+}
+
 export interface CampaignRecord {
   _id: string;
   label: string;

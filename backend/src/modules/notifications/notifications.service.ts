@@ -10,6 +10,7 @@ import type { OrderStatus } from '../../common/constants/order-status';
 import { QUEUE_NOTIFICATIONS, NOTIFICATION_JOBS, DEFAULT_JOB_OPTIONS } from '../queues/queues.constants';
 import { RedisService } from '../redis/redis.service';
 import { Campaign, CampaignDocument } from './schemas/campaign.schema';
+import { TemplatePreset, TemplatePresetDocument } from './schemas/template-preset.schema';
 
 interface NotificationPayload {
   phone: string;
@@ -37,6 +38,7 @@ export class NotificationsService {
     @InjectQueue(QUEUE_NOTIFICATIONS) private readonly notifQueue: Queue,
     private readonly redisService: RedisService,
     @InjectModel(Campaign.name) private readonly campaignModel: Model<CampaignDocument>,
+    @InjectModel(TemplatePreset.name) private readonly presetModel: Model<TemplatePresetDocument>,
   ) {}
 
   private serializeOrder(order: Order | any): Record<string, any> {
@@ -684,6 +686,30 @@ export class NotificationsService {
       .limit(limit)
       .select('-phones')
       .exec();
+  }
+
+  async upsertTemplatePreset(data: {
+    templateName: string;
+    languageCode: string;
+    headerParams: string;
+    buttonParams: string;
+    bodyParamRows: { value: string; field: string }[];
+    tplImageMethod: string;
+    tplImageUrl: string;
+  }): Promise<TemplatePresetDocument> {
+    return this.presetModel.findOneAndUpdate(
+      { templateName: data.templateName },
+      { $set: data },
+      { upsert: true, new: true },
+    ).exec();
+  }
+
+  async listTemplatePresets(): Promise<TemplatePresetDocument[]> {
+    return this.presetModel.find().sort({ updatedAt: -1 }).exec();
+  }
+
+  async deleteTemplatePreset(id: string): Promise<void> {
+    await this.presetModel.findByIdAndDelete(id).exec();
   }
 
   // ─── Execute methods called by processor ─────────────────────────────────

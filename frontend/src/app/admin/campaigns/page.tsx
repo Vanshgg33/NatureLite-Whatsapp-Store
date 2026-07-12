@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useRef, useEffect } from 'react';
+import { useMemo, useState, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2, Megaphone, Phone, Send, Users, Image as ImageIcon,
@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { getApiError } from '@/lib/api-error';
 import { useToast } from '@/components/ui/use-toast';
-import { User, CampaignRecord } from '@/types';
+import { User, CampaignRecord, TemplatePreset } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -72,25 +72,19 @@ export default function CampaignsPage() {
   const updateBodyRow = (i: number, patch: Partial<BodyParamRow>) =>
     setBodyParamRows(prev => prev.map((r, idx) => idx === i ? { ...r, ...patch } : r));
 
-  const LAST_CONFIG_KEY = 'nl_last_template_config';
-  const [hasSavedConfig, setHasSavedConfig] = useState(false);
-  useEffect(() => {
-    setHasSavedConfig(!!localStorage.getItem(LAST_CONFIG_KEY));
-  }, []);
-
-  const loadLastConfig = () => {
-    const raw = localStorage.getItem(LAST_CONFIG_KEY);
-    if (!raw) return;
-    try {
-      const cfg = JSON.parse(raw);
-      setTemplateName(cfg.templateName ?? '');
-      setLanguageCode(cfg.languageCode ?? 'en');
-      setHeaderParams(cfg.headerParams ?? '');
-      setButtonParams(cfg.buttonParams ?? '');
-      setBodyParamRows(cfg.bodyParamRows ?? [{ value: '', field: 'static' }]);
-      setTplImageMethod(cfg.tplImageMethod ?? 'none');
-      setTplImageUrl(cfg.tplImageUrl ?? '');
-    } catch {}
+  const loadPreset = (preset: TemplatePreset) => {
+    setTemplateName(preset.templateName);
+    setLanguageCode(preset.languageCode || 'en');
+    setHeaderParams(preset.headerParams || '');
+    setButtonParams(preset.buttonParams || '');
+    setBodyParamRows(
+      preset.bodyParamRows?.length
+        ? preset.bodyParamRows.map(r => ({ value: r.value, field: r.field as 'static' | 'customer_name' }))
+        : [{ value: '', field: 'static' }]
+    );
+    setTplImageMethod((preset.tplImageMethod as 'none' | 'upload' | 'url') || 'none');
+    setTplImageUrl(preset.tplImageUrl || '');
+    clearTplImage();
   };
 
   // Image/media fields
@@ -141,6 +135,23 @@ export default function CampaignsPage() {
       const hasActive = data?.some((c) => c.status === 'queued' || c.status === 'sending');
       return hasActive ? 5_000 : false;
     },
+  });
+
+  // ── Template presets from DB ─────────────────────────────────────────────
+  const { data: presets = [], refetch: refetchPresets } = useQuery({
+    queryKey: ['template-presets'],
+    queryFn: () => api.getTemplatePresets(),
+    staleTime: 60_000,
+  });
+
+  const savePresetMutation = useMutation({
+    mutationFn: (preset: Omit<TemplatePreset, '_id' | 'updatedAt'>) => api.upsertTemplatePreset(preset),
+    onSuccess: () => refetchPresets(),
+  });
+
+  const deletePresetMutation = useMutation({
+    mutationFn: (id: string) => api.deleteTemplatePreset(id),
+    onSuccess: () => refetchPresets(),
   });
 
   const customers = useMemo(() => {
@@ -272,12 +283,16 @@ export default function CampaignsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
       toast({ title: 'Campaign queued', description: 'Messages are being sent in the background.' });
-      if (messageType === 'template') {
-        localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify({
-          templateName, languageCode, headerParams, buttonParams,
-          bodyParamRows, tplImageMethod, tplImageUrl,
-        }));
-        setHasSavedConfig(true);
+      if (messageType === 'template' && templateName.trim()) {
+        savePresetMutation.mutate({
+          templateName: templateName.trim(),
+          languageCode,
+          headerParams,
+          buttonParams,
+          bodyParamRows,
+          tplImageMethod,
+          tplImageUrl,
+        });
       }
       // reset form
       setManualPhones('');
@@ -345,16 +360,37 @@ export default function CampaignsPage() {
             {/* ── Template fields ───────────────────────────────────── */}
             {messageType === 'template' && (
               <div className="space-y-4">
+
+                {/* Saved presets */}
+                {presets.length > 0 && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Saved configs</label>
+                    <div className="flex flex-wrap gap-2">
+                      {presets.map((p) => (
+                        <div key={p._id} className="flex items-center gap-1 rounded-full border bg-muted/50 pl-3 pr-1 py-1">
+                          <button
+                            type="button"
+                            onClick={() => loadPreset(p)}
+                            className="text-xs font-medium hover:text-primary transition-colors"
+                          >
+                            {p.templateName}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { if (window.confirm(`Delete preset "${p.templateName}"?`)) deletePresetMutation.mutate(p._id); }}
+                            className="w-4 h-4 rounded-full flex items-center justify-center text-muted-foreground hover:text-destructive transition-colors"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-[1fr_140px] gap-3">
                   <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-sm font-medium">Template name</label>
-                      {hasSavedConfig && (
-                        <button type="button" onClick={loadLastConfig} className="text-xs text-primary hover:underline flex items-center gap-1">
-                          <RefreshCw className="h-3 w-3" /> Load last config
-                        </button>
-                      )}
-                    </div>
+                    <label className="text-sm font-medium">Template name</label>
                     <Input
                       placeholder="e.g. promo_offer"
                       value={templateName}
