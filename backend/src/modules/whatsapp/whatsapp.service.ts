@@ -742,6 +742,8 @@ export class WhatsAppService implements OnModuleInit {
       },
     };
 
+    this.logger.debug(`sendTemplateMessage payload=${JSON.stringify(payload.template)}`);
+
     return this.sendOutboundWithRetry({
       phone,
       messageType: 'template',
