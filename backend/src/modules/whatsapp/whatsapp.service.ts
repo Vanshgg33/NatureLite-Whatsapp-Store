@@ -1100,6 +1100,29 @@ export class WhatsAppService implements OnModuleInit {
     });
   }
 
+  async fetchTemplate(templateName: string): Promise<Record<string, any> | null> {
+    try {
+      if (this.is360DialogProvider) {
+        const response = await this.httpClient.get('/configs/templates');
+        const templates: Record<string, any>[] =
+          response.data?.waba_templates ?? response.data?.templates ?? [];
+        return templates.find((t: Record<string, any>) => t.name === templateName) ?? null;
+      } else {
+        const response = await axios.get(
+          `${this.config.apiUrl}/${this.config.businessAccountId}/message_templates`,
+          {
+            headers: { Authorization: `Bearer ${this.config.accessToken}` },
+            params: { name: templateName, fields: 'name,components,language,status', limit: 5 },
+          },
+        );
+        return response.data?.data?.[0] ?? null;
+      }
+    } catch (error) {
+      this.logger.warn(`fetchTemplate failed for "${templateName}": ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  }
+
   async getMediaUrl(mediaId: string): Promise<string | null> {
     if (this.is360DialogSandbox) {
       this.logger.warn('Media retrieval is not available in 360dialog sandbox mode');

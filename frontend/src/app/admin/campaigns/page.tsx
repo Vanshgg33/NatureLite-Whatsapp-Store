@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useRef } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2, Megaphone, Phone, Send, Users, Image as ImageIcon,
@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { getApiError } from '@/lib/api-error';
 import { useToast } from '@/components/ui/use-toast';
-import { User, CampaignRecord, TemplatePreset } from '@/types';
+import { User, CampaignRecord, TemplatePreset, WaTemplate } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -159,6 +159,40 @@ export default function CampaignsPage() {
     onSuccess: () => refetchPresets(),
   });
 
+  const [fetchedTemplate, setFetchedTemplate] = useState<WaTemplate | null>(null);
+  const [templateFetching, setTemplateFetching] = useState(false);
+  const [templateFetchResult, setTemplateFetchResult] = useState<'idle' | 'found' | 'not_found'>('idle');
+
+  // Debounced fetch: when template name changes, fetch real template from WA
+  useEffect(() => {
+    if (!templateName.trim() || messageType !== 'template') {
+      setFetchedTemplate(null);
+      setTemplateFetching(false);
+      setTemplateFetchResult('idle');
+      return;
+    }
+    setTemplateFetching(true);
+    setTemplateFetchResult('idle');
+    const timer = setTimeout(async () => {
+      try {
+        const tpl = await api.getWhatsappTemplate(templateName.trim());
+        setFetchedTemplate(tpl);
+        setTemplateFetchResult(tpl ? 'found' : 'not_found');
+      } catch {
+        setFetchedTemplate(null);
+        setTemplateFetchResult('not_found');
+      } finally {
+        setTemplateFetching(false);
+      }
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [templateName, messageType]);
+
+  const activeBodyRows = useMemo(
+    () => bodyParamRows.filter(r => r.field === 'customer_name' || r.value.trim() !== ''),
+    [bodyParamRows],
+  );
+
   const customers = useMemo(() => {
     const all = (usersData?.items ?? []).filter((u) => !u.isBlocked);
     if (recipientFilter === 'ordered') return all.filter((u) => u.totalOrders > 0);
@@ -270,7 +304,7 @@ export default function CampaignsPage() {
       }
       // Rows only exist if explicitly added by the user — send all of them.
       // Empty static rows are still filtered to avoid sending blank params.
-      const activeBodyRows = bodyParamRows.filter(r => r.field === 'customer_name' || r.value.trim() !== '');
+      // activeBodyRows is computed via useMemo at the top of the component.
       const hasNameBinding = activeBodyRows.some(r => r.field === 'customer_name');
       const recipients = hasNameBinding && recipientFilter !== 'manual'
         ? customersWithPhone
@@ -297,7 +331,7 @@ export default function CampaignsPage() {
           languageCode,
           headerParams,
           buttonParams,
-          bodyParamRows,
+          bodyParamRows: activeBodyRows.map(r => ({ value: r.value, field: r.field })),
           tplImageMethod,
           tplImageUrl,
         });
@@ -331,6 +365,113 @@ export default function CampaignsPage() {
     !broadcastMutation.isPending &&
     (messageType === 'template' ? !!templateName.trim() && tplImageReady : mediaReady);
 
+  // ─── Preview helpers ──────────────────────────────────────────────────────
+
+  const resolveBodyText = (text: string) =>
+    text.replace(/\{\{(\d+)\}\}/g, (_, n) => {
+      const idx = parseInt(n, 10) - 1;
+      const row = activeBodyRows[idx];
+      if (!row) return `{{${n}}}`;
+      return row.field === 'customer_name' ? 'Customer name' : row.value || `{{${n}}}`;
+    });
+
+  const templatePreviewContent = () => {
+    if (!templateName) return (
+      <div className="flex items-center justify-center h-28 text-[10px] text-gray-500">Enter template name to preview</div>
+    );
+    if (fetchedTemplate) {
+      const hdr = fetchedTemplate.components.find(c => c.type === 'HEADER');
+      const body = fetchedTemplate.components.find(c => c.type === 'BODY');
+      const footer = fetchedTemplate.components.find(c => c.type === 'FOOTER');
+      const btns = fetchedTemplate.components.find(c => c.type === 'BUTTONS');
+      return (
+        <div className="bg-white rounded-lg shadow-sm max-w-[95%] overflow-hidden text-[10px]">
+          {hdr?.format === 'IMAGE' && (
+            (tplImagePreview || tplImageUrl)
+              ? <img src={tplImagePreview || tplImageUrl} alt="Header" className="w-full max-h-24 object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+              : <div className="w-full h-16 bg-gray-200 flex items-center justify-center text-gray-400 text-[9px]">Image header</div>
+          )}
+          {hdr?.format === 'TEXT' && hdr.text && (
+            <div className="bg-gray-50 border-b px-2.5 py-1.5 font-semibold text-gray-800 text-[10px]">{hdr.text}</div>
+          )}
+          {body?.text && (
+            <div className="px-2.5 pt-1.5 pb-1 text-gray-700 whitespace-pre-wrap leading-snug text-[10px]">{resolveBodyText(body.text)}</div>
+          )}
+          {footer?.text && (
+            <div className="px-2.5 pb-1 text-[9px] text-gray-400">{footer.text}</div>
+          )}
+          <div className="flex justify-end px-2 pb-1.5"><span className="text-[9px] text-gray-400">12:00 PM ✓✓</span></div>
+          {btns?.buttons && btns.buttons.length > 0 && (
+            <div className="border-t">
+              {btns.buttons.map((btn, i) => (
+                <div key={i} className="border-b last:border-0 px-2.5 py-1 text-center text-[#128c7e] font-medium text-[10px]">{btn.text}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+    // Fallback static preview
+    return (
+      <div className="bg-white rounded-lg shadow-sm max-w-[95%] overflow-hidden text-[10px]">
+        {(tplImagePreview || tplImageUrl) && (
+          <img src={tplImagePreview || tplImageUrl} alt="Header" className="w-full max-h-24 object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+        )}
+        {!tplImagePreview && !tplImageUrl && headerParams.trim() && (
+          <div className="bg-gray-50 border-b px-2.5 py-1.5">
+            {parseList(headerParams).map((p, i) => <p key={i} className="font-semibold text-gray-800">{p}</p>)}
+          </div>
+        )}
+        <div className="px-2.5 pt-1.5 pb-1">
+          <p className="text-[9px] text-gray-400 uppercase tracking-wide mb-0.5">Template · {languageCode || 'en'}</p>
+          <p className="font-mono text-gray-700 font-medium text-[10px]">{templateName}</p>
+          {activeBodyRows.length > 0 && (
+            <div className="mt-1 space-y-0.5">
+              {activeBodyRows.map((row, i) => (
+                <p key={row.id} className="text-gray-600">
+                  <span className="text-gray-400 font-mono">{`{{${i + 1}}}`}</span>{' '}
+                  {row.field === 'customer_name' ? <span className="text-emerald-600 italic">Customer name</span> : row.value}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+        {buttonParams.trim() && (
+          <div className="border-t">
+            {parseList(buttonParams).map((btn, i) => (
+              <div key={i} className="border-b last:border-0 px-2.5 py-1 text-center text-[#128c7e] font-medium text-[10px]">{btn}</div>
+            ))}
+          </div>
+        )}
+        <div className="flex justify-end px-2 pb-1.5"><span className="text-[9px] text-gray-400">12:00 PM ✓✓</span></div>
+      </div>
+    );
+  };
+
+  const mediaPreviewContent = () => {
+    if (imageMethod === 'pdf') {
+      if (!pdfFile) return <div className="flex items-center justify-center h-28 text-[10px] text-gray-500">Select a PDF to preview</div>;
+      return (
+        <div className="bg-white rounded-lg shadow-sm max-w-[95%] overflow-hidden">
+          <div className="flex items-center gap-2 px-2.5 py-2 border-b">
+            <div className="w-7 h-7 rounded bg-red-100 flex items-center justify-center shrink-0"><span className="text-red-600 font-bold text-[9px]">PDF</span></div>
+            <div className="flex-1 min-w-0"><p className="text-[10px] font-medium truncate">{pdfFile.name}</p></div>
+          </div>
+          {caption && <p className="text-[10px] text-gray-700 px-2.5 pt-1 whitespace-pre-wrap">{caption}</p>}
+          <div className="flex justify-end px-2 pb-1.5"><span className="text-[9px] text-gray-400">12:00 PM ✓✓</span></div>
+        </div>
+      );
+    }
+    if (!imagePreview && !imageUrl.trim()) return <div className="flex items-center justify-center h-28 text-[10px] text-gray-500">Add an image to preview</div>;
+    return (
+      <div className="bg-white rounded-lg shadow-sm max-w-[95%] overflow-hidden">
+        <img src={imagePreview || imageUrl} alt="Preview" className="w-full max-h-36 object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+        {caption && <p className="text-[10px] text-gray-700 px-2.5 pt-1 whitespace-pre-wrap">{caption}</p>}
+        <div className="flex justify-end px-2 pb-1.5"><span className="text-[9px] text-gray-400">12:00 PM ✓✓</span></div>
+      </div>
+    );
+  };
+
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div>
@@ -339,7 +480,7 @@ export default function CampaignsPage() {
       <div className="p-6 space-y-6 max-w-7xl">
 
         {/* ── Two-column layout ─────────────────────────────────────── */}
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_440px] gap-6">
 
           {/* ── LEFT: Message composer ──────────────────────────────── */}
           <div className="space-y-5 rounded-xl border bg-card p-6">
@@ -382,7 +523,7 @@ export default function CampaignsPage() {
                           languageCode,
                           headerParams,
                           buttonParams,
-                          bodyParamRows,
+                          bodyParamRows: activeBodyRows.map(r => ({ value: r.value, field: r.field })),
                           tplImageMethod,
                           tplImageUrl,
                         })}
@@ -470,11 +611,9 @@ export default function CampaignsPage() {
                       >
                         👤 Name
                       </button>
-                      {bodyParamRows.length > 1 && (
-                        <button type="button" onClick={() => removeBodyRow(row.id)} className="text-muted-foreground hover:text-destructive transition-colors">
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      )}
+                      <button type="button" onClick={() => removeBodyRow(row.id)} className="text-muted-foreground hover:text-destructive transition-colors">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   ))}
                   {bodyParamRows.length === 0 && (
@@ -724,314 +863,197 @@ export default function CampaignsPage() {
             </div>
           </div>
 
-          {/* ── RIGHT: Recipients ────────────────────────────────────── */}
-          <div className="space-y-5 rounded-xl border bg-card p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-muted-foreground" />
-                <h2 className="font-semibold text-base">Recipients</h2>
+          {/* ── RIGHT: Preview + Recipients stacked ──────────────────── */}
+          <div className="flex flex-col gap-5">
+
+            {/* Preview card — always visible, no scrolling needed */}
+            <div className="rounded-xl border bg-card p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Smartphone className="h-4 w-4 text-muted-foreground" />
+                <h2 className="font-semibold text-sm">Preview</h2>
+                {templateFetching && <RefreshCw className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
+                {!templateFetching && templateFetchResult === 'found' && (
+                  <Badge className="text-[10px] ml-auto bg-emerald-100 text-emerald-700 border-emerald-200">Live template</Badge>
+                )}
+                {!templateFetching && templateFetchResult === 'not_found' && (
+                  <span className="text-[10px] text-red-400 ml-auto">Not found in WA</span>
+                )}
+                {!templateFetching && templateFetchResult === 'idle' && templateName && messageType === 'template' && (
+                  <span className="text-[10px] text-muted-foreground ml-auto">Fetching…</span>
+                )}
               </div>
-              <Badge variant="outline" className="text-xs">
-                {finalPhones.length} selected
-              </Badge>
-            </div>
-
-            {/* Source tabs */}
-            <div className="flex gap-1 p-1 bg-muted rounded-lg">
-              {([
-                { value: 'manual',  label: 'Manual' },
-                { value: 'all',     label: 'All customers' },
-                { value: 'ordered', label: 'Has orders' },
-              ] as const).map((tab) => (
-                <button
-                  key={tab.value}
-                  onClick={() => { setRecipientFilter(tab.value); setSelectedUserIds(null); }}
-                  className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-all ${
-                    recipientFilter === tab.value
-                      ? 'bg-background shadow text-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            {/* ── Manual input ─────────────────────────────────────── */}
-            {recipientFilter === 'manual' && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium flex items-center gap-1.5">
-                  <Phone className="h-3.5 w-3.5" /> Phone numbers
-                </label>
-                <Textarea
-                  className="min-h-[180px] text-sm font-mono resize-none"
-                  placeholder={"One per line or comma-separated\n919876543210\n919876543211"}
-                  value={manualPhones}
-                  onChange={(e) => setManualPhones(e.target.value)}
-                />
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Include country code (91…)</span>
-                  <div className="flex gap-2">
-                    {manualParsed.invalid > 0 && (
-                      <Badge variant="secondary">{manualParsed.invalid} invalid</Badge>
-                    )}
-                    <Badge variant="outline">{manualParsed.valid.length} valid</Badge>
+              <div className="flex justify-center">
+                <div className="w-64 rounded-[1.5rem] border-[5px] border-gray-800 shadow-xl overflow-hidden bg-gray-800">
+                  <div className="bg-[#075e54] text-white px-3 py-2 flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-emerald-300 flex items-center justify-center text-[#075e54] font-bold text-xs shrink-0">NL</div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold leading-tight">NatureLite</p>
+                      <p className="text-[9px] opacity-75">Business Account</p>
+                    </div>
+                    <Phone className="h-3.5 w-3.5 opacity-75" />
+                  </div>
+                  <div className="min-h-[200px] p-2.5 flex flex-col justify-end gap-2" style={{ background: '#e5ddd5' }}>
+                    {messageType === 'template' ? templatePreviewContent() : mediaPreviewContent()}
+                  </div>
+                  <div className="bg-[#f0f0f0] px-2.5 py-1.5 flex items-center gap-2 border-t">
+                    <div className="flex-1 bg-white rounded-full px-2.5 py-1 text-[9px] text-gray-400">Message</div>
+                    <div className="w-6 h-6 rounded-full bg-[#128c7e] flex items-center justify-center shrink-0">
+                      <Send className="h-2.5 w-2.5 text-white" />
+                    </div>
                   </div>
                 </div>
               </div>
-            )}
+            </div>
 
-            {/* ── Customer list ─────────────────────────────────────── */}
-            {recipientFilter !== 'manual' && (
-              <div className="space-y-3">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input
-                    className="pl-9 h-8 text-sm"
-                    placeholder="Search by name or phone…"
-                    value={customerSearch}
-                    onChange={(e) => setCustomerSearch(e.target.value)}
+            {/* Recipients card */}
+            <div className="rounded-xl border bg-card p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-muted-foreground" />
+                  <h2 className="font-semibold text-base">Recipients</h2>
+                </div>
+                <Badge variant="outline" className="text-xs">
+                  {finalPhones.length} selected
+                </Badge>
+              </div>
+
+              {/* Source tabs */}
+              <div className="flex gap-1 p-1 bg-muted rounded-lg mb-4">
+                {([
+                  { value: 'manual',  label: 'Manual' },
+                  { value: 'all',     label: 'All customers' },
+                  { value: 'ordered', label: 'Has orders' },
+                ] as const).map((tab) => (
+                  <button
+                    key={tab.value}
+                    onClick={() => { setRecipientFilter(tab.value); setSelectedUserIds(null); }}
+                    className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-all ${
+                      recipientFilter === tab.value
+                        ? 'bg-background shadow text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* ── Manual input ─────────────────────────────────────── */}
+              {recipientFilter === 'manual' && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium flex items-center gap-1.5">
+                    <Phone className="h-3.5 w-3.5" /> Phone numbers
+                  </label>
+                  <Textarea
+                    className="min-h-[180px] text-sm font-mono resize-none"
+                    placeholder={"One per line or comma-separated\n919876543210\n919876543211"}
+                    value={manualPhones}
+                    onChange={(e) => setManualPhones(e.target.value)}
                   />
-                </div>
-
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{customersWithPhone.length} customers with phone</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        const isAll = selectedUserIds === null || selectedUserIds.size === customersWithPhone.length;
-                        setSelectedUserIds(isAll ? new Set() : null);
-                      }}
-                      className="text-xs text-primary hover:underline"
-                    >
-                      {selectedUserIds === null || selectedUserIds.size === customersWithPhone.length ? 'Deselect all' : 'Select all'}
-                    </button>
-                    <button onClick={() => refetchUsers()} className="hover:text-foreground transition-colors">
-                      <RefreshCw className={`h-3 w-3 ${usersLoading ? 'animate-spin' : ''}`} />
-                    </button>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Include country code (91…)</span>
+                    <div className="flex gap-2">
+                      {manualParsed.invalid > 0 && (
+                        <Badge variant="secondary">{manualParsed.invalid} invalid</Badge>
+                      )}
+                      <Badge variant="outline">{manualParsed.valid.length} valid</Badge>
+                    </div>
                   </div>
                 </div>
+              )}
 
-                <div className="max-h-[300px] overflow-y-auto space-y-1 pr-1">
-                  {usersLoading && (
-                    <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-                      Loading customers…
-                    </div>
-                  )}
-                  {!usersLoading && customersWithPhone.length === 0 && (
-                    <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-                      No customers found
-                    </div>
-                  )}
-                  {customersWithPhone.map((user: User) => {
-                    const checked = selectedUserIds === null || selectedUserIds.has(user._id);
-                    return (
-                      <label
-                        key={user._id}
-                        className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-colors ${
-                          checked ? 'bg-primary/5 border border-primary/20' : 'hover:bg-muted border border-transparent'
-                        }`}
+              {/* ── Customer list ─────────────────────────────────────── */}
+              {recipientFilter !== 'manual' && (
+                <div className="space-y-3">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      className="pl-9 h-8 text-sm"
+                      placeholder="Search by name or phone…"
+                      value={customerSearch}
+                      onChange={(e) => setCustomerSearch(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{customersWithPhone.length} customers with phone</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          const isAll = selectedUserIds === null || selectedUserIds.size === customersWithPhone.length;
+                          setSelectedUserIds(isAll ? new Set() : null);
+                        }}
+                        className="text-xs text-primary hover:underline"
                       >
-                        <input
-                          type="checkbox"
-                          className="h-3.5 w-3.5 accent-primary"
-                          checked={checked}
-                          onChange={() => {
-                            const base = selectedUserIds === null
-                              ? new Set(customersWithPhone.map((u: User) => u._id))
-                              : new Set(selectedUserIds);
-                            if (checked) {
-                              base.delete(user._id);
-                            } else {
-                              base.add(user._id);
-                            }
-                            // If all are now checked, collapse back to null (all-implicit)
-                            setSelectedUserIds(base.size === customersWithPhone.length ? null : base);
-                          }}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium truncate">{user.name || 'Unknown'}</p>
-                          <p className="text-[10px] text-muted-foreground font-mono">{user.phone}</p>
-                        </div>
-                        {user.totalOrders > 0 && (
-                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 shrink-0">
-                            {user.totalOrders} orders
-                          </Badge>
-                        )}
-                      </label>
-                    );
-                  })}
-                </div>
+                        {selectedUserIds === null || selectedUserIds.size === customersWithPhone.length ? 'Deselect all' : 'Select all'}
+                      </button>
+                      <button onClick={() => refetchUsers()} className="hover:text-foreground transition-colors">
+                        <RefreshCw className={`h-3 w-3 ${usersLoading ? 'animate-spin' : ''}`} />
+                      </button>
+                    </div>
+                  </div>
 
-                {selectedUserIds !== null && selectedUserIds.size > 0 && selectedUserIds.size < customersWithPhone.length && (
-                  <p className="text-xs text-muted-foreground text-center">
-                    {selectedUserIds.size} of {customersWithPhone.length} selected
-                  </p>
-                )}
-                {selectedUserIds !== null && selectedUserIds.size === 0 && (
-                  <p className="text-xs text-amber-500 text-center">No recipients selected</p>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ── WhatsApp Preview ──────────────────────────────────────────── */}
-        <div className="rounded-xl border bg-card p-6">
-          <div className="flex items-center gap-2 mb-5">
-            <Smartphone className="h-5 w-5 text-muted-foreground" />
-            <h2 className="font-semibold text-base">Preview</h2>
-            <span className="text-xs text-muted-foreground">— how recipients will see your message</span>
-          </div>
-
-          <div className="flex justify-center">
-            {/* Phone shell */}
-            <div className="w-72 rounded-[2rem] border-[6px] border-gray-800 shadow-2xl overflow-hidden bg-gray-800">
-
-              {/* Status bar */}
-              <div className="bg-gray-800 px-5 py-1 flex justify-between items-center">
-                <span className="text-white text-[10px] font-medium">9:41</span>
-                <div className="flex gap-1 items-center">
-                  <div className="w-3 h-1.5 border border-white rounded-[2px] relative"><div className="absolute inset-[1px] bg-white rounded-[1px] w-2/3" /></div>
-                  <svg className="w-3 h-3 text-white fill-white" viewBox="0 0 24 24"><path d="M1 1l22 22M16.72 11.06A10.94 10.94 0 0119 12.55M5 5a10.94 10.94 0 00-1.91 1.49M10.71 5.05A16 16 0 0122.56 9M1.42 9a15.91 15.91 0 014.7-2.88M8.53 16.11a6 6 0 016.95 0M12 20h.01" stroke="white" strokeWidth="2" strokeLinecap="round" fill="none"/></svg>
-                </div>
-              </div>
-
-              {/* WA header bar */}
-              <div className="bg-[#075e54] text-white px-3 py-2.5 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-emerald-300 flex items-center justify-center text-[#075e54] font-bold text-sm shrink-0">NL</div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold leading-tight">NatureLite</p>
-                  <p className="text-[10px] opacity-75">Business Account</p>
-                </div>
-                <Phone className="h-4 w-4 opacity-75" />
-              </div>
-
-              {/* Chat background */}
-              <div
-                className="min-h-[320px] p-3 flex flex-col justify-end gap-2"
-                style={{ background: '#e5ddd5' }}
-              >
-                {/* ── Template preview ── */}
-                {messageType === 'template' && (
-                  <>
-                    {!templateName ? (
-                      <div className="flex items-center justify-center h-48 text-xs text-gray-500">
-                        Fill in template details to preview
+                  <div className="max-h-[300px] overflow-y-auto space-y-1 pr-1">
+                    {usersLoading && (
+                      <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+                        Loading customers…
                       </div>
-                    ) : (
-                      <div className="bg-white rounded-lg shadow-sm max-w-[90%] overflow-hidden text-[11px]">
-                        {/* Header image */}
-                        {(tplImagePreview || tplImageUrl) && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={tplImagePreview || tplImageUrl}
-                            alt="Header"
-                            className="w-full max-h-32 object-cover"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    )}
+                    {!usersLoading && customersWithPhone.length === 0 && (
+                      <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+                        No customers found
+                      </div>
+                    )}
+                    {customersWithPhone.map((user: User) => {
+                      const checked = selectedUserIds === null || selectedUserIds.has(user._id);
+                      return (
+                        <label
+                          key={user._id}
+                          className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-colors ${
+                            checked ? 'bg-primary/5 border border-primary/20' : 'hover:bg-muted border border-transparent'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-3.5 w-3.5 accent-primary"
+                            checked={checked}
+                            onChange={() => {
+                              const base = selectedUserIds === null
+                                ? new Set(customersWithPhone.map((u: User) => u._id))
+                                : new Set(selectedUserIds);
+                              if (checked) {
+                                base.delete(user._id);
+                              } else {
+                                base.add(user._id);
+                              }
+                              // If all are now checked, collapse back to null (all-implicit)
+                              setSelectedUserIds(base.size === customersWithPhone.length ? null : base);
+                            }}
                           />
-                        )}
-                        {/* Header text params (only if no image) */}
-                        {!tplImagePreview && !tplImageUrl && headerParams.trim() && (
-                          <div className="bg-gray-50 border-b px-3 py-2">
-                            {parseList(headerParams).map((p, i) => (
-                              <p key={i} className="font-semibold text-gray-800 leading-snug">{p}</p>
-                            ))}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium truncate">{user.name || 'Unknown'}</p>
+                            <p className="text-[10px] text-muted-foreground font-mono">{user.phone}</p>
                           </div>
-                        )}
-                        {/* Body */}
-                        <div className="px-3 pt-2 pb-1 space-y-1">
-                          <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Template · {languageCode || 'en'}</p>
-                          <p className="font-mono text-gray-700 font-medium">{templateName}</p>
-                          {bodyParamRows.some(r => r.value || r.field === 'customer_name') && (
-                            <div className="mt-1.5 space-y-0.5">
-                              {bodyParamRows.map((row, i) => (
-                                <p key={i} className="text-gray-600">
-                                  <span className="text-gray-400 font-mono">{`{{${i + 1}}}`}</span>{' '}
-                                  {row.field === 'customer_name'
-                                    ? <span className="text-emerald-600 italic">Customer name</span>
-                                    : row.value || <span className="text-gray-300">…</span>}
-                                </p>
-                              ))}
-                            </div>
+                          {user.totalOrders > 0 && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 shrink-0">
+                              {user.totalOrders} orders
+                            </Badge>
                           )}
-                        </div>
-                        {/* Buttons */}
-                        {buttonParams.trim() && (
-                          <div className="border-t mt-1">
-                            {parseList(buttonParams).map((btn, i) => (
-                              <div key={i} className="border-b last:border-0 px-3 py-1.5 text-center text-[#128c7e] font-medium text-[11px]">
-                                {btn}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {/* Timestamp */}
-                        <div className="flex justify-end px-2 pb-1.5">
-                          <span className="text-[10px] text-gray-400">12:00 PM ✓✓</span>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
+                        </label>
+                      );
+                    })}
+                  </div>
 
-                {/* ── Image / media preview ── */}
-                {messageType === 'media' && (
-                  <>
-                    {imageMethod === 'pdf' ? (
-                      pdfFile ? (
-                        <div className="bg-white rounded-lg shadow-sm max-w-[90%] overflow-hidden">
-                          <div className="flex items-center gap-3 px-3 py-3 border-b">
-                            <div className="w-9 h-9 rounded bg-red-100 flex items-center justify-center shrink-0">
-                              <span className="text-red-600 font-bold text-[10px]">PDF</span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-[11px] font-medium truncate">{pdfFile.name}</p>
-                              <p className="text-[10px] text-gray-400">{(pdfFile.size / 1024 / 1024).toFixed(1)} MB · PDF</p>
-                            </div>
-                          </div>
-                          {caption && <p className="text-[11px] text-gray-700 px-3 pt-1.5 whitespace-pre-wrap">{caption}</p>}
-                          <div className="flex justify-end px-3 pb-1.5 pt-1">
-                            <span className="text-[10px] text-gray-400">12:00 PM ✓✓</span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-center h-48 text-xs text-gray-500">
-                          Select a PDF to preview
-                        </div>
-                      )
-                    ) : !imagePreview && !imageUrl.trim() ? (
-                      <div className="flex items-center justify-center h-48 text-xs text-gray-500">
-                        Add an image to preview
-                      </div>
-                    ) : (
-                      <div className="bg-white rounded-lg shadow-sm max-w-[90%] overflow-hidden">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={imagePreview || imageUrl}
-                          alt="Campaign preview"
-                          className="w-full max-h-48 object-cover"
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                        />
-                        <div className="px-3 pt-1.5 pb-1.5">
-                          {caption && <p className="text-[11px] text-gray-700 mb-0.5 whitespace-pre-wrap">{caption}</p>}
-                          <div className="flex justify-end">
-                            <span className="text-[10px] text-gray-400">12:00 PM ✓✓</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {/* WA input bar */}
-              <div className="bg-[#f0f0f0] px-3 py-2 flex items-center gap-2 border-t">
-                <div className="flex-1 bg-white rounded-full px-3 py-1.5 text-[10px] text-gray-400">Message</div>
-                <div className="w-7 h-7 rounded-full bg-[#128c7e] flex items-center justify-center shrink-0">
-                  <Send className="h-3 w-3 text-white" />
+                  {selectedUserIds !== null && selectedUserIds.size > 0 && selectedUserIds.size < customersWithPhone.length && (
+                    <p className="text-xs text-muted-foreground text-center">
+                      {selectedUserIds.size} of {customersWithPhone.length} selected
+                    </p>
+                  )}
+                  {selectedUserIds !== null && selectedUserIds.size === 0 && (
+                    <p className="text-xs text-amber-500 text-center">No recipients selected</p>
+                  )}
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>

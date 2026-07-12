@@ -293,6 +293,14 @@ export class WhatsAppController implements OnModuleDestroy {
     );
   }
 
+  @Get('templates')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  async getTemplate(@Query('name') name: string): Promise<Record<string, any> | null> {
+    if (!name?.trim()) return null;
+    return this.whatsappService.fetchTemplate(name.trim());
+  }
+
   @Get('conversations')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')

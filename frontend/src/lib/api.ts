@@ -73,6 +73,7 @@ import {
   StockSnapshotItem,
   CampaignRecord,
   TemplatePreset,
+  WaTemplate,
 } from '@/types';
 
 // Backend API base URL. Set via NEXT_PUBLIC_API_URL in environment.
@@ -1355,6 +1356,11 @@ class ApiClient {
 
   async deleteTemplatePreset(id: string): Promise<void> {
     await this.client.delete(`/notifications/template-presets/${id}`);
+  }
+
+  async getWhatsappTemplate(name: string): Promise<WaTemplate | null> {
+    const response = await this.client.get<ApiResponse<WaTemplate | null>>(`/whatsapp/templates?name=${encodeURIComponent(name)}`);
+    return response.data.data;
   }
 
   // ==================== PAYMENTS ====================

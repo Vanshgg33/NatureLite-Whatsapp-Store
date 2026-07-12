@@ -491,6 +491,20 @@ export interface TemplatePreset {
   updatedAt: string;
 }
 
+export interface WaTemplateComponent {
+  type: 'HEADER' | 'BODY' | 'FOOTER' | 'BUTTONS';
+  format?: 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT';
+  text?: string;
+  buttons?: { type: string; text: string; url?: string }[];
+}
+
+export interface WaTemplate {
+  name: string;
+  language: string;
+  status: string;
+  components: WaTemplateComponent[];
+}
+
 export interface CampaignRecord {
   _id: string;
   label: string;
