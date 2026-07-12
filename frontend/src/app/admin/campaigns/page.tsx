@@ -101,6 +101,8 @@ export default function CampaignsPage() {
   const [pdfFile, setPdfFile]             = useState<File | null>(null);
   const pdfFileInputRef                   = useRef<HTMLInputElement>(null);
 
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   // Template header image (optional)
   const [tplImageMethod, setTplImageMethod] = useState<'none' | ImageInputMethod>('none');
   const [tplImageFile, setTplImageFile]     = useState<File | null>(null);
@@ -603,22 +605,31 @@ export default function CampaignsPage() {
                     <p className="text-xs text-muted-foreground">e.g. en, hi, en_US</p>
                   </div>
                 </div>
-                {(showHeaderValue || showButtonValue) && (
-                  <div className={showHeaderValue && showButtonValue ? 'grid grid-cols-2 gap-3' : ''}>
-                    {showHeaderValue && (
+                {/* Advanced — only for templates with dynamic header/button params */}
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvanced(v => !v)}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+                  >
+                    <span className={`transition-transform ${showAdvanced ? 'rotate-90' : ''}`}>▶</span>
+                    Advanced (header / button values)
+                  </button>
+                  {showAdvanced && (
+                    <div className="mt-3 grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
                         <label className="text-sm font-medium">Header values</label>
                         <Textarea rows={3} placeholder="One per line" value={headerParams} onChange={(e) => setHeaderParams(e.target.value)} className="resize-none text-sm" />
+                        <p className="text-xs text-muted-foreground">Only needed if header has a {`{{1}}`} variable.</p>
                       </div>
-                    )}
-                    {showButtonValue && (
                       <div className="space-y-1.5">
                         <label className="text-sm font-medium">Button values</label>
-                        <Textarea rows={3} placeholder="Dynamic URL or coupon" value={buttonParams} onChange={(e) => setButtonParams(e.target.value)} className="resize-none text-sm" />
+                        <Textarea rows={3} placeholder="Dynamic URL suffix or coupon" value={buttonParams} onChange={(e) => setButtonParams(e.target.value)} className="resize-none text-sm" />
+                        <p className="text-xs text-muted-foreground">Only needed if a button has a dynamic URL.</p>
                       </div>
-                    )}
-                  </div>
-                )}
+                    </div>
+                  )}
+                </div>
 
                 {/* Body variables — auto-detected from live template */}
                 <div className="space-y-2">

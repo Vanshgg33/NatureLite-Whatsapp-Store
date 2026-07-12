@@ -1105,11 +1105,16 @@ export class WhatsAppService implements OnModuleInit {
       if (this.is360DialogProvider) {
         const response = await this.httpClient.get('/configs/templates');
         const raw = response.data;
+        // 360dialog v1 → { waba_templates: [...] }
+        // 360dialog v2 → { data: [...] } or direct array
         const templates: Record<string, any>[] =
-          raw?.waba_templates ?? raw?.templates ?? [];
-        this.logger.debug(`fetchTemplate [360dialog]: got ${templates.length} templates, keys=${Object.keys(raw ?? {}).join(',')}`);
+          raw?.waba_templates ??
+          raw?.templates ??
+          raw?.data ??
+          (Array.isArray(raw) ? raw : []);
+        this.logger.log(`fetchTemplate [360dialog]: ${templates.length} templates, top-level keys=[${Object.keys(raw ?? {}).join(', ')}]`);
         const found = templates.find((t: Record<string, any>) => t.name === templateName) ?? null;
-        if (!found) this.logger.warn(`fetchTemplate [360dialog]: "${templateName}" not found in ${templates.length} templates`);
+        if (!found) this.logger.warn(`fetchTemplate [360dialog]: "${templateName}" not found — available: [${templates.slice(0, 10).map((t: any) => t.name).join(', ')}]`);
         return found;
       } else {
         const response = await axios.get(
@@ -1122,7 +1127,10 @@ export class WhatsAppService implements OnModuleInit {
         return response.data?.data?.[0] ?? null;
       }
     } catch (error) {
-      this.logger.warn(`fetchTemplate failed for "${templateName}": ${error instanceof Error ? error.message : String(error)}`);
+      const err = error as any;
+      const status = err?.response?.status;
+      const body = err?.response?.data ? JSON.stringify(err.response.data) : (err?.message ?? String(error));
+      this.logger.warn(`fetchTemplate failed for "${templateName}": HTTP ${status ?? '?'} — ${body}`);
       return null;
     }
   }
