@@ -66,8 +66,8 @@ export default function CampaignsPage() {
   const [buttonParams, setButtonParams]   = useState('');
 
   type BodyParamRow = { id: number; value: string; field: 'static' | 'customer_name' };
-  const nextRowId = useRef(1);
-  const [bodyParamRows, setBodyParamRows] = useState<BodyParamRow[]>([{ id: 0, value: '', field: 'static' }]);
+  const nextRowId = useRef(0);
+  const [bodyParamRows, setBodyParamRows] = useState<BodyParamRow[]>([]);
   const addBodyRow    = () => setBodyParamRows(prev => [...prev, { id: nextRowId.current++, value: '', field: 'static' }]);
   const removeBodyRow = (id: number) => setBodyParamRows(prev => prev.filter(r => r.id !== id));
   const updateBodyRow = (id: number, patch: Partial<BodyParamRow>) =>
@@ -81,7 +81,7 @@ export default function CampaignsPage() {
     setBodyParamRows(
       preset.bodyParamRows?.length
         ? preset.bodyParamRows.map(r => ({ id: nextRowId.current++, value: r.value, field: r.field as 'static' | 'customer_name' }))
-        : [{ id: nextRowId.current++, value: '', field: 'static' }]
+        : []
     );
     // 'upload' method can't be restored (no file) — fall back to 'none'
     setTplImageMethod(preset.tplImageMethod === 'url' ? 'url' : 'none');
@@ -268,8 +268,8 @@ export default function CampaignsPage() {
       } else if (tplImageMethod === 'url' && tplImageUrl.trim()) {
         resolvedTplImageUrl = tplImageUrl.trim();
       }
-      // Only include rows that are actually configured — name-bound OR has a value.
-      // Empty default rows are skipped so we don't send params to templates with no variables.
+      // Rows only exist if explicitly added by the user — send all of them.
+      // Empty static rows are still filtered to avoid sending blank params.
       const activeBodyRows = bodyParamRows.filter(r => r.field === 'customer_name' || r.value.trim() !== '');
       const hasNameBinding = activeBodyRows.some(r => r.field === 'customer_name');
       const recipients = hasNameBinding && recipientFilter !== 'manual'
@@ -306,7 +306,7 @@ export default function CampaignsPage() {
       setManualPhones('');
       setSelectedUserIds(null);
       if (messageType === 'template') {
-        setTemplateName(''); setHeaderParams(''); setBodyParamRows([{ id: nextRowId.current++, value: '', field: 'static' }]); setButtonParams('');
+        setTemplateName(''); setHeaderParams(''); setBodyParamRows([]); setButtonParams('');
         setTplImageMethod('none'); clearTplImage();
       } else {
         clearImage(); setCaption('');
@@ -477,6 +477,9 @@ export default function CampaignsPage() {
                       )}
                     </div>
                   ))}
+                  {bodyParamRows.length === 0 && (
+                    <p className="text-xs text-muted-foreground">Only add variables if your template body has <span className="font-mono">{`{{1}}`}</span>, <span className="font-mono">{`{{2}}`}</span>… placeholders.</p>
+                  )}
                   <button type="button" onClick={addBodyRow} className="text-xs text-primary hover:underline">
                     + Add variable
                   </button>
