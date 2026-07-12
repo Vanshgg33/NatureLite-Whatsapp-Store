@@ -4,7 +4,7 @@ import { useMemo, useState, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2, Megaphone, Phone, Send, Users, Image as ImageIcon,
-  Upload, X, Search, LinkIcon, RefreshCw, Clock, AlertCircle, Smartphone,
+  Upload, X, Search, LinkIcon, RefreshCw, Clock, AlertCircle, Smartphone, FileSpreadsheet,
 } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { Input } from '@/components/ui/input';
@@ -47,6 +47,77 @@ const parsePhones = (value: string) => {
   }
   return { valid, invalid };
 };
+
+// Parses a CSV/TSV text and extracts phone numbers.
+// Detects delimiter, finds a phone-like column by header name or by scanning values,
+// and returns all found numbers newline-joined.
+function extractPhonesFromCsv(text: string): { phones: string; found: number; colName: string } {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (!lines.length) return { phones: '', found: 0, colName: '' };
+
+  // Detect delimiter: tab > semicolon > comma
+  const sample = lines[0];
+  const delimiter = sample.includes('\t') ? '\t' : sample.includes(';') ? ';' : ',';
+
+  const parseRow = (line: string): string[] => {
+    const cols: string[] = [];
+    let cur = '';
+    let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if (c === delimiter && !inQ) {
+        cols.push(cur.trim().replace(/^["']|["']$/g, ''));
+        cur = '';
+      } else {
+        cur += c;
+      }
+    }
+    cols.push(cur.trim().replace(/^["']|["']$/g, ''));
+    return cols;
+  };
+
+  const rows = lines.map(parseRow);
+  const firstRow = rows[0];
+
+  // Try to find a phone column by header keyword
+  const phoneKeywords = ['phone', 'mobile', 'number', 'contact', 'tel', 'whatsapp', 'wa', 'cell'];
+  const headerLower = firstRow.map(h => h.toLowerCase().replace(/[\s_-]/g, ''));
+  let colIdx = headerLower.findIndex(h => phoneKeywords.some(kw => h.includes(kw)));
+  let colName = colIdx >= 0 ? firstRow[colIdx] : '';
+  let dataRows = colIdx >= 0 ? rows.slice(1) : rows;
+
+  if (colIdx < 0) {
+    // No recognized header — find the column with the most phone-like values
+    const colCount = Math.max(...rows.map(r => r.length));
+    let bestCol = 0;
+    let bestScore = 0;
+    for (let c = 0; c < colCount; c++) {
+      const score = rows.filter(r => /^\+?\d[\d\s\-()]{7,}$/.test(r[c] ?? '')).length;
+      if (score > bestScore) { bestScore = score; bestCol = c; }
+    }
+    colIdx = bestCol;
+    // If first row itself looks like a header (no digits), skip it
+    const firstCellDigits = (firstRow[colIdx] ?? '').replace(/[^\d]/g, '');
+    if (firstCellDigits.length < 8) {
+      colName = firstRow[colIdx] ?? 'column ' + (colIdx + 1);
+      dataRows = rows.slice(1);
+    } else {
+      colName = 'column ' + (colIdx + 1);
+      dataRows = rows;
+    }
+  }
+
+  const phones = dataRows
+    .map(r => (r[colIdx] ?? '').replace(/[\s\-()]/g, ''))
+    .filter(p => p.replace(/[^\d]/g, '').length >= 8)
+    .join('\n');
+
+  const found = phones ? phones.split('\n').length : 0;
+  return { phones, found, colName };
+}
 
 const fmtTime = (iso: string) =>
   new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -124,6 +195,7 @@ export default function CampaignsPage() {
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string> | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const csvFileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Customer list query ──────────────────────────────────────────────────
   const { data: usersData, isFetching: usersLoading, refetch: refetchUsers } = useQuery({
@@ -321,6 +393,33 @@ export default function CampaignsPage() {
     setTplImagePreview('');
     setTplImageUrl('');
     if (tplFileInputRef.current) tplFileInputRef.current.value = '';
+  };
+
+  // ── CSV import ───────────────────────────────────────────────────────────
+  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: 'File too large', description: 'Max 5 MB', variant: 'destructive' });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const { phones, found, colName } = extractPhonesFromCsv(text);
+      if (!found) {
+        toast({ title: 'No phone numbers found', description: 'Make sure the file has a phone/mobile column or a column of numbers.', variant: 'destructive' });
+      } else {
+        setManualPhones(prev => {
+          const existing = prev.trim();
+          return existing ? existing + '\n' + phones : phones;
+        });
+        toast({ title: `${found} number${found !== 1 ? 's' : ''} imported`, description: `From column: ${colName}` });
+      }
+    };
+    reader.readAsText(file);
+    // Reset so same file can be re-uploaded
+    if (csvFileInputRef.current) csvFileInputRef.current.value = '';
   };
 
   // ── Send ─────────────────────────────────────────────────────────────────
@@ -1028,17 +1127,33 @@ export default function CampaignsPage() {
               {/* ── Manual input ─────────────────────────────────────── */}
               {recipientFilter === 'manual' && (
                 <div className="space-y-2">
-                  <label className="text-sm font-medium flex items-center gap-1.5">
-                    <Phone className="h-3.5 w-3.5" /> Phone numbers
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium flex items-center gap-1.5">
+                      <Phone className="h-3.5 w-3.5" /> Phone numbers
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => csvFileInputRef.current?.click()}
+                      className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+                    >
+                      <FileSpreadsheet className="h-3.5 w-3.5" /> Upload CSV
+                    </button>
+                    <input
+                      ref={csvFileInputRef}
+                      type="file"
+                      accept=".csv,.tsv,.txt"
+                      onChange={handleCsvUpload}
+                      className="hidden"
+                    />
+                  </div>
                   <Textarea
                     className="min-h-[180px] text-sm font-mono resize-none"
-                    placeholder={"One per line or comma-separated\n919876543210\n919876543211"}
+                    placeholder={"One per line or comma-separated\n919876543210\n919876543211\n\nOr upload a CSV with a phone/mobile column"}
                     value={manualPhones}
                     onChange={(e) => setManualPhones(e.target.value)}
                   />
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Include country code (91…)</span>
+                    <span>Include country code (91…) · CSV with phone column also works</span>
                     <div className="flex gap-2">
                       {manualParsed.invalid > 0 && (
                         <Badge variant="secondary">{manualParsed.invalid} invalid</Badge>
