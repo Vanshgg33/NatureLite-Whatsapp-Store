@@ -52,7 +52,9 @@ const parsePhones = (value: string) => {
 // Detects delimiter, finds a phone-like column by header name or by scanning values,
 // and returns all found numbers newline-joined.
 function extractPhonesFromCsv(text: string): { phones: string; found: number; colName: string } {
-  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  // Strip UTF-8 BOM that Excel adds
+  const clean = text.startsWith('﻿') ? text.slice(1) : text;
+  const lines = clean.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   if (!lines.length) return { phones: '', found: 0, colName: '' };
 
   // Detect delimiter: tab > semicolon > comma
@@ -69,13 +71,13 @@ function extractPhonesFromCsv(text: string): { phones: string; found: number; co
         if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
         else inQ = !inQ;
       } else if (c === delimiter && !inQ) {
-        cols.push(cur.trim().replace(/^["']|["']$/g, ''));
+        cols.push(cur.trim());
         cur = '';
       } else {
         cur += c;
       }
     }
-    cols.push(cur.trim().replace(/^["']|["']$/g, ''));
+    cols.push(cur.trim());
     return cols;
   };
 
@@ -90,8 +92,9 @@ function extractPhonesFromCsv(text: string): { phones: string; found: number; co
   let dataRows = colIdx >= 0 ? rows.slice(1) : rows;
 
   if (colIdx < 0) {
-    // No recognized header — find the column with the most phone-like values
-    const colCount = Math.max(...rows.map(r => r.length));
+    // No recognized header — find the column with the most phone-like values.
+    // Use reduce instead of spread to avoid stack overflow on large files.
+    const colCount = rows.reduce((m, r) => Math.max(m, r.length), 0);
     let bestCol = 0;
     let bestScore = 0;
     for (let c = 0; c < colCount; c++) {
@@ -404,6 +407,9 @@ export default function CampaignsPage() {
       return;
     }
     const reader = new FileReader();
+    reader.onerror = () => {
+      toast({ title: 'Could not read file', description: 'Try re-exporting the CSV and uploading again.', variant: 'destructive' });
+    };
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
       const { phones, found, colName } = extractPhonesFromCsv(text);
