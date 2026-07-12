@@ -63,8 +63,14 @@ export default function CampaignsPage() {
   const [templateName, setTemplateName]   = useState('');
   const [languageCode, setLanguageCode]   = useState('en');
   const [headerParams, setHeaderParams]   = useState('');
-  const [bodyParams, setBodyParams]       = useState('');
   const [buttonParams, setButtonParams]   = useState('');
+
+  type BodyParamRow = { value: string; field: 'static' | 'customer_name' };
+  const [bodyParamRows, setBodyParamRows] = useState<BodyParamRow[]>([{ value: '', field: 'static' }]);
+  const addBodyRow    = () => setBodyParamRows(prev => [...prev, { value: '', field: 'static' }]);
+  const removeBodyRow = (i: number) => setBodyParamRows(prev => prev.filter((_, idx) => idx !== i));
+  const updateBodyRow = (i: number, patch: Partial<BodyParamRow>) =>
+    setBodyParamRows(prev => prev.map((r, idx) => idx === i ? { ...r, ...patch } : r));
 
   // Image/media fields
   const [imageMethod, setImageMethod]     = useState<MediaMethod>('upload');
@@ -225,12 +231,21 @@ export default function CampaignsPage() {
       } else if (tplImageMethod === 'url' && tplImageUrl.trim()) {
         resolvedTplImageUrl = tplImageUrl.trim();
       }
+      const hasNameBinding = bodyParamRows.some(r => r.field === 'customer_name');
+      const recipients = hasNameBinding && recipientFilter !== 'manual'
+        ? customersWithPhone
+            .filter((u: User) => selectedUserIds === null || selectedUserIds.has(u._id))
+            .map((u: User) => ({ phone: u.phone.replace(/[^\d]/g, ''), name: u.name || '' }))
+            .filter(r => r.phone.length >= 10)
+        : undefined;
       return api.sendBroadcast(finalPhones, template, {
         languageCode: languageCode.trim() || 'en',
         headerParams: parseList(headerParams),
-        bodyParams: parseList(bodyParams),
+        bodyParams: bodyParamRows.map(r => r.value),
+        bodyParamFields: hasNameBinding ? bodyParamRows.map(r => r.field) : undefined,
         buttonParams: parseList(buttonParams),
         headerImageUrl: resolvedTplImageUrl,
+        recipients,
       });
     },
     onSuccess: () => {
@@ -240,7 +255,7 @@ export default function CampaignsPage() {
       setManualPhones('');
       setSelectedUserIds(null);
       if (messageType === 'template') {
-        setTemplateName(''); setHeaderParams(''); setBodyParams(''); setButtonParams('');
+        setTemplateName(''); setHeaderParams(''); setBodyParamRows([{ value: '', field: 'static' }]); setButtonParams('');
         setTplImageMethod('none'); clearTplImage();
       } else {
         clearImage(); setCaption('');
@@ -322,23 +337,58 @@ export default function CampaignsPage() {
                     <p className="text-xs text-muted-foreground">e.g. en, hi, en_US</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { label: 'Header values', value: headerParams, set: setHeaderParams, placeholder: 'One per line' },
-                    { label: 'Body values',   value: bodyParams,   set: setBodyParams,   placeholder: 'Customer name\nOffer amount' },
-                    { label: 'Button values', value: buttonParams, set: setButtonParams, placeholder: 'Dynamic URL or coupon' },
-                  ].map(({ label, value, set, placeholder }) => (
-                    <div key={label} className="space-y-1.5">
-                      <label className="text-sm font-medium">{label}</label>
-                      <Textarea
-                        rows={3}
-                        placeholder={placeholder}
-                        value={value}
-                        onChange={(e) => set(e.target.value)}
-                        className="resize-none text-sm"
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Header values</label>
+                    <Textarea rows={3} placeholder="One per line" value={headerParams} onChange={(e) => setHeaderParams(e.target.value)} className="resize-none text-sm" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Button values</label>
+                    <Textarea rows={3} placeholder="Dynamic URL or coupon" value={buttonParams} onChange={(e) => setButtonParams(e.target.value)} className="resize-none text-sm" />
+                  </div>
+                </div>
+
+                {/* Body param rows — per-slot with optional customer name binding */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Body values</label>
+                  {bodyParamRows.map((row, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground font-mono w-8 shrink-0 text-center">{`{{${i + 1}}}`}</span>
+                      <Input
+                        className="flex-1 h-8 text-sm"
+                        placeholder={row.field === 'customer_name' ? "Will use customer's name from DB" : 'Enter static value…'}
+                        value={row.field === 'customer_name' ? '' : row.value}
+                        disabled={row.field === 'customer_name'}
+                        onChange={(e) => updateBodyRow(i, { value: e.target.value })}
                       />
+                      <button
+                        type="button"
+                        title={row.field === 'customer_name' ? 'Remove name binding' : 'Bind to customer name'}
+                        onClick={() => updateBodyRow(i, { field: row.field === 'customer_name' ? 'static' : 'customer_name', value: '' })}
+                        className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border transition-colors whitespace-nowrap ${
+                          row.field === 'customer_name'
+                            ? 'bg-emerald-500 text-white border-emerald-500'
+                            : 'bg-background text-muted-foreground border-input hover:text-foreground'
+                        }`}
+                      >
+                        👤 Name
+                      </button>
+                      {bodyParamRows.length > 1 && (
+                        <button type="button" onClick={() => removeBodyRow(i)} className="text-muted-foreground hover:text-destructive transition-colors">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                   ))}
+                  <button type="button" onClick={addBodyRow} className="text-xs text-primary hover:underline">
+                    + Add variable
+                  </button>
+                  {bodyParamRows.some(r => r.field === 'customer_name') && recipientFilter === 'manual' && (
+                    <p className="text-xs text-amber-500 flex items-center gap-1 mt-1">
+                      <AlertCircle className="h-3 w-3 shrink-0" />
+                      Switch to "All customers" or "Has orders" tab to use customer name binding
+                    </p>
+                  )}
                 </div>
 
                 {/* Header image (optional) */}
@@ -793,11 +843,14 @@ export default function CampaignsPage() {
                         <div className="px-3 pt-2 pb-1 space-y-1">
                           <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Template · {languageCode || 'en'}</p>
                           <p className="font-mono text-gray-700 font-medium">{templateName}</p>
-                          {bodyParams.trim() && (
+                          {bodyParamRows.some(r => r.value || r.field === 'customer_name') && (
                             <div className="mt-1.5 space-y-0.5">
-                              {parseList(bodyParams).map((p, i) => (
+                              {bodyParamRows.map((row, i) => (
                                 <p key={i} className="text-gray-600">
-                                  <span className="text-gray-400 font-mono">{`{{${i + 1}}}`}</span> {p}
+                                  <span className="text-gray-400 font-mono">{`{{${i + 1}}}`}</span>{' '}
+                                  {row.field === 'customer_name'
+                                    ? <span className="text-emerald-600 italic">Customer name</span>
+                                    : row.value || <span className="text-gray-300">…</span>}
                                 </p>
                               ))}
                             </div>
@@ -926,6 +979,12 @@ export default function CampaignsPage() {
                       </>
                     )}
                   </div>
+                  {c.errorSummary && (
+                    <p className="mt-1.5 text-xs text-red-600 flex items-start gap-1">
+                      <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
+                      {c.errorSummary}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>

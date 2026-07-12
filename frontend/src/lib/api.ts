@@ -1308,6 +1308,8 @@ class ApiClient {
       bodyParams?: string[];
       buttonParams?: string[];
       headerImageUrl?: string;
+      bodyParamFields?: string[];
+      recipients?: { phone: string; name?: string }[];
     }
   ): Promise<{ campaignId: string }> {
     const response = await this.client.post<ApiResponse<{ campaignId: string }>>('/notifications/broadcast', {

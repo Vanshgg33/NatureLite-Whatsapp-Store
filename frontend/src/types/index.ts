@@ -489,6 +489,7 @@ export interface CampaignRecord {
   skipped: number;
   createdAt: string;
   completedAt?: string;
+  errorSummary?: string;
 }
 
 // ==================== SETTINGS TYPES ====================

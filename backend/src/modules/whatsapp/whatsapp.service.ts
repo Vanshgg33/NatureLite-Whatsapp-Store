@@ -18,6 +18,16 @@ import {
 import { WhatsAppConfig } from '../../config/configuration';
 import { MessageLogMetadata, MessageFinalStatus } from './schemas/message-log.schema';
 
+export class WhatsAppPermanentError extends Error {
+  constructor(
+    public readonly userMessage: string,
+    public readonly errorCode?: string,
+  ) {
+    super(userMessage);
+    this.name = 'WhatsAppPermanentError';
+  }
+}
+
 interface WhatsAppApiResponse {
   messaging_product: string;
   contacts?: Array<{ input: string; wa_id: string }>;
@@ -1304,6 +1314,7 @@ export class WhatsAppService implements OnModuleInit {
     let attempt = 0;
     let lastFailureReason: string | undefined;
     let lastMetadata: MessageLogMetadata = baseMetadata;
+    let permanentProviderError: { message: string; errorCode?: string } | undefined;
 
     while (attempt < this.outboundMaxAttempts) {
       attempt += 1;
@@ -1377,6 +1388,10 @@ export class WhatsAppService implements OnModuleInit {
             errorDetails: lastMetadata.errorDetails,
             attempt,
           });
+          permanentProviderError = {
+            message: WhatsAppService.formatProviderError(lastMetadata.errorCode, lastMetadata.errorTitle, lastMetadata.errorDetails),
+            errorCode: lastMetadata.errorCode,
+          };
           break;
         }
 
@@ -1396,7 +1411,30 @@ export class WhatsAppService implements OnModuleInit {
       metadata: lastMetadata,
     });
 
+    if (permanentProviderError) {
+      throw new WhatsAppPermanentError(permanentProviderError.message, permanentProviderError.errorCode);
+    }
+
     return null;
+  }
+
+  private static formatProviderError(errorCode?: string, errorTitle?: string, errorDetails?: string): string {
+    const codeMap: Record<string, string> = {
+      '132001': 'Template name not found — verify the exact template name in WhatsApp Manager',
+      '132000': 'Template parameter count mismatch',
+      '132005': 'Template text too long',
+      '131009': 'Template parameter format mismatch',
+      '131047': 'Message outside 24-hour re-engagement window',
+      '131021': 'Recipient phone number is not on WhatsApp',
+      '131026': 'Message undeliverable to this recipient',
+      '130429': 'WhatsApp rate limit reached — try again later',
+    };
+    if (errorCode && codeMap[errorCode]) {
+      return `(#${errorCode}) ${codeMap[errorCode]}`;
+    }
+    const parts = [errorTitle, errorDetails].filter(Boolean);
+    const base = parts.length ? parts.join(': ') : 'WhatsApp permanently rejected the message';
+    return errorCode ? `(#${errorCode}) ${base}` : base;
   }
 
   private interpretProviderError(error: object): {

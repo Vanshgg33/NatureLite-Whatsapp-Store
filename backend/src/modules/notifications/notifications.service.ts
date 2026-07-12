@@ -3,7 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { InjectModel } from '@nestjs/mongoose';
 import { Queue } from 'bullmq';
 import { Model } from 'mongoose';
-import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { WhatsAppService, WhatsAppPermanentError } from '../whatsapp/whatsapp.service';
 import { MessageLogRepository } from '../whatsapp/repositories/message-log.repository';
 import { Order } from '../orders/schemas/order.schema';
 import type { OrderStatus } from '../../common/constants/order-status';
@@ -611,9 +611,21 @@ export class NotificationsService {
       bodyParams?: string[];
       buttonParams?: string[];
       headerImageUrl?: string;
+      bodyParamFields?: string[];
+      recipients?: { phone: string; name?: string }[];
     } = {},
   ): Promise<{ campaignId: string }> {
     const normalized = this.normalizePhones(phones);
+
+    // Build phone→name map for dynamic variable resolution at send time
+    const phoneNameMap: Record<string, string> = {};
+    if (options.recipients) {
+      for (const r of options.recipients) {
+        const n = String(r.phone || '').replace(/[^\d]/g, '');
+        if (n.length >= 8) phoneNameMap[n] = r.name || '';
+      }
+    }
+
     const campaign = await this.campaignModel.create({
       label: templateName,
       type: 'template',
@@ -626,6 +638,8 @@ export class NotificationsService {
       bodyParams: options.bodyParams ?? [],
       buttonParams: options.buttonParams ?? [],
       headerImageUrl: options.headerImageUrl,
+      bodyParamFields: options.bodyParamFields ?? [],
+      phoneNameMap,
     });
     await this.notifQueue.add(
       NOTIFICATION_JOBS.BROADCAST_TEMPLATE,
@@ -681,34 +695,58 @@ export class NotificationsService {
     await this.campaignModel.updateOne({ _id: campaign._id }, { $set: { status: 'sending' } }).exec();
     let sent = 0;
     let skipped = 0;
+    let firstError: string | undefined;
+    let bailed = false;
 
     try {
       for (let i = 0; i < campaign.phones.length; i++) {
         const phone = campaign.phones[i];
-        const idempotencyKey = `broadcast_${campaign._id}_${phone}`;
-        try {
-          const ok = await this.sendNotification({
-            phone,
-            templateName: campaign.templateName,
-            languageCode: campaign.languageCode,
-            headerParams: campaign.headerParams,
-            bodyParams: campaign.bodyParams,
-            buttonParams: campaign.buttonParams,
-            headerImageUrl: campaign.headerImageUrl,
-            idempotencyKey,
+
+        // Resolve per-recipient body params (e.g. customer_name → actual name)
+        let resolvedBodyParams: string[] = campaign.bodyParams ?? [];
+        if (campaign.bodyParamFields && campaign.bodyParamFields.length > 0) {
+          resolvedBodyParams = campaign.bodyParamFields.map((field, idx) => {
+            if (field === 'customer_name') {
+              return campaign.phoneNameMap?.[phone] || 'Customer';
+            }
+            return campaign.bodyParams?.[idx] || '';
           });
-          if (ok) sent++; else skipped++;
-        } catch { skipped++; }
+        }
+
+        const idempotencyKey = `broadcast_${campaign._id}_${phone}`;
+        const result = await this.sendNotificationDetailed({
+          phone,
+          templateName: campaign.templateName,
+          languageCode: campaign.languageCode,
+          headerParams: campaign.headerParams,
+          bodyParams: resolvedBodyParams,
+          buttonParams: campaign.buttonParams,
+          headerImageUrl: campaign.headerImageUrl,
+          idempotencyKey,
+        });
+        if (result.ok) {
+          sent++;
+        } else {
+          skipped++;
+          if (!firstError && result.error) {
+            firstError = result.error;
+            if (this.isPermanentCampaignError(result.errorCode)) {
+              // Error applies to all recipients — skip the rest
+              skipped += campaign.phones.length - i - 1;
+              bailed = true;
+              break;
+            }
+          }
+        }
 
         if ((i + 1) % 10 === 0) {
           await this.campaignModel.updateOne({ _id: campaign._id }, { $set: { sent, skipped } }).exec();
         }
-        if (i < campaign.phones.length - 1) await this.sleep(150);
+        if (i < campaign.phones.length - 1 && !bailed) await this.sleep(150);
       }
-      await this.campaignModel.updateOne(
-        { _id: campaign._id },
-        { $set: { status: 'done', sent, skipped, completedAt: new Date() } },
-      ).exec();
+      const finalUpdate: Record<string, unknown> = { status: 'done', sent, skipped, completedAt: new Date() };
+      if (firstError && sent === 0) finalUpdate.errorSummary = firstError;
+      await this.campaignModel.updateOne({ _id: campaign._id }, { $set: finalUpdate }).exec();
     } catch (err) {
       this.logger.error(`Broadcast template campaign ${data.campaignId} failed`, err);
       await this.campaignModel.updateOne(
@@ -726,6 +764,7 @@ export class NotificationsService {
     await this.campaignModel.updateOne({ _id: campaign._id }, { $set: { status: 'sending' } }).exec();
     let sent = 0;
     let skipped = 0;
+    let firstError: string | undefined;
 
     try {
       for (let i = 0; i < campaign.phones.length; i++) {
@@ -741,17 +780,21 @@ export class NotificationsService {
             meta: { idempotencyKey },
           });
           if (messageId) sent++; else skipped++;
-        } catch { skipped++; }
+        } catch (error) {
+          skipped++;
+          if (!firstError && error instanceof WhatsAppPermanentError) {
+            firstError = error.userMessage;
+          }
+        }
 
         if ((i + 1) % 10 === 0) {
           await this.campaignModel.updateOne({ _id: campaign._id }, { $set: { sent, skipped } }).exec();
         }
         if (i < campaign.phones.length - 1) await this.sleep(150);
       }
-      await this.campaignModel.updateOne(
-        { _id: campaign._id },
-        { $set: { status: 'done', sent, skipped, completedAt: new Date() } },
-      ).exec();
+      const finalUpdate: Record<string, unknown> = { status: 'done', sent, skipped, completedAt: new Date() };
+      if (firstError && sent === 0) finalUpdate.errorSummary = firstError;
+      await this.campaignModel.updateOne({ _id: campaign._id }, { $set: finalUpdate }).exec();
     } catch (err) {
       this.logger.error(`Broadcast media campaign ${data.campaignId} failed`, err);
       await this.campaignModel.updateOne(
@@ -801,10 +844,27 @@ export class NotificationsService {
 
       return !!messageId;
     } catch (error) {
+      if (error instanceof WhatsAppPermanentError) throw error;
       this.logger.error('Failed to send notification', error);
-      // Don't throw - just log and continue
       return false;
     }
+  }
+
+  private async sendNotificationDetailed(payload: NotificationPayload): Promise<{ ok: boolean; error?: string; errorCode?: string }> {
+    try {
+      const ok = await this.sendNotification(payload);
+      return { ok };
+    } catch (error) {
+      if (error instanceof WhatsAppPermanentError) {
+        return { ok: false, error: error.userMessage, errorCode: error.errorCode };
+      }
+      return { ok: false };
+    }
+  }
+
+  private isPermanentCampaignError(errorCode?: string): boolean {
+    // These errors apply to every recipient — no point continuing the loop
+    return !!errorCode && new Set(['132001', '132000', '132005', '131009']).has(errorCode);
   }
 
   private async isDuplicate(key: string): Promise<boolean> {

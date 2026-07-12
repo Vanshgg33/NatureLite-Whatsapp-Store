@@ -13,9 +13,10 @@ import {
   RawBodyRequest,
   OnModuleDestroy,
   HttpCode,
+  BadRequestException,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { WhatsAppService } from './whatsapp.service';
+import { WhatsAppService, WhatsAppPermanentError } from './whatsapp.service';
 import { WaFlowService } from './wa-flow.service';
 import { ChatbotService } from '../chatbot/chatbot.service';
 import { SettingsService } from '../settings/settings.service';
@@ -230,9 +231,16 @@ export class WhatsAppController implements OnModuleDestroy {
   @Roles('admin', 'superadmin')
   async sendTemplateMessage(
     @Body() dto: SendTemplateMessageDto,
-  ): Promise<{ messageId: string | null }> {
-    const messageId = await this.whatsappService.sendTemplateMessage(dto);
-    return { messageId };
+  ): Promise<{ messageId: string | null; error?: string }> {
+    try {
+      const messageId = await this.whatsappService.sendTemplateMessage(dto);
+      return { messageId };
+    } catch (error) {
+      if (error instanceof WhatsAppPermanentError) {
+        throw new BadRequestException(error.userMessage);
+      }
+      throw error;
+    }
   }
 
   @Post('send/buttons')
@@ -260,9 +268,16 @@ export class WhatsAppController implements OnModuleDestroy {
   @Roles('admin', 'superadmin')
   async sendMediaMessage(
     @Body() dto: SendMediaMessageDto,
-  ): Promise<{ messageId: string | null }> {
-    const messageId = await this.whatsappService.sendMediaMessage(dto);
-    return { messageId };
+  ): Promise<{ messageId: string | null; error?: string }> {
+    try {
+      const messageId = await this.whatsappService.sendMediaMessage(dto);
+      return { messageId };
+    } catch (error) {
+      if (error instanceof WhatsAppPermanentError) {
+        throw new BadRequestException(error.userMessage);
+      }
+      throw error;
+    }
   }
 
   @Get('messages/:phone')

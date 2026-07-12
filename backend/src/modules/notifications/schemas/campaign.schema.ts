@@ -30,6 +30,12 @@ export class Campaign {
   @Prop() caption?: string;
   @Prop({ default: 'image' }) mediaType?: string;
   @Prop() mediaFilename?: string;
+  @Prop() errorSummary?: string;
+
+  // Per-slot body param field bindings (e.g. 'static' | 'customer_name')
+  @Prop({ type: [String], default: [] }) bodyParamFields: string[];
+  // phone (normalized digits) → customer name, for dynamic variable resolution
+  @Prop({ type: Object, default: {} }) phoneNameMap: Record<string, string>;
 
   // Full phone list (used by processor, excluded from list responses)
   @Prop({ type: [String], default: [] }) phones: string[];

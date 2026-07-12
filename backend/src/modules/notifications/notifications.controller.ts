@@ -43,6 +43,16 @@ class BroadcastDto {
   @IsString()
   @IsOptional()
   headerImageUrl?: string;
+
+  /** Per-slot binding: 'static' | 'customer_name' for each body param */
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  bodyParamFields?: string[];
+
+  /** Recipients with names for dynamic variable resolution */
+  @IsOptional()
+  recipients?: { phone: string; name?: string }[];
 }
 
 class MediaBroadcastDto {
@@ -83,6 +93,8 @@ export class NotificationsController {
       bodyParams: dto.bodyParams,
       buttonParams: dto.buttonParams,
       headerImageUrl: dto.headerImageUrl,
+      bodyParamFields: dto.bodyParamFields,
+      recipients: dto.recipients,
     });
   }
 
