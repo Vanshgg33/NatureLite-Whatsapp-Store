@@ -41,6 +41,11 @@ class BroadcastDto {
   @IsArray()
   @IsString({ each: true })
   @IsOptional()
+  bodyParamNames?: string[];
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
   buttonParams?: string[];
 
   @IsString()
@@ -94,6 +99,7 @@ export class NotificationsController {
       languageCode: dto.languageCode,
       headerParams: dto.headerParams,
       bodyParams: dto.bodyParams,
+      bodyParamNames: dto.bodyParamNames,
       buttonParams: dto.buttonParams,
       headerImageUrl: dto.headerImageUrl,
       bodyParamFields: dto.bodyParamFields,

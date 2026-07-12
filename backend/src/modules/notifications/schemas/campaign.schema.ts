@@ -34,6 +34,8 @@ export class Campaign {
 
   // Per-slot body param field bindings (e.g. 'static' | 'customer_name')
   @Prop({ type: [String], default: [] }) bodyParamFields: string[];
+  // Named variable names for body params (empty string = positional {{1}}, 'name' = named {{name}})
+  @Prop({ type: [String], default: [] }) bodyParamNames: string[];
   // phone (normalized digits) → customer name, for dynamic variable resolution
   @Prop({ type: Object, default: {} }) phoneNameMap: Record<string, string>;
 

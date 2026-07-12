@@ -704,8 +704,13 @@ export class WhatsAppService implements OnModuleInit {
     if (dto.bodyParams && dto.bodyParams.length > 0) {
       components.push({
         type: 'body',
-        parameters: dto.bodyParams.map((text) => ({ type: 'text', text })),
-      });
+        parameters: dto.bodyParams.map((text, idx) => {
+          const paramName = dto.bodyParamNames?.[idx];
+          return paramName
+            ? { type: 'text' as const, text, parameter_name: paramName }
+            : { type: 'text' as const, text };
+        }),
+      } as any);
     }
 
     if (dto.buttonParams && dto.buttonParams.length > 0) {

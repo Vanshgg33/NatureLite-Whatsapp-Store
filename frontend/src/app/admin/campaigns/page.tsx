@@ -65,10 +65,10 @@ export default function CampaignsPage() {
   const [headerParams, setHeaderParams]   = useState('');
   const [buttonParams, setButtonParams]   = useState('');
 
-  type BodyParamRow = { id: number; value: string; field: 'static' | 'customer_name' };
+  type BodyParamRow = { id: number; value: string; field: 'static' | 'customer_name'; paramName: string };
   const nextRowId = useRef(0);
   const [bodyParamRows, setBodyParamRows] = useState<BodyParamRow[]>([]);
-  const addBodyRow    = () => setBodyParamRows(prev => [...prev, { id: nextRowId.current++, value: '', field: 'static' }]);
+  const addBodyRow    = () => setBodyParamRows(prev => [...prev, { id: nextRowId.current++, value: '', field: 'static', paramName: '' }]);
   const removeBodyRow = (id: number) => setBodyParamRows(prev => prev.filter(r => r.id !== id));
   const updateBodyRow = (id: number, patch: Partial<BodyParamRow>) =>
     setBodyParamRows(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r));
@@ -80,7 +80,7 @@ export default function CampaignsPage() {
     setButtonParams(preset.buttonParams || '');
     setBodyParamRows(
       preset.bodyParamRows?.length
-        ? preset.bodyParamRows.map(r => ({ id: nextRowId.current++, value: r.value, field: r.field as 'static' | 'customer_name' }))
+        ? preset.bodyParamRows.map(r => ({ id: nextRowId.current++, value: r.value, field: r.field as 'static' | 'customer_name', paramName: (r as any).paramName || '' }))
         : []
     );
     // 'upload' method can't be restored (no file) — fall back to 'none'
@@ -356,10 +356,12 @@ export default function CampaignsPage() {
             .map((u: User) => ({ phone: u.phone.replace(/[^\d]/g, ''), name: u.name || '' }))
             .filter(r => r.phone.length >= 10)
         : undefined;
+      const hasParamNames = activeBodyRows.some(r => r.paramName?.trim());
       return api.sendBroadcast(finalPhones, template, {
         languageCode: languageCode.trim() || 'en',
         headerParams: parseList(headerParams),
         bodyParams: activeBodyRows.map(r => r.value),
+        bodyParamNames: hasParamNames ? activeBodyRows.map(r => r.paramName?.trim() || '') : undefined,
         bodyParamFields: hasNameBinding ? activeBodyRows.map(r => r.field) : undefined,
         buttonParams: parseList(buttonParams),
         headerImageUrl: resolvedTplImageUrl,
@@ -375,7 +377,7 @@ export default function CampaignsPage() {
           languageCode,
           headerParams,
           buttonParams,
-          bodyParamRows: activeBodyRows.map(r => ({ value: r.value, field: r.field })),
+          bodyParamRows: activeBodyRows.map(r => ({ value: r.value, field: r.field, paramName: r.paramName || '' })),
           tplImageMethod,
           tplImageUrl,
         });
@@ -557,7 +559,7 @@ export default function CampaignsPage() {
                           languageCode,
                           headerParams,
                           buttonParams,
-                          bodyParamRows: activeBodyRows.map(r => ({ value: r.value, field: r.field })),
+                          bodyParamRows: activeBodyRows.map(r => ({ value: r.value, field: r.field, paramName: r.paramName || '' })),
                           tplImageMethod,
                           tplImageUrl,
                         })}
@@ -620,51 +622,64 @@ export default function CampaignsPage() {
                   </div>
 
                   {bodyParamRows.map((row, i) => (
-                    <div key={row.id} className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground font-mono w-8 shrink-0 text-center">{`{{${i + 1}}}`}</span>
+                    <div key={row.id} className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground font-mono w-8 shrink-0 text-center">{`{{${i + 1}}}`}</span>
 
-                      {/* Customer name / Static toggle */}
-                      <div className="flex gap-0.5 p-0.5 bg-muted rounded-md shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => updateBodyRow(row.id, { field: 'customer_name', value: '' })}
-                          className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
-                            row.field === 'customer_name'
-                              ? 'bg-emerald-500 text-white shadow'
-                              : 'text-muted-foreground hover:text-foreground'
-                          }`}
-                        >
-                          👤 Customer name
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => updateBodyRow(row.id, { field: 'static' })}
-                          className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
-                            row.field === 'static'
-                              ? 'bg-background text-foreground shadow'
-                              : 'text-muted-foreground hover:text-foreground'
-                          }`}
-                        >
-                          Static
-                        </button>
+                        {/* Customer name / Static toggle */}
+                        <div className="flex gap-0.5 p-0.5 bg-muted rounded-md shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => updateBodyRow(row.id, { field: 'customer_name', value: '' })}
+                            className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
+                              row.field === 'customer_name'
+                                ? 'bg-emerald-500 text-white shadow'
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                          >
+                            👤 Customer name
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateBodyRow(row.id, { field: 'static' })}
+                            className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
+                              row.field === 'static'
+                                ? 'bg-background text-foreground shadow'
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                          >
+                            Static
+                          </button>
+                        </div>
+
+                        {row.field === 'static' ? (
+                          <Input
+                            className="flex-1 h-8 text-sm"
+                            placeholder="Enter value…"
+                            value={row.value}
+                            onChange={(e) => updateBodyRow(row.id, { value: e.target.value })}
+                          />
+                        ) : (
+                          <span className="flex-1 text-xs text-emerald-600 italic">Will use customer's name from DB</span>
+                        )}
+
+                        {!fetchedTemplate && (
+                          <button type="button" onClick={() => removeBodyRow(row.id)} className="text-muted-foreground hover:text-destructive transition-colors">
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </div>
-
-                      {row.field === 'static' ? (
+                      {/* Named variable support — enter the WA variable name e.g. "name" for {{name}} templates */}
+                      <div className="flex items-center gap-2 pl-10">
+                        <span className="text-[10px] text-muted-foreground shrink-0">Var name</span>
                         <Input
-                          className="flex-1 h-8 text-sm"
-                          placeholder="Enter value…"
-                          value={row.value}
-                          onChange={(e) => updateBodyRow(row.id, { value: e.target.value })}
+                          className="h-6 text-[10px] w-28"
+                          placeholder='e.g. "name" or leave blank'
+                          value={row.paramName || ''}
+                          onChange={(e) => updateBodyRow(row.id, { paramName: e.target.value })}
                         />
-                      ) : (
-                        <span className="flex-1 text-xs text-emerald-600 italic">Will use customer's name from DB</span>
-                      )}
-
-                      {!fetchedTemplate && (
-                        <button type="button" onClick={() => removeBodyRow(row.id)} className="text-muted-foreground hover:text-destructive transition-colors">
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      )}
+                        <span className="text-[10px] text-muted-foreground">← fill if template uses {'{{name}}'} style</span>
+                      </div>
                     </div>
                   ))}
 

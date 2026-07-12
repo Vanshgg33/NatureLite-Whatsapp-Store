@@ -47,6 +47,10 @@ export class SendTemplateMessageDto {
 
   @IsArray()
   @IsOptional()
+  bodyParamNames?: string[];
+
+  @IsArray()
+  @IsOptional()
   buttonParams?: string[];
 
   @IsArray()

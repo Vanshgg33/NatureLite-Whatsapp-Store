@@ -1308,6 +1308,7 @@ class ApiClient {
       languageCode?: string;
       headerParams?: string[];
       bodyParams?: string[];
+      bodyParamNames?: string[];
       buttonParams?: string[];
       headerImageUrl?: string;
       bodyParamFields?: string[];

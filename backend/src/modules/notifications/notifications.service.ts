@@ -19,6 +19,7 @@ interface NotificationPayload {
   languageCode?: string;
   headerParams?: string[];
   bodyParams?: string[];
+  bodyParamNames?: string[];
   buttonParams?: string[];
   headerImageUrl?: string;
   text?: string;
@@ -611,6 +612,7 @@ export class NotificationsService {
       languageCode?: string;
       headerParams?: string[];
       bodyParams?: string[];
+      bodyParamNames?: string[];
       buttonParams?: string[];
       headerImageUrl?: string;
       bodyParamFields?: string[];
@@ -638,6 +640,7 @@ export class NotificationsService {
       languageCode: options.languageCode || 'en',
       headerParams: options.headerParams ?? [],
       bodyParams: options.bodyParams ?? [],
+      bodyParamNames: options.bodyParamNames ?? [],
       buttonParams: options.buttonParams ?? [],
       headerImageUrl: options.headerImageUrl,
       bodyParamFields: options.bodyParamFields ?? [],
@@ -756,6 +759,7 @@ export class NotificationsService {
           languageCode: campaign.languageCode,
           headerParams: campaign.headerParams,
           bodyParams: resolvedBodyParams,
+          bodyParamNames: campaign.bodyParamNames,
           buttonParams: campaign.buttonParams,
           headerImageUrl: campaign.headerImageUrl,
           idempotencyKey,
@@ -873,6 +877,7 @@ export class NotificationsService {
         languageCode: payload.languageCode,
         headerParams: payload.headerParams,
         bodyParams: payload.bodyParams ?? payload.params,
+        bodyParamNames: payload.bodyParamNames,
         buttonParams: payload.buttonParams,
         headerImageUrl: payload.headerImageUrl,
         meta: payload.idempotencyKey ? { idempotencyKey: payload.idempotencyKey } : undefined,
