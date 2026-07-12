@@ -101,8 +101,6 @@ export default function CampaignsPage() {
   const [pdfFile, setPdfFile]             = useState<File | null>(null);
   const pdfFileInputRef                   = useRef<HTMLInputElement>(null);
 
-  const [showAdvanced, setShowAdvanced] = useState(false);
-
   // Template header image (optional)
   const [tplImageMethod, setTplImageMethod] = useState<'none' | ImageInputMethod>('none');
   const [tplImageFile, setTplImageFile]     = useState<File | null>(null);
@@ -164,6 +162,7 @@ export default function CampaignsPage() {
   const [fetchedTemplate, setFetchedTemplate] = useState<WaTemplate | null>(null);
   const [templateFetching, setTemplateFetching] = useState(false);
   const [templateFetchResult, setTemplateFetchResult] = useState<'idle' | 'found' | 'not_found'>('idle');
+  const lastAutoLoadedRef = useRef('');
 
   // Debounced fetch: when template name changes, fetch real template from WA
   useEffect(() => {
@@ -171,6 +170,7 @@ export default function CampaignsPage() {
       setFetchedTemplate(null);
       setTemplateFetching(false);
       setTemplateFetchResult('idle');
+      if (!templateName.trim()) lastAutoLoadedRef.current = '';
       return;
     }
     setTemplateFetching(true);
@@ -209,14 +209,17 @@ export default function CampaignsPage() {
     });
   }, [fetchedTemplate]);
 
-  // Show header/button value fields only when the fetched template actually needs them
-  const showHeaderValue = !fetchedTemplate ||
-    fetchedTemplate.components.some(c => c.type === 'HEADER' && c.format === 'TEXT' && c.text?.includes('{{'));
+  // Auto-load preset when typed template name exactly matches a saved preset.
+  useEffect(() => {
+    const name = templateName.trim();
+    if (!name || lastAutoLoadedRef.current === name) return;
+    const match = presets.find(p => p.templateName === name);
+    if (match) {
+      loadPreset(match);
+      lastAutoLoadedRef.current = name;
+    }
+  }, [templateName, presets]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const showButtonValue = !fetchedTemplate ||
-    fetchedTemplate.components.some(c =>
-      c.type === 'BUTTONS' && c.buttons?.some(b => b.url?.includes('{{') || b.type === 'COPY_CODE')
-    );
 
   const activeBodyRows = useMemo(
     () => bodyParamRows.filter(r => r.field === 'customer_name' || r.value.trim() !== ''),
@@ -447,11 +450,7 @@ export default function CampaignsPage() {
         {(tplImagePreview || tplImageUrl) && (
           <img src={tplImagePreview || tplImageUrl} alt="Header" className="w-full max-h-24 object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
         )}
-        {!tplImagePreview && !tplImageUrl && headerParams.trim() && (
-          <div className="bg-gray-50 border-b px-2.5 py-1.5">
-            {parseList(headerParams).map((p, i) => <p key={i} className="font-semibold text-gray-800">{p}</p>)}
-          </div>
-        )}
+
         <div className="px-2.5 pt-1.5 pb-1">
           <p className="text-[9px] text-gray-400 uppercase tracking-wide mb-0.5">Template · {languageCode || 'en'}</p>
           <p className="font-mono text-gray-700 font-medium text-[10px]">{templateName}</p>
@@ -466,13 +465,7 @@ export default function CampaignsPage() {
             </div>
           )}
         </div>
-        {buttonParams.trim() && (
-          <div className="border-t">
-            {parseList(buttonParams).map((btn, i) => (
-              <div key={i} className="border-b last:border-0 px-2.5 py-1 text-center text-[#128c7e] font-medium text-[10px]">{btn}</div>
-            ))}
-          </div>
-        )}
+
         <div className="flex justify-end px-2 pb-1.5"><span className="text-[9px] text-gray-400">12:00 PM ✓✓</span></div>
       </div>
     );
@@ -604,31 +597,6 @@ export default function CampaignsPage() {
                     />
                     <p className="text-xs text-muted-foreground">e.g. en, hi, en_US</p>
                   </div>
-                </div>
-                {/* Advanced — only for templates with dynamic header/button params */}
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => setShowAdvanced(v => !v)}
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
-                  >
-                    <span className={`transition-transform ${showAdvanced ? 'rotate-90' : ''}`}>▶</span>
-                    Advanced (header / button values)
-                  </button>
-                  {showAdvanced && (
-                    <div className="mt-3 grid grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <label className="text-sm font-medium">Header values</label>
-                        <Textarea rows={3} placeholder="One per line" value={headerParams} onChange={(e) => setHeaderParams(e.target.value)} className="resize-none text-sm" />
-                        <p className="text-xs text-muted-foreground">Only needed if header has a {`{{1}}`} variable.</p>
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-sm font-medium">Button values</label>
-                        <Textarea rows={3} placeholder="Dynamic URL suffix or coupon" value={buttonParams} onChange={(e) => setButtonParams(e.target.value)} className="resize-none text-sm" />
-                        <p className="text-xs text-muted-foreground">Only needed if a button has a dynamic URL.</p>
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 {/* Body variables — auto-detected from live template */}
