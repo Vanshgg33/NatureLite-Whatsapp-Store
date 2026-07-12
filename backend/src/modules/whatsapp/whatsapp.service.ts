@@ -1103,7 +1103,7 @@ export class WhatsAppService implements OnModuleInit {
   async fetchTemplate(templateName: string): Promise<Record<string, any> | null> {
     try {
       if (this.is360DialogProvider) {
-        const response = await this.httpClient.get('/configs/templates');
+        const response = await this.httpClient.get('/v2/configs/templates');
         const raw = response.data;
         // 360dialog v1 → { waba_templates: [...] }
         // 360dialog v2 → { data: [...] } or direct array
