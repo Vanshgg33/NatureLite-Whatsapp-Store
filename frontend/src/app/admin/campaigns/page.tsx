@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useRef } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2, Megaphone, Phone, Send, Users, Image as ImageIcon,
@@ -71,6 +71,27 @@ export default function CampaignsPage() {
   const removeBodyRow = (i: number) => setBodyParamRows(prev => prev.filter((_, idx) => idx !== i));
   const updateBodyRow = (i: number, patch: Partial<BodyParamRow>) =>
     setBodyParamRows(prev => prev.map((r, idx) => idx === i ? { ...r, ...patch } : r));
+
+  const LAST_CONFIG_KEY = 'nl_last_template_config';
+  const [hasSavedConfig, setHasSavedConfig] = useState(false);
+  useEffect(() => {
+    setHasSavedConfig(!!localStorage.getItem(LAST_CONFIG_KEY));
+  }, []);
+
+  const loadLastConfig = () => {
+    const raw = localStorage.getItem(LAST_CONFIG_KEY);
+    if (!raw) return;
+    try {
+      const cfg = JSON.parse(raw);
+      setTemplateName(cfg.templateName ?? '');
+      setLanguageCode(cfg.languageCode ?? 'en');
+      setHeaderParams(cfg.headerParams ?? '');
+      setButtonParams(cfg.buttonParams ?? '');
+      setBodyParamRows(cfg.bodyParamRows ?? [{ value: '', field: 'static' }]);
+      setTplImageMethod(cfg.tplImageMethod ?? 'none');
+      setTplImageUrl(cfg.tplImageUrl ?? '');
+    } catch {}
+  };
 
   // Image/media fields
   const [imageMethod, setImageMethod]     = useState<MediaMethod>('upload');
@@ -251,6 +272,13 @@ export default function CampaignsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
       toast({ title: 'Campaign queued', description: 'Messages are being sent in the background.' });
+      if (messageType === 'template') {
+        localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify({
+          templateName, languageCode, headerParams, buttonParams,
+          bodyParamRows, tplImageMethod, tplImageUrl,
+        }));
+        setHasSavedConfig(true);
+      }
       // reset form
       setManualPhones('');
       setSelectedUserIds(null);
@@ -319,7 +347,14 @@ export default function CampaignsPage() {
               <div className="space-y-4">
                 <div className="grid grid-cols-[1fr_140px] gap-3">
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Template name</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium">Template name</label>
+                      {hasSavedConfig && (
+                        <button type="button" onClick={loadLastConfig} className="text-xs text-primary hover:underline flex items-center gap-1">
+                          <RefreshCw className="h-3 w-3" /> Load last config
+                        </button>
+                      )}
+                    </div>
                     <Input
                       placeholder="e.g. promo_offer"
                       value={templateName}
