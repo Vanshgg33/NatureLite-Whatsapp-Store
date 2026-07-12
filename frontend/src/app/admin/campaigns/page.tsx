@@ -620,53 +620,86 @@ export default function CampaignsPage() {
                   </div>
                 )}
 
-                {/* Body param rows — per-slot with optional customer name binding */}
+                {/* Body variables — auto-detected from live template */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Body values</label>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium">Body variables</label>
+                    {fetchedTemplate && bodyParamRows.length > 0 && (
+                      <span className="text-xs text-muted-foreground">({bodyParamRows.length} detected)</span>
+                    )}
+                  </div>
+
                   {bodyParamRows.map((row, i) => (
                     <div key={row.id} className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground font-mono w-8 shrink-0 text-center">{`{{${i + 1}}}`}</span>
-                      <Input
-                        className="flex-1 h-8 text-sm"
-                        placeholder={row.field === 'customer_name' ? "Will use customer's name from DB" : 'Enter static value…'}
-                        value={row.field === 'customer_name' ? '' : row.value}
-                        disabled={row.field === 'customer_name'}
-                        onChange={(e) => updateBodyRow(row.id, { value: e.target.value })}
-                      />
-                      <button
-                        type="button"
-                        title={row.field === 'customer_name' ? 'Remove name binding' : 'Bind to customer name'}
-                        onClick={() => updateBodyRow(row.id, { field: row.field === 'customer_name' ? 'static' : 'customer_name', value: '' })}
-                        className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border transition-colors whitespace-nowrap ${
-                          row.field === 'customer_name'
-                            ? 'bg-emerald-500 text-white border-emerald-500'
-                            : 'bg-background text-muted-foreground border-input hover:text-foreground'
-                        }`}
-                      >
-                        👤 Name
-                      </button>
-                      <button type="button" onClick={() => removeBodyRow(row.id)} className="text-muted-foreground hover:text-destructive transition-colors">
-                        <X className="h-3.5 w-3.5" />
-                      </button>
+
+                      {/* Customer name / Static toggle */}
+                      <div className="flex gap-0.5 p-0.5 bg-muted rounded-md shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => updateBodyRow(row.id, { field: 'customer_name', value: '' })}
+                          className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
+                            row.field === 'customer_name'
+                              ? 'bg-emerald-500 text-white shadow'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          👤 Customer name
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateBodyRow(row.id, { field: 'static' })}
+                          className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
+                            row.field === 'static'
+                              ? 'bg-background text-foreground shadow'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          Static
+                        </button>
+                      </div>
+
+                      {row.field === 'static' ? (
+                        <Input
+                          className="flex-1 h-8 text-sm"
+                          placeholder="Enter value…"
+                          value={row.value}
+                          onChange={(e) => updateBodyRow(row.id, { value: e.target.value })}
+                        />
+                      ) : (
+                        <span className="flex-1 text-xs text-emerald-600 italic">Will use customer's name from DB</span>
+                      )}
+
+                      {!fetchedTemplate && (
+                        <button type="button" onClick={() => removeBodyRow(row.id)} className="text-muted-foreground hover:text-destructive transition-colors">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                   ))}
+
                   {bodyParamRows.length === 0 && (
                     <p className="text-xs text-muted-foreground">
                       {fetchedTemplate
                         ? 'This template has no body variables.'
-                        : <>Only add variables if your template body has <span className="font-mono">{`{{1}}`}</span>, <span className="font-mono">{`{{2}}`}</span>… placeholders.</>
+                        : templateName.trim()
+                          ? 'Waiting for template to load…'
+                          : 'Enter a template name above to auto-detect variables.'
                       }
                     </p>
                   )}
-                  {(!fetchedTemplate || bodyParamRows.length < 10) && (
+
+                  {/* Manual add — fallback when template not fetched */}
+                  {!fetchedTemplate && (
                     <button type="button" onClick={addBodyRow} className="text-xs text-primary hover:underline">
-                      + Add variable
+                      + Add variable manually
                     </button>
                   )}
+
                   {bodyParamRows.some(r => r.field === 'customer_name') && recipientFilter === 'manual' && (
                     <p className="text-xs text-amber-500 flex items-center gap-1 mt-1">
                       <AlertCircle className="h-3 w-3 shrink-0" />
-                      Switch to "All customers" or "Has orders" tab to use customer name binding
+                      Switch to "All customers" or "Has orders" to use customer name
                     </p>
                   )}
                 </div>
