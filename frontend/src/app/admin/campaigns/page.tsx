@@ -268,7 +268,10 @@ export default function CampaignsPage() {
       } else if (tplImageMethod === 'url' && tplImageUrl.trim()) {
         resolvedTplImageUrl = tplImageUrl.trim();
       }
-      const hasNameBinding = bodyParamRows.some(r => r.field === 'customer_name');
+      // Only include rows that are actually configured — name-bound OR has a value.
+      // Empty default rows are skipped so we don't send params to templates with no variables.
+      const activeBodyRows = bodyParamRows.filter(r => r.field === 'customer_name' || r.value.trim() !== '');
+      const hasNameBinding = activeBodyRows.some(r => r.field === 'customer_name');
       const recipients = hasNameBinding && recipientFilter !== 'manual'
         ? customersWithPhone
             .filter((u: User) => selectedUserIds === null || selectedUserIds.has(u._id))
@@ -278,8 +281,8 @@ export default function CampaignsPage() {
       return api.sendBroadcast(finalPhones, template, {
         languageCode: languageCode.trim() || 'en',
         headerParams: parseList(headerParams),
-        bodyParams: bodyParamRows.map(r => r.value),
-        bodyParamFields: hasNameBinding ? bodyParamRows.map(r => r.field) : undefined,
+        bodyParams: activeBodyRows.map(r => r.value),
+        bodyParamFields: hasNameBinding ? activeBodyRows.map(r => r.field) : undefined,
         buttonParams: parseList(buttonParams),
         headerImageUrl: resolvedTplImageUrl,
         recipients,
