@@ -733,11 +733,16 @@ export class NotificationsService {
         if (campaign.bodyParamFields && campaign.bodyParamFields.length > 0) {
           resolvedBodyParams = campaign.bodyParamFields.map((field, idx) => {
             if (field === 'customer_name') {
-              return campaign.phoneNameMap?.[phone] || 'Customer';
+              const nameMap = campaign.phoneNameMap as Record<string, string> | undefined;
+              const resolved = (nameMap && nameMap[phone]) || 'Customer';
+              return resolved;
             }
             return campaign.bodyParams?.[idx] || '';
           });
         }
+        this.logger.debug(
+          `broadcast_resolve phone=${phone} fields=${JSON.stringify(campaign.bodyParamFields)} raw=${JSON.stringify(campaign.bodyParams)} resolved=${JSON.stringify(resolvedBodyParams)} mapKeys=${JSON.stringify(Object.keys((campaign.phoneNameMap as any) || {}).slice(0, 3))}`,
+        );
 
         const idempotencyKey = `broadcast_${campaign._id}_${phone}`;
         const result = await this.sendNotificationDetailed({
