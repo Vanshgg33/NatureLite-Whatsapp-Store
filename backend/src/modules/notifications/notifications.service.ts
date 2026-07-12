@@ -890,7 +890,7 @@ export class NotificationsService {
 
   private isPermanentCampaignError(errorCode?: string): boolean {
     // These errors apply to every recipient — no point continuing the loop
-    return !!errorCode && new Set(['132001', '132000', '132005', '131009']).has(errorCode);
+    return !!errorCode && new Set(['100', '132001', '132000', '132005', '131009']).has(errorCode);
   }
 
   private async isDuplicate(key: string): Promise<boolean> {

@@ -1455,8 +1455,9 @@ export class WhatsAppService implements OnModuleInit {
 
   private static formatProviderError(errorCode?: string, errorTitle?: string, errorDetails?: string): string {
     const codeMap: Record<string, string> = {
+      '100': 'Template parameter error — one or more body variable values are missing or empty',
       '132001': 'Template name not found — verify the exact template name in WhatsApp Manager',
-      '132000': 'Template parameter count mismatch',
+      '132000': 'Template parameter count mismatch — body variable count in template does not match params sent',
       '132005': 'Template text too long',
       '131009': 'Template parameter format mismatch',
       '131047': 'Message outside 24-hour re-engagement window',
@@ -1486,6 +1487,20 @@ export class WhatsAppService implements OnModuleInit {
 
       const isClientError = typeof status === 'number' && status >= 400 && status < 500;
 
+      // #100 is a template/parameter configuration error — permanent but NOT a phone issue.
+      // Do not retry: the same empty/missing parameter will fail on every attempt.
+      if (code === 100) {
+        return {
+          shouldRetry: false,
+          failureReason: 'provider_error',
+          metadata: {
+            errorCode: '100',
+            errorTitle: title,
+            errorDetails: details,
+          },
+        };
+      }
+
       // Heuristics: invalid recipient / blocked user are permanent failures.
       const combined = `${title || ''} ${details || ''}`.toLowerCase();
       const isBlocked =
@@ -1493,7 +1508,6 @@ export class WhatsAppService implements OnModuleInit {
         combined.includes('user has blocked') ||
         combined.includes('recipient blocked');
       const isInvalidPhone =
-        combined.includes('invalid parameter') ||
         combined.includes('phone number') && combined.includes('invalid') ||
         combined.includes('recipient') && combined.includes('valid') ||
         combined.includes('not a valid whatsapp user');
