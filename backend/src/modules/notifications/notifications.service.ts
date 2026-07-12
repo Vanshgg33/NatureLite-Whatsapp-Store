@@ -771,6 +771,7 @@ export class NotificationsService {
           sent++;
         } else {
           skipped++;
+          this.logger.warn(`broadcast_skip phone=${phone} error=${result.error || 'no_message_id'} errorCode=${result.errorCode || 'none'}`);
           if (!firstError && result.error) {
             firstError = result.error;
             if (this.isPermanentCampaignError(result.errorCode)) {

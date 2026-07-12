@@ -1184,6 +1184,10 @@ export class WhatsAppService implements OnModuleInit {
       const ts = Number.parseInt(timestamp, 10);
       const eventAt = Number.isFinite(ts) && ts > 0 ? new Date(ts * 1000) : undefined;
 
+      if (status === 'failed') {
+        this.logger.warn(`wa_delivery_failed messageId=${messageId}`);
+      }
+
       await this.messageLogRepository.updateStatusMonotonicByWhatsAppMessageId({
         whatsappMessageId: messageId,
         status,
