@@ -72,6 +72,7 @@ import {
   RawMaterialDailyItem,
   StockSnapshotItem,
   CampaignRecord,
+  TemplatePreset,
 } from '@/types';
 
 // Backend API base URL. Set via NEXT_PUBLIC_API_URL in environment.
