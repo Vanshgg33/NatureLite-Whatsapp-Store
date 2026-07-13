@@ -793,9 +793,10 @@ export class NotificationsService {
       await this.campaignModel.updateOne({ _id: campaign._id }, { $set: finalUpdate }).exec();
     } catch (err) {
       this.logger.error(`Broadcast template campaign ${data.campaignId} failed`, err);
+      const errMsg = err instanceof Error ? err.message : String(err);
       await this.campaignModel.updateOne(
         { _id: campaign._id },
-        { $set: { status: 'failed', sent, skipped, completedAt: new Date() } },
+        { $set: { status: 'failed', sent, skipped, completedAt: new Date(), errorSummary: errMsg } },
       ).exec();
       throw err;
     }
@@ -841,9 +842,10 @@ export class NotificationsService {
       await this.campaignModel.updateOne({ _id: campaign._id }, { $set: finalUpdate }).exec();
     } catch (err) {
       this.logger.error(`Broadcast media campaign ${data.campaignId} failed`, err);
+      const errMsg = err instanceof Error ? err.message : String(err);
       await this.campaignModel.updateOne(
         { _id: campaign._id },
-        { $set: { status: 'failed', sent, skipped, completedAt: new Date() } },
+        { $set: { status: 'failed', sent, skipped, completedAt: new Date(), errorSummary: errMsg } },
       ).exec();
       throw err;
     }

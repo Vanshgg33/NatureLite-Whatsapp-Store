@@ -48,31 +48,41 @@ const parsePhones = (value: string) => {
   return { valid, invalid };
 };
 
-// Parses a CSV/TSV text and extracts phone numbers.
-// Detects delimiter, finds a phone-like column by header name or by scanning values,
-// and returns all found numbers newline-joined.
-function extractPhonesFromCsv(text: string): { phones: string; found: number; colName: string } {
+// Parses a CSV/TSV text and extracts phone numbers and optional names.
+function extractPhonesFromCsv(text: string): { phones: string; found: number; colName: string; nameMap: Map<string, string> } {
   // Strip UTF-8 BOM that Excel adds
   const clean = text.startsWith('﻿') ? text.slice(1) : text;
-  const lines = clean.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  if (!lines.length) return { phones: '', found: 0, colName: '' };
 
-  // Detect delimiter: tab > semicolon > comma
+  // Handle all line-ending styles: CRLF, CR-only (old Mac), LF
+  const lines = clean.split(/\r\n|\r|\n/).map(l => l.trim()).filter(Boolean);
+  if (!lines.length) return { phones: '', found: 0, colName: '', nameMap: new Map() };
+
+  // Detect delimiter by counting occurrences OUTSIDE quoted regions in the first line.
+  // This avoids false positives from delimiter chars that appear inside quoted fields.
   const sample = lines[0];
-  const delimiter = sample.includes('\t') ? '\t' : sample.includes(';') ? ';' : ',';
+  let tabs = 0, semis = 0, commas = 0, inQ = false;
+  for (let i = 0; i < sample.length; i++) {
+    const c = sample[i];
+    if (c === '"') { if (inQ && sample[i + 1] === '"') i++; else inQ = !inQ; }
+    else if (!inQ) {
+      if (c === '\t') tabs++;
+      else if (c === ';') semis++;
+      else if (c === ',') commas++;
+    }
+  }
+  const delimiter = tabs > 0 ? '\t' : semis > commas ? ';' : ',';
 
   const parseRow = (line: string): string[] => {
     const cols: string[] = [];
     let cur = '';
-    let inQ = false;
+    let q = false;
     for (let i = 0; i < line.length; i++) {
       const c = line[i];
       if (c === '"') {
-        if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
-        else inQ = !inQ;
-      } else if (c === delimiter && !inQ) {
-        cols.push(cur.trim());
-        cur = '';
+        if (q && line[i + 1] === '"') { cur += '"'; i++; }
+        else q = !q;
+      } else if (c === delimiter && !q) {
+        cols.push(cur.trim()); cur = '';
       } else {
         cur += c;
       }
@@ -83,43 +93,124 @@ function extractPhonesFromCsv(text: string): { phones: string; found: number; co
 
   const rows = lines.map(parseRow);
   const firstRow = rows[0];
+  const headerLower = firstRow.map(h => h.toLowerCase().replace(/[\s_.:-]/g, ''));
 
-  // Try to find a phone column by header keyword
-  const phoneKeywords = ['phone', 'mobile', 'number', 'contact', 'tel', 'whatsapp', 'wa', 'cell'];
-  const headerLower = firstRow.map(h => h.toLowerCase().replace(/[\s_-]/g, ''));
-  let colIdx = headerLower.findIndex(h => phoneKeywords.some(kw => h.includes(kw)));
-  let colName = colIdx >= 0 ? firstRow[colIdx] : '';
-  let dataRows = colIdx >= 0 ? rows.slice(1) : rows;
+  // ── Phone column detection ──────────────────────────────────────────────
+  // Score a column by how many of its data-row values look like phone numbers.
+  const scorePhoneCol = (cIdx: number, dataR: string[][]) =>
+    dataR.reduce((n, r) => n + (/^\+?\d[\d\s\-()]{7,}$/.test((r[cIdx] ?? '').trim()) ? 1 : 0), 0);
+
+  // Keyword sets with exclusions to prevent false positives:
+  // - 'wa'/'contact'/'number' are too broad, so we block non-phone combos.
+  const strongKws   = ['phone', 'mobile', 'tel', 'whatsapp', 'cell'];
+  const weakKws     = ['contact', 'number', 'wa'];
+  const nonPhoneKws = ['email', 'mail', 'address', 'order', 'invoice', 'serial', 'ref', 'receipt', 'url', 'web', 'info', 'form'];
+
+  const isPhoneHeader = (h: string): boolean => {
+    if (nonPhoneKws.some(np => h.includes(np))) return false;
+    if (strongKws.some(kw => h.includes(kw))) return true;
+    // 'wa' only as a standalone or prefix/suffix, not buried in unrelated words
+    if (h === 'wa' || h.startsWith('wa') || h.endsWith('wa')) return true;
+    // 'contact' and 'number' only if they don't combine with non-phone words (already checked above)
+    return weakKws.some(kw => h.includes(kw));
+  };
+
+  // Collect ALL keyword-matching column candidates, score each by actual phone values,
+  // and pick the highest scorer — this handles the case where a non-phone col (like
+  // ordernumber) matches a keyword but has no phone-like values, while the real phone
+  // col (customerphone) is found later.
+  const dataRowsForScoring = rows.slice(1).length > 0 ? rows.slice(1) : rows;
+  const keywordCandidates = headerLower
+    .map((h, i) => ({ i, h, score: 0 }))
+    .filter(({ h }) => isPhoneHeader(h));
+
+  let colIdx    = -1;
+  let colName   = '';
+  let dataRows  = rows;
+  let hasHeader = false;
+
+  if (keywordCandidates.length > 0) {
+    // Score each candidate against data rows
+    for (const c of keywordCandidates) c.score = scorePhoneCol(c.i, dataRowsForScoring);
+    const best = keywordCandidates.reduce((a, b) => b.score > a.score ? b : a);
+
+    // Only trust the keyword match if it actually has phone-like values.
+    // If best score is 0, fall through to the heuristic scan below.
+    if (best.score > 0) {
+      colIdx    = best.i;
+      colName   = firstRow[colIdx];
+      dataRows  = rows.slice(1);
+      hasHeader = true;
+    }
+  }
 
   if (colIdx < 0) {
-    // No recognized header — find the column with the most phone-like values.
-    // Use reduce instead of spread to avoid stack overflow on large files.
+    // No keyword match with phone values — scan every column for the most phone-like values.
     const colCount = rows.reduce((m, r) => Math.max(m, r.length), 0);
-    let bestCol = 0;
-    let bestScore = 0;
+    let bestCol = 0, bestScore = 0;
     for (let c = 0; c < colCount; c++) {
-      const score = rows.filter(r => /^\+?\d[\d\s\-()]{7,}$/.test(r[c] ?? '')).length;
+      const score = scorePhoneCol(c, rows);
       if (score > bestScore) { bestScore = score; bestCol = c; }
     }
     colIdx = bestCol;
-    // If first row itself looks like a header (no digits), skip it
+    // If the first-row cell in that column has < 8 digits it's a header label, skip it
     const firstCellDigits = (firstRow[colIdx] ?? '').replace(/[^\d]/g, '');
     if (firstCellDigits.length < 8) {
-      colName = firstRow[colIdx] ?? 'column ' + (colIdx + 1);
-      dataRows = rows.slice(1);
+      colName   = firstRow[colIdx] ?? 'column ' + (colIdx + 1);
+      dataRows  = rows.slice(1);
+      hasHeader = true;
     } else {
       colName = 'column ' + (colIdx + 1);
       dataRows = rows;
     }
   }
 
-  const phones = dataRows
-    .map(r => (r[colIdx] ?? '').replace(/[\s\-()]/g, ''))
-    .filter(p => p.replace(/[^\d]/g, '').length >= 8)
-    .join('\n');
+  // ── Name column detection ───────────────────────────────────────────────
+  // Tier-1: exact match against unambiguous name headers
+  // Tier-2: ends with "name" or contains customer/client/person — but skip
+  //         headers that end in an ID/code suffix (customerid, clientcode, etc.)
+  let nameColIdx = -1;
+  if (hasHeader) {
+    const exactNameHeaders = new Set(['name', 'naam', 'fullname', 'customername', 'firstname', 'lastname', 'clientname', 'personname', 'recipientname', 'buyername', 'sendername']);
+    nameColIdx = headerLower.findIndex((h, i) => i !== colIdx && exactNameHeaders.has(h));
 
-  const found = phones ? phones.split('\n').length : 0;
-  return { phones, found, colName };
+    if (nameColIdx < 0) {
+      const idSuffixes = ['id', 'code', 'no', 'num', 'number', 'file', 'user', 'image', 'url', 'path', 'link', 'key', 'type', 'email', 'mail'];
+      nameColIdx = headerLower.findIndex((h, i) => {
+        if (i === colIdx) return false;
+        if (idSuffixes.some(s => h.endsWith(s))) return false;
+        return h.endsWith('name') || h.includes('customer') || h.includes('client') || h.includes('person');
+      });
+    }
+  }
+
+  // ── Extract phones ──────────────────────────────────────────────────────
+  const rawPhones = dataRows
+    .map(r => (r[colIdx] ?? '').replace(/[\s\-+()?]/g, ''))
+    .filter(p => p.replace(/[^\d]/g, '').length >= 8);
+
+  const phones = rawPhones.join('\n');
+
+  // Count unique entries that actually pass normalizeIndianPhone so the
+  // toast count matches what the valid-badge will show in the textarea.
+  const validSet = new Set<string>();
+  for (const p of rawPhones) { const n = normalizeIndianPhone(p); if (n) validSet.add(n); }
+  const found = validSet.size;
+
+  // ── Build phone → name map ──────────────────────────────────────────────
+  const nameMap = new Map<string, string>();
+  if (nameColIdx >= 0) {
+    for (const r of dataRows) {
+      const rawPhone = (r[colIdx] ?? '').replace(/[\s\-+()?]/g, '');
+      const name = (r[nameColIdx] ?? '').trim();
+      if (rawPhone.replace(/[^\d]/g, '').length >= 8 && name) {
+        const normalized = normalizeIndianPhone(rawPhone);
+        if (normalized) nameMap.set(normalized, name);
+      }
+    }
+  }
+
+  return { phones, found, colName, nameMap };
 }
 
 const fmtTime = (iso: string) =>
@@ -193,6 +284,7 @@ export default function CampaignsPage() {
   // Recipients
   const [recipientFilter, setRecipientFilter] = useState<RecipientFilter>('manual');
   const [manualPhones, setManualPhones]   = useState('');
+  const [csvNameMap, setCsvNameMap]       = useState<Map<string, string>>(new Map());
   const [customerSearch, setCustomerSearch] = useState('');
   // null = all selected (implicit); new Set() = none; Set([...ids]) = specific subset
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string> | null>(null);
@@ -411,8 +503,19 @@ export default function CampaignsPage() {
       toast({ title: 'Could not read file', description: 'Try re-exporting the CSV and uploading again.', variant: 'destructive' });
     };
     reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      const { phones, found, colName } = extractPhonesFromCsv(text);
+      const text = ev.target?.result;
+      if (typeof text !== 'string') {
+        toast({ title: 'Could not read file', description: 'File appears empty or unreadable.', variant: 'destructive' });
+        return;
+      }
+      let parsed: ReturnType<typeof extractPhonesFromCsv>;
+      try {
+        parsed = extractPhonesFromCsv(text);
+      } catch {
+        toast({ title: 'Could not parse file', description: 'Check that the file is a valid CSV and try again.', variant: 'destructive' });
+        return;
+      }
+      const { phones, found, colName, nameMap } = parsed;
       if (!found) {
         toast({ title: 'No phone numbers found', description: 'Make sure the file has a phone/mobile column or a column of numbers.', variant: 'destructive' });
       } else {
@@ -420,7 +523,15 @@ export default function CampaignsPage() {
           const existing = prev.trim();
           return existing ? existing + '\n' + phones : phones;
         });
-        toast({ title: `${found} number${found !== 1 ? 's' : ''} imported`, description: `From column: ${colName}` });
+        if (nameMap.size > 0) {
+          setCsvNameMap(prev => {
+            const merged = new Map(prev);
+            nameMap.forEach((v, k) => merged.set(k, v));
+            return merged;
+          });
+        }
+        const namesNote = nameMap.size > 0 ? ` · ${nameMap.size} names loaded` : '';
+        toast({ title: `${found} number${found !== 1 ? 's' : ''} imported`, description: `From column: ${colName}${namesNote}` });
       }
     };
     reader.readAsText(file);
@@ -463,12 +574,17 @@ export default function CampaignsPage() {
       // Empty static rows are still filtered to avoid sending blank params.
       // activeBodyRows is computed via useMemo at the top of the component.
       const hasNameBinding = activeBodyRows.some(r => r.field === 'customer_name');
-      const recipients = hasNameBinding && recipientFilter !== 'manual'
-        ? customersWithPhone
+      let recipients: { phone: string; name: string }[] | undefined;
+      if (hasNameBinding) {
+        if (recipientFilter !== 'manual') {
+          recipients = customersWithPhone
             .filter((u: User) => selectedUserIds === null || selectedUserIds.has(u._id))
             .map((u: User) => ({ phone: normalizeIndianPhone(u.phone), name: u.name || '' }))
-            .filter((r): r is { phone: string; name: string } => r.phone !== null)
-        : undefined;
+            .filter((r): r is { phone: string; name: string } => r.phone !== null);
+        } else if (csvNameMap.size > 0) {
+          recipients = finalPhones.map(p => ({ phone: p, name: csvNameMap.get(p) || '' }));
+        }
+      }
       const hasParamNames = activeBodyRows.some(r => r.paramName?.trim());
       return api.sendBroadcast(finalPhones, template, {
         languageCode: languageCode.trim() || 'en',
@@ -497,6 +613,7 @@ export default function CampaignsPage() {
       }
       // reset form
       setManualPhones('');
+      setCsvNameMap(new Map());
       setSelectedUserIds(null);
       if (messageType === 'template') {
         setTemplateName(''); setHeaderParams(''); setBodyParamRows([]); setButtonParams('');
@@ -814,10 +931,10 @@ export default function CampaignsPage() {
                     </button>
                   )}
 
-                  {bodyParamRows.some(r => r.field === 'customer_name') && recipientFilter === 'manual' && (
+                  {bodyParamRows.some(r => r.field === 'customer_name') && recipientFilter === 'manual' && csvNameMap.size === 0 && (
                     <p className="text-xs text-amber-500 flex items-center gap-1 mt-1">
                       <AlertCircle className="h-3 w-3 shrink-0" />
-                      Switch to "All customers" or "Has orders" to use customer name
+                      Upload a CSV with a name column, or switch to "All customers" / "Has orders" to use customer name
                     </p>
                   )}
                 </div>
@@ -1154,13 +1271,16 @@ export default function CampaignsPage() {
                   </div>
                   <Textarea
                     className="min-h-[180px] text-sm font-mono resize-none"
-                    placeholder={"One per line or comma-separated\n919876543210\n919876543211\n\nOr upload a CSV with a phone/mobile column"}
+                    placeholder={"One per line or comma-separated\n919876543210\n919876543211\n\nOr upload a CSV with phone + name columns"}
                     value={manualPhones}
                     onChange={(e) => setManualPhones(e.target.value)}
                   />
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Include country code (91…) · CSV with phone column also works</span>
+                    <span>Include country code (91…) · CSV with phone + name column also works</span>
                     <div className="flex gap-2">
+                      {csvNameMap.size > 0 && (
+                        <Badge variant="secondary" className="text-green-700 bg-green-50 border-green-200">{csvNameMap.size} names</Badge>
+                      )}
                       {manualParsed.invalid > 0 && (
                         <Badge variant="secondary">{manualParsed.invalid} invalid</Badge>
                       )}
@@ -1336,10 +1456,10 @@ export default function CampaignsPage() {
                       )}
                     </div>
                   </div>
-                  {c.errorSummary && (
+                  {(c.errorSummary || c.status === 'failed') && (
                     <p className="mt-1.5 text-xs text-red-600 flex items-start gap-1">
                       <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
-                      {c.errorSummary}
+                      {c.errorSummary ?? 'Campaign processor crashed — check server logs for details'}
                     </p>
                   )}
                 </div>

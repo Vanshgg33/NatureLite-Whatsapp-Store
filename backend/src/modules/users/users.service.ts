@@ -15,12 +15,23 @@ import { parseObjectId } from '../../common/utils/objectid.util';
 export class UsersService {
   constructor(private readonly userRepository: UserRepository) {}
 
+  // Strips non-digits, adds 91 prefix for 10-digit Indian numbers.
+  // Returns null for anything that can't be a valid phone after cleanup.
+  static normalizePhone(raw: string): string | null {
+    const digits = (raw || '').replace(/[^\d]/g, '');
+    let n = digits;
+    if (n.length === 10) n = '91' + n;
+    else if (n.length === 11 && n.startsWith('0')) n = '91' + n.slice(1);
+    return n.length >= 10 ? n : null;
+  }
+
   async create(dto: CreateUserDto): Promise<User> {
-    const existingUser = await this.userRepository.findOneByPhone(dto.phone);
+    const normalizedPhone = UsersService.normalizePhone(dto.phone) ?? dto.phone;
+    const existingUser = await this.userRepository.findOneByPhone(normalizedPhone);
     if (existingUser) {
       throw new BadRequestException('User with this phone already exists');
     }
-    return this.userRepository.create(dto as Partial<User>);
+    return this.userRepository.create({ ...dto, phone: normalizedPhone } as Partial<User>);
   }
 
   async findAll(query: UserQueryDto): Promise<PaginatedResult<User>> {
@@ -37,11 +48,13 @@ export class UsersService {
   }
 
   async findByPhone(phone: string): Promise<User | null> {
-    return this.userRepository.findOneByPhone(phone);
+    const normalized = UsersService.normalizePhone(phone) ?? phone;
+    return this.userRepository.findOneByPhone(normalized);
   }
 
   async findManyByPhones(phones: string[]): Promise<User[]> {
-    return this.userRepository.findManyByPhones(phones);
+    const normalized = phones.map(p => UsersService.normalizePhone(p) ?? p);
+    return this.userRepository.findManyByPhones(normalized);
   }
 
   /**
@@ -55,7 +68,8 @@ export class UsersService {
     if (!trimmed) {
       throw new BadRequestException('Name cannot be empty');
     }
-    const userDoc = await this.userRepository.findOrCreateByPhoneAtomic(phone);
+    const normalized = UsersService.normalizePhone(phone) ?? phone;
+    const userDoc = await this.userRepository.findOrCreateByPhoneAtomic(normalized);
     userDoc.name = trimmed;
     return userDoc.save();
   }
@@ -66,7 +80,8 @@ export class UsersService {
    */
   async findOrCreateByPhone(phone: string): Promise<User> {
     if (!phone) throw new BadRequestException('Phone is required');
-    return this.userRepository.findOrCreateByPhoneAtomic(phone);
+    const normalized = UsersService.normalizePhone(phone) ?? phone;
+    return this.userRepository.findOrCreateByPhoneAtomic(normalized);
   }
 
   async update(id: string, dto: UpdateUserDto): Promise<User> {
