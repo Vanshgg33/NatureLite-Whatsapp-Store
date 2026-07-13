@@ -628,11 +628,11 @@ export default function CampaignsPage() {
 
   const handleConfirmCsvMapper = () => {
     const { phones, found, nameMap } = extractPhonesFromRowsByIndex(csvMapperRows, csvPhoneCol, csvNameCol, csvMapperHasHeader);
-    setCsvMapperOpen(false);
     if (!found) {
       toast({ title: 'No phone numbers found', description: 'Try selecting a different phone column.', variant: 'destructive' });
       return;
     }
+    setCsvMapperOpen(false);
     setManualPhones(prev => { const ex = prev.trim(); return ex ? ex + '\n' + phones : phones; });
     if (nameMap.size > 0) {
       setCsvNameMap(prev => { const m = new Map(prev); nameMap.forEach((v, k) => m.set(k, v)); return m; });
@@ -1594,7 +1594,11 @@ export default function CampaignsPage() {
               <h3 className="text-xs font-semibold text-primary uppercase tracking-wider">Phone Column <span className="text-red-500">*</span></h3>
               <select
                 value={csvPhoneCol}
-                onChange={e => setCsvPhoneCol(Number(e.target.value))}
+                onChange={e => {
+                  const v = Number(e.target.value);
+                  setCsvPhoneCol(v);
+                  if (csvNameCol === v) setCsvNameCol(-1);
+                }}
                 className="w-full text-sm border rounded-lg h-9 px-2 bg-background outline-none focus:ring-2 focus:ring-primary/30"
               >
                 {(csvMapperHasHeader ? csvMapperHeaders : csvMapperHeaders.map((_, i) => `Column ${i + 1}`)).map((h, i) => (
