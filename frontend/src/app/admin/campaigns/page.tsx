@@ -5,7 +5,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2, Megaphone, Phone, Send, Users, Image as ImageIcon,
   Upload, X, Search, LinkIcon, RefreshCw, Clock, AlertCircle, Smartphone, FileSpreadsheet,
+  Columns, Grid,
 } from 'lucide-react';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
 import { Header } from '@/components/layout/header';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -213,6 +217,91 @@ function extractPhonesFromCsv(text: string): { phones: string; found: number; co
   return { phones, found, colName, nameMap };
 }
 
+// Parse CSV text into raw rows + auto-detect best phone/name column indices.
+function parseCsvForMapper(text: string): {
+  headers: string[]; rows: string[][]; hasHeader: boolean;
+  detectedPhoneCol: number; detectedNameCol: number;
+} | null {
+  const clean = text.startsWith('﻿') ? text.slice(1) : text;
+  const lines = clean.split(/\r\n|\r|\n/).map(l => l.trim()).filter(Boolean);
+  if (!lines.length) return null;
+  const sample = lines[0];
+  let tabs = 0, semis = 0, commas = 0, inQ = false;
+  for (let i = 0; i < sample.length; i++) {
+    const c = sample[i];
+    if (c === '"') { if (inQ && sample[i + 1] === '"') i++; else inQ = !inQ; }
+    else if (!inQ) { if (c === '\t') tabs++; else if (c === ';') semis++; else if (c === ',') commas++; }
+  }
+  const delim = tabs > 0 ? '\t' : semis > commas ? ';' : ',';
+  const parseRow = (line: string): string[] => {
+    const cols: string[] = []; let cur = ''; let q = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') { if (q && line[i + 1] === '"') { cur += '"'; i++; } else q = !q; }
+      else if (c === delim && !q) { cols.push(cur.trim()); cur = ''; }
+      else cur += c;
+    }
+    cols.push(cur.trim()); return cols;
+  };
+  const rows = lines.map(parseRow);
+  const firstRow = rows[0];
+  const headerLower = firstRow.map(h => h.toLowerCase().replace(/[\s_.:-]/g, ''));
+  const scorePhone = (ci: number, dr: string[][]) =>
+    dr.reduce((n, r) => n + (/^\+?\d[\d\s\-()]{7,}$/.test((r[ci] ?? '').trim()) ? 1 : 0), 0);
+  const strongKws = ['phone','mobile','tel','whatsapp','cell'];
+  const weakKws   = ['contact','number','wa'];
+  const noKws     = ['email','mail','address','order','invoice','serial','ref','receipt','url','web'];
+  const isPhoneH  = (h: string) => !noKws.some(k => h.includes(k)) && (strongKws.some(k => h.includes(k)) || weakKws.some(k => h.includes(k)));
+  const dataRows  = rows.slice(1).length > 0 ? rows.slice(1) : rows;
+  const kwCands   = headerLower.map((h, i) => ({ i, score: 0 })).filter((_, i) => isPhoneH(headerLower[i]));
+  let phoneCol = 0; let hasHeader = false;
+  if (kwCands.length > 0) {
+    for (const c of kwCands) c.score = scorePhone(c.i, dataRows);
+    const best = kwCands.reduce((a, b) => b.score > a.score ? b : a);
+    if (best.score > 0) { phoneCol = best.i; hasHeader = true; }
+  }
+  if (!hasHeader) {
+    const colCount = rows.reduce((m, r) => Math.max(m, r.length), 0);
+    let bestCol = 0, bestScore = 0;
+    for (let c = 0; c < colCount; c++) { const s = scorePhone(c, rows); if (s > bestScore) { bestScore = s; bestCol = c; } }
+    phoneCol = bestCol;
+    const firstCellDigits = (firstRow[phoneCol] ?? '').replace(/[^\d]/g, '');
+    if (firstCellDigits.length < 8) hasHeader = true;
+  }
+  const exactNames = new Set(['name','naam','fullname','customername','firstname','lastname','clientname','personname','recipientname']);
+  const idSuf = ['id','code','no','num','number','file','user','image','url','path','link','key','type','email','mail'];
+  let nameCol = hasHeader
+    ? headerLower.findIndex((h, i) => i !== phoneCol && exactNames.has(h))
+    : -1;
+  if (nameCol < 0 && hasHeader) {
+    nameCol = headerLower.findIndex((h, i) =>
+      i !== phoneCol && !idSuf.some(s => h.endsWith(s)) &&
+      (h.endsWith('name') || h.includes('customer') || h.includes('client') || h.includes('person'))
+    );
+  }
+  return { headers: firstRow, rows, hasHeader, detectedPhoneCol: phoneCol, detectedNameCol: nameCol };
+}
+
+// Extract phones/names from rows using explicit column indices.
+function extractPhonesFromRowsByIndex(
+  rows: string[][], phoneCol: number, nameCol: number, hasHeader: boolean,
+): { phones: string; found: number; nameMap: Map<string, string> } {
+  const dataRows = hasHeader ? rows.slice(1) : rows;
+  const rawPhones = dataRows.map(r => (r[phoneCol] ?? '').replace(/[\s\-+()?]/g, '')).filter(p => p.replace(/[^\d]/g, '').length >= 8);
+  const phones = rawPhones.join('\n');
+  const validSet = new Set<string>();
+  for (const p of rawPhones) { const n = normalizeIndianPhone(p); if (n) validSet.add(n); }
+  const nameMap = new Map<string, string>();
+  if (nameCol >= 0) {
+    for (const r of dataRows) {
+      const rp = (r[phoneCol] ?? '').replace(/[\s\-+()?]/g, '');
+      const name = (r[nameCol] ?? '').trim();
+      if (rp.replace(/[^\d]/g, '').length >= 8 && name) { const n = normalizeIndianPhone(rp); if (n) nameMap.set(n, name); }
+    }
+  }
+  return { phones, found: validSet.size, nameMap };
+}
+
 const fmtTime = (iso: string) =>
   new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
@@ -291,6 +380,14 @@ export default function CampaignsPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const csvFileInputRef = useRef<HTMLInputElement>(null);
+
+  // CSV column mapper dialog state
+  const [csvMapperOpen, setCsvMapperOpen] = useState(false);
+  const [csvMapperRows, setCsvMapperRows] = useState<string[][]>([]);
+  const [csvMapperHeaders, setCsvMapperHeaders] = useState<string[]>([]);
+  const [csvMapperHasHeader, setCsvMapperHasHeader] = useState(false);
+  const [csvPhoneCol, setCsvPhoneCol] = useState(0);
+  const [csvNameCol, setCsvNameCol] = useState(-1);
 
   // ── Customer list query ──────────────────────────────────────────────────
   const { data: usersData, isFetching: usersLoading, refetch: refetchUsers } = useQuery({
@@ -494,49 +591,55 @@ export default function CampaignsPage() {
   const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (csvFileInputRef.current) csvFileInputRef.current.value = '';
     if (file.size > 5 * 1024 * 1024) {
       toast({ title: 'File too large', description: 'Max 5 MB', variant: 'destructive' });
       return;
     }
+    if (/\.xlsx?$/i.test(file.name)) {
+      toast({ title: 'Excel files not supported', description: 'Open the sheet in Excel → File → Save As → CSV (.csv), then upload that file.', variant: 'destructive' });
+      return;
+    }
     const reader = new FileReader();
-    reader.onerror = () => {
-      toast({ title: 'Could not read file', description: 'Try re-exporting the CSV and uploading again.', variant: 'destructive' });
-    };
+    reader.onerror = () => toast({ title: 'Could not read file', description: 'Try re-exporting the CSV.', variant: 'destructive' });
     reader.onload = (ev) => {
       const text = ev.target?.result;
-      if (typeof text !== 'string') {
-        toast({ title: 'Could not read file', description: 'File appears empty or unreadable.', variant: 'destructive' });
+      if (typeof text !== 'string') { toast({ title: 'Could not read file', variant: 'destructive' }); return; }
+      // Detect binary (XLSX/ZIP starts with PK magic bytes)
+      if (text.startsWith('PK')) {
+        toast({ title: 'Excel files not supported', description: 'Save as CSV first, then upload.', variant: 'destructive' });
         return;
       }
-      let parsed: ReturnType<typeof extractPhonesFromCsv>;
-      try {
-        parsed = extractPhonesFromCsv(text);
-      } catch {
-        toast({ title: 'Could not parse file', description: 'Check that the file is a valid CSV and try again.', variant: 'destructive' });
+      let parsed: ReturnType<typeof parseCsvForMapper>;
+      try { parsed = parseCsvForMapper(text); } catch { parsed = null; }
+      if (!parsed || !parsed.rows.length) {
+        toast({ title: 'Could not parse file', description: 'Check that the file is a valid CSV.', variant: 'destructive' });
         return;
       }
-      const { phones, found, colName, nameMap } = parsed;
-      if (!found) {
-        toast({ title: 'No phone numbers found', description: 'Make sure the file has a phone/mobile column or a column of numbers.', variant: 'destructive' });
-      } else {
-        setManualPhones(prev => {
-          const existing = prev.trim();
-          return existing ? existing + '\n' + phones : phones;
-        });
-        if (nameMap.size > 0) {
-          setCsvNameMap(prev => {
-            const merged = new Map(prev);
-            nameMap.forEach((v, k) => merged.set(k, v));
-            return merged;
-          });
-        }
-        const namesNote = nameMap.size > 0 ? ` · ${nameMap.size} names loaded` : '';
-        toast({ title: `${found} number${found !== 1 ? 's' : ''} imported`, description: `From column: ${colName}${namesNote}` });
-      }
+      setCsvMapperRows(parsed.rows);
+      setCsvMapperHeaders(parsed.headers);
+      setCsvMapperHasHeader(parsed.hasHeader);
+      setCsvPhoneCol(parsed.detectedPhoneCol);
+      setCsvNameCol(parsed.detectedNameCol);
+      setCsvMapperOpen(true);
     };
     reader.readAsText(file);
-    // Reset so same file can be re-uploaded
-    if (csvFileInputRef.current) csvFileInputRef.current.value = '';
+  };
+
+  const handleConfirmCsvMapper = () => {
+    const { phones, found, nameMap } = extractPhonesFromRowsByIndex(csvMapperRows, csvPhoneCol, csvNameCol, csvMapperHasHeader);
+    setCsvMapperOpen(false);
+    if (!found) {
+      toast({ title: 'No phone numbers found', description: 'Try selecting a different phone column.', variant: 'destructive' });
+      return;
+    }
+    setManualPhones(prev => { const ex = prev.trim(); return ex ? ex + '\n' + phones : phones; });
+    if (nameMap.size > 0) {
+      setCsvNameMap(prev => { const m = new Map(prev); nameMap.forEach((v, k) => m.set(k, v)); return m; });
+    }
+    const colLabel = csvMapperHasHeader ? (csvMapperHeaders[csvPhoneCol] ?? `Col ${csvPhoneCol + 1}`) : `Col ${csvPhoneCol + 1}`;
+    const nameNote = nameMap.size > 0 ? ` · ${nameMap.size} names` : '';
+    toast({ title: `${found} number${found !== 1 ? 's' : ''} imported`, description: `From: ${colLabel}${nameNote}` });
   };
 
   // ── Send ─────────────────────────────────────────────────────────────────
@@ -1264,7 +1367,7 @@ export default function CampaignsPage() {
                     <input
                       ref={csvFileInputRef}
                       type="file"
-                      accept=".csv,.tsv,.txt"
+                      accept=".csv,.tsv,.txt,.xlsx,.xls"
                       onChange={handleCsvUpload}
                       className="hidden"
                     />
@@ -1470,5 +1573,85 @@ export default function CampaignsPage() {
 
       </div>
     </div>
+
+    {/* ── CSV Column Mapper Dialog ─────────────────────────────────────────── */}
+    <Dialog open={csvMapperOpen} onOpenChange={setCsvMapperOpen}>
+      <DialogContent className="sm:max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Columns className="h-5 w-5 text-primary" /> Map CSV Columns
+          </DialogTitle>
+          <DialogDescription>
+            Select which column contains phone numbers and (optionally) customer names.
+            Auto-detection has pre-selected the best match.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-2">
+          {/* Column selectors */}
+          <div className="space-y-4">
+            <div className="border rounded-xl p-4 bg-primary/[0.02] space-y-3">
+              <h3 className="text-xs font-semibold text-primary uppercase tracking-wider">Phone Column <span className="text-red-500">*</span></h3>
+              <select
+                value={csvPhoneCol}
+                onChange={e => setCsvPhoneCol(Number(e.target.value))}
+                className="w-full text-sm border rounded-lg h-9 px-2 bg-background outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                {(csvMapperHasHeader ? csvMapperHeaders : csvMapperHeaders.map((_, i) => `Column ${i + 1}`)).map((h, i) => (
+                  <option key={i} value={i}>{h || `Column ${i + 1}`}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="border rounded-xl p-4 bg-muted/20 space-y-3">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Name Column <span className="text-muted-foreground">(optional)</span></h3>
+              <select
+                value={csvNameCol}
+                onChange={e => setCsvNameCol(Number(e.target.value))}
+                className="w-full text-sm border rounded-lg h-9 px-2 bg-background outline-none focus:ring-2 focus:ring-primary/20"
+              >
+                <option value={-1}>— Don't import names —</option>
+                {(csvMapperHasHeader ? csvMapperHeaders : csvMapperHeaders.map((_, i) => `Column ${i + 1}`)).map((h, i) => (
+                  i !== csvPhoneCol ? <option key={i} value={i}>{h || `Column ${i + 1}`}</option> : null
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">Used to resolve {`{{customer_name}}`} in templates.</p>
+            </div>
+          </div>
+
+          {/* Live preview */}
+          <div className="border rounded-xl p-4 bg-primary/[0.01] flex flex-col">
+            <h3 className="text-xs font-semibold mb-3 flex items-center gap-1.5 text-primary border-b pb-2">
+              <Grid className="h-4 w-4" /> Preview (first 3 rows)
+            </h3>
+            <div className="space-y-2 overflow-y-auto flex-1">
+              {(csvMapperHasHeader ? csvMapperRows.slice(1, 4) : csvMapperRows.slice(0, 3)).map((row, idx) => {
+                const phone = (row[csvPhoneCol] ?? '').trim();
+                const name  = csvNameCol >= 0 ? (row[csvNameCol] ?? '').trim() : '';
+                return (
+                  <div key={idx} className="bg-background border rounded-lg p-2.5 font-mono text-xs space-y-1 shadow-sm">
+                    <div className="text-[10px] font-sans font-bold text-primary border-b pb-1">ROW #{idx + 1}</div>
+                    <div><span className="font-sans text-muted-foreground">phone:</span> <span className={phone ? 'text-foreground' : 'text-red-400 italic'}>{phone || '(empty)'}</span></div>
+                    {csvNameCol >= 0 && <div><span className="font-sans text-muted-foreground">name:</span> <span className={name ? 'text-foreground' : 'text-muted-foreground italic'}>{name || '(empty)'}</span></div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="border-t pt-3 mt-2 flex items-center sm:justify-between w-full flex-wrap gap-2">
+          <p className="text-xs text-muted-foreground">
+            {csvMapperRows.length - (csvMapperHasHeader ? 1 : 0)} data rows · {csvMapperHeaders.length} column{csvMapperHeaders.length !== 1 ? 's' : ''} detected
+          </p>
+          <div className="flex items-center gap-2 ml-auto">
+            <Button variant="outline" size="sm" onClick={() => setCsvMapperOpen(false)}>Cancel</Button>
+            <Button size="sm" onClick={handleConfirmCsvMapper}>
+              <Upload className="mr-1.5 h-3.5 w-3.5" /> Import Numbers
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
