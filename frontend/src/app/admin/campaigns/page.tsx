@@ -843,6 +843,7 @@ export default function CampaignsPage() {
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
+    <>
     <div>
       <Header title="Campaigns" description="Send WhatsApp messages to your customers" />
 
@@ -1657,5 +1658,6 @@ export default function CampaignsPage() {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   );
 }
