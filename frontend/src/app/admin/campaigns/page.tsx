@@ -596,24 +596,15 @@ export default function CampaignsPage() {
       toast({ title: 'File too large', description: 'Max 5 MB', variant: 'destructive' });
       return;
     }
-    if (/\.xlsx?$/i.test(file.name)) {
-      toast({ title: 'Excel files not supported', description: 'Open the sheet in Excel → File → Save As → CSV (.csv), then upload that file.', variant: 'destructive' });
-      return;
-    }
+    const isExcel = /\.xlsx?$|\.ods$/i.test(file.name);
     const reader = new FileReader();
-    reader.onerror = () => toast({ title: 'Could not read file', description: 'Try re-exporting the CSV.', variant: 'destructive' });
-    reader.onload = (ev) => {
-      const text = ev.target?.result;
-      if (typeof text !== 'string') { toast({ title: 'Could not read file', variant: 'destructive' }); return; }
-      // Detect binary (XLSX/ZIP starts with PK magic bytes)
-      if (text.startsWith('PK')) {
-        toast({ title: 'Excel files not supported', description: 'Save as CSV first, then upload.', variant: 'destructive' });
-        return;
-      }
+    reader.onerror = () => toast({ title: 'Could not read file', description: 'Try re-exporting the file.', variant: 'destructive' });
+
+    const openMapper = (text: string) => {
       let parsed: ReturnType<typeof parseCsvForMapper>;
       try { parsed = parseCsvForMapper(text); } catch { parsed = null; }
       if (!parsed || !parsed.rows.length) {
-        toast({ title: 'Could not parse file', description: 'Check that the file is a valid CSV.', variant: 'destructive' });
+        toast({ title: 'Could not parse file', description: 'Check that the file is a valid CSV or spreadsheet.', variant: 'destructive' });
         return;
       }
       setCsvMapperRows(parsed.rows);
@@ -623,7 +614,28 @@ export default function CampaignsPage() {
       setCsvNameCol(parsed.detectedNameCol);
       setCsvMapperOpen(true);
     };
-    reader.readAsText(file);
+
+    if (isExcel) {
+      reader.onload = async (ev) => {
+        try {
+          const XLSX = await import('xlsx');
+          const buf = ev.target?.result as ArrayBuffer;
+          const wb = XLSX.read(buf, { type: 'array' });
+          const csv = XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]);
+          openMapper(csv);
+        } catch {
+          toast({ title: 'Could not read spreadsheet', description: 'Try saving as CSV and uploading that.', variant: 'destructive' });
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload = (ev) => {
+        const text = ev.target?.result;
+        if (typeof text !== 'string') { toast({ title: 'Could not read file', variant: 'destructive' }); return; }
+        openMapper(text);
+      };
+      reader.readAsText(file);
+    }
   };
 
   const handleConfirmCsvMapper = () => {
@@ -1368,7 +1380,7 @@ export default function CampaignsPage() {
                     <input
                       ref={csvFileInputRef}
                       type="file"
-                      accept=".csv,.tsv,.txt,.xlsx,.xls"
+                      accept=".csv,.tsv,.txt,.xlsx,.xls,.ods"
                       onChange={handleCsvUpload}
                       className="hidden"
                     />
