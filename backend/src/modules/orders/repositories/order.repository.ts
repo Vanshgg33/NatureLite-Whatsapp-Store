@@ -79,7 +79,15 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
     }
     if (forPacking) {
       filter.$or = [
-        { status: { $in: ['placed', 'confirmed'] } },
+        { status: 'placed' },
+        {
+          status: 'confirmed',
+          $or: [
+            { assignedDeliveryUserId: { $exists: false } },
+            { assignedDeliveryUserId: null },
+            { assignedDeliveryUserId: '' },
+          ],
+        },
         {
           status: 'preparing',
           $or: [{ packedAt: null }, { packedAt: { $exists: false } }],

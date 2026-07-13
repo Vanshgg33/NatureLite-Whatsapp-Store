@@ -75,6 +75,9 @@ export class OrdersController {
       query.forDelivery = true;
       query.deliveryUserId = user.sub;
     }
+    if ((user.departmentType === 'packing' || user.departmentType === 'billing') && user.storeName && !query.city) {
+      query.city = user.storeName;
+    }
     return this.ordersService.findAll(query);
   }
 

@@ -162,6 +162,7 @@ export class AuthService {
       phone: admin.phone || '',
       role: admin.role,
       storeId,
+      storeName,
       departmentType: admin.departmentType,
     };
 
@@ -230,6 +231,7 @@ export class AuthService {
       phone: admin.phone || '',
       role: admin.role,
       storeId,
+      storeName,
       departmentType: admin.departmentType,
     };
 
