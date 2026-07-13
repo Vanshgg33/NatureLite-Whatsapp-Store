@@ -88,10 +88,7 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
             { assignedDeliveryUserId: '' },
           ],
         },
-        {
-          status: 'preparing',
-          $or: [{ packedAt: null }, { packedAt: { $exists: false } }],
-        },
+        { status: 'preparing' },
       ];
       filter.dismissedFromViews = { $nin: ['packing'] };
     } else if (forBilling) {
