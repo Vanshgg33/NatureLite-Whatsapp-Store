@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useCallback, useState, useEffect } from 'react';
+import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useDebouncedValue } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
@@ -78,9 +78,12 @@ export default function DeliveryHistoryPage() {
   // Local input state — decoupled from URL so typing is instant with no router round-trip
   const [searchInput, setSearchInput] = useState(urlSearch);
   const debouncedSearch = useDebouncedValue(searchInput, 300);
+  const searchMounted = useRef(false);
 
-  // Push debounced value to URL (for bookmarkability / back-forward)
+  // Push debounced value to URL (for bookmarkability / back-forward).
+  // Skip the very first fire on mount — the URL is already correct on load.
   useEffect(() => {
+    if (!searchMounted.current) { searchMounted.current = true; return; }
     const p = new URLSearchParams(searchParams.toString());
     if (debouncedSearch) p.set('q', debouncedSearch); else p.delete('q');
     router.replace(`?${p.toString()}`, { scroll: false });
@@ -173,7 +176,7 @@ export default function DeliveryHistoryPage() {
   // paymentMethod is only set for single-method deliveries; partial payment has neither.
   const effectivePM = (o: Order) => {
     if (isPartialPayment(o)) return 'partial';
-    return o.metadata?.deliveryWorkflow?.paymentMethod === 'upi' ? 'upi' : o.paymentMethod;
+    return o.metadata?.deliveryWorkflow?.paymentMethod === 'upi' ? 'upi' : (o.paymentMethod ?? 'cash');
   };
 
   // Summary totals — partial payments split into their cash and UPI portions separately.
@@ -313,10 +316,11 @@ export default function DeliveryHistoryPage() {
                     deliveryBoyMap.get(order.assignedDeliveryUserId ?? '') ??
                     (order as any).assignedToName ??
                     '—';
-                  const deliveredDate = order.deliveredAt
-                    ? format(new Date(order.deliveredAt), 'dd MMM yyyy, hh:mm a')
-                    : order.updatedAt
-                    ? format(new Date(order.updatedAt), 'dd MMM yyyy')
+                  const safeDate = (s: string | undefined) => { const d = s ? new Date(s) : null; return d && !isNaN(d.getTime()) ? d : null; };
+                  const deliveredDate = safeDate(order.deliveredAt)
+                    ? format(safeDate(order.deliveredAt)!, 'dd MMM yyyy, hh:mm a')
+                    : safeDate(order.updatedAt)
+                    ? format(safeDate(order.updatedAt)!, 'dd MMM yyyy')
                     : '—';
 
                   return (
