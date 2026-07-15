@@ -443,7 +443,7 @@ export default function OrdersPage() {
     setEditProductSearch('');
     setEditCart(
       (order.items || []).map((item) => ({
-        productId: typeof item.product === 'string' ? item.product : (item.product as any)._id,
+        productId: typeof item.product === 'string' ? item.product : (item.product as any)?._id ?? '',
         variantSku: item.variantSku,
         name: item.variantName ? `${item.name} · ${item.variantName}` : item.name,
         price: item.price,

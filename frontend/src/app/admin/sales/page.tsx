@@ -1162,7 +1162,7 @@ export default function SalesPage() {
                     : '—'}
                 </p>
                 <div className="flex items-center justify-between mt-3 pt-3 border-t">
-                  <span className="font-bold">₹{sale.total.toLocaleString()}</span>
+                  <span className="font-bold">₹{(sale.total ?? 0).toLocaleString()}</span>
                   <span className="text-xs text-gray-500 capitalize">{sale.paymentMethod}</span>
                 </div>
                 <div className="flex gap-2 mt-3 flex-wrap">
@@ -1298,7 +1298,7 @@ export default function SalesPage() {
                           ? sale.items.map((it: { name: string; quantity: number }) => `${it.name} × ${it.quantity}`).join(', ')
                           : '—'}
                       </td>
-                      <td className="p-4 text-sm font-bold">₹{sale.total.toLocaleString()}</td>
+                      <td className="p-4 text-sm font-bold">₹{(sale.total ?? 0).toLocaleString()}</td>
                       <td className="p-4">
                         <div className="flex items-center gap-2">
                           <span className="text-sm text-gray-600 capitalize">{sale.paymentMethod}</span>
@@ -1377,7 +1377,7 @@ export default function SalesPage() {
                 })}
                 {(!salesData?.items || salesData.items.length === 0) && (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-gray-500">
+                    <td colSpan={7} className="p-8 text-center text-gray-500">
                       <Receipt className="h-10 w-10 mx-auto mb-3 text-gray-300" />
                       <p>No sales found</p>
                     </td>

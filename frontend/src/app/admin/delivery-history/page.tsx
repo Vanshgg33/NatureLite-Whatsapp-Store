@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useDebouncedValue } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Order, DeliveryLedgerRow, AdminUser } from '@/types';
@@ -71,8 +72,26 @@ export default function DeliveryHistoryPage() {
   const today = format(startOfDay(new Date()), 'yyyy-MM-dd');
   const startDate = searchParams.get('from') ?? today;
   const endDate = searchParams.get('to') ?? format(new Date(), 'yyyy-MM-dd');
-  const search = searchParams.get('q') ?? '';
+  const urlSearch = searchParams.get('q') ?? '';
   const selectedBoyId = searchParams.get('boy') ?? '';
+
+  // Local input state — decoupled from URL so typing is instant with no router round-trip
+  const [searchInput, setSearchInput] = useState(urlSearch);
+  const debouncedSearch = useDebouncedValue(searchInput, 300);
+
+  // Push debounced value to URL (for bookmarkability / back-forward)
+  useEffect(() => {
+    const p = new URLSearchParams(searchParams.toString());
+    if (debouncedSearch) p.set('q', debouncedSearch); else p.delete('q');
+    router.replace(`?${p.toString()}`, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
+
+  // Sync local input when URL changes externally (browser back/forward or deep-link)
+  useEffect(() => {
+    if (urlSearch !== searchInput) setSearchInput(urlSearch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlSearch]);
 
   const setParam = useCallback((key: string, value: string) => {
     const p = new URLSearchParams(searchParams.toString());
@@ -82,7 +101,6 @@ export default function DeliveryHistoryPage() {
 
   const setStartDate = (v: string) => setParam('from', v);
   const setEndDate = (v: string) => setParam('to', v);
-  const setSearch = (v: string) => setParam('q', v);
   const setSelectedBoyId = (v: string) => setParam('boy', v);
 
   const startIso = `${startDate}T00:00:00`;
@@ -133,22 +151,19 @@ export default function DeliveryHistoryPage() {
     enabled: ledgerRows.length > 0 || !!selectedBoyId,
   });
 
-  // Client-side filter — name, phone, alternate phone, order number, user name
+  // Client-side filter — filters instantly against local input state (not URL)
   const filtered = useMemo(() => {
-    if (!search.trim()) return orders;
-    const q = search.trim().toLowerCase();
+    if (!searchInput.trim()) return orders;
+    const q = searchInput.trim().toLowerCase();
     return orders.filter((o) => {
       const name = (o.shippingAddress?.name ?? '').toLowerCase();
       const phone = (o.shippingAddress?.phone ?? '').toLowerCase();
       const altPhone = (o.shippingAddress?.alternatePhone ?? '').toLowerCase();
       const orderNum = (o.orderNumber ?? '').toLowerCase();
-      const customerName =
-        typeof o.user === 'object' && o.user !== null
-          ? ((o.user as any).name ?? '').toLowerCase()
-          : '';
-      return name.includes(q) || phone.includes(q) || altPhone.includes(q) || orderNum.includes(q) || customerName.includes(q);
+      const deliveryBoy = (deliveryBoyMap.get(o.assignedDeliveryUserId ?? '') ?? '').toLowerCase();
+      return name.includes(q) || phone.includes(q) || altPhone.includes(q) || orderNum.includes(q) || deliveryBoy.includes(q);
     });
-  }, [orders, search]);
+  }, [orders, searchInput, deliveryBoyMap]);
 
   const isPartialPayment = (o: Order) =>
     o.metadata?.deliveryWorkflow?.status === 'partial_payment' ||
@@ -227,9 +242,9 @@ export default function DeliveryHistoryPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Name, phone, or order number…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Name, phone, order number, or delivery boy…"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               className="border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-green-500"
             />
           </div>

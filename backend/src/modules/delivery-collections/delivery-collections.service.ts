@@ -162,7 +162,7 @@ export class DeliveryCollectionsService {
         assignedDeliveryUserId: deliveryUserId,
         deliveredAt: { $gte: start, $lte: end },
       })
-      .select('orderNumber shippingAddress total amountCollected paymentMethod collectionStatus deliveredAt paymentProofUrl deliveryProofUrl collectionStatus settledAt')
+      .select('orderNumber shippingAddress total amountCollected paymentMethod collectionStatus deliveredAt paymentProofUrl deliveryProofUrl settledAt assignedDeliveryUserId metadata')
       .sort({ deliveredAt: -1 })
       .lean();
 
