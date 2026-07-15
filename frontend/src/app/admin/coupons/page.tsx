@@ -164,8 +164,8 @@ export default function CouponsPage() {
       maxDiscount: coupon.maxDiscount?.toString() || '',
       minOrderAmount: coupon.minOrderAmount,
       maxUsageCount: coupon.maxUsageCount?.toString() || '',
-      validFrom: new Date(coupon.validFrom).toISOString().split('T')[0],
-      validUntil: new Date(coupon.validUntil).toISOString().split('T')[0],
+      validFrom: coupon.validFrom ? new Date(coupon.validFrom).toISOString().split('T')[0] : '',
+      validUntil: coupon.validUntil ? new Date(coupon.validUntil).toISOString().split('T')[0] : '',
       isActive: coupon.isActive,
     });
     setIsDialogOpen(true);
@@ -230,7 +230,7 @@ export default function CouponsPage() {
               <div className="flex items-center justify-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               </div>
-            ) : data?.items.length === 0 ? (
+            ) : data?.items?.length === 0 ? (
               <div className="text-center py-12">
                 <Tag className="mx-auto h-12 w-12 text-muted-foreground" />
                 <h3 className="mt-4 text-lg font-semibold">No coupons yet</h3>
@@ -257,7 +257,7 @@ export default function CouponsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data?.items.map((coupon) => {
+                  {data?.items?.map((coupon) => {
                     const active = isActive(coupon);
                     return (
                     <TableRow key={coupon._id}>
@@ -284,7 +284,7 @@ export default function CouponsPage() {
                         {coupon.usedCount}
                         {coupon.maxUsageCount && ` / ${coupon.maxUsageCount}`}
                       </TableCell>
-                      <TableCell>{formatShortDate(coupon.validUntil)}</TableCell>
+                      <TableCell>{coupon.validUntil ? formatShortDate(coupon.validUntil) : '—'}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Switch

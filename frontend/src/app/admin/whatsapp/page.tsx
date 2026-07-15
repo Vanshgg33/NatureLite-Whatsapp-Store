@@ -171,17 +171,17 @@ export default function WhatsAppPage() {
                         <div className="flex items-center justify-between gap-2 mb-0.5">
                           <p className="font-medium text-sm truncate">{contactLabel(c)}</p>
                           <span className="text-[10px] text-muted-foreground shrink-0">
-                            {formatRelative(c.lastMessage.at)}
+                            {c.lastMessage ? formatRelative(c.lastMessage.at) : ''}
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          {c.lastMessage.direction === 'outbound' ? (
+                          {c.lastMessage?.direction === 'outbound' ? (
                             <Bot className="h-3 w-3 text-muted-foreground shrink-0" />
                           ) : (
                             <User className="h-3 w-3 text-muted-foreground shrink-0" />
                           )}
                           <p className="text-xs text-muted-foreground truncate">
-                            {c.lastMessage.preview}
+                            {c.lastMessage?.preview}
                           </p>
                         </div>
                         {c.name ? (

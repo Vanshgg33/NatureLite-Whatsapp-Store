@@ -216,7 +216,7 @@ export default function UcmPage() {
                 ) : (
                   <Sparkles className="h-5 w-5 text-slate-500" />
                 )}
-                <span className="capitalize">{config.lastSyncStatus.replace('_', ' ')}</span>
+                <span className="capitalize">{(config.lastSyncStatus ?? '').replace('_', ' ')}</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-muted-foreground">

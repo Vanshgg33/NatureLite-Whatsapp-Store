@@ -121,7 +121,7 @@ export default function EditProductPage() {
       isActive: product.isActive,
       isFeatured: product.isFeatured,
       hsnCode: product.hsnCode || '',
-      tags: product.tags.join(', '),
+      tags: (product.tags ?? []).join(', '),
       videoUrl: product.videoUrl || '',
       seoTitle: product.seo?.title || '',
       seoDescription: product.seo?.description || '',

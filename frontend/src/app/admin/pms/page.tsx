@@ -168,10 +168,10 @@ export default function PMSPage() {
   // entryOutVal = net oil (sent to backend as outputLitres)
   const entryOutVal = oilNet;
 
-  const totalProcessed = dayItems.reduce((s, i) => s + i.processed, 0);
-  const totalStockIn = dayItems.reduce((s, i) => s + i.stockIn, 0);
+  const totalProcessed = dayItems.reduce((s, i) => s + (i.processed ?? 0), 0);
+  const totalStockIn = dayItems.reduce((s, i) => s + (i.stockIn ?? 0), 0);
   const totalOutput = dayItems.reduce((s, i) => s + (i.outputLitres ?? 0), 0);
-  const totalClosing = dayItems.reduce((s, i) => s + i.closing, 0);
+  const totalClosing = dayItems.reduce((s, i) => s + (i.closing ?? 0), 0);
 
   async function buildPmsReportOptions() {
     const dates = availableDates.length ? { dates: availableDates } : await api.getRawMaterialAnalytics(selectedStoreId);

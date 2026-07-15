@@ -383,7 +383,7 @@ export default function IMSPage() {
                               setEditReturned('');
                               setEditDamaged('');
                               setEditSaleLog('');
-                              setEditThreshold(item.lowStockThreshold.toString());
+                              setEditThreshold((item.lowStockThreshold ?? 0).toString());
                             }}
                           >
                             Update

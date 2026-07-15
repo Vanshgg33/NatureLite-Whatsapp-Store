@@ -279,7 +279,7 @@ export default function OrdersPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = billFilename(order.shippingAddress.name);
+      a.download = billFilename(order.shippingAddress?.name ?? '');
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -295,7 +295,7 @@ export default function OrdersPage() {
     setSendLoadingId(order._id);
     try {
       const b64 = await captureInvoicePdf(`/invoice/${order._id}`, order._id);
-      await api.uploadOrderInvoice(order._id, b64, billFilename(order.shippingAddress.name));
+      await api.uploadOrderInvoice(order._id, b64, billFilename(order.shippingAddress?.name ?? ''));
       await api.sendOrderInvoice(order._id);
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       toast({ title: 'Invoice sent!', description: `Bill for ${order.orderNumber} sent to customer via WhatsApp.` });
@@ -627,9 +627,9 @@ export default function OrdersPage() {
                         <TableRow key={order._id}>
                           <TableCell>
                             <div>
-                              <p className="font-medium leading-tight">{order.shippingAddress.name}</p>
+                              <p className="font-medium leading-tight">{order.shippingAddress?.name ?? '—'}</p>
                               <p className="text-xs text-muted-foreground mt-0.5 leading-tight">
-                                {order.shippingAddress.city}, {order.shippingAddress.state} – {order.shippingAddress.pincode}
+                                {order.shippingAddress?.city}, {order.shippingAddress?.state} – {order.shippingAddress?.pincode}
                               </p>
                               <p className="text-[10px] text-muted-foreground/60 mt-0.5 flex items-center gap-1.5">
                                 <span>{order.orderNumber}</span>

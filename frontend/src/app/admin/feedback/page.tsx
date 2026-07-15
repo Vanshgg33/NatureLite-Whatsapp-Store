@@ -217,7 +217,7 @@ export default function FeedbackPage() {
                           </div>
                         )}
                         <span className="text-xs text-muted-foreground">
-                          {new Date(item.createdAt).toLocaleDateString()}
+                          {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—'}
                         </span>
                       </div>
                       <p className="text-sm">{item.message}</p>

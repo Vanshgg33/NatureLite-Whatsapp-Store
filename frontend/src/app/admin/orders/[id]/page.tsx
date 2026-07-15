@@ -64,12 +64,12 @@ export default function AdminOrderDetailPage() {
       <div className="p-6 space-y-6">
         <div className="flex items-center gap-4 flex-wrap">
           <Badge className={getStatusColor(order.status)}>
-            {order.status.toUpperCase()}
+            {order.status?.toUpperCase() ?? '—'}
           </Badge>
           <Badge className={getStatusColor(order.paymentStatus)}>
             Payment: {order.paymentStatus}
           </Badge>
-          <Badge variant="outline">{order.paymentMethod.toUpperCase()}</Badge>
+          <Badge variant="outline">{order.paymentMethod?.toUpperCase() ?? '—'}</Badge>
           {order.source && (
             <Badge variant="secondary" className="capitalize">
               Source: {order.source}

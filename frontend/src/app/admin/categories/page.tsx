@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, FolderTree, Image as ImageIcon } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -165,7 +165,10 @@ export default function CategoriesPage() {
   const categories = data?.items || [];
   const rootCategories = categories.filter((c) => !c.parent);
   const getSubcategories = (parentId: string) =>
-    categories.filter((c) => c.parent === parentId);
+    categories.filter((c) => {
+      const pid = typeof c.parent === 'object' && c.parent ? (c.parent as any)._id?.toString() : c.parent;
+      return pid === parentId;
+    });
 
   return (
     <div className="space-y-6">
@@ -221,8 +224,8 @@ export default function CategoriesPage() {
               </TableHeader>
               <TableBody>
                 {rootCategories.map((category) => (
-                  <>
-                    <TableRow key={category._id}>
+                  <Fragment key={category._id}>
+                    <TableRow>
                       <TableCell>
                         {category.image ? (
                           <img
@@ -312,7 +315,7 @@ export default function CategoriesPage() {
                         </TableCell>
                       </TableRow>
                     ))}
-                  </>
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>

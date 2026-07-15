@@ -671,14 +671,7 @@ export default function AnalyticsPage() {
     });
   }, [revenueData]);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-green" />
-      </div>
-    );
-  }
-
+  // These useMemo calls must stay ABOVE the early return to satisfy Rules of Hooks
   const { totalRevenue, totalOrders, avgOrderValue } = useMemo(() => {
     const rev = revenueData?.reduce((s: number, d: RevenueDataPoint) => s + d.revenue, 0) ?? 0;
     const ord = revenueData?.reduce((s: number, d: RevenueDataPoint) => s + d.orders, 0) ?? 0;
@@ -723,6 +716,14 @@ export default function AnalyticsPage() {
       },
       { rmsGoodCount: 0, rmsLowCount: 0, rmsCriticalCount: 0 },
     ), [rawMaterials]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-green" />
+      </div>
+    );
+  }
 
   const summaryCards = [
     {

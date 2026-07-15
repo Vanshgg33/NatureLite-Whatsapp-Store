@@ -360,7 +360,7 @@ export default function DashboardPage() {
                         {r.store?.name ? ` · ${r.store.name}` : ''}
                       </p>
                       <p className="text-xs text-amber-600 mt-0.5">
-                        Due {new Date(r.dueAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}
+                        Due {r.dueAt ? new Date(r.dueAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
                       </p>
                     </div>
                     <Button

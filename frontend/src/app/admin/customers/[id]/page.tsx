@@ -286,18 +286,18 @@ export default function CustomerDetailPage() {
           <CardHeader>
             <CardTitle>Saved Addresses</CardTitle>
             <CardDescription>
-              {customer.addresses.length} address{customer.addresses.length !== 1 ? 'es' : ''} saved
+              {(customer.addresses ?? []).length} address{(customer.addresses ?? []).length !== 1 ? 'es' : ''} saved
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {customer.addresses.length === 0 ? (
+            {(customer.addresses ?? []).length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <MapPin className="mx-auto h-8 w-8 mb-2" />
                 <p>No addresses saved</p>
               </div>
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
-                {customer.addresses.map((address, index) => (
+                {(customer.addresses ?? []).map((address, index) => (
                   <div
                     key={index}
                     className="p-4 border rounded-lg relative"
@@ -543,7 +543,7 @@ export default function CustomerDetailPage() {
                       {new Date(order.createdAt).toLocaleDateString()}
                     </TableCell>
                     <TableCell>{order.items.length} items</TableCell>
-                    <TableCell>₹{order.total.toLocaleString()}</TableCell>
+                    <TableCell>₹{(order.total ?? 0).toLocaleString()}</TableCell>
                     <TableCell>
                       <Badge className={getStatusColor(order.status)}>
                         {order.status}
