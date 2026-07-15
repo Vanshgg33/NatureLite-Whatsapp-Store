@@ -7,7 +7,7 @@ import { WhatsAppService, WhatsAppPermanentError } from '../whatsapp/whatsapp.se
 import { MessageLogRepository } from '../whatsapp/repositories/message-log.repository';
 import { Order } from '../orders/schemas/order.schema';
 import type { OrderStatus } from '../../common/constants/order-status';
-import { QUEUE_NOTIFICATIONS, NOTIFICATION_JOBS, DEFAULT_JOB_OPTIONS } from '../queues/queues.constants';
+import { QUEUE_NOTIFICATIONS, QUEUE_BROADCAST, NOTIFICATION_JOBS, DEFAULT_JOB_OPTIONS, JOB_PRIORITY } from '../queues/queues.constants';
 import { RedisService } from '../redis/redis.service';
 import { Campaign, CampaignDocument } from './schemas/campaign.schema';
 import { TemplatePreset, TemplatePresetDocument } from './schemas/template-preset.schema';
@@ -37,6 +37,7 @@ export class NotificationsService {
     private readonly messageLogRepository: MessageLogRepository,
     private whatsappService: WhatsAppService,
     @InjectQueue(QUEUE_NOTIFICATIONS) private readonly notifQueue: Queue,
+    @InjectQueue(QUEUE_BROADCAST) private readonly broadcastQueue: Queue,
     private readonly redisService: RedisService,
     @InjectModel(Campaign.name) private readonly campaignModel: Model<CampaignDocument>,
     @InjectModel(TemplatePreset.name) private readonly presetModel: Model<TemplatePresetDocument>,
@@ -61,7 +62,7 @@ export class NotificationsService {
     await this.notifQueue.add(
       NOTIFICATION_JOBS.ORDER_CREATED,
       { order: this.serializeOrder(order) },
-      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey },
+      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey, priority: JOB_PRIORITY.CRITICAL },
     );
   }
 
@@ -91,7 +92,7 @@ export class NotificationsService {
     await this.notifQueue.add(
       NOTIFICATION_JOBS.ORDER_STATUS_CHANGED,
       { order: this.serializeOrder(order), previousStatus },
-      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey },
+      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey, priority: JOB_PRIORITY.NORMAL },
     );
   }
 
@@ -121,7 +122,7 @@ export class NotificationsService {
     await this.notifQueue.add(
       NOTIFICATION_JOBS.ORDER_DELIVERED,
       { order: this.serializeOrder(order) },
-      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey },
+      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey, priority: JOB_PRIORITY.NORMAL },
     );
   }
 
@@ -144,7 +145,7 @@ export class NotificationsService {
     await this.notifQueue.add(
       NOTIFICATION_JOBS.ORDER_CONFIRMED_BTN,
       { order: this.serializeOrder(order), phone },
-      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey },
+      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey, priority: JOB_PRIORITY.CRITICAL },
     );
   }
 
@@ -185,7 +186,7 @@ export class NotificationsService {
     await this.notifQueue.add(
       NOTIFICATION_JOBS.ORDER_PACKED_BTN,
       { order: this.serializeOrder(order), phone },
-      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey },
+      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey, priority: JOB_PRIORITY.HIGH },
     );
   }
 
@@ -226,7 +227,7 @@ export class NotificationsService {
     await this.notifQueue.add(
       NOTIFICATION_JOBS.OUT_FOR_DELIVERY_BTN,
       { order: this.serializeOrder(order), phone, deliveryPerson },
-      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey },
+      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey, priority: JOB_PRIORITY.HIGH },
     );
   }
 
@@ -278,7 +279,7 @@ export class NotificationsService {
     await this.notifQueue.add(
       NOTIFICATION_JOBS.DELIVERY_ATTEMPT_BTN,
       { order: this.serializeOrder(order), phone, deliveryStatus, note },
-      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey },
+      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey, priority: JOB_PRIORITY.HIGH },
     );
   }
 
@@ -330,7 +331,7 @@ export class NotificationsService {
     await this.notifQueue.add(
       NOTIFICATION_JOBS.PAYMENT_RECEIVED_BTN,
       { order: this.serializeOrder(order), phone },
-      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey },
+      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey, priority: JOB_PRIORITY.CRITICAL },
     );
   }
 
@@ -381,7 +382,7 @@ export class NotificationsService {
     await this.notifQueue.add(
       NOTIFICATION_JOBS.ORDER_CONFIRMATION_TPL,
       { order: this.serializeOrder(order), phone },
-      { ...DEFAULT_JOB_OPTIONS, jobId: `notif_confirm_${idempotencyKey}` },
+      { ...DEFAULT_JOB_OPTIONS, jobId: `notif_confirm_${idempotencyKey}`, priority: JOB_PRIORITY.NORMAL },
     );
   }
 
@@ -403,7 +404,7 @@ export class NotificationsService {
     await this.notifQueue.add(
       NOTIFICATION_JOBS.SHIPPING_UPDATE_TPL,
       { order: this.serializeOrder(order), phone, awbNumber, courierName },
-      { ...DEFAULT_JOB_OPTIONS, jobId: `notif_ship_${idempotencyKey}` },
+      { ...DEFAULT_JOB_OPTIONS, jobId: `notif_ship_${idempotencyKey}`, priority: JOB_PRIORITY.HIGH },
     );
   }
 
@@ -425,7 +426,7 @@ export class NotificationsService {
     await this.notifQueue.add(
       NOTIFICATION_JOBS.OUT_FOR_DELIVERY_TPL,
       { order: this.serializeOrder(order), phone },
-      { ...DEFAULT_JOB_OPTIONS, jobId: `notif_outd_${idempotencyKey}` },
+      { ...DEFAULT_JOB_OPTIONS, jobId: `notif_outd_${idempotencyKey}`, priority: JOB_PRIORITY.HIGH },
     );
   }
 
@@ -447,7 +448,7 @@ export class NotificationsService {
     await this.notifQueue.add(
       NOTIFICATION_JOBS.DELIVERY_CONFIRMATION_TPL,
       { order: this.serializeOrder(order), phone },
-      { ...DEFAULT_JOB_OPTIONS, jobId: `notif_delconf_${idempotencyKey}` },
+      { ...DEFAULT_JOB_OPTIONS, jobId: `notif_delconf_${idempotencyKey}`, priority: JOB_PRIORITY.NORMAL },
     );
   }
 
@@ -470,7 +471,7 @@ export class NotificationsService {
     await this.notifQueue.add(
       NOTIFICATION_JOBS.ABANDONED_CART,
       { phone, cartTotal, itemCount, idempotencyKey },
-      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey },
+      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey, priority: JOB_PRIORITY.LOW },
     );
   }
 
@@ -497,7 +498,7 @@ export class NotificationsService {
     await this.notifQueue.add(
       NOTIFICATION_JOBS.ABANDONED_CART_DETAILED,
       { ...input, idempotencyKey },
-      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey },
+      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey, priority: JOB_PRIORITY.LOW },
     );
     return true;
   }
@@ -527,7 +528,7 @@ export class NotificationsService {
     await this.notifQueue.add(
       NOTIFICATION_JOBS.FEEDBACK_REQUEST,
       { order: this.serializeOrder(order), phone },
-      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey },
+      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey, priority: JOB_PRIORITY.LOW },
     );
     return true;
   }
@@ -559,7 +560,7 @@ export class NotificationsService {
     await this.notifQueue.add(
       NOTIFICATION_JOBS.ORDER_CANCELLED,
       { order: this.serializeOrder(order), phone, reason },
-      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey },
+      { ...DEFAULT_JOB_OPTIONS, jobId: idempotencyKey, priority: JOB_PRIORITY.CRITICAL },
     );
   }
 
@@ -649,7 +650,7 @@ export class NotificationsService {
       bodyParamFields: options.bodyParamFields ?? [],
       phoneNameMap,
     });
-    await this.notifQueue.add(
+    await this.broadcastQueue.add(
       NOTIFICATION_JOBS.BROADCAST_TEMPLATE,
       { campaignId: campaign._id.toString() },
       { ...DEFAULT_JOB_OPTIONS, attempts: 1, jobId: `broadcast_tpl_${campaign._id}` },
@@ -677,7 +678,7 @@ export class NotificationsService {
       mediaType,
       mediaFilename,
     });
-    await this.notifQueue.add(
+    await this.broadcastQueue.add(
       NOTIFICATION_JOBS.BROADCAST_MEDIA,
       { campaignId: campaign._id.toString() },
       { ...DEFAULT_JOB_OPTIONS, attempts: 1, jobId: `broadcast_media_${campaign._id}` },

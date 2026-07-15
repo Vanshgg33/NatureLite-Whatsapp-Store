@@ -1,5 +1,6 @@
 export const QUEUE_EMAIL = 'email';
 export const QUEUE_NOTIFICATIONS = 'notifications';
+export const QUEUE_BROADCAST = 'broadcast';
 export const QUEUE_ANALYTICS = 'analytics';
 export const QUEUE_CART_AUTOMATION = 'cart-automation';
 export const QUEUE_ADMIN = 'admin';
@@ -63,3 +64,11 @@ export const DEFAULT_JOB_OPTIONS = {
   removeOnComplete: { count: 200 },
   removeOnFail: { count: 500 },
 };
+
+// Lower number = higher priority in BullMQ
+export const JOB_PRIORITY = {
+  CRITICAL: 1,  // order placed, cancelled, confirmed, payment received
+  HIGH: 5,      // packed, out-for-delivery, delivery attempt, shipping update
+  NORMAL: 10,   // status change, delivered, confirmation templates
+  LOW: 20,      // feedback request, abandoned cart
+} as const;

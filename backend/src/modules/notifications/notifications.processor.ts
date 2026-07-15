@@ -4,17 +4,28 @@ import { Job } from 'bullmq';
 import { NotificationsService } from './notifications.service';
 import { QUEUE_NOTIFICATIONS, NOTIFICATION_JOBS } from '../queues/queues.constants';
 import { attachRateLimitGuard } from '../queues/rate-limit-guard';
+import { QueueScalerService } from '../queues/queue-scaler.service';
 
-@Processor(QUEUE_NOTIFICATIONS, { concurrency: 5, drainDelay: 30 })
+@Processor(QUEUE_NOTIFICATIONS, {
+  concurrency: 10,
+  drainDelay: 5000,
+  limiter: { max: 30, duration: 1000 }, // max 30 WA API calls/sec enforced at Redis level
+})
 export class NotificationsProcessor extends WorkerHost implements OnApplicationBootstrap {
   private readonly logger = new Logger(NotificationsProcessor.name);
 
-  constructor(private readonly notificationsService: NotificationsService) {
+  constructor(
+    private readonly notificationsService: NotificationsService,
+    private readonly scaler: QueueScalerService,
+  ) {
     super();
   }
 
   onApplicationBootstrap(): void {
-    if (this.worker) attachRateLimitGuard(this.worker, this.logger);
+    if (this.worker) {
+      attachRateLimitGuard(this.worker, this.logger);
+      this.scaler.attach(this.worker);
+    }
   }
 
   async process(job: Job): Promise<void> {
@@ -87,14 +98,6 @@ export class NotificationsProcessor extends WorkerHost implements OnApplicationB
 
       case NOTIFICATION_JOBS.ABANDONED_CART_DETAILED:
         await this.notificationsService._executeSendAbandonedCartReminderDetailed(job.data);
-        break;
-
-      case NOTIFICATION_JOBS.BROADCAST_TEMPLATE:
-        await this.notificationsService._executeBroadcastTemplate(job.data);
-        break;
-
-      case NOTIFICATION_JOBS.BROADCAST_MEDIA:
-        await this.notificationsService._executeBroadcastMedia(job.data);
         break;
 
       default:
