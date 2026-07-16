@@ -219,7 +219,7 @@ export default function OrdersPage() {
         notes: notes.trim()
           ? `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : source === 'phone' ? 'Phone' : source === 'b2b' ? 'B2B' : 'Vayepar'}] ${notes.trim()}`
           : `[${source === 'whatsapp' ? 'WhatsApp' : source === 'website' ? 'Website' : source === 'phone' ? 'Phone' : source === 'b2b' ? 'B2B' : 'Vayepar'}] Order created by admin`,
-        source: 'admin',
+        source,
         orderType: orderType || undefined,
         adminDiscount: discountAmount > 0 ? discountAmount : undefined,
         scheduledFor: reminderDueAt || undefined,
