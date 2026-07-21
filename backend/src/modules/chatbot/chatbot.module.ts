@@ -6,6 +6,7 @@ import { ChatbotController } from './chatbot.controller';
 import { ChatSession, ChatSessionSchema } from './schemas/chat-session.schema';
 import { ChatSessionRepository } from './repositories/chat-session.repository';
 import { ChatbotAnalyticsService } from './analytics/chatbot-analytics.service';
+import { ChatbotAiService } from './chatbot-ai.service';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { UsersModule } from '../users/users.module';
 import { ProductsModule } from '../products/products.module';
@@ -39,7 +40,7 @@ import { UcmModule } from '../ucm/ucm.module';
     forwardRef(() => UcmModule),
   ],
   controllers: [ChatbotController],
-  providers: [ChatSessionRepository, ChatbotService, ChatbotAnalyticsService],
+  providers: [ChatSessionRepository, ChatbotService, ChatbotAnalyticsService, ChatbotAiService],
   exports: [ChatSessionRepository, ChatbotService],
 })
 export class ChatbotModule {}

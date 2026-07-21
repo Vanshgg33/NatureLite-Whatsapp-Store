@@ -32,6 +32,7 @@ import { bold, italic, firstName } from './copy/format';
 import { WA, clip } from './wa-limits';
 import { BTN, Btn, parseButton } from './buttons';
 import { ChatbotAnalyticsService } from './analytics/chatbot-analytics.service';
+import { ChatbotAiService } from './chatbot-ai.service';
 
 const WHATSAPP_RECENT_ORDER_COOLDOWN_MS = 8000;
 /** Max time a single message can hold the per-phone lock before it's forcefully released. */
@@ -116,6 +117,8 @@ export class ChatbotService implements OnModuleInit {
     private readonly couponsService: CouponsService,
     private readonly ucmService: UcmService,
     private readonly redisService: RedisService,
+    @Inject(forwardRef(() => ChatbotAiService))
+    private readonly chatbotAiService: ChatbotAiService,
   ) {
     // Loud boot-time warning if FRONTEND_URL is unset while Razorpay is wired
     // up. Without it, the chatbot prepaid flow falls back to a "sign in to
@@ -133,6 +136,38 @@ export class ChatbotService implements OnModuleInit {
     // Warm Redis with the static welcome message so it survives server restarts.
     void this.redisService.set('chatbot:msg:welcome', this.buildWelcomeBody(), 24 * 3600);
   }
+
+  // ─── AI Bridge Methods ────────────────────────────────────────────────────
+  // Called by ChatbotAiService when tool calling hands off to hardcoded flows.
+
+  async initiateCheckoutForAi(phone: string, session: ChatSessionDocument): Promise<void> {
+    if (!session.user) {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: 'Please share your name first so I can look up your account, then type *checkout* again.',
+      });
+      return;
+    }
+    await this.transitionToState(session, 'checkout');
+    await this.sendCheckoutOptions(phone, session);
+  }
+
+  async requestSupportForAi(phone: string, session: ChatSessionDocument): Promise<void> {
+    const SUPPORT_HANDOFF_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+    session.isHandedOffToSupport = true;
+    session.supportHandoffAt = new Date();
+    session.supportHandoffExpiresAt = new Date(Date.now() + SUPPORT_HANDOFF_TTL_MS);
+    await session.save();
+    await this.whatsappService.sendTextMessage({
+      phone,
+      message:
+        `✅ ${bold('Support request received')}\n\n` +
+        `You’re now connected with our team — ${italic('the bot is paused for 2 hours')}.\n` +
+        `We’ll respond shortly. For urgent help call ${bold('8962021112')}.\n\n` +
+        `_Type *menu* anytime to return to the bot._`,
+    });
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   private readonly catalogIdCache = new TtlCache<string>(60_000);
   private isCatalogBrowseEnabled(): boolean {
@@ -715,7 +750,7 @@ export class ChatbotService implements OnModuleInit {
     // Post-delivery feedback: if a user has a recent delivered order with a pending
     // feedback request, interpret a plain rating reply (1-5) or "1 star", "5 stars",
     // "great", "loved it" as feedback. Runs only from main_menu to avoid hijacking
-    // other flows' typed input.
+    // other flows' tickets input.
     if (
       !buttonId &&
       currentState === 'main_menu' &&
@@ -726,7 +761,63 @@ export class ChatbotService implements OnModuleInit {
       if (handled) return;
     }
 
-    // Unrecognized free text in any non-input state → show fallback menu
+    // Dynamic button interception — buttons with embedded IDs (pay_<id>, order_<id>,
+    // prod_<id>, etc.) must route to their hardcoded handlers regardless of AI.
+    // The AI receives the button label text, not the ID, so it cannot reconstruct
+    // the orderId / productId needed to perform the actual action.
+    if (buttonId) {
+      const dynBtn = parseButton(buttonId);
+
+      // pay_<orderId> — generates a Razorpay payment link. Money-critical.
+      if (dynBtn.kind === 'payOrder') {
+        await this.sendFreshPayLink(session, message.phone, dynBtn.id);
+        return;
+      }
+      // order_<id> / reorder_<id> — order detail and reorder flows need the embedded orderId.
+      if (dynBtn.kind === 'order' || dynBtn.kind === 'reorder') {
+        await this.handleOrderTracking(session, message.phone, transitionKey);
+        return;
+      }
+      // prod_<id> — direct product detail.
+      if (dynBtn.kind === 'product') {
+        session.currentProductId = dynBtn.id;
+        await this.transitionToState(session, 'product_detail');
+        await this.sendProductDetail(message.phone, dynBtn.id, session);
+        return;
+      }
+      // cat_<id> — browse a specific category.
+      if (dynBtn.kind === 'category') {
+        await this.handleBrowsing(session, message.phone, transitionKey);
+        return;
+      }
+      // citem_<i> — cart item action card (sets manageCartItem on session).
+      if (dynBtn.kind === 'cartItem') {
+        await this.handleCart(session, message.phone, transitionKey);
+        return;
+      }
+      // qty_<n> — add N of current product to cart.
+      if (dynBtn.kind === 'addQty') {
+        await this.handleProductDetail(session, message.phone, transitionKey);
+        return;
+      }
+      // capply_<code> — apply a specific coupon suggested in the coupon flow.
+      if (dynBtn.kind === 'applyCoupon') {
+        await this.handleCouponPrompt(session, message.phone, transitionKey);
+        return;
+      }
+    }
+
+    // Static buttons that depend on session context set by the dynamic handlers above.
+    if (transitionKey === BTN.CART_INC || transitionKey === BTN.CART_DEC || transitionKey === BTN.CART_RM) {
+      await this.handleCart(session, message.phone, transitionKey);
+      return;
+    }
+    if (transitionKey === BTN.REORDER_CURRENT) {
+      await this.handleOrderTracking(session, message.phone, transitionKey);
+      return;
+    }
+
+    // Unrecognized free text in any non-input, non-critical state → AI
     if (
       !buttonId &&
       inputText.length >= 2 &&
@@ -734,41 +825,12 @@ export class ChatbotService implements OnModuleInit {
       !this.isTextInputState(currentState) &&
       !this.isValidTransitionKeyForState(currentState, transitionKey)
     ) {
-      await this.sendFallbackMenu(message.phone, session);
-      return;
-    }
-
-    if (transitionKey === 'support') {
-      await this.transitionToState(session, 'support');
-      await this.sendFlowResponse(message.phone, 'support', session);
+      await this.chatbotAiService.runAiTurn(message.phone, session, inputText);
       return;
     }
 
     switch (currentState) {
-      case 'main_menu':
-        await this.handleMainMenu(session, message.phone, transitionKey);
-        break;
-
-      case 'browsing':
-        await this.handleBrowsing(session, message.phone, transitionKey);
-        break;
-
-      case 'product_detail':
-        await this.handleProductDetail(session, message.phone, transitionKey);
-        break;
-
-      case 'cart':
-        await this.handleCart(session, message.phone, transitionKey);
-        break;
-
-      case 'coupon_prompt':
-        await this.handleCouponPrompt(session, message.phone, transitionKey);
-        break;
-
-      case 'coupon_input':
-        await this.handleCouponInput(session, message.phone, inputText, transitionKey);
-        break;
-
+      // ── Critical hardcoded states ──────────────────────────────────────
       case 'checkout':
         await this.handleCheckout(session, message.phone, transitionKey);
         break;
@@ -781,45 +843,9 @@ export class ChatbotService implements OnModuleInit {
         await this.handlePaymentSelection(session, message.phone, transitionKey, message);
         break;
 
-      case 'order_tracking':
-        await this.handleOrderTracking(session, message.phone, transitionKey);
-        break;
-
-      case 'reorder':
-        await this.handleReorder(session, message.phone, transitionKey);
-        break;
-
-      case 'faq':
-        await this.handleFaq(session, message.phone, transitionKey);
-        break;
-
-      case 'support':
-        await this.handleSupport(session, message.phone, inputText);
-        break;
-
-      case 'account':
-        await this.handleAccount(session, message.phone, transitionKey);
-        break;
-
-      case 'account_edit':
-        await this.handleAccountEdit(session, message.phone, inputText, transitionKey);
-        break;
-
-      case 'account_addresses':
-        await this.handleAccountAddresses(session, message.phone, transitionKey);
-        break;
-
-      case 'account_address_edit':
-        await this.handleAccountAddressEdit(session, message.phone, transitionKey);
-        break;
-
-      case 'wallet':
-        await this.handleWallet(session, message.phone, transitionKey);
-        break;
-
+      // ── All other states handled by AI ─────────────────────────────────
       default:
-        await this.transitionToState(session, 'main_menu');
-        await this.sendFlowResponse(message.phone, 'main_menu', session);
+        await this.chatbotAiService.runAiTurn(message.phone, session, inputText);
     }
   }
 

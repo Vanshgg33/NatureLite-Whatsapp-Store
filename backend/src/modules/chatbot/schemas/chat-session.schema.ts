@@ -97,6 +97,10 @@ export class ChatSession {
   @Prop({ type: Object, default: {} })
   metadata: ChatSessionMetadata;
 
+  /** Gemini multi-turn conversation history (Content[] format). Trimmed to last 10 real user messages. */
+  @Prop({ type: [Object], default: [] })
+  conversationHistory: Record<string, unknown>[];
+
   createdAt: Date;
   updatedAt: Date;
 }
