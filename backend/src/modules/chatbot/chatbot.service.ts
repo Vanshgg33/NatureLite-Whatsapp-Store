@@ -817,6 +817,33 @@ export class ChatbotService implements OnModuleInit {
       return;
     }
 
+    // "Back" button is valid in many states but the switch routes them all to AI.
+    // Intercept here so goBack() always fires regardless of current state.
+    if (transitionKey === BTN.BACK || transitionKey === 'back') {
+      await this.goBack(session, message.phone);
+      return;
+    }
+
+    // Browsing pagination buttons must stay in the hardcoded handler —
+    // AI cannot paginate WhatsApp interactive list UIs.
+    if (
+      currentState === 'browsing' &&
+      (transitionKey === BTN.MORE_CATEGORIES || transitionKey === BTN.MORE_PRODUCTS)
+    ) {
+      await this.handleBrowsing(session, message.phone, transitionKey);
+      return;
+    }
+
+    // product_detail "Add to cart" / "Pick qty" buttons: use hardcoded handler so
+    // session.currentProductId is used directly instead of forcing AI to re-search.
+    if (
+      currentState === 'product_detail' &&
+      (transitionKey === BTN.ADD_CART || transitionKey === BTN.PICK_QTY)
+    ) {
+      await this.handleProductDetail(session, message.phone, transitionKey);
+      return;
+    }
+
     // Unrecognized free text in any non-input, non-critical state → AI
     if (
       !buttonId &&
@@ -5394,10 +5421,13 @@ export class ChatbotService implements OnModuleInit {
 
     const rating = this.parseRatingFromText(inputText);
     const trimmed = inputText.trim();
-    // Must be either a parseable rating OR a short message (> 3 chars, < 500) right after
-    // a feedback request — otherwise we hand off to search/menu to avoid hijacking.
+    // Only capture as feedback if it's an explicit numeric rating, OR a very short
+    // message (≤ 40 chars) that doesn't contain shopping/order intent keywords.
+    // Long messages and anything mentioning products/orders fall through to AI.
+    const SHOPPING_KEYWORDS = /\b(order|ghee|dal|flour|oil|spice|grain|want|buy|add|cart|price|kg|ltr|litre|gram|packet|bottle|deliver|checkout)\b/i;
     const looksLikeFeedback =
-      rating !== null || (trimmed.length >= 3 && trimmed.length <= 500 && !/^[a-z_]+$/i.test(trimmed));
+      rating !== null ||
+      (trimmed.length >= 3 && trimmed.length <= 40 && !SHOPPING_KEYWORDS.test(trimmed));
     if (!looksLikeFeedback) return false;
 
     try {
