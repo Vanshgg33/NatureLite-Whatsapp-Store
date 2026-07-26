@@ -12,6 +12,7 @@ import {
   type Part,
 } from '@google/generative-ai';
 import type { ChatSessionDocument } from './schemas/chat-session.schema';
+import { ChatSessionRepository } from './repositories/chat-session.repository';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { ProductsService } from '../products/products.service';
 import { CategoriesService } from '../categories/categories.service';
@@ -205,6 +206,7 @@ export class ChatbotAiService {
     private readonly couponsService: CouponsService,
     private readonly usersService: UsersService,
     private readonly walletService: WalletService,
+    private readonly chatSessionRepository: ChatSessionRepository,
     @Inject(forwardRef(() => ChatbotService))
     private readonly chatbotService: ChatbotService,
   ) {
@@ -497,12 +499,12 @@ If stuck more than twice on the same issue → call request_human_support()
 
           // Special tools that exit the loop and hand off to hardcoded flows
           if (name === 'initiate_checkout') {
-            await this.saveHistory(session, history, turnAdditions);
+            await this.saveHistory(session, history, turnAdditions, phone);
             await this.chatbotService.initiateCheckoutForAi(phone, session);
             return;
           }
           if (name === 'request_human_support') {
-            await this.saveHistory(session, history, turnAdditions);
+            await this.saveHistory(session, history, turnAdditions, phone);
             await this.chatbotService.requestSupportForAi(phone, session);
             return;
           }
@@ -518,7 +520,7 @@ If stuck more than twice on the same issue → call request_human_support()
         // Do NOT push the functionResponse user turn; startChat rejects functionResponse
         // in history, so history ends at the model's tool-call turn (valid for next message).
         if (interactiveCardSent) {
-          await this.saveHistory(session, history, turnAdditions);
+          await this.saveHistory(session, history, turnAdditions, phone);
           textSent = true;
           break;
         }
@@ -532,7 +534,7 @@ If stuck more than twice on the same issue → call request_human_support()
       // An unbalanced history (last entry = 'user') would corrupt the next Gemini call.
       const lastRole = turnAdditions.at(-1)?.role;
       if (lastRole === 'model') {
-        await this.saveHistory(session, history, turnAdditions);
+        await this.saveHistory(session, history, turnAdditions, phone);
       }
 
       // Safety: if no text was ever sent (loop exhausted or empty candidate), notify the user.
@@ -575,6 +577,7 @@ If stuck more than twice on the same issue → call request_human_support()
     session: ChatSessionDocument,
     previousHistory: Content[],
     turnAdditions: Content[],
+    phone: string,
   ): Promise<void> {
     const combined = [...previousHistory, ...turnAdditions];
 
@@ -607,10 +610,11 @@ If stuck more than twice on the same issue → call request_human_support()
       trimmed = trimmed.slice(1);
     }
 
-    (session as any).conversationHistory = trimmed;
-    // Mongoose doesn't auto-detect mutations on [Object] arrays — must mark explicitly.
-    session.markModified('conversationHistory');
-    await session.save();
+    // Use atomic updateOne (no optimistic version check) to avoid VersionError
+    // when concurrent saves race on the same session document.
+    await this.chatSessionRepository.updateOneByPhone(phone, {
+      conversationHistory: trimmed as unknown as Record<string, unknown>[],
+    });
   }
 
   // ─────────────────────────────────────────────────────────────────────────
