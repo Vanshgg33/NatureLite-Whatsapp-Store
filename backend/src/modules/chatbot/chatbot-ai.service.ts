@@ -13,6 +13,7 @@ import {
 } from '@google/generative-ai';
 import type { ChatSessionDocument } from './schemas/chat-session.schema';
 import { ChatSessionRepository } from './repositories/chat-session.repository';
+import { RedisService } from '../redis/redis.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { ProductsService } from '../products/products.service';
 import { CategoriesService } from '../categories/categories.service';
@@ -194,9 +195,8 @@ export class ChatbotAiService {
   private readonly MAX_CONCURRENT_AI = 8;
   private readonly aiWaitQueue: Array<() => void> = [];
 
-  // Category list is stable — cache it for 5 minutes to save DB round-trips.
-  private categoryCache: { items: any[]; expiresAt: number } | null = null;
-  private readonly CATEGORY_CACHE_TTL = 5 * 60 * 1_000;
+  private static readonly SEARCH_CACHE_TTL = 120;   // 2 min
+  private static readonly CATEGORY_CACHE_TTL = 300; // 5 min
 
   constructor(
     private readonly whatsappService: WhatsAppService,
@@ -208,6 +208,7 @@ export class ChatbotAiService {
     private readonly usersService: UsersService,
     private readonly walletService: WalletService,
     private readonly chatSessionRepository: ChatSessionRepository,
+    private readonly redisService: RedisService,
     @Inject(forwardRef(() => ChatbotService))
     private readonly chatbotService: ChatbotService,
   ) {
@@ -667,64 +668,58 @@ If stuck more than twice on the same issue → call request_human_support()
     const maxPrice = args.maxPrice ? Number(args.maxPrice) : undefined;
     const minPrice = args.minPrice ? Number(args.minPrice) : undefined;
 
-    let products: any[];
+    const cacheKey = `ai:search:${categoryId ?? ''}:${query.toLowerCase().trim()}:${minPrice ?? ''}:${maxPrice ?? ''}`;
 
-    if (categoryId) {
-      products = await this.productsService.findByCategory(categoryId);
-    } else if (query) {
-      products = await this.productsService.searchProducts(query, 10);
-    } else {
-      // Broad browse — findAll returns PaginatedResult<Product> with an `items` array
-      const page = await this.productsService.findAll({ limit: 10 } as any);
-      products = (page as any).items ?? [];
-    }
+    return this.redisService.cached(cacheKey, ChatbotAiService.SEARCH_CACHE_TTL, async () => {
+      let products: any[];
 
-    // Price filter (post-fetch since services don't all support it natively)
-    if (maxPrice !== undefined) {
-      products = products.filter((p: any) => p.price <= maxPrice);
-    }
-    if (minPrice !== undefined) {
-      products = products.filter((p: any) => p.price >= minPrice);
-    }
+      if (categoryId) {
+        products = await this.productsService.findByCategory(categoryId);
+      } else if (query) {
+        products = await this.productsService.searchProducts(query, 10);
+      } else {
+        const page = await this.productsService.findAll({ limit: 10 } as any);
+        products = (page as any).items ?? [];
+      }
 
-    if (!products.length) {
-      return { products: [], message: 'No products matched the search.' };
-    }
+      if (maxPrice !== undefined) products = products.filter((p: any) => p.price <= maxPrice);
+      if (minPrice !== undefined) products = products.filter((p: any) => p.price >= minPrice);
 
-    return {
-      products: products.slice(0, 8).map((p: any) => ({
-        id: p._id?.toString() ?? p.id,
-        name: p.name,
-        price: p.price,
-        description: (p.description || '').slice(0, 80),
-        category: (p.category as any)?.name ?? '',
-        inStock: p.trackStock === false || (p.stock ?? 1) > 0,
-        variants: Array.isArray(p.variants) && p.variants.length > 0
-          ? p.variants.filter((v: any) => v.isActive !== false).map((v: any) => ({
-              sku: v.sku,
-              name: v.name,
-              price: v.price,
-              inStock: (v.stock ?? 1) > 0,
-            }))
-          : [],
-      })),
-      total: products.length,
-    };
+      if (!products.length) return { products: [], message: 'No products matched the search.' };
+
+      return {
+        products: products.slice(0, 8).map((p: any) => ({
+          id: p._id?.toString() ?? p.id,
+          name: p.name,
+          price: p.price,
+          description: (p.description || '').slice(0, 80),
+          category: (p.category as any)?.name ?? '',
+          inStock: p.trackStock === false || (p.stock ?? 1) > 0,
+          variants: Array.isArray(p.variants) && p.variants.length > 0
+            ? p.variants.filter((v: any) => v.isActive !== false).map((v: any) => ({
+                sku: v.sku,
+                name: v.name,
+                price: v.price,
+                inStock: (v.stock ?? 1) > 0,
+              }))
+            : [],
+        })),
+        total: products.length,
+      };
+    });
   }
 
   private async toolGetCategories() {
-    const now = Date.now();
-    if (this.categoryCache && now < this.categoryCache.expiresAt) {
-      return { categories: this.categoryCache.items };
-    }
-    const result = await this.categoriesService.findAll({} as any);
-    const cats: any[] = (result as any).items ?? [];
-    const mapped = cats.map((c: any) => ({
-      id: c._id?.toString() ?? c.id,
-      name: c.name,
-    }));
-    this.categoryCache = { items: mapped, expiresAt: now + this.CATEGORY_CACHE_TTL };
-    return { categories: mapped };
+    return this.redisService.cached('ai:categories', ChatbotAiService.CATEGORY_CACHE_TTL, async () => {
+      const result = await this.categoriesService.findAll({} as any);
+      const cats: any[] = (result as any).items ?? [];
+      return {
+        categories: cats.map((c: any) => ({
+          id: c._id?.toString() ?? c.id,
+          name: c.name,
+        })),
+      };
+    });
   }
 
   private async toolGetProductDetail(productId: string) {
