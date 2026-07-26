@@ -118,6 +118,7 @@ function SaleInvoiceInner() {
   const total = sale.total ?? 0;
 
   const taxGroups = new Map<number, { taxable: number; cgst: number; sgst: number }>();
+  let nilTaxable = 0;
   for (const item of sale.items) {
     const prod = getProduct(item);
     const category = prod && typeof prod.category === 'object' ? prod.category : null;
@@ -128,6 +129,8 @@ function SaleInvoiceInner() {
       const half = gstAmt / 2;
       const prev = taxGroups.get(gstRate) ?? { taxable: 0, cgst: 0, sgst: 0 };
       taxGroups.set(gstRate, { taxable: prev.taxable + taxable, cgst: prev.cgst + half, sgst: prev.sgst + half });
+    } else {
+      nilTaxable += item.total;
     }
   }
 
@@ -150,6 +153,8 @@ function SaleInvoiceInner() {
     ],
     items: sale.items.map((item: SaleItem) => {
       const prod = getProduct(item);
+      const category = prod && typeof prod.category === 'object' ? prod.category : null;
+      const gstRate = category?.gstPercentage ?? 0;
       const gstAmt = itemGst(item);
       const taxableAmt = item.total - gstAmt;
       const pricePerUnit = item.quantity > 0 ? taxableAmt / item.quantity : 0;
@@ -165,9 +170,13 @@ function SaleInvoiceInner() {
         cgst: gstAmt / 2,
         sgst: gstAmt / 2,
         total: item.total,
+        gstRate,
       };
     }),
-    taxRows: Array.from(taxGroups.entries()).sort((a, b) => b[0] - a[0]).map(([rate, { taxable, cgst, sgst }]) => ({ rate, taxable, cgst, sgst })),
+    taxRows: [
+      ...(nilTaxable > 0 ? [{ rate: 0, taxable: nilTaxable, cgst: 0, sgst: 0 }] : []),
+      ...Array.from(taxGroups.entries()).sort((a, b) => b[0] - a[0]).map(([rate, { taxable, cgst, sgst }]) => ({ rate, taxable, cgst, sgst })),
+    ],
     amountRows: [
       { label: 'Sub Total', val: INR(total) },
       { label: 'Total', val: INR(total), bold: true },

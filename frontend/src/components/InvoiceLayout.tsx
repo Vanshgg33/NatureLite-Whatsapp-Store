@@ -72,6 +72,7 @@ export type InvoiceItem = {
   cgst: number;
   sgst: number;
   total: number;
+  gstRate?: number;
 };
 
 export type InvoiceTaxRow = {
@@ -225,8 +226,8 @@ export default function InvoiceLayout({ data, invoiceRef, onPrint, onDownload, d
                   <td style={{ ...TD, width: '5%' }}>{item.quantity}</td>
                   <td style={{ ...TD, width: '8%' }}>₹ {INR(item.pricePerUnit)}</td>
                   <td style={{ ...TD, width: '9%' }}>₹ {INR(item.taxableAmt)}</td>
-                  <td style={{ ...TD, width: '7%' }}>₹ {INR(item.cgst)}</td>
-                  <td style={{ ...TD, width: '7%' }}>₹ {INR(item.sgst)}</td>
+                  <td style={{ ...TD, width: '7%' }}>{item.gstRate === 0 ? 'NIL' : `₹ ${INR(item.cgst)}`}</td>
+                  <td style={{ ...TD, width: '7%' }}>{item.gstRate === 0 ? 'NIL' : `₹ ${INR(item.sgst)}`}</td>
                   <td style={{ ...TD, width: '8%' }}>₹ {INR(item.sellingPrice)}</td>
                   <td style={{ ...TD, width: '8%' }}>₹ {INR(item.total)}</td>
                 </tr>
@@ -248,20 +249,29 @@ export default function InvoiceLayout({ data, invoiceRef, onPrint, onDownload, d
                       </tr>
                     </thead>
                     <tbody>
-                      {taxRows.length > 0 ? taxRows.flatMap(({ rate, taxable, cgst, sgst }) => [
-                        <tr key={`sgst-${rate}`}>
-                          <td style={{ ...TD, textAlign: 'left' }}>SGST</td>
-                          <td style={{ ...TD, textAlign: 'right' }}>₹ {INR(taxable)}</td>
-                          <td style={{ ...TD, textAlign: 'right' }}>{(rate / 2).toFixed(1)}%</td>
-                          <td style={{ ...TD, textAlign: 'right' }}>₹ {INR(sgst)}</td>
-                        </tr>,
-                        <tr key={`cgst-${rate}`}>
-                          <td style={{ ...TD, textAlign: 'left' }}>CGST</td>
-                          <td style={{ ...TD, textAlign: 'right' }}>₹ {INR(taxable)}</td>
-                          <td style={{ ...TD, textAlign: 'right' }}>{(rate / 2).toFixed(1)}%</td>
-                          <td style={{ ...TD, textAlign: 'right' }}>₹ {INR(cgst)}</td>
-                        </tr>,
-                      ]) : (
+                      {taxRows.length > 0 ? taxRows.flatMap(({ rate, taxable, cgst, sgst }) =>
+                        rate === 0 ? [
+                          <tr key="nil-rated">
+                            <td style={{ ...TD, textAlign: 'left' }}>NIL Rated</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>₹ {INR(taxable)}</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>NIL</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>NIL</td>
+                          </tr>,
+                        ] : [
+                          <tr key={`sgst-${rate}`}>
+                            <td style={{ ...TD, textAlign: 'left' }}>SGST</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>₹ {INR(taxable)}</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>{(rate / 2).toFixed(1)}%</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>₹ {INR(sgst)}</td>
+                          </tr>,
+                          <tr key={`cgst-${rate}`}>
+                            <td style={{ ...TD, textAlign: 'left' }}>CGST</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>₹ {INR(taxable)}</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>{(rate / 2).toFixed(1)}%</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>₹ {INR(cgst)}</td>
+                          </tr>,
+                        ]
+                      ) : (
                         <tr>
                           <td colSpan={4} style={{ ...TD, fontStyle: 'italic', color: '#888' }}>No GST applicable</td>
                         </tr>
