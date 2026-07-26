@@ -663,7 +663,7 @@ class ApiClient {
   }
 
   async searchProducts(query: string, limit: number = 10): Promise<Product[]> {
-    const response = await this.client.get<ApiResponse<Product[]>>(`/products/search?q=${query}&limit=${limit}`);
+    const response = await this.client.get<ApiResponse<Product[]>>('/products/search', { params: { q: query, limit } });
     return response.data.data;
   }
 

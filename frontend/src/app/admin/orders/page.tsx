@@ -185,19 +185,21 @@ export default function OrdersPage() {
     refetchInterval: 30_000,
   });
 
-  const { data: productSearchResults = [] } = useQuery({
+  const { data: productSearchResults = [], isFetching: productSearchFetching } = useQuery({
     queryKey: ['product-search', debouncedProductSearch],
     queryFn: () => api.searchProducts(debouncedProductSearch, 20),
     enabled: !!debouncedProductSearch && showCreate,
   });
   const productRows = flattenProductRows(productSearchResults as Product[]);
+  const productSearchLoading = productSearchFetching || (!!productSearch && productSearch !== debouncedProductSearch);
 
-  const { data: editProductSearchResults = [] } = useQuery({
+  const { data: editProductSearchResults = [], isFetching: editProductSearchFetching } = useQuery({
     queryKey: ['product-search-edit', debouncedEditProductSearch],
     queryFn: () => api.searchProducts(debouncedEditProductSearch, 20),
     enabled: !!debouncedEditProductSearch && editingOrder !== null,
   });
   const editProductRows = flattenProductRows(editProductSearchResults as Product[]);
+  const editProductSearchLoading = editProductSearchFetching || (!!editProductSearch && editProductSearch !== debouncedEditProductSearch);
 
   const createOrderMutation = useMutation({
     mutationFn: () =>
@@ -307,46 +309,48 @@ export default function OrdersPage() {
   }
 
   function addToCart(row: ProductRow) {
-    const existing = cart.find(
-      (i) => i.productId === row.productId && (i.variantSku ?? '') === (row.variantSku ?? ''),
-    );
-    if (existing) {
-      setCart(cart.map((i) =>
-        i.productId === row.productId && (i.variantSku ?? '') === (row.variantSku ?? '')
-          ? { ...i, quantity: i.quantity + 1 }
-          : i,
-      ));
-    } else {
-      setCart([...cart, {
+    setCart((prev) => {
+      const existing = prev.find(
+        (i) => i.productId === row.productId && (i.variantSku ?? '') === (row.variantSku ?? ''),
+      );
+      if (existing) {
+        return prev.map((i) =>
+          i.productId === row.productId && (i.variantSku ?? '') === (row.variantSku ?? '')
+            ? { ...i, quantity: i.quantity + 1 }
+            : i,
+        );
+      }
+      return [...prev, {
         productId: row.productId,
         variantSku: row.variantSku,
         name: row.variantName ? `${row.name} · ${row.variantName}` : row.name,
         price: row.price,
         quantity: 1,
-      }]);
-    }
+      }];
+    });
     setProductSearch('');
   }
 
   function addToEditCart(row: ProductRow) {
-    const existing = editCart.find(
-      (i) => i.productId === row.productId && (i.variantSku ?? '') === (row.variantSku ?? ''),
-    );
-    if (existing) {
-      setEditCart(editCart.map((i) =>
-        i.productId === row.productId && (i.variantSku ?? '') === (row.variantSku ?? '')
-          ? { ...i, quantity: i.quantity + 1 }
-          : i,
-      ));
-    } else {
-      setEditCart([...editCart, {
+    setEditCart((prev) => {
+      const existing = prev.find(
+        (i) => i.productId === row.productId && (i.variantSku ?? '') === (row.variantSku ?? ''),
+      );
+      if (existing) {
+        return prev.map((i) =>
+          i.productId === row.productId && (i.variantSku ?? '') === (row.variantSku ?? '')
+            ? { ...i, quantity: i.quantity + 1 }
+            : i,
+        );
+      }
+      return [...prev, {
         productId: row.productId,
         variantSku: row.variantSku,
         name: row.variantName ? `${row.name} · ${row.variantName}` : row.name,
         price: row.price,
         quantity: 1,
-      }]);
-    }
+      }];
+    });
     setEditProductSearch('');
   }
 
@@ -963,7 +967,12 @@ export default function OrdersPage() {
               </div>
               {productDropdownOpen && productSearch && (
                 <div className="mt-1 border rounded-md max-h-48 overflow-y-auto bg-white shadow-lg z-10">
-                  {productRows.length === 0 ? (
+                  {productSearchLoading ? (
+                    <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Searching...
+                    </div>
+                  ) : productRows.length === 0 ? (
                     <p className="px-3 py-4 text-sm text-muted-foreground text-center">No products found</p>
                   ) : (
                     (() => {
@@ -1301,7 +1310,12 @@ export default function OrdersPage() {
               </div>
               {editProductDropdownOpen && editProductSearch && (
                 <div className="mt-1 border rounded-md max-h-48 overflow-y-auto bg-white shadow-lg z-10">
-                  {editProductRows.length === 0 ? (
+                  {editProductSearchLoading ? (
+                    <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Searching...
+                    </div>
+                  ) : editProductRows.length === 0 ? (
                     <p className="px-3 py-4 text-sm text-muted-foreground text-center">No products found</p>
                   ) : (
                     editProductRows.map((row) => {
