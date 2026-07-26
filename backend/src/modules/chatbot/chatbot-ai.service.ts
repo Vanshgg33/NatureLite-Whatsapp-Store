@@ -21,6 +21,7 @@ import { CouponsService } from '../coupons/coupons.service';
 import { UsersService } from '../users/users.service';
 import { WalletService } from '../wallet/wallet.service';
 import { ChatbotService } from './chatbot.service';
+import { bold } from './copy/format';
 
 /**
  * How many real user WhatsApp messages to keep in history.
@@ -259,7 +260,7 @@ Answer these from memory — never call a tool for them.
 When user mentions ANY product, quantity, or shopping intent:
 1. Call search_products() immediately — do NOT ask for clarification first
 2. If one clear match → call add_to_cart() in the SAME tool chain (no separate message)
-3. Reply in ONE message: "Added *[name]* ×[qty] ✅  Cart total: ₹[total]\n\nAnything else to add, or shall I checkout?"
+3. When add_to_cart returns confirmationSent=true the system already sent a button card — do NOT send any text confirmation yourself
 4. If 2–3 ambiguous matches → list them with prices and ask which one. Then add_to_cart on reply.
 
 ## Step 2 — Build cart or checkout
@@ -480,6 +481,7 @@ If stuck more than twice on the same issue → call request_human_support()
 
         // Execute every function call in this response
         const toolResponseParts: Part[] = [];
+        let interactiveCardSent = false;
         for (const part of parts) {
           if (!('functionCall' in part)) continue;
           const { name, args } = (part as any).functionCall as {
@@ -501,10 +503,19 @@ If stuck more than twice on the same issue → call request_human_support()
             return;
           }
 
-          const toolResult = await this.executeTool(name, args ?? {}, session);
+          const toolResult = await this.executeTool(name, args ?? {}, session, phone);
+          if (toolResult['confirmationSent']) interactiveCardSent = true;
           toolResponseParts.push({
             functionResponse: { name, response: toolResult },
           } as any);
+        }
+
+        // Interactive card was already sent — skip Gemini reply to avoid duplicate text
+        if (interactiveCardSent) {
+          turnAdditions.push({ role: 'user', parts: toolResponseParts });
+          await this.saveHistory(session, history, turnAdditions);
+          textSent = true;
+          break;
         }
 
         // Feed tool results back to Gemini
@@ -604,6 +615,7 @@ If stuck more than twice on the same issue → call request_human_support()
     name: string,
     args: Record<string, unknown>,
     session: ChatSessionDocument,
+    phone: string,
   ): Promise<Record<string, unknown>> {
     try {
       switch (name) {
@@ -611,7 +623,7 @@ If stuck more than twice on the same issue → call request_human_support()
         case 'get_categories':     return this.toolGetCategories();
         case 'get_product_detail': return this.toolGetProductDetail(args.productId as string);
         case 'get_cart':           return this.toolGetCart(session);
-        case 'add_to_cart':        return this.toolAddToCart(args.productId as string, Number(args.quantity), session);
+        case 'add_to_cart':        return this.toolAddToCart(args.productId as string, Number(args.quantity), session, phone);
         case 'remove_from_cart':   return this.toolRemoveFromCart(args.productId as string, session);
         case 'update_cart_quantity': return this.toolUpdateCartQuantity(args.productId as string, Number(args.quantity), session);
         case 'get_orders':         return this.toolGetOrders(Number(args.limit) || 5, session);
@@ -732,16 +744,28 @@ If stuck more than twice on the same issue → call request_human_support()
     };
   }
 
-  private async toolAddToCart(productId: string, quantity: number, session: ChatSessionDocument) {
+  private async toolAddToCart(productId: string, quantity: number, session: ChatSessionDocument, phone: string) {
     if (!session.user) {
       return { success: false, error: 'User not registered. Ask them to share their name.' };
     }
     const qty = Math.max(1, Math.min(Math.floor(quantity || 1), 20));
     await this.cartService.addItem(session.user.toString(), { productId, quantity: qty });
     const cart = await this.cartService.getCart(session.user.toString());
+
+    const itemLabel = `${cart.itemCount} item${cart.itemCount === 1 ? '' : 's'}`;
+    const total = `₹${Math.round((cart.total || 0) * 100) / 100}`;
+    await this.whatsappService.sendInteractiveButtons({
+      phone,
+      bodyText: `✓ Added · ${bold(itemLabel)} · ${total}`,
+      buttons: [
+        { id: 'checkout', title: '✅ Checkout' },
+        { id: 'continue_shopping', title: '➕ Add more' },
+      ],
+    });
+
     return {
       success: true,
-      message: `Added ${qty} unit(s) to cart.`,
+      confirmationSent: true,
       cartTotal: cart.total,
       cartItemCount: cart.itemCount,
     };
