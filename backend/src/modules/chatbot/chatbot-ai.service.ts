@@ -429,10 +429,14 @@ If stuck more than twice on the same issue → call request_human_support()
     try {
       const systemInstruction = this.buildSystemPrompt(session);
 
-      // Build the history from the session (Gemini Content[] format)
-      const history: Content[] = Array.isArray(session.conversationHistory)
-        ? (session.conversationHistory as unknown as Content[])
-        : [];
+      // Build the history from the session (Gemini Content[] format).
+      // Strip any functionCall/functionResponse entries — startChat only accepts
+      // text-bearing turns in history; tool exchange entries corrupt the next call.
+      const history: Content[] = (
+        Array.isArray(session.conversationHistory)
+          ? (session.conversationHistory as unknown as Content[])
+          : []
+      ).filter((c) => c.parts.some((p: any) => typeof p.text === 'string'));
 
       const model = this.genai.getGenerativeModel({
         model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
@@ -510,9 +514,10 @@ If stuck more than twice on the same issue → call request_human_support()
           } as any);
         }
 
-        // Interactive card was already sent — skip Gemini reply to avoid duplicate text
+        // Interactive card was already sent — skip Gemini reply to avoid duplicate text.
+        // Do NOT push the functionResponse user turn; startChat rejects functionResponse
+        // in history, so history ends at the model's tool-call turn (valid for next message).
         if (interactiveCardSent) {
-          turnAdditions.push({ role: 'user', parts: toolResponseParts });
           await this.saveHistory(session, history, turnAdditions);
           textSent = true;
           break;
