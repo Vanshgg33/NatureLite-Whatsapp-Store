@@ -78,12 +78,13 @@ const TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: 'add_to_cart',
-    description: 'Add a product to the cart.',
+    description: 'Add a product to the cart. If the product has variants, variantSku is required.',
     parameters: {
       type: 'OBJECT' as any,
       properties: {
         productId: { type: 'STRING' as any, description: 'Product _id to add' },
         quantity: { type: 'NUMBER' as any, description: 'Units to add (min 1)' },
+        variantSku: { type: 'STRING' as any, description: 'Variant SKU — required when the product has variants' },
       },
       required: ['productId', 'quantity'],
     },
@@ -261,9 +262,11 @@ Answer these from memory — never call a tool for them.
 ## Step 1 — Product intent
 When user mentions ANY product, quantity, or shopping intent:
 1. Call search_products() immediately — do NOT ask for clarification first
-2. If one clear match → call add_to_cart() in the SAME tool chain (no separate message)
-3. When add_to_cart returns confirmationSent=true the system already sent a button card — do NOT send any text confirmation yourself
-4. If 2–3 ambiguous matches → list them with prices and ask which one. Then add_to_cart on reply.
+2. If one clear match AND product has no variants → call add_to_cart() in the SAME tool chain (no separate message)
+3. If one clear match AND product HAS variants → list the variants with names and prices, ask which one. Then add_to_cart with variantSku on reply.
+4. When add_to_cart returns confirmationSent=true the system already sent a button card — do NOT send any text confirmation yourself
+5. If add_to_cart returns needsVariant=true → list the variants and ask which one (never retry without variantSku)
+6. If 2–3 ambiguous matches → list them with prices and ask which one. Then add_to_cart on reply.
 
 ## Step 2 — Build cart or checkout
 - User says "checkout / order karo / done / bas / haan / place order / proceed" → call initiate_checkout() immediately
@@ -632,7 +635,7 @@ If stuck more than twice on the same issue → call request_human_support()
         case 'get_categories':     return this.toolGetCategories();
         case 'get_product_detail': return this.toolGetProductDetail(args.productId as string);
         case 'get_cart':           return this.toolGetCart(session);
-        case 'add_to_cart':        return this.toolAddToCart(args.productId as string, Number(args.quantity), session, phone);
+        case 'add_to_cart':        return this.toolAddToCart(args.productId as string, Number(args.quantity), session, phone, args.variantSku as string | undefined);
         case 'remove_from_cart':   return this.toolRemoveFromCart(args.productId as string, session);
         case 'update_cart_quantity': return this.toolUpdateCartQuantity(args.productId as string, Number(args.quantity), session);
         case 'get_orders':         return this.toolGetOrders(Number(args.limit) || 5, session);
@@ -696,6 +699,14 @@ If stuck more than twice on the same issue → call request_human_support()
         description: (p.description || '').slice(0, 80),
         category: (p.category as any)?.name ?? '',
         inStock: p.trackStock === false || (p.stock ?? 1) > 0,
+        variants: Array.isArray(p.variants) && p.variants.length > 0
+          ? p.variants.filter((v: any) => v.isActive !== false).map((v: any) => ({
+              sku: v.sku,
+              name: v.name,
+              price: v.price,
+              inStock: (v.stock ?? 1) > 0,
+            }))
+          : [],
       })),
       total: products.length,
     };
@@ -727,6 +738,14 @@ If stuck more than twice on the same issue → call request_human_support()
       category: (p.category as any)?.name ?? '',
       inStock: p.trackStock === false || (p.stock ?? 1) > 0,
       stock: p.stock,
+      variants: Array.isArray(p.variants) && p.variants.length > 0
+        ? p.variants.filter((v: any) => v.isActive !== false).map((v: any) => ({
+            sku: v.sku,
+            name: v.name,
+            price: v.price,
+            inStock: (v.stock ?? 1) > 0,
+          }))
+        : [],
     };
   }
 
@@ -753,12 +772,31 @@ If stuck more than twice on the same issue → call request_human_support()
     };
   }
 
-  private async toolAddToCart(productId: string, quantity: number, session: ChatSessionDocument, phone: string) {
+  private async toolAddToCart(productId: string, quantity: number, session: ChatSessionDocument, phone: string, variantSku?: string) {
     if (!session.user) {
       return { success: false, error: 'User not registered. Ask them to share their name.' };
     }
+
+    // Validate variant: if the product has variants, a variantSku is required.
+    const product = await this.productsService.findById(productId).catch(() => null);
+    if (!product) return { success: false, error: 'Product not found.' };
+
+    const activeVariants = Array.isArray(product.variants)
+      ? product.variants.filter((v: any) => v.isActive !== false)
+      : [];
+
+    if (activeVariants.length > 0 && !variantSku) {
+      const list = activeVariants.map((v: any) => `${v.name} (sku: ${v.sku}, ₹${v.price})`).join(', ');
+      return {
+        success: false,
+        needsVariant: true,
+        error: `This product has variants. Ask the customer which they want: ${list}`,
+        variants: activeVariants.map((v: any) => ({ sku: v.sku, name: v.name, price: v.price })),
+      };
+    }
+
     const qty = Math.max(1, Math.min(Math.floor(quantity || 1), 20));
-    await this.cartService.addItem(session.user.toString(), { productId, quantity: qty });
+    await this.cartService.addItem(session.user.toString(), { productId, quantity: qty, ...(variantSku ? { variantSku } : {}) });
     const cart = await this.cartService.getCart(session.user.toString());
 
     const itemLabel = `${cart.itemCount} item${cart.itemCount === 1 ? '' : 's'}`;
