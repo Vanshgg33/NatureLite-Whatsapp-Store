@@ -434,7 +434,7 @@ If stuck more than twice on the same issue → call request_human_support()
         : [];
 
       const model = this.genai.getGenerativeModel({
-        model: 'gemini-2.0-flash',
+        model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
         systemInstruction,
         tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
         toolConfig: { functionCallingConfig: { mode: FunctionCallingMode.AUTO } },
