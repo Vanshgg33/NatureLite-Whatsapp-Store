@@ -852,7 +852,7 @@ export class ChatbotService implements OnModuleInit {
       !this.isTextInputState(currentState) &&
       !this.isValidTransitionKeyForState(currentState, transitionKey)
     ) {
-      await this.chatbotAiService.runAiTurn(message.phone, session, inputText);
+      await this.chatbotAiService.runAiTurn(message.phone, session, inputText, message.messageId);
       return;
     }
 
@@ -872,7 +872,7 @@ export class ChatbotService implements OnModuleInit {
 
       // ── All other states handled by AI ─────────────────────────────────
       default:
-        await this.chatbotAiService.runAiTurn(message.phone, session, inputText);
+        await this.chatbotAiService.runAiTurn(message.phone, session, inputText, message.messageId);
     }
   }
 

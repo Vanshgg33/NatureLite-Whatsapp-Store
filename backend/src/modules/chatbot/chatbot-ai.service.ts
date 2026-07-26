@@ -410,6 +410,7 @@ If stuck more than twice on the same issue → call request_human_support()
     phone: string,
     session: ChatSessionDocument,
     userInput: string,
+    messageId?: string,
   ): Promise<void> {
     if (!process.env.GEMINI_API_KEY) {
       await this.whatsappService.sendTextMessage({
@@ -428,6 +429,9 @@ If stuck more than twice on the same issue → call request_human_support()
       return;
     }
     this.inFlight.set(phone, true);
+
+    // Mark message read + show typing indicator immediately so the user knows we're working.
+    if (messageId) void this.whatsappService.markReadAndTyping(messageId, phone);
 
     // Wait for a global concurrency slot (max MAX_CONCURRENT_AI simultaneous Gemini calls).
     const releaseSlot = await this.acquireAiSlot();
