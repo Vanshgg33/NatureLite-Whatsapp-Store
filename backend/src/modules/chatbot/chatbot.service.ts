@@ -161,9 +161,9 @@ export class ChatbotService implements OnModuleInit {
     await this.whatsappService.sendTextMessage({
       phone,
       message:
-        `✅ ${bold(‘Support request received’)}\n\n` +
-        `You’re now connected with our team — ${italic(‘the bot is paused for 2 hours’)}.\n` +
-        `We’ll respond shortly. For urgent help call ${bold(‘8962021112’)}.\n\n` +
+        `✅ ${bold('Support request received')}\n\n` +
+        `You're now connected with our team — ${italic('the bot is paused for 2 hours')}.\n` +
+        `We'll respond shortly. For urgent help call ${bold('8962021112')}.\n\n` +
         `_Type *menu* anytime to return to the bot._`,
     });
   }
@@ -645,7 +645,7 @@ export class ChatbotService implements OnModuleInit {
                 `*${order.shippingAddress?.name || 'Hi'}*, your order has been placed!\n\n` +
                 `${itemLines}${more}\n\n` +
                 `*Total: ${this.formatCurrency(order.total)}* · Cash on Delivery\n` +
-                `We’ll confirm shortly. Track anytime by replying *orders*.`,
+                `We'll confirm shortly. Track anytime by replying *orders*.`,
               buttons: [
                 { id: BTN.BROWSE, title: '🛍 Shop more' },
               ],
@@ -1143,7 +1143,7 @@ export class ChatbotService implements OnModuleInit {
               phone,
               message:
                 `🏷 ${bold(`${this.formatCurrency(updated.discount)} off`)} with ${bold(best.code)} applied.\n` +
-                italic('Remove from cart if you don’t want it.'),
+                italic("Remove from cart if you don't want it."),
             });
           } catch (err) {
             // Auto-apply failed (e.g. cap hit since findApplicableCoupons
@@ -2410,7 +2410,7 @@ export class ChatbotService implements OnModuleInit {
     if (!checkoutLockAcquired) {
       await this.whatsappService.sendTextMessage({
         phone,
-        message: "_We’re already placing your order — please wait a moment..._",
+        message: "_We're already placing your order — please wait a moment..._",
       });
       return;
     }
