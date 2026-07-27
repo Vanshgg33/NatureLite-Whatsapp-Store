@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Eye, Plus, Trash2, ShoppingCart, MessageCircle, Globe, Download, Send, Loader2, Edit, Phone, Receipt, Building2, Truck, Bell, RotateCcw } from 'lucide-react';
+import { Search, Eye, Plus, Trash2, ShoppingCart, MessageCircle, Globe, Download, Send, Loader2, Edit, Phone, Receipt, Building2, Truck, Bell, RotateCcw, Printer } from 'lucide-react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -106,6 +106,7 @@ export default function OrdersPage() {
   const [page, setPage] = useState(1);
 
   const [billLoadingId, setBillLoadingId] = useState<string | null>(null);
+  const [printLoadingId, setPrintLoadingId] = useState<string | null>(null);
   const [sendLoadingId, setSendLoadingId] = useState<string | null>(null);
 
   // Edit order state
@@ -291,6 +292,27 @@ export default function OrdersPage() {
     } finally {
       setBillLoadingId(null);
     }
+  }
+
+  function handlePrintBill(order: Order) {
+    setPrintLoadingId(order._id);
+    const popup = window.open(
+      `/invoice/${order._id}?mode=print`,
+      '_blank',
+      'width=900,height=700,scrollbars=yes,resizable=yes',
+    );
+    if (!popup) {
+      toast({ title: 'Popup blocked', description: 'Allow popups for this site and try again.', variant: 'destructive' });
+      setPrintLoadingId(null);
+      return;
+    }
+    popup.addEventListener('load', () => {
+      popup.focus();
+      popup.print();
+      setPrintLoadingId(null);
+    });
+    // fallback if load event doesn't fire (some browsers)
+    setTimeout(() => setPrintLoadingId(null), 5000);
   }
 
   async function handleSendBill(order: Order) {
@@ -714,6 +736,15 @@ export default function OrdersPage() {
                                 onClick={() => handleDownloadBill(order)}
                               >
                                 {billLoadingId === order._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Print bill"
+                                disabled={printLoadingId === order._id}
+                                onClick={() => handlePrintBill(order)}
+                              >
+                                {printLoadingId === order._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
                               </Button>
                               <Button
                                 variant="ghost"
