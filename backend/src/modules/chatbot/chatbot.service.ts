@@ -161,11 +161,15 @@ export class ChatbotService implements OnModuleInit {
     await this.whatsappService.sendTextMessage({
       phone,
       message:
-        `✅ ${bold('Support request received')}\n\n` +
-        `You’re now connected with our team — ${italic('the bot is paused for 2 hours')}.\n` +
-        `We’ll respond shortly. For urgent help call ${bold('8962021112')}.\n\n` +
+        `✅ ${bold(‘Support request received’)}\n\n` +
+        `You’re now connected with our team — ${italic(‘the bot is paused for 2 hours’)}.\n` +
+        `We’ll respond shortly. For urgent help call ${bold(‘8962021112’)}.\n\n` +
         `_Type *menu* anytime to return to the bot._`,
     });
+  }
+
+  async reorderLastForAi(phone: string, session: ChatSessionDocument): Promise<void> {
+    await this.startReorderFromLatestOrder(phone, session);
   }
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -517,6 +521,19 @@ export class ChatbotService implements OnModuleInit {
       // release the user doesn't leave them stuck indefinitely. Once expired,
       // notify the user and resume bot flows on this message.
       if (session.isHandedOffToSupport) {
+        // Allow user to self-release with "done"/"thanks"/"resolved" so they
+        // don't have to wait 2 hours if the issue was resolved quickly.
+        if (this.isSupportDoneCommand(inputText)) {
+          session.isHandedOffToSupport = false;
+          session.supportHandoffExpiresAt = undefined;
+          await this.saveSession(session);
+          await this.whatsappService.sendTextMessage({
+            phone: message.phone,
+            message: `${italic('Support session ended.')} Type *menu* to continue shopping.`,
+          });
+          return;
+        }
+
         const expiresAt = session.supportHandoffExpiresAt
           ? new Date(session.supportHandoffExpiresAt).getTime()
           : 0;
@@ -4809,6 +4826,27 @@ export class ChatbotService implements OnModuleInit {
       return;
     }
 
+    // Express checkout: single saved address \u2014 skip the list, show a quick confirm card
+    // so the user goes from cart to payment in one tap instead of two interactions.
+    if (!options.forceShowList && user.addresses.length === 1) {
+      const addr = user.addresses[0];
+      const addrLabel = addr.label || 'Home';
+      const addrSummary = [addr.street, addr.city, addr.pincode].filter(Boolean).join(', ');
+      session.context = mergeChatContext(session.context, { selectedAddressIndex: 0 });
+      await this.saveSession(session);
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        headerText: 'Deliver to',
+        bodyText:
+          `${notice ? `${notice}\n\n` : ''}\uD83D\uDCCD *${addrLabel}*\n_${addrSummary}_\n\nConfirm to proceed to payment.`,
+        buttons: [
+          { id: Btn.address(0), title: '\u2705 Confirm address' },
+          { id: BTN.ADD_NEW_ADDRESS, title: '\u270F\uFE0F Change address' },
+        ],
+      });
+      return;
+    }
+
     const savedRows = user.addresses.slice(0, 8).map((addr, i) => {
       const label = (addr.label || `Address ${i + 1}`).slice(0, WA.LIST_ROW_TITLE);
       const title = addr.isDefault ? clip(`${label} \u2605`, WA.LIST_ROW_TITLE) : label;
@@ -5369,6 +5407,14 @@ export class ChatbotService implements OnModuleInit {
   private isMenuCommand(input: string): boolean {
     const normalized = this.normalizeInput(input);
     return ['menu', 'start', 'hi', 'hello', 'hey', '/start', '/menu'].includes(normalized);
+  }
+
+  private isSupportDoneCommand(input: string): boolean {
+    const normalized = this.normalizeInput(input);
+    return [
+      'done', 'thanks', 'thank you', 'thankyou', 'thx', 'resolved', 'solved',
+      'theek hai', 'theek h', 'shukriya', 'ok thanks', 'ok thank you',
+    ].includes(normalized);
   }
 
   /** States where the user is actively typing free text (address, coupon, name/email) — do not intercept. */

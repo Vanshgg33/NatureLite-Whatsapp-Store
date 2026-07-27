@@ -34,7 +34,7 @@ const MAX_HISTORY_MESSAGES = 10;
 /** Hard cap on raw Content entries — safety net against runaway tool chains. */
 const MAX_HISTORY_ENTRIES = 60;
 /** Safety cap on sequential tool calls per user message. */
-const MAX_TOOL_ITERATIONS = 5;
+const MAX_TOOL_ITERATIONS = 8;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tool declarations — Gemini uses these to decide which function to call.
@@ -161,6 +161,25 @@ const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     parameters: { type: 'OBJECT' as any, properties: {} },
   },
   {
+    name: 'cancel_order',
+    description:
+      'Cancel an order that is still in placed or confirmed status. Always confirm the order details with the user before calling. Do NOT call for delivered, out_for_delivery, or already cancelled orders.',
+    parameters: {
+      type: 'OBJECT' as any,
+      properties: {
+        orderNumber: { type: 'STRING' as any, description: 'Order number like ORD-001. Omit to cancel the latest cancellable order.' },
+        reason: { type: 'STRING' as any, description: 'Brief reason for cancellation' },
+      },
+      required: ['reason'],
+    },
+  },
+  {
+    name: 'reorder_last',
+    description:
+      'Repeat the most recent previous order — adds all items to cart and starts checkout. Call when user says "same as last time", "reorder", "dobara order", "phir se", or wants to repeat a past purchase.',
+    parameters: { type: 'OBJECT' as any, properties: {} },
+  },
+  {
     name: 'initiate_checkout',
     description:
       'Start checkout (address → payment). Call when user says "order", "buy", "checkout", "place order", or confirms they want to purchase.',
@@ -262,22 +281,71 @@ Answer these from memory — never call a tool for them.
 
 ## Step 1 — Product intent
 When user mentions ANY product, quantity, or shopping intent:
-1. Call search_products() immediately — do NOT ask for clarification first
-2. If one clear match AND product has no variants → call add_to_cart() in the SAME tool chain (no separate message)
-3. If one clear match AND product HAS variants → list the variants with names and prices, ask which one. Then add_to_cart with variantSku on reply.
-4. When add_to_cart returns confirmationSent=true the system already sent a button card — do NOT send any text confirmation yourself
-5. If add_to_cart returns needsVariant=true → list the variants and ask which one (never retry without variantSku)
-6. If 2–3 ambiguous matches → list them with prices and ask which one. Then add_to_cart on reply.
+1. **Translate Hindi first** — if input contains Hindi transliteration, convert product keywords to English (see HINDI TRANSLITERATION section below) before calling search_products
+2. **Extract quantity + variant from the message in one go** — "ek kilo moong dal" → search → add_to_cart(quantity=1, variantSku="1kg"). Do not ask separately.
+3. Call search_products() immediately — do NOT ask for clarification first
+4. If one clear match AND product has no variants → call add_to_cart() in the SAME tool chain (no extra message)
+5. If one clear match AND product HAS variants:
+   - If the user already stated a size/weight → pick the matching variantSku and add_to_cart directly
+   - If no size stated → list variants with names and prices, ask which one. Then add_to_cart with variantSku on reply.
+6. When add_to_cart returns confirmationSent=true the system already sent a button card — do NOT send any text confirmation yourself
+7. If add_to_cart returns needsVariant=true → list the variants and ask which one (never retry without variantSku)
+8. If 2–3 ambiguous matches → number them (1. Product A ₹X, 2. Product B ₹Y) and ask "Which one?". When user replies "1" or "2" → treat as that item, do NOT search again.
+9. If search returns only out-of-stock items → immediately search the same category for in-stock alternatives and show those
 
 ## Step 2 — Build cart or checkout
 - User says "checkout / order karo / done / bas / haan / place order / proceed" → call initiate_checkout() immediately
-- User adds another item → repeat Step 1, then ask again
-- After EVERY add_to_cart — ALWAYS end with the checkout prompt
+- User says "same as last time / reorder / dobara order / phir se" → call reorder_last() immediately
+- User adds another item → repeat Step 1
+- After EVERY add_to_cart — ALWAYS end your reply asking if they want to add more or checkout
 
 ## Step 3 — Checkout (system takes over)
 - initiate_checkout() launches address picker → payment selection automatically
 - You do NOT ask for address, pin, or payment method
 - Do NOT send any message after calling initiate_checkout — the system speaks next
+
+## Cancellation flow
+- User says "cancel / cancel karo / order band karo" → call get_orders() first to identify which order
+- Confirm with user: "Cancel order #ORD-001 for ₹250? Reply *yes* to confirm."
+- Only after user confirms → call cancel_order() with the order number and reason
+- Do NOT cancel without explicit user confirmation
+
+---
+
+# HINDI TRANSLITERATION
+Users often type product names in Hindi using English letters. **Translate to English before calling search_products**:
+
+| User types | Search for |
+|-----------|-----------|
+| tel / tail / teel | oil |
+| sarson ka tel | mustard oil |
+| nariyal tel | coconut oil |
+| doodh | milk |
+| daal / dal | dal / lentils |
+| moong dal / mung | moong dal |
+| chana dal / chane | chana dal |
+| aata / atta | flour / wheat flour |
+| besan | gram flour |
+| namak | salt |
+| cheeni / chini | sugar |
+| jeera / zeera | cumin |
+| haldi | turmeric |
+| mirch / lal mirch | chili / red chili |
+| kali mirch | black pepper |
+| adrak | ginger |
+| lahsun | garlic |
+| dhania | coriander |
+| saunf | fennel |
+| ajwain | carom seeds |
+| methi | fenugreek |
+| til | sesame |
+| kaju | cashew |
+| badam | almond |
+| kishmish | raisins |
+| chawal / chaawal | rice |
+| daliya | oats / broken wheat |
+
+If the user's query has NO Hindi, pass it to search_products as-is.
 
 ---
 
@@ -292,8 +360,10 @@ When user mentions ANY product, quantity, or shopping intent:
 | add_to_cart | After finding a product — always include productId + quantity |
 | remove_from_cart | User says "remove X" or "hatao" |
 | update_cart_quantity | User says "change X to 2" or "+1 ghee" |
-| get_orders | User asks order history |
+| get_orders | User asks order history or wants to cancel |
 | track_order | User asks "where is my order" or "track" |
+| cancel_order | After user confirms they want to cancel a specific order |
+| reorder_last | User wants to repeat their last order |
 | get_available_coupons | User asks about discounts/offers |
 | apply_coupon | User provides or accepts a coupon code |
 | get_account_info | User asks about profile, saved addresses |
@@ -354,6 +424,7 @@ You have the last 10 messages of this conversation in your context window.
 - Do NOT ask for information the user already gave (name, product preference, address)
 - Do NOT re-introduce yourself mid-conversation
 - "That one" / "same" / "wahi wala" → look back in history before calling a tool
+- If user replies "1", "2", "3" to a numbered list you showed → treat as that item's selection, do NOT search again
 - If a product was discussed → refer to it by name directly
 
 ---
@@ -511,6 +582,11 @@ If stuck more than twice on the same issue → call request_human_support()
             await this.chatbotService.initiateCheckoutForAi(phone, session);
             return;
           }
+          if (name === 'reorder_last') {
+            await this.saveHistory(session, history, turnAdditions, phone);
+            await this.chatbotService.reorderLastForAi(phone, session);
+            return;
+          }
           if (name === 'request_human_support') {
             await this.saveHistory(session, history, turnAdditions, phone);
             await this.chatbotService.requestSupportForAi(phone, session);
@@ -645,6 +721,7 @@ If stuck more than twice on the same issue → call request_human_support()
         case 'update_cart_quantity': return this.toolUpdateCartQuantity(args.productId as string, Number(args.quantity), session);
         case 'get_orders':         return this.toolGetOrders(Number(args.limit) || 5, session);
         case 'track_order':        return this.toolTrackOrder(args.orderNumber as string | undefined, session);
+        case 'cancel_order':       return this.toolCancelOrder(args.orderNumber as string | undefined, args.reason as string, session);
         case 'get_available_coupons': return this.toolGetAvailableCoupons(session);
         case 'apply_coupon':       return this.toolApplyCoupon(args.code as string, session);
         case 'get_account_info':   return this.toolGetAccountInfo(session);
@@ -891,6 +968,46 @@ If stuck more than twice on the same issue → call request_human_support()
             day: 'numeric', month: 'short',
           })
         : null,
+    };
+  }
+
+  private async toolCancelOrder(
+    orderNumber: string | undefined,
+    reason: string,
+    session: ChatSessionDocument,
+  ): Promise<Record<string, unknown>> {
+    if (!session.user) return { success: false, error: 'User not registered.' };
+    if (!reason?.trim()) return { success: false, error: 'Cancellation reason is required.' };
+
+    let order: any = null;
+    if (orderNumber) {
+      order = await this.ordersService.findByOrderNumber(orderNumber).catch(() => null);
+    }
+    if (!order) {
+      const recent = await this.ordersService.findUserOrders(session.user.toString(), 5);
+      order = recent.find((o: any) => ['placed', 'confirmed'].includes(o.status)) ?? null;
+    }
+    if (!order) {
+      return { success: false, error: 'No cancellable orders found. Orders can only be cancelled before they are packed.' };
+    }
+
+    const orderUserId = (order.user as any)?._id?.toString() ?? order.user?.toString();
+    if (orderUserId !== session.user.toString()) {
+      return { success: false, error: 'Order not found.' };
+    }
+
+    if (!['placed', 'confirmed'].includes(order.status)) {
+      return {
+        success: false,
+        error: `Order #${order.orderNumber} is already ${order.status} and cannot be cancelled. Contact support for help.`,
+      };
+    }
+
+    await this.ordersService.cancelOrder(order._id.toString(), { reason: reason.trim() }, session.user.toString());
+    return {
+      success: true,
+      orderNumber: order.orderNumber,
+      message: `Order #${order.orderNumber} cancelled. Any prepaid amount will be refunded within 3–5 business days.`,
     };
   }
 
