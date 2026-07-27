@@ -22,16 +22,20 @@ const STATE_CODES: Record<string, string> = {
 
 const SELLER_STATE = 'Chhattisgarh';
 const SELLER_STATE_CODE = '22';
+const DEFAULT_GST_RATE = 5; // all prices are inclusive; fall back to 5% when category has no rate
 
 function getProduct(item: OrderItem) {
   return typeof item.product === 'object' ? item.product : null;
 }
 
-function itemGst(item: OrderItem): number {
+function itemGstRate(item: OrderItem): number {
   const prod = getProduct(item);
   const category = prod && typeof prod.category === 'object' ? prod.category : null;
-  const rate = category?.gstPercentage ?? 0;
-  if (!rate) return 0;
+  return category?.gstPercentage || DEFAULT_GST_RATE;
+}
+
+function itemGst(item: OrderItem): number {
+  const rate = itemGstRate(item);
   return item.total - item.total / (1 + rate / 100);
 }
 
@@ -137,20 +141,13 @@ function OrderInvoiceInner() {
 
   // Build tax groups using fresh GST computation (same as sales invoice)
   const taxGroups = new Map<number, { taxable: number; cgst: number; sgst: number }>();
-  let nilTaxable = 0;
   for (const item of order.items) {
-    const prod = getProduct(item);
-    const category = prod && typeof prod.category === 'object' ? prod.category : null;
-    const gstRate = category?.gstPercentage ?? 0;
-    if (gstRate > 0) {
-      const gstAmt = itemGst(item);
-      const taxable = item.total - gstAmt;
-      const half = gstAmt / 2;
-      const prev = taxGroups.get(gstRate) ?? { taxable: 0, cgst: 0, sgst: 0 };
-      taxGroups.set(gstRate, { taxable: prev.taxable + taxable, cgst: prev.cgst + half, sgst: prev.sgst + half });
-    } else {
-      nilTaxable += item.total;
-    }
+    const gstRate = itemGstRate(item);
+    const gstAmt = itemGst(item);
+    const taxable = item.total - gstAmt;
+    const half = gstAmt / 2;
+    const prev = taxGroups.get(gstRate) ?? { taxable: 0, cgst: 0, sgst: 0 };
+    taxGroups.set(gstRate, { taxable: prev.taxable + taxable, cgst: prev.cgst + half, sgst: prev.sgst + half });
   }
   if (shippingCharge > 0) {
     const SHIP_GST = 18;
@@ -166,8 +163,7 @@ function OrderInvoiceInner() {
   const invoiceItems = [
     ...order.items.map((item) => {
       const prod = getProduct(item);
-      const category = prod && typeof prod.category === 'object' ? prod.category : null;
-      const gstRate = category?.gstPercentage ?? 0;
+      const gstRate = itemGstRate(item);
       const gstAmt = itemGst(item);
       const taxableAmt = item.total - gstAmt;
       const pricePerUnit = item.quantity > 0 ? taxableAmt / item.quantity : 0;
@@ -219,7 +215,6 @@ function OrderInvoiceInner() {
     ],
     items: invoiceItems,
     taxRows: [
-      ...(nilTaxable > 0 ? [{ rate: 0, taxable: nilTaxable, cgst: 0, sgst: 0 }] : []),
       ...Array.from(taxGroups.entries()).sort((a, b) => b[0] - a[0]).map(([rate, { taxable, cgst, sgst }]) => ({ rate, taxable, cgst, sgst })),
     ],
     amountRows: [
