@@ -28,10 +28,15 @@ function getProduct(item: OrderItem) {
   return typeof item.product === 'object' ? item.product : null;
 }
 
+const NIL_GST_KEYWORDS = ['seed', 'flour'];
+
 function itemGstRate(item: OrderItem): number {
   const prod = getProduct(item);
   const category = prod && typeof prod.category === 'object' ? prod.category : null;
-  return category?.gstPercentage || DEFAULT_GST_RATE;
+  if (category?.gstPercentage != null) return category.gstPercentage;
+  const catName = (category?.name ?? '').toLowerCase();
+  if (NIL_GST_KEYWORDS.some((kw) => catName.includes(kw))) return 0;
+  return DEFAULT_GST_RATE;
 }
 
 function itemGst(item: OrderItem): number {
@@ -141,13 +146,18 @@ function OrderInvoiceInner() {
 
   // Build tax groups using fresh GST computation (same as sales invoice)
   const taxGroups = new Map<number, { taxable: number; cgst: number; sgst: number }>();
+  let nilTaxable = 0;
   for (const item of order.items) {
     const gstRate = itemGstRate(item);
-    const gstAmt = itemGst(item);
-    const taxable = item.total - gstAmt;
-    const half = gstAmt / 2;
-    const prev = taxGroups.get(gstRate) ?? { taxable: 0, cgst: 0, sgst: 0 };
-    taxGroups.set(gstRate, { taxable: prev.taxable + taxable, cgst: prev.cgst + half, sgst: prev.sgst + half });
+    if (gstRate === 0) {
+      nilTaxable += item.total;
+    } else {
+      const gstAmt = itemGst(item);
+      const taxable = item.total - gstAmt;
+      const half = gstAmt / 2;
+      const prev = taxGroups.get(gstRate) ?? { taxable: 0, cgst: 0, sgst: 0 };
+      taxGroups.set(gstRate, { taxable: prev.taxable + taxable, cgst: prev.cgst + half, sgst: prev.sgst + half });
+    }
   }
   if (shippingCharge > 0) {
     const SHIP_GST = 18;
@@ -215,6 +225,7 @@ function OrderInvoiceInner() {
     ],
     items: invoiceItems,
     taxRows: [
+      ...(nilTaxable > 0 ? [{ rate: 0, taxable: nilTaxable, cgst: 0, sgst: 0 }] : []),
       ...Array.from(taxGroups.entries()).sort((a, b) => b[0] - a[0]).map(([rate, { taxable, cgst, sgst }]) => ({ rate, taxable, cgst, sgst })),
     ],
     amountRows: [
