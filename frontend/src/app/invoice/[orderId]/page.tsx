@@ -33,7 +33,7 @@ const NIL_GST_KEYWORDS = ['seed', 'flour'];
 function itemGstRate(item: OrderItem): number {
   const prod = getProduct(item);
   const category = prod && typeof prod.category === 'object' ? prod.category : null;
-  if (category?.gstPercentage != null) return category.gstPercentage;
+  if (category?.gstPercentage > 0) return category.gstPercentage;
   const catName = (category?.name ?? '').toLowerCase();
   if (NIL_GST_KEYWORDS.some((kw) => catName.includes(kw))) return 0;
   return DEFAULT_GST_RATE;
