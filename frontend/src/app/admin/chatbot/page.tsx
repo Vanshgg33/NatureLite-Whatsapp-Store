@@ -242,7 +242,7 @@ function renderMarkdown(text: string): React.ReactNode[] {
 // ── Briefing Card ──────────────────────────────────────────────────────────────
 
 function BriefingCard({ briefing, onAsk }: { briefing: Record<string, string | null>; onAsk: (q: string) => void }) {
-  const stats = briefing.dashboard ? parseKeyValues(briefing.dashboard) : null;
+  const stats = briefing.dashboard && typeof briefing.dashboard === 'string' ? parseKeyValues(briefing.dashboard) : null;
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-2xl mx-auto">
       <div className="bg-brand-green/5 border border-brand-green/20 rounded-2xl p-5 mb-6">
@@ -261,7 +261,7 @@ function BriefingCard({ briefing, onAsk }: { briefing: Record<string, string | n
           </div>
         )}
         <div className="flex flex-wrap gap-2">
-          {briefing.lowStock && briefing.lowStock.trim() !== 'No low stock products found.' && (
+          {briefing.lowStock && typeof briefing.lowStock === 'string' && briefing.lowStock.trim() !== 'No low stock products found.' && (
             <button onClick={() => onAsk('which products are low on stock')} className="flex items-center gap-1.5 text-[11px] bg-red-50 dark:bg-red-950/20 text-red-600 border border-red-200/60 px-2.5 py-1 rounded-full hover:bg-red-100 transition-colors">
               <AlertTriangle className="h-3 w-3" /> Low Stock Alert
             </button>

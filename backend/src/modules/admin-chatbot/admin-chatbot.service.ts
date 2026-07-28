@@ -1978,17 +1978,30 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     }
   }
 
-  async getBriefing(): Promise<Record<string, unknown>> {
+  async getBriefing(): Promise<Record<string, string | null>> {
     const [dashboard, statusCounts, lowStock] = await Promise.allSettled([
       this.executeTool('get_dashboard_summary', {}),
       this.executeTool('get_orders_by_status', {}),
       this.executeTool('search_low_stock_products', {}),
     ]);
-    const extract = (r: PromiseSettledResult<any>) => r.status === 'fulfilled' ? r.value : null;
+    const toText = (r: PromiseSettledResult<any>): string | null => {
+      if (r.status !== 'fulfilled' || !r.value) return null;
+      const v = r.value;
+      if (typeof v === 'string') return v;
+      if (typeof v !== 'object') return String(v);
+      return Object.entries(v)
+        .filter(([, val]) => val !== null && val !== undefined && typeof val !== 'object')
+        .map(([k, val]) => `**${k.replace(/([A-Z])/g, ' $1').trim()}**: ${val}`)
+        .join('\n');
+    };
+    const lowStockVal = lowStock.status === 'fulfilled' ? lowStock.value : null;
+    const lowStockText = lowStockVal?.count === 0
+      ? 'No low stock products found.'
+      : toText(lowStock);
     return {
-      dashboard: extract(dashboard),
-      orderStatus: extract(statusCounts),
-      lowStock: extract(lowStock),
+      dashboard: toText(dashboard),
+      orderStatus: toText(statusCounts),
+      lowStock: lowStockText,
     };
   }
 
