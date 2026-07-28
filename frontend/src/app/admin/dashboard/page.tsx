@@ -206,7 +206,7 @@ export default function DashboardPage() {
   // Top 5 products formatted for chart
   const topProductsChartData = useMemo(() => {
     return (topSellingOverall || []).slice(0, 6).map((p: TopSellingProduct) => ({
-      name: p.name.length > 18 ? p.name.slice(0, 18) + '…' : p.name,
+      name: (p.name?.length ?? 0) > 18 ? p.name.slice(0, 18) + '…' : (p.name ?? ''),
       units: p.quantitySold,
       revenue: p.revenue,
     }));
@@ -215,7 +215,7 @@ export default function DashboardPage() {
   // Month-over-month formatted for grouped bar
   const momChartData = useMemo(() => {
     return (monthOverMonth || []).map((d: MonthOverMonthData) => ({
-      store: d.storeName.length > 12 ? d.storeName.slice(0, 12) + '…' : d.storeName,
+      store: (d.storeName?.length ?? 0) > 12 ? d.storeName.slice(0, 12) + '…' : (d.storeName ?? ''),
       thisMonth: d.thisMonth,
       lastMonth: d.lastMonth,
     }));
@@ -224,7 +224,7 @@ export default function DashboardPage() {
   // Stores today revenue for horizontal bar
   const storesTodayChartData = useMemo(() => {
     return (storesTodayRevenue || []).map((s: StoreRevenueToday) => ({
-      name: s.storeName.length > 14 ? s.storeName.slice(0, 14) + '…' : s.storeName,
+      name: (s.storeName?.length ?? 0) > 14 ? s.storeName.slice(0, 14) + '…' : (s.storeName ?? ''),
       revenue: s.revenue,
       sales: s.salesCount,
     }));

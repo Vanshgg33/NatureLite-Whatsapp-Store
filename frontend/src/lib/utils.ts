@@ -79,7 +79,8 @@ export function getStatusColor(status: string): string {
   return colors[status] || 'bg-gray-100 text-gray-800';
 }
 
-export function getInitials(name: string): string {
+export function getInitials(name: unknown): string {
+  if (!name || typeof name !== 'string') return '?';
   return name
     .split(' ')
     .map((n) => n[0])

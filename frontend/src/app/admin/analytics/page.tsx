@@ -85,14 +85,16 @@ const TOOLTIP_STYLE = {
 
 const PAYMENT_COLORS = ['#2F6B47', '#E8A838', '#3B82F6', '#8B5CF6', '#06B6D4', '#6B7280'];
 
-function formatDateLocal(dateStr: string) {
+function formatDateLocal(dateStr: string | undefined | null) {
+  if (!dateStr) return '';
   const [y, m, d] = dateStr.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString('en-IN', {
     day: 'numeric', month: 'short', year: 'numeric',
   });
 }
 
-function formatDateLocalLong(dateStr: string) {
+function formatDateLocalLong(dateStr: string | undefined | null) {
+  if (!dateStr) return '';
   const [y, m, d] = dateStr.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString('en-IN', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
