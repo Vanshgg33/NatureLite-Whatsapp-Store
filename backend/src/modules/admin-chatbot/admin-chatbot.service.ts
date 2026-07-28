@@ -10,6 +10,7 @@ import {
   type Content,
   type Part,
 } from '@google/generative-ai';
+import { GoogleAICacheManager } from '@google/generative-ai/server';
 import { RedisService } from '../redis/redis.service';
 import { QUEUE_ADMIN, ADMIN_JOBS, QUEUE_CHATBOT, CHATBOT_JOBS, DEFAULT_JOB_OPTIONS } from '../queues/queues.constants';
 import { ProductRepository } from '../products/repositories/product.repository';
@@ -539,6 +540,10 @@ Call multiple tools in a single turn when a question spans domains — e.g., cus
 export class AdminChatbotService implements OnApplicationBootstrap {
   private readonly logger = new Logger(AdminChatbotService.name);
 
+  private _geminiCache: any = null;
+  private _cacheExpiry: Date | null = null;
+  private _cachedModelName: string | null = null;
+
   constructor(
     private readonly productRepository: ProductRepository,
     private readonly chatSessionRepository: ChatSessionRepository,
@@ -629,6 +634,37 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     return this.redisService.cached<T>(key, ttl, fn);
   }
 
+  private async getOrRefreshCache(apiKey: string, modelName: string): Promise<any> {
+    const now = Date.now();
+    const tenMinutes = 10 * 60 * 1000;
+    if (
+      this._geminiCache &&
+      this._cacheExpiry &&
+      this._cachedModelName === modelName &&
+      this._cacheExpiry.getTime() - now > tenMinutes
+    ) {
+      return this._geminiCache;
+    }
+    try {
+      const mgr = new GoogleAICacheManager(apiKey);
+      const cache = await mgr.create({
+        model: modelName,
+        systemInstruction: ADMIN_SYSTEM_PROMPT,
+        tools: [{ functionDeclarations: ADMIN_TOOL_DECLARATIONS }],
+        ttlSeconds: 3600,
+      });
+      this._geminiCache = cache;
+      this._cacheExpiry = new Date(cache.expireTime as string);
+      this._cachedModelName = modelName;
+      this.logger.log(`[Admin AI] Context cache created, expires ${this._cacheExpiry.toISOString()}`);
+      return cache;
+    } catch (err) {
+      this.logger.warn(`[Admin AI] Context cache failed (${(err as Error).message}), falling back to uncached`);
+      this._geminiCache = null;
+      return null;
+    }
+  }
+
   private async persistSession(adminId: string, userMsg: string, reply: string) {
     const ts = new Date().toISOString();
     await this.adminChatSessionRepository.appendMessages(adminId, [
@@ -647,13 +683,20 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     if (!apiKey) return '⚠️ GEMINI_API_KEY not configured.';
 
     const genai = new GoogleGenerativeAI(apiKey);
-    const model = genai.getGenerativeModel({
-      model: process.env.GEMINI_MODEL ?? 'gemini-2.0-flash',
-      systemInstruction: ADMIN_SYSTEM_PROMPT,
-      tools: [{ functionDeclarations: ADMIN_TOOL_DECLARATIONS }],
-      toolConfig: { functionCallingConfig: { mode: FunctionCallingMode.AUTO } },
-      generationConfig: { temperature: 0.2, maxOutputTokens: 800 },
-    });
+    const modelName = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash';
+    const generationConfig = { temperature: 0.2, maxOutputTokens: 800 };
+    const toolConfig = { functionCallingConfig: { mode: FunctionCallingMode.AUTO } };
+
+    const cache = await this.getOrRefreshCache(apiKey, modelName);
+    const model = cache
+      ? genai.getGenerativeModelFromCachedContent(cache, { generationConfig, toolConfig })
+      : genai.getGenerativeModel({
+          model: modelName,
+          systemInstruction: ADMIN_SYSTEM_PROMPT,
+          tools: [{ functionDeclarations: ADMIN_TOOL_DECLARATIONS }],
+          toolConfig,
+          generationConfig,
+        });
 
     const chat = model.startChat({ history: geminiHistory });
     let result = await chat.sendMessage(userMessage);
