@@ -8,6 +8,9 @@ import { QUEUE_ADMIN, QUEUE_CHATBOT } from '../queues/queues.constants';
 import { AdminChatSessionRepository } from './repositories/admin-chat-session.repository';
 import { AdminChatSession, AdminChatSessionSchema } from './schemas/admin-chat-session.schema';
 import { Subscription, SubscriptionSchema } from '../subscriptions/schemas/subscription.schema';
+import { RawMaterial, RawMaterialSchema } from '../raw-materials/schemas/raw-material.schema';
+import { RawMaterialDailyEntry, RawMaterialDailyEntrySchema } from '../raw-materials/schemas/raw-material-snapshot.schema';
+import { Store, StoreSchema } from '../stores/schemas/store.schema';
 import { ProductsModule } from '../products/products.module';
 import { ChatbotModule } from '../chatbot/chatbot.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
@@ -23,6 +26,9 @@ import { RemindersModule } from '../reminders/reminders.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { EmailModule } from '../email/email.module';
 import { SettingsModule } from '../settings/settings.module';
+import { StoreStockModule } from '../store-stock/store-stock.module';
+import { CategoriesModule } from '../categories/categories.module';
+import { AdminModule } from '../admin/admin.module';
 
 @Module({
   imports: [
@@ -31,6 +37,9 @@ import { SettingsModule } from '../settings/settings.module';
     MongooseModule.forFeature([
       { name: AdminChatSession.name, schema: AdminChatSessionSchema },
       { name: Subscription.name, schema: SubscriptionSchema },
+      { name: RawMaterial.name, schema: RawMaterialSchema },
+      { name: RawMaterialDailyEntry.name, schema: RawMaterialDailyEntrySchema },
+      { name: Store.name, schema: StoreSchema },
     ]),
     forwardRef(() => ProductsModule),
     forwardRef(() => ChatbotModule),
@@ -47,6 +56,9 @@ import { SettingsModule } from '../settings/settings.module';
     forwardRef(() => WhatsAppModule),
     EmailModule,
     SettingsModule,
+    StoreStockModule,
+    CategoriesModule,
+    AdminModule,
   ],
   controllers: [AdminChatbotController],
   providers: [AdminChatbotService, AdminChatSessionRepository, AdminChatbotProcessor, ChatbotQueueProcessor],

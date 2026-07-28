@@ -1,10 +1,15 @@
-﻿import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Model } from 'mongoose';
-import { Response } from 'express';
+import {
+  GoogleGenerativeAI,
+  FunctionCallingMode,
+  type FunctionDeclaration,
+  type Content,
+  type Part,
+} from '@google/generative-ai';
 import { RedisService } from '../redis/redis.service';
 import { QUEUE_ADMIN, ADMIN_JOBS, QUEUE_CHATBOT, CHATBOT_JOBS, DEFAULT_JOB_OPTIONS } from '../queues/queues.constants';
 import { ProductRepository } from '../products/repositories/product.repository';
@@ -17,73 +22,566 @@ import { FeedbackRepository } from '../feedback/repositories/feedback.repository
 import { CouponRepository } from '../coupons/repositories/coupon.repository';
 import { CartRepository } from '../cart/repositories/cart.repository';
 import { WalletRepository } from '../wallet/repositories/wallet.repository';
+import { WalletTransactionRepository } from '../wallet/repositories/wallet-transaction.repository';
 import { PaymentRepository } from '../payments/repositories/payment.repository';
 import { StoreSaleRepository } from '../store-sales/repositories/store-sale.repository';
 import { ReminderRepository } from '../reminders/repositories/reminder.repository';
 import { MessageLogRepository } from '../whatsapp/repositories/message-log.repository';
 import { AdminChatSessionRepository } from './repositories/admin-chat-session.repository';
+import { StoreStockRepository } from '../store-stock/repositories/store-stock.repository';
+import { CategoryRepository } from '../categories/repositories/category.repository';
+import { AdminUserRepository } from '../admin/repositories/admin-user.repository';
 import { Subscription } from '../subscriptions/schemas/subscription.schema';
+import { RawMaterial } from '../raw-materials/schemas/raw-material.schema';
+import { RawMaterialDailyEntry } from '../raw-materials/schemas/raw-material-snapshot.schema';
+import { Store } from '../stores/schemas/store.schema';
 import { EmailService } from '../email/email.service';
-import { parseDateRange, dateRangeToDays } from '../../common/utils/date-parse.util';
 import { SettingsService } from '../settings/settings.service';
-import {
-  ChatRequestSchema,
-  normalizeQuery,
-  queryFingerprint,
-  rerankContextBlocks,
-  compressContext,
-  SYNTHESIS_FEW_SHOTS,
-} from './admin-chatbot.rag';
+import { parseDateRange } from '../../common/utils/date-parse.util';
 
-type RagStep = { tool: string; params?: Record<string, unknown> };
-type GeminiResponse = { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
 export type HistoryItem = { role: 'user' | 'assistant'; text: string };
 
-const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash';
-const MAX_CONTEXT_CHARS = 14_000;
+const MAX_TOOL_ITERATIONS = 10;
 
-/** TTL for synthesised AI responses in Redis (keyed by intent fingerprint). */
-const SYNTHESIS_CACHE_TTL_SECONDS = 90;
-/** TTL for identical raw message → reply pairs. */
-const REPLY_CACHE_TTL_SECONDS = 60;
+// ─── Tool Declarations ────────────────────────────────────────────────────────
 
-/** Structured understanding of what the admin asked — produced by Gemini or
- *  the text fallback before any DB calls are made. */
-interface ChatbotIntent {
-  topic:
-    | 'orders' | 'revenue' | 'customers' | 'inventory' | 'feedback'
-    | 'coupons' | 'payments' | 'subscriptions' | 'store_sales'
-    | 'wallet' | 'reminders' | 'whatsapp' | 'overview'
-    | 'email' | 'login' | 'abandoned_carts' | 'top_products';
-  timePreset?: 'today' | 'yesterday' | 'this_week' | 'last_week' | 'this_month' | 'last_30_days';
-  from?: string;
-  to?: string;
-  filters?: {
-    status?: string;
-    paymentMethod?: 'cod' | 'prepaid';
-    customerName?: string;
-    customerPhone?: string;
-    productName?: string;
-    minRating?: number;
-    maxRating?: number;
-    feedbackType?: 'review' | 'complaint' | 'suggestion';
-    couponStatus?: 'active' | 'expired' | 'upcoming' | 'inactive';
-    minSpent?: number;
-    outOfStock?: boolean;
-    inStock?: boolean;
-  };
-  action?: 'list' | 'count' | 'summary' | 'trend' | 'compare' | 'search';
-  emailTo?: string;
-  emailReportType?: string;
-  emailConfirm?: boolean;
-}
+const S = 'STRING' as any;
+const N = 'NUMBER' as any;
+const O = 'OBJECT' as any;
+const B = 'BOOLEAN' as any;
 
-class GeminiRateLimitError extends Error {
-  constructor() {
-    super('Gemini API rate limit reached');
-    this.name = 'GeminiRateLimitError';
-  }
-}
+const ADMIN_TOOL_DECLARATIONS: FunctionDeclaration[] = [
+  {
+    name: 'get_dashboard_summary',
+    description: 'Get today and month overview: orders, revenue, pending count, recent orders, total customers.',
+    parameters: { type: O, properties: {} },
+  },
+  {
+    name: 'search_orders',
+    description: 'Search orders with filters. Use for listing orders, finding a specific order by number, filtering by status/customer/payment/date.',
+    parameters: {
+      type: O,
+      properties: {
+        orderNumber: { type: S, description: 'Exact or partial order number e.g. ORD-2025-001' },
+        status: { type: S, description: 'placed | confirmed | preparing | out_for_delivery | delivered | cancelled' },
+        customerName: { type: S, description: 'Customer name or phone to filter' },
+        paymentMethod: { type: S, description: 'cod | upi | online | wallet' },
+        from: { type: S, description: 'ISO date start' },
+        to: { type: S, description: 'ISO date end' },
+        limit: { type: N, description: 'Max results, default 15' },
+      },
+    },
+  },
+  {
+    name: 'get_order_detail',
+    description: 'Get complete detail of one order: all items, full timeline, delivery agent, shipping address, notes, edits.',
+    parameters: {
+      type: O,
+      properties: {
+        orderNumber: { type: S, description: 'Order number e.g. ORD-2025-001' },
+      },
+      required: ['orderNumber'],
+    },
+  },
+  {
+    name: 'get_orders_by_status',
+    description: 'Get all-time order count grouped by status (placed, confirmed, preparing, delivered, cancelled, etc.).',
+    parameters: { type: O, properties: {} },
+  },
+  {
+    name: 'compare_periods',
+    description: 'Compare current period vs previous period for orders, revenue, customers.',
+    parameters: {
+      type: O,
+      properties: {
+        days: { type: N, description: 'Days per period, e.g. 7 for week-over-week, 30 for month-over-month' },
+      },
+    },
+  },
+  {
+    name: 'search_products',
+    description: 'Search products by name or SKU. Returns price, MRP, stock, active status, variants, last updated.',
+    parameters: {
+      type: O,
+      properties: {
+        searchTerm: { type: S, description: 'Product name or keyword' },
+      },
+    },
+  },
+  {
+    name: 'get_product_detail',
+    description: 'Get full detail of one product: all variants, stock, MRP, GST, updatedAt, category.',
+    parameters: {
+      type: O,
+      properties: {
+        productName: { type: S, description: 'Product name to look up' },
+      },
+      required: ['productName'],
+    },
+  },
+  {
+    name: 'search_low_stock_products',
+    description: 'Find products with stock at or below their low-stock threshold. Use for "low stock", "running low", "need restock".',
+    parameters: {
+      type: O,
+      properties: {
+        searchTerm: { type: S, description: 'Optional product name filter e.g. "oil", "ghee"' },
+      },
+    },
+  },
+  {
+    name: 'search_out_of_stock_products',
+    description: 'Find products with zero stock. Use for "out of stock", "no stock".',
+    parameters: {
+      type: O,
+      properties: {
+        searchTerm: { type: S, description: 'Optional product name filter' },
+      },
+    },
+  },
+  {
+    name: 'search_in_stock_products',
+    description: 'Find products currently available (stock > 0 or untracked). Use for "available", "in stock", "which X can I sell".',
+    parameters: {
+      type: O,
+      properties: {
+        searchTerm: { type: S, description: 'Optional product name filter' },
+      },
+    },
+  },
+  {
+    name: 'get_store_stock',
+    description: 'Get IMS (in-store stock) levels per store. Shows stock, stockIn, damaged, threshold per product.',
+    parameters: {
+      type: O,
+      properties: {
+        storeName: { type: S, description: 'Store name or code filter' },
+        productName: { type: S, description: 'Product name filter' },
+        lowStockOnly: { type: B, description: 'If true, only return low/zero stock items' },
+      },
+    },
+  },
+  {
+    name: 'get_raw_materials',
+    description: 'Get RMS raw material list with current total stock per store.',
+    parameters: {
+      type: O,
+      properties: {
+        storeName: { type: S, description: 'Store name filter' },
+        searchTerm: { type: S, description: 'Material name filter' },
+      },
+    },
+  },
+  {
+    name: 'get_raw_material_snapshots',
+    description: 'Get PMS daily entries: opening stock, stock-in, processed, output litres, closing stock per date.',
+    parameters: {
+      type: O,
+      properties: {
+        storeName: { type: S, description: 'Store name filter' },
+        materialName: { type: S, description: 'Material name filter e.g. "coconut"' },
+        from: { type: S, description: 'ISO date start' },
+        to: { type: S, description: 'ISO date end' },
+      },
+    },
+  },
+  {
+    name: 'get_categories',
+    description: 'List all product categories with product counts.',
+    parameters: { type: O, properties: {} },
+  },
+  {
+    name: 'get_stores',
+    description: 'List all stores with address, phone, active status.',
+    parameters: { type: O, properties: {} },
+  },
+  {
+    name: 'search_customers',
+    description: 'Search customers by name, phone, or email. Returns profile: orders, spent, status, address.',
+    parameters: {
+      type: O,
+      properties: {
+        searchTerm: { type: S, description: 'Customer name, phone, or email' },
+        limit: { type: N, description: 'Max results, default 10' },
+      },
+      required: ['searchTerm'],
+    },
+  },
+  {
+    name: 'get_customer_orders',
+    description: 'Get full order history for a specific customer by name or phone.',
+    parameters: {
+      type: O,
+      properties: {
+        name: { type: S, description: 'Customer name' },
+        phone: { type: S, description: 'Customer phone number' },
+        limit: { type: N, description: 'Max orders, default 10' },
+      },
+    },
+  },
+  {
+    name: 'get_top_customers',
+    description: 'Get top customers ranked by total spend.',
+    parameters: {
+      type: O,
+      properties: {
+        limit: { type: N, description: 'Number of customers, default 10' },
+        minSpent: { type: N, description: 'Minimum total spend filter in rupees' },
+      },
+    },
+  },
+  {
+    name: 'get_new_customers',
+    description: 'Get customers who joined in a date range.',
+    parameters: {
+      type: O,
+      properties: {
+        from: { type: S, description: 'ISO date start' },
+        to: { type: S, description: 'ISO date end' },
+        days: { type: N, description: 'Lookback days if no from/to' },
+      },
+    },
+  },
+  {
+    name: 'get_inactive_customers',
+    description: 'Get customers who have not placed an order in N days (churned/inactive).',
+    parameters: {
+      type: O,
+      properties: {
+        days: { type: N, description: 'Inactivity threshold days, default 30' },
+        limit: { type: N, description: 'Max results, default 20' },
+      },
+    },
+  },
+  {
+    name: 'get_blocked_customers',
+    description: 'List all blocked customers with reason.',
+    parameters: { type: O, properties: {} },
+  },
+  {
+    name: 'get_revenue_trend',
+    description: 'Get day-by-day revenue and order counts for a date range.',
+    parameters: {
+      type: O,
+      properties: {
+        from: { type: S, description: 'ISO date start' },
+        to: { type: S, description: 'ISO date end' },
+        days: { type: N, description: 'Lookback days if no from/to, default 14' },
+      },
+    },
+  },
+  {
+    name: 'get_analytics_period',
+    description: 'Get comprehensive analytics for a period: orders, revenue, customers, inventory, top products, top customers.',
+    parameters: {
+      type: O,
+      properties: {
+        from: { type: S, description: 'ISO date start' },
+        to: { type: S, description: 'ISO date end' },
+        days: { type: N, description: 'Lookback days if no from/to, default 30' },
+      },
+    },
+  },
+  {
+    name: 'get_top_selling_products',
+    description: 'Get best-selling products by units sold and revenue for a period.',
+    parameters: {
+      type: O,
+      properties: {
+        from: { type: S, description: 'ISO date start' },
+        to: { type: S, description: 'ISO date end' },
+        limit: { type: N, description: 'Number of products, default 8' },
+        searchTerm: { type: S, description: 'Filter by product name' },
+      },
+    },
+  },
+  {
+    name: 'search_abandoned_carts',
+    description: 'Find customers with items in cart who have not ordered in 60+ minutes.',
+    parameters: {
+      type: O,
+      properties: {
+        limit: { type: N, description: 'Max results, default 30' },
+        productSearch: { type: S, description: 'Filter by product name in cart' },
+      },
+    },
+  },
+  {
+    name: 'get_store_sales',
+    description: 'Get offline store sales (walk-in and delivery) for a date range with summary.',
+    parameters: {
+      type: O,
+      properties: {
+        from: { type: S, description: 'ISO date start' },
+        to: { type: S, description: 'ISO date end' },
+        limit: { type: N, description: 'Max sales to return, default 20' },
+      },
+    },
+  },
+  {
+    name: 'get_sale_detail',
+    description: 'Get full detail of one store sale including all items, customer, payment.',
+    parameters: {
+      type: O,
+      properties: {
+        saleNumber: { type: S, description: 'Sale number e.g. SALE-001' },
+      },
+      required: ['saleNumber'],
+    },
+  },
+  {
+    name: 'get_delivery_collections',
+    description: 'Get cash/UPI collections ledger per delivery agent for a period.',
+    parameters: {
+      type: O,
+      properties: {
+        agentName: { type: S, description: 'Filter by delivery agent name' },
+        from: { type: S, description: 'ISO date start' },
+        to: { type: S, description: 'ISO date end' },
+      },
+    },
+  },
+  {
+    name: 'get_delivery_history',
+    description: 'Get delivered orders with agent assignment, amounts collected, settlement status.',
+    parameters: {
+      type: O,
+      properties: {
+        agentName: { type: S, description: 'Filter by delivery agent name' },
+        from: { type: S, description: 'ISO date start' },
+        to: { type: S, description: 'ISO date end' },
+        limit: { type: N, description: 'Max results, default 20' },
+      },
+    },
+  },
+  {
+    name: 'get_delivery_pending_collections',
+    description: 'Get unsettled (pending) cash collections for a specific delivery agent.',
+    parameters: {
+      type: O,
+      properties: {
+        agentName: { type: S, description: 'Delivery agent name' },
+      },
+    },
+  },
+  {
+    name: 'get_wallet_balances',
+    description: 'Get customers with unused wallet credit balance.',
+    parameters: {
+      type: O,
+      properties: {
+        limit: { type: N, description: 'Max customers, default 20' },
+      },
+    },
+  },
+  {
+    name: 'get_wallet_transactions',
+    description: 'Get wallet credit/debit history for a specific customer.',
+    parameters: {
+      type: O,
+      properties: {
+        phone: { type: S, description: 'Customer phone number' },
+        customerName: { type: S, description: 'Customer name' },
+        limit: { type: N, description: 'Max transactions, default 20' },
+      },
+    },
+  },
+  {
+    name: 'get_subscription_data',
+    description: 'Get active and paused subscriptions with upcoming deliveries.',
+    parameters: { type: O, properties: {} },
+  },
+  {
+    name: 'get_subscription_detail',
+    description: 'Get subscription details for a specific customer.',
+    parameters: {
+      type: O,
+      properties: {
+        phone: { type: S, description: 'Customer phone' },
+        customerName: { type: S, description: 'Customer name' },
+      },
+    },
+  },
+  {
+    name: 'get_payments',
+    description: 'Get payment records filtered by status (failed, pending, success, refunded). Use for payment failures, successful payments, refund queries.',
+    parameters: {
+      type: O,
+      properties: {
+        status: { type: S, description: 'failed | pending | success | refunded' },
+        from: { type: S, description: 'ISO date start' },
+        to: { type: S, description: 'ISO date end' },
+        limit: { type: N, description: 'Max results, default 20' },
+      },
+    },
+  },
+  {
+    name: 'get_refund_history',
+    description: 'Get all refunded payments with amounts, reasons, and dates.',
+    parameters: {
+      type: O,
+      properties: {
+        from: { type: S, description: 'ISO date start' },
+        to: { type: S, description: 'ISO date end' },
+        limit: { type: N, description: 'Max results, default 20' },
+      },
+    },
+  },
+  {
+    name: 'search_audit_logs',
+    description: 'Search admin audit logs. Use for "when was X updated/changed", "who did X", login history, product stock changes. action can be: admin.login, product.update, product.create, product.delete, order.status_change, order.cancel, user.block, user.unblock, coupon.create, coupon.update, settings.update, category.create, category.update.',
+    parameters: {
+      type: O,
+      properties: {
+        action: { type: S, description: 'Audit action type e.g. product.update, admin.login, order.status_change' },
+        targetName: { type: S, description: 'Name of the thing that was modified e.g. "Coconut Oil", "Rahul"' },
+        from: { type: S, description: 'ISO date start' },
+        to: { type: S, description: 'ISO date end' },
+        limit: { type: N, description: 'Max results, default 20' },
+      },
+    },
+  },
+  {
+    name: 'get_admin_users',
+    description: 'List all admin staff with role, department, store, last login.',
+    parameters: {
+      type: O,
+      properties: {
+        role: { type: S, description: 'admin | superadmin' },
+        department: { type: S, description: 'packing | billing | delivery | crm_head | crm_senior' },
+      },
+    },
+  },
+  {
+    name: 'get_coupon_list',
+    description: 'List coupons with usage count, discount, validity, status.',
+    parameters: {
+      type: O,
+      properties: {
+        status: { type: S, description: 'active | expired | upcoming | inactive' },
+      },
+    },
+  },
+  {
+    name: 'get_coupon_usage',
+    description: 'See which customers used a specific coupon code and when.',
+    parameters: {
+      type: O,
+      properties: {
+        couponCode: { type: S, description: 'Coupon code e.g. SAVE20' },
+      },
+      required: ['couponCode'],
+    },
+  },
+  {
+    name: 'get_feedback_list',
+    description: 'Get customer reviews and feedback with ratings.',
+    parameters: {
+      type: O,
+      properties: {
+        limit: { type: N, description: 'Max results, default 15' },
+        minRating: { type: N, description: 'Minimum star rating' },
+        maxRating: { type: N, description: 'Maximum star rating' },
+        type: { type: S, description: 'review | complaint | suggestion' },
+        productName: { type: S, description: 'Filter by product name' },
+      },
+    },
+  },
+  {
+    name: 'get_whatsapp_queue',
+    description: 'Get current WhatsApp support queue: sessions handed off to human agents, recent activity.',
+    parameters: { type: O, properties: {} },
+  },
+  {
+    name: 'get_whatsapp_messages',
+    description: 'Get WhatsApp message history for a specific customer phone number.',
+    parameters: {
+      type: O,
+      properties: {
+        phone: { type: S, description: 'Customer phone number' },
+        limit: { type: N, description: 'Max messages, default 20' },
+      },
+      required: ['phone'],
+    },
+  },
+  {
+    name: 'get_reminders',
+    description: 'Get overdue and upcoming payment reminders for store sales.',
+    parameters: { type: O, properties: {} },
+  },
+  {
+    name: 'preview_email_report',
+    description: 'Preview an email report before sending. ALWAYS call this before send_email_report.',
+    parameters: {
+      type: O,
+      properties: {
+        to: { type: S, description: 'Recipient email address' },
+        reportType: { type: S, description: 'dashboard | analytics | orders | revenue | customers | feedback | coupons | store_sales | inventory | payments | abandoned' },
+      },
+      required: ['to', 'reportType'],
+    },
+  },
+  {
+    name: 'send_email_report',
+    description: 'Send an email report. Only call after user confirms from preview.',
+    parameters: {
+      type: O,
+      properties: {
+        to: { type: S, description: 'Recipient email address' },
+        reportType: { type: S, description: 'Report type matching the previewed report' },
+      },
+      required: ['to', 'reportType'],
+    },
+  },
+];
+
+// ─── System Prompt ────────────────────────────────────────────────────────────
+
+const ADMIN_SYSTEM_PROMPT = `You are the NatureLite AI Admin Assistant — an internal tool for store managers.
+
+You have real-time access to all store data via function calls.
+
+## Non-negotiable rules
+
+ALWAYS call a tool before answering any data question. Never guess, estimate, or infer a number, name, date, or status. If no tool result covers the question, say "No data found."
+
+Call multiple tools in a single turn when a question spans domains — e.g., customer question: call search_customers + get_customer_orders together.
+
+## Tool routing
+- "when was X updated / changed / edited" → search_audit_logs with action="product.update" and targetName=X
+- "who logged in / login history" → search_audit_logs with action="admin.login"
+- IMS / in-store stock → get_store_stock
+- PMS / RMS / raw materials / processing → get_raw_materials or get_raw_material_snapshots
+- wallet balance → get_wallet_balances; wallet history → get_wallet_transactions (amounts are in paise ÷ 100 = rupees)
+- email report → preview_email_report first, send only after user confirms
+
+## Precision rules — read carefully
+
+1. **Answer-first.** State the exact value in the first sentence. Never open with context, "based on", "it appears", or "the data shows."
+   ✓ "Vansh has placed **7 orders** totalling **₹3,240**."
+   ✗ "Based on the customer data, Vansh seems to have placed several orders."
+
+2. **Copy numbers verbatim.** Never round, estimate, or paraphrase a quantity from a tool result. If the tool says 42 — write 42.
+
+3. **Dates: always convert ISO to readable.** Format every ISO timestamp as "DD Mon YYYY, HH:MM AM/PM IST".
+   ✓ "Last updated on **15 Jan 2025, 3:42 PM IST** by Rahul."
+   ✗ "Updated at 2025-01-15T10:12:00.000Z."
+
+4. **Empty result ≠ zero.** If the tool returns an empty array, say "No [X] found" — not "0 orders". If stock field is 0, say "Out of stock (0 units)."
+
+5. **Error field in tool result.** If the result has an \`error\` key, report exactly what wasn't found and suggest narrowing the search (different spelling, phone number instead of name, etc.).
+
+6. **Single-value questions → one sentence.** "How many orders does Vansh have?" → one sentence, done.
+
+7. **Lists:** show as a markdown table when ≥3 rows with multiple columns. Bullet list for ≤5 items.
+
+8. **Money:** always ₹ with Indian formatting (e.g., ₹1,24,500). Never show paise in final answer.
+
+9. **Never mention** "tool", "function", "database", "API", or "query" in replies.
+
+10. **No filler.** No "Sure!", "Great question!", "Of course!", "Certainly!" — ever.`.trim();
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Injectable()
 export class AdminChatbotService implements OnApplicationBootstrap {
@@ -100,88 +598,29 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     private readonly couponRepository: CouponRepository,
     private readonly cartRepository: CartRepository,
     private readonly walletRepository: WalletRepository,
+    private readonly walletTransactionRepository: WalletTransactionRepository,
     private readonly paymentRepository: PaymentRepository,
     private readonly storeSaleRepository: StoreSaleRepository,
     private readonly reminderRepository: ReminderRepository,
     private readonly messageLogRepository: MessageLogRepository,
     private readonly adminChatSessionRepository: AdminChatSessionRepository,
+    private readonly storeStockRepository: StoreStockRepository,
+    private readonly categoryRepository: CategoryRepository,
+    private readonly adminUserRepository: AdminUserRepository,
     private readonly emailService: EmailService,
     private readonly settingsService: SettingsService,
     @InjectModel(Subscription.name) private readonly subscriptionModel: Model<any>,
+    @InjectModel(RawMaterial.name) private readonly rawMaterialModel: Model<any>,
+    @InjectModel(RawMaterialDailyEntry.name) private readonly rawMaterialEntryModel: Model<any>,
+    @InjectModel(Store.name) private readonly storeModel: Model<any>,
     private readonly redisService: RedisService,
     @InjectQueue(QUEUE_ADMIN) private readonly adminQueue: Queue,
     @InjectQueue(QUEUE_CHATBOT) private readonly chatbotQueue: Queue,
   ) {}
 
-  // ─── Gemini helpers ───────────────────────────────────────────────────────────
+  // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-  private async geminiRequest(
-    apiKey: string,
-    body: object,
-    label: string,
-    throwOnRateLimit = false,
-  ): Promise<GeminiResponse | null> {
-    const url = `${GEMINI_BASE}:generateContent?key=${encodeURIComponent(apiKey)}`;
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      let response: Response;
-      try {
-        response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        }) as any;
-      } catch (networkErr) {
-        this.logger.warn(`Gemini ${label} attempt ${attempt} — network: ${(networkErr as Error).message}`);
-        if (attempt === 1) { await this.sleep(1000); continue; }
-        return null;
-      }
-      if ((response as any).ok) return (response as any).json() as Promise<GeminiResponse>;
-      const status = (response as any).status;
-      const snippet = (await (response as any).text()).slice(0, 300);
-      this.logger.warn(`Gemini ${label} attempt ${attempt} — HTTP ${status}: ${snippet}`);
-      if (status === 401 || status === 403 || status === 400) return null;
-      if ((status === 429 || status >= 500) && attempt === 1) {
-        await this.sleep(status === 429 ? 3000 : 1500);
-        continue;
-      }
-      // Rate limit persisted after retry — surface it as a typed error so callers
-      // can show a specific message instead of the generic raw-data fallback.
-      if (status === 429 && throwOnRateLimit) throw new GeminiRateLimitError();
-      return null;
-    }
-    return null;
-  }
-
-  private extractText(data: GeminiResponse | null): string {
-    return data?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('').trim() ?? '';
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise((r) => setTimeout(r, ms));
-  }
-
-  // ─── Sanitization & deduplication ────────────────────────────────────────────
-
-  private sanitizeMessage(message: string): string {
-    return message.trim().replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').slice(0, 500);
-  }
-
-  private deduplicatePlan(plan: RagStep[]): RagStep[] {
-    const seen = new Set<string>();
-    return plan.filter((s) => {
-      const sortedParams = Object.keys(s.params ?? {})
-        .sort()
-        .reduce((acc, k) => ({ ...acc, [k]: (s.params as any)[k] }), {});
-      const key = `${s.tool}:${JSON.stringify(sortedParams)}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  }
-
-  // ─── Date range helper ────────────────────────────────────────────────────────
-
-  private resolveRange(params: Record<string, unknown> | undefined): { from: Date; to: Date } {
+  private resolveRange(params: Record<string, unknown>): { from: Date; to: Date } {
     if (params?.from && params?.to) {
       const from = new Date(params.from as string);
       const to = new Date(params.to as string);
@@ -193,540 +632,1303 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     return { from, to };
   }
 
-  // ─── Keyword fallback plan ────────────────────────────────────────────────────
-
-  private keywordFallbackPlan(message: string): RagStep[] {
-    const m = message.toLowerCase();
-    const plan: RagStep[] = [];
-
-    // Date range extraction for keyword fallback
-    const range = parseDateRange(m);
-    const dateParams = range
-      ? { from: range.from.toISOString(), to: range.to.toISOString() }
-      : {};
-
-    if (/stock|inventory|low[\s-]stock|out[\s-]of[\s-]stock|running[\s-]out|restock/.test(m)) {
-      const isOutOfStock = /out[\s-]of[\s-]stock|zero[\s-]stock|no[\s-]stock|completely[\s-]out/.test(m);
-      // Extract product-type qualifier — strip all navigation/stop words before using as filter
-      const STOP_WORDS = /\b(now|tell|which|show|me|are|is|the|all|items?|products?|skus?|stock|low|out|of|in|for|running|restock|inventory|give|list|check|find|get|what|how|many|currently|there|any)\b/gi;
-      const typeMatch = m.match(/(?:which\s+)?([a-z]+(?:\s+[a-z]+)?)\s+(?:item|product|sku)s?\s+(?:(?:is|are)\s+)?(?:low|out|running)/i)
-        ?? m.match(/low[\s-]+(?:stock|inventory)\s+(?:in|of|for)?\s*([a-z]+(?:\s+[a-z]+)?)/i)
-        ?? m.match(/(?:check|show|list)\s+(?:low[\s-]+stock\s+)?([a-z]+(?:\s+[a-z]+)?)\s+(?:items?|products?)/i);
-      const rawTerm = typeMatch ? typeMatch[1].replace(STOP_WORDS, '').replace(/\s+/g, ' ').trim() : '';
-      // Only use as a filter if something meaningful (≥3 chars, looks like a product word) remains
-      const searchTerm = rawTerm.length >= 3 ? rawTerm : '';
-      if (isOutOfStock) {
-        plan.push({ tool: 'search_out_of_stock_products', params: searchTerm ? { searchTerm } : {} });
-      } else {
-        plan.push({ tool: 'search_low_stock_products', params: searchTerm ? { searchTerm } : {} });
-      }
-    }
-
-    if (/login|logged[\s-]in|audit|security|who[\s-]logged|access[\s-]log/.test(m))
-      plan.push({ tool: 'get_login_audit_logs', params: { limit: 20 } });
-
-    if (/abandon|left[\s-]without|didn[\W]t[\s-]order|stuck[\s-]in[\s-]checkout|dropped[\s-]off/.test(m))
-      plan.push({ tool: 'search_abandoned_carts', params: { limit: 30 } });
-
-    if (/top[\s-]sell|best[\s-]sell|popular|most[\s-]sold|trending/.test(m) && !plan.some((s) => s.tool === 'get_top_selling_products'))
-      plan.push({ tool: 'get_top_selling_products', params: { limit: 8, ...dateParams } });
-
-    if (/order[\s-]status|status[\s-]of[\s-]order|how[\s-]many[\s-]order|orders[\s-]by[\s-]status/.test(m))
-      plan.push({ tool: 'get_orders_by_status', params: {} });
-
-    if (/pending|awaiting|undelivered|unfulfilled/.test(m)) {
-      plan.push({ tool: 'get_orders_by_status', params: {} });
-      if (!plan.some((s) => s.tool === 'search_recent_orders'))
-        plan.push({ tool: 'search_recent_orders', params: { limit: 10, status: 'placed' } });
-    }
-
-    if (/recent[\s-]order|latest[\s-]order|new[\s-]order|last[\s-]order|show[\s-]order|list[\s-]order|all[\s-]order|delivered[\s-]order|cancelled[\s-]order|orders?\s+by|orders?\s+from|orders?\s+placed/.test(m)) {
-      const statusMatch = m.match(/\b(placed|confirmed|preparing|delivered|cancelled|out[\s_-]for[\s_-]delivery)\b/);
-      const customerMatch = m.match(/(?:by|from|for|placed\s+by)\s+([a-z][a-z\s]{1,25})(?:\s|$)/i);
-      const orderNumMatch = m.match(/(?:#|order[\s-]?(?:no\.?|number|num|#)?)\s*([A-Z0-9-]{4,})/i);
-      const customerSearch = customerMatch ? customerMatch[1].trim() : '';
-      if (!plan.some((s) => s.tool === 'search_recent_orders'))
-        plan.push({ tool: 'search_recent_orders', params: { limit: 10, ...dateParams, ...(statusMatch ? { status: statusMatch[1] } : {}), ...(customerSearch ? { customerSearch } : {}), ...(orderNumMatch ? { orderNumber: orderNumMatch[1] } : {}) } });
-    }
-
-    if (/orders?\s+between|orders?\s+from|orders?\s+in\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|date[\s-]range/.test(m))
-      plan.push({ tool: 'search_orders_by_date_range', params: { ...dateParams, limit: 20 } });
-
-    if (/revenue[\s-]trend|day[\s-]by[\s-]day|daily[\s-]revenue|earning[\s-]trend/.test(m))
-      plan.push({ tool: 'get_revenue_trend', params: { ...dateParams, days: dateParams.from ? undefined : 14 } });
-
-    if (/\brevenue\b|earning|how[\s\S]{0,10}made|total[\s-]sale|sales[\s-]total/.test(m) && !plan.some((s) => s.tool === 'get_revenue_trend')) {
-      plan.push({ tool: 'get_dashboard_summary', params: {} });
-      plan.push({ tool: 'get_revenue_trend', params: { ...dateParams, days: dateParams.from ? undefined : 30 } });
-    }
-
-    if (/compare|vs\.?|versus|week[\s-]over[\s-]week|month[\s-]over[\s-]month|period/.test(m)) {
-      const daysMatch = m.match(/(\d+)[\s-]day/);
-      plan.push({ tool: 'compare_periods', params: { days: daysMatch ? parseInt(daysMatch[1]) : 7 } });
-    }
-
-    if (/coupon|discount|promo[\s-]code|voucher|offer[\s-]code/.test(m)) {
-      const statusMatch = m.match(/\b(active|expired|upcoming|inactive)\b/);
-      plan.push({ tool: 'get_coupon_list', params: statusMatch ? { status: statusMatch[1] } : {} });
-    }
-
-    if (/review|feedback|rating|complaint|suggestion|testimonial/.test(m)) {
-      const feedbackParams: Record<string, unknown> = { limit: 15 };
-      if (/1[\s-]star|one[\s-]star|worst|terrible/.test(m)) feedbackParams.maxRating = 1;
-      else if (/2[\s-]star|two[\s-]star|bad|poor/.test(m)) feedbackParams.maxRating = 2;
-      else if (/5[\s-]star|five[\s-]star|best|excellent/.test(m)) feedbackParams.minRating = 5;
-      else if (/4[\s-]star|four[\s-]star|good/.test(m)) feedbackParams.minRating = 4;
-      else if (/negative|low[\s-]rating/.test(m)) feedbackParams.maxRating = 2;
-      else if (/positive|high[\s-]rating/.test(m)) feedbackParams.minRating = 4;
-      if (/complaint/.test(m)) feedbackParams.type = 'complaint';
-      else if (/suggestion/.test(m)) feedbackParams.type = 'suggestion';
-      plan.push({ tool: 'get_feedback_list', params: feedbackParams });
-    }
-
-    if (/top[\s-]sell|best[\s-]sell|popular|most[\s-]sold|trending/.test(m)) {
-      const prodTypeMatch = m.match(/(?:top[\s-]selling|best[\s-]selling|popular|most[\s-]sold)\s+([a-z]+(?:\s+[a-z]+)?)\s+(?:product|item)/i)
-        ?? m.match(/which\s+([a-z]+(?:\s+[a-z]+)?)\s+(?:sell|product|item)/i);
-      const searchTerm = prodTypeMatch ? prodTypeMatch[1].trim() : '';
-      if (searchTerm && !plan.some((s) => s.tool === 'get_top_selling_products'))
-        plan.push({ tool: 'get_top_selling_products', params: { limit: 8, searchTerm, ...dateParams } });
-    }
-
-    if (/analytic|report|performance|weekly|monthly/.test(m)) {
-      const days = dateParams.from ? dateRangeToDays(parseDateRange(m)!) : (m.includes('week') ? 7 : 30);
-      plan.push({ tool: 'get_analytics_period', params: { ...dateParams, days } });
-    }
-
-    if (/\bsummary\b|\boverview\b/.test(m) && !plan.some((s) => s.tool === 'get_analytics_period')) {
-      if (!plan.some((s) => s.tool === 'get_dashboard_summary'))
-        plan.push({ tool: 'get_dashboard_summary', params: {} });
-    }
-
-    if (/new[\s-]customer|just[\s-]joined|signup|registered|joined[\s-]this|recently[\s-]joined/.test(m)) {
-      const daysMatch = m.match(/(\d+)\s*day/);
-      plan.push({ tool: 'get_new_customers', params: { ...dateParams, days: daysMatch ? parseInt(daysMatch[1]) : 7 } });
-    }
-
-    if (/best[\s-]customer|top[\s-]customer|vip|highest[\s-]spend|most[\s-]spent|big[\s-]spender/.test(m))
-      plan.push({ tool: 'get_top_customers_online', params: { limit: 10 } });
-
-    if (/find[\s-]customer|search[\s-]customer|customer[\s-]info|customer[\s-]detail|look[\s-]up|lookup/.test(m)) {
-      const phoneMatch = m.match(/\b(\d{10,12})\b/);
-      const nameMatch = m.match(/(?:customer|find|search|lookup|look\s*up|info|detail)\s+(?:for\s+|named?\s+|called\s+)?([a-z][a-z\s]{1,25})(?:\s|$)/i);
-      const searchTerm = phoneMatch ? phoneMatch[1] : (nameMatch ? nameMatch[1].trim() : '');
-      if (searchTerm) plan.push({ tool: 'search_customers', params: { searchTerm, limit: 10 } });
-    }
-
-    if (/tell[\s-]me[\s-]about|who[\s-]is|customer[\s-]profile|profile[\s-]of/.test(m)) {
-      const phoneMatch = m.match(/\b(\d{10,12})\b/);
-      const nameMatch = m.match(/(?:about|who\s+is|profile\s+of|for)\s+([a-z][a-z\s]{1,25})(?:\s|$)/i);
-      const searchTerm = phoneMatch ? phoneMatch[1] : (nameMatch ? nameMatch[1].trim() : '');
-      if (searchTerm) {
-        plan.push({ tool: 'search_customers', params: { searchTerm, limit: 5 } });
-        plan.push({ tool: 'get_customer_orders', params: { ...(phoneMatch ? { phone: searchTerm } : { name: searchTerm }), limit: 10 } });
-      }
-    }
-
-    if (/store[\s-]sale|walk[\s-]in|physical[\s-]store|store[\s-]revenue|offline/.test(m))
-      plan.push({ tool: 'get_store_sales', params: { ...dateParams, days: dateParams.from ? undefined : 30 } });
-
-    if (/wallet|credit|balance|unused[\s-]credit|wallet[\s-]balance/.test(m))
-      plan.push({ tool: 'get_wallet_balances', params: { limit: 20 } });
-
-    if (/payment[\s-]fail|failed[\s-]payment|pending[\s-]payment|unsuccessful[\s-]payment/.test(m))
-      plan.push({ tool: 'get_payment_failures', params: { limit: 20 } });
-
-    if (/subscription|recurring|repeat[\s-]order|schedule[\s-]order/.test(m))
-      plan.push({ tool: 'get_subscription_data', params: {} });
-
-    if (/whatsapp[\s-]queue|support[\s-]queue|pending[\s-]support|handed[\s-]off|support[\s-]session/.test(m))
-      plan.push({ tool: 'get_whatsapp_queue', params: {} });
-
-    if (/reminder|due[\s-]reminder|pending[\s-]reminder|upcoming[\s-]reminder/.test(m))
-      plan.push({ tool: 'get_reminders', params: {} });
-
-    const productMatch = m.match(/(?:stock|price|details?)(?:\s+(?:for|of|on))?\s+([a-z\s]{3,30})/);
-    if (productMatch && !plan.some((s) => s.tool === 'search_products'))
-      plan.push({ tool: 'search_products', params: { searchTerm: productMatch[1].trim() } });
-
-    // Email action intent
-    const emailMatch = m.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
-    const sendIntent = /\b(send|email|forward|mail|share)\b/.test(m);
-    if (emailMatch && sendIntent) {
-      const to = emailMatch[0];
-      // Detect report type from message
-      let reportType = 'dashboard';
-      if (/\bims\b/.test(m)) reportType = 'ims';
-      else if (/low[\s-]stock|inventory/.test(m)) reportType = 'low_stock';
-      else if (/\banalytics\b/.test(m)) reportType = 'analytics';
-      else if (/\bmonthly\b/.test(m)) reportType = 'monthly';
-      else if (/\bweekly\b/.test(m)) reportType = 'weekly';
-      else if (/\borders?\b/.test(m)) reportType = 'orders';
-      else if (/\brevenue\b/.test(m)) reportType = 'revenue';
-      else if (/\bcustomer\b/.test(m)) reportType = 'customers';
-      else if (/\bfeedback\b|\breview\b/.test(m)) reportType = 'feedback';
-      else if (/\bcoupon\b/.test(m)) reportType = 'coupons';
-      else if (/store[\s-]sale/.test(m)) reportType = 'store_sales';
-      else if (/abandon/.test(m)) reportType = 'abandoned';
-      else if (/payment/.test(m)) reportType = 'payments';
-
-      // Check if this is a confirmation ("yes send it") — look at prior context
-      const isConfirmation = /^\s*(yes|yep|yeah|confirm|send it|go ahead|do it|proceed)\s*$/i.test(m);
-      plan.push({
-        tool: isConfirmation ? 'send_email_report' : 'preview_email_report',
-        params: { to, reportType },
-      });
-      return plan;
-    }
-
-    // Confirmation of a pending email action (no email in message, just "yes")
-    if (/^\s*(yes|yep|yeah|confirm|send it|go ahead|do it|proceed)\s*$/i.test(m)) {
-      plan.push({ tool: 'send_email_report', params: {} }); // planner will fill from history
-      return plan;
-    }
-
-    if (plan.length === 0) {
-      plan.push(
-        { tool: 'get_dashboard_summary', params: {} },
-        { tool: 'get_orders_by_status', params: {} },
-        { tool: 'search_low_stock_products', params: {} },
-      );
-    }
-
-    return plan;
+  private escape(s: string) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
-  // ─── Raw data fallback ────────────────────────────────────────────────────────
+  private sanitize(message: string): string {
+    return message.trim().replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').slice(0, 500);
+  }
 
-  private formatRawDataFallback(contextBlocks: string[], failedTools: string[], message: string): string {
-    if (contextBlocks.length === 0)
-      return `⚠️ **No data could be retrieved right now.**\n\nPlease check server connectivity or try again.`;
+  private historyToContent(history: HistoryItem[]): Content[] {
+    return history.map((h) => ({
+      role: h.role === 'user' ? 'user' : 'model',
+      parts: [{ text: h.text }],
+    }));
+  }
 
-    // When there's a single focused result, present it cleanly without the "synthesis unavailable" noise.
-    if (contextBlocks.length === 1) {
-      const body = contextBlocks[0].replace(/^\[RAG:[^\]]+\]\n?/, '').trim();
-      const notice = failedTools.length > 0
-        ? `\n\n> ⚠️ *Could not load: ${failedTools.join(', ')}*`
-        : '';
-      return `${body}${notice}`;
-    }
+  private async cachedTool<T>(
+    name: string,
+    params: Record<string, unknown>,
+    fn: () => Promise<T>,
+    ttl = 90,
+  ): Promise<T> {
+    const paramStr = Object.keys(params).length
+      ? ':' + Buffer.from(JSON.stringify(params)).toString('base64url').slice(0, 24)
+      : '';
+    const key = `admin:tool:${name}${paramStr}`;
+    return this.redisService.cached<T>(key, ttl, fn);
+  }
 
-    // Multiple blocks — show each section with a clean header (no underscores, no tool jargon).
-    const sections = contextBlocks.map((block) => {
-      const rawHeader = block.match(/^\[RAG:\s*([^\]]+)\]/)?.[1]?.trim() ?? 'Data';
-      // Convert snake_case tool names to readable labels
-      const header = rawHeader.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()).replace(/^Search |^Get /, '');
-      const body = block.replace(/^\[RAG:[^\]]+\]\n?/, '').trim();
-      return `## ${header}\n${body}`;
+  private async persistSession(adminId: string, userMsg: string, reply: string) {
+    const ts = new Date().toISOString();
+    await this.adminChatSessionRepository.appendMessages(adminId, [
+      { id: `${Date.now()}-u`, sender: 'user', text: userMsg, timestamp: ts },
+      { id: `${Date.now()}-a`, sender: 'assistant', text: reply, timestamp: ts },
+    ]).catch(() => {});
+  }
+
+  // ─── Core agentic loop ────────────────────────────────────────────────────────
+
+  private async runAgenticLoop(
+    userMessage: string,
+    geminiHistory: Content[],
+  ): Promise<string> {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return '⚠️ GEMINI_API_KEY not configured.';
+
+    const genai = new GoogleGenerativeAI(apiKey);
+    const model = genai.getGenerativeModel({
+      model: process.env.GEMINI_MODEL ?? 'gemini-2.0-flash',
+      systemInstruction: ADMIN_SYSTEM_PROMPT,
+      tools: [{ functionDeclarations: ADMIN_TOOL_DECLARATIONS }],
+      toolConfig: { functionCallingConfig: { mode: FunctionCallingMode.AUTO } },
+      generationConfig: { temperature: 0.2, maxOutputTokens: 3000 },
     });
 
-    let reply = sections.join('\n\n---\n\n');
-    if (failedTools.length > 0)
-      reply += `\n\n> ⚠️ *Could not load: ${failedTools.join(', ')}*`;
-    return reply;
-  }
+    const chat = model.startChat({ history: geminiHistory });
+    let result = await chat.sendMessage(userMessage);
 
-  // ─── Input validation ─────────────────────────────────────────────────────────
+    for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+      const candidate = result.response.candidates?.[0];
+      if (!candidate) break;
 
-  validateChatRequest(message: string, history: unknown): { message: string; history: HistoryItem[] } {
-    const result = ChatRequestSchema.safeParse({ message, history });
-    if (!result.success) {
-      throw new Error(result.error.issues.map((i) => i.message).join('; '));
+      const parts: Part[] = candidate.content.parts;
+      const fnParts = parts.filter((p) => 'functionCall' in p);
+
+      if (fnParts.length === 0) {
+        return result.response.text().trim();
+      }
+
+      const toolResponseParts: Part[] = [];
+      for (const part of fnParts) {
+        const { name, args } = (part as any).functionCall as { name: string; args: Record<string, unknown> };
+        this.logger.log(`[Admin AI] ${name}(${JSON.stringify(args)})`);
+        try {
+          const toolResult = await this.executeTool(name, args ?? {});
+          toolResponseParts.push({ functionResponse: { name, response: toolResult } } as any);
+        } catch (err) {
+          toolResponseParts.push({ functionResponse: { name, response: { error: (err as Error).message } } } as any);
+        }
+      }
+
+      result = await chat.sendMessage(toolResponseParts);
     }
-    return result.data;
+
+    return result.response.text().trim() || '⚠️ Could not generate a response.';
   }
 
-  // ─── Core RAG pipeline ────────────────────────────────────────────────────────
+  // ─── Tool dispatcher ──────────────────────────────────────────────────────────
 
-  /** Full RAG pipeline: cache check → retrieve context → synthesise → cache → persist. */
-  async runRagPipeline(
+  async executeTool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const UNCACHED = new Set(['send_email_report', 'preview_email_report']);
+    const TTL: Record<string, number> = {
+      get_dashboard_summary: 45, search_orders: 45, get_order_detail: 30,
+      get_orders_by_status: 45, compare_periods: 90, search_products: 120,
+      get_product_detail: 120, search_low_stock_products: 90, search_out_of_stock_products: 90,
+      search_in_stock_products: 90, get_store_stock: 60, get_raw_materials: 90,
+      get_raw_material_snapshots: 120, get_categories: 300, get_stores: 300,
+      search_customers: 120, get_customer_orders: 60, get_top_customers: 300,
+      get_new_customers: 60, get_inactive_customers: 180, get_blocked_customers: 120,
+      get_revenue_trend: 90, get_analytics_period: 300, get_top_selling_products: 300,
+      search_abandoned_carts: 90, get_store_sales: 90, get_sale_detail: 60,
+      get_delivery_collections: 60, get_delivery_history: 60, get_delivery_pending_collections: 45,
+      get_wallet_balances: 45, get_wallet_transactions: 60, get_subscription_data: 90,
+      get_subscription_detail: 60, get_payments: 45, get_refund_history: 90,
+      search_audit_logs: 60, get_admin_users: 300, get_coupon_list: 180,
+      get_coupon_usage: 90, get_feedback_list: 60, get_whatsapp_queue: 30,
+      get_whatsapp_messages: 30, get_reminders: 30,
+    };
+
+    if (UNCACHED.has(name)) {
+      return this._runTool(name, args);
+    }
+
+    return this.cachedTool(name, args, () => this._runTool(name, args), TTL[name] ?? 90);
+  }
+
+  private async _runTool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    switch (name) {
+      case 'get_dashboard_summary':        return this.toolDashboard();
+      case 'search_orders':                return this.toolSearchOrders(args);
+      case 'get_order_detail':             return this.toolOrderDetail(args);
+      case 'get_orders_by_status':         return this.toolOrdersByStatus();
+      case 'compare_periods':              return this.toolComparePeriods(args);
+      case 'search_products':              return this.toolSearchProducts(args);
+      case 'get_product_detail':           return this.toolProductDetail(args);
+      case 'search_low_stock_products':    return this.toolLowStock(args);
+      case 'search_out_of_stock_products': return this.toolOutOfStock(args);
+      case 'search_in_stock_products':     return this.toolInStock(args);
+      case 'get_store_stock':              return this.toolStoreStock(args);
+      case 'get_raw_materials':            return this.toolRawMaterials(args);
+      case 'get_raw_material_snapshots':   return this.toolRawMaterialSnapshots(args);
+      case 'get_categories':               return this.toolCategories();
+      case 'get_stores':                   return this.toolStores();
+      case 'search_customers':             return this.toolSearchCustomers(args);
+      case 'get_customer_orders':          return this.toolCustomerOrders(args);
+      case 'get_top_customers':            return this.toolTopCustomers(args);
+      case 'get_new_customers':            return this.toolNewCustomers(args);
+      case 'get_inactive_customers':       return this.toolInactiveCustomers(args);
+      case 'get_blocked_customers':        return this.toolBlockedCustomers();
+      case 'get_revenue_trend':            return this.toolRevenueTrend(args);
+      case 'get_analytics_period':         return this.toolAnalyticsPeriod(args);
+      case 'get_top_selling_products':     return this.toolTopSelling(args);
+      case 'search_abandoned_carts':       return this.toolAbandonedCarts(args);
+      case 'get_store_sales':              return this.toolStoreSales(args);
+      case 'get_sale_detail':              return this.toolSaleDetail(args);
+      case 'get_delivery_collections':     return this.toolDeliveryCollections(args);
+      case 'get_delivery_history':         return this.toolDeliveryHistory(args);
+      case 'get_delivery_pending_collections': return this.toolPendingCollections(args);
+      case 'get_wallet_balances':          return this.toolWalletBalances(args);
+      case 'get_wallet_transactions':      return this.toolWalletTransactions(args);
+      case 'get_subscription_data':        return this.toolSubscriptionData();
+      case 'get_subscription_detail':      return this.toolSubscriptionDetail(args);
+      case 'get_payments':                 return this.toolPayments(args);
+      case 'get_refund_history':           return this.toolRefundHistory(args);
+      case 'search_audit_logs':            return this.toolAuditLogs(args);
+      case 'get_admin_users':              return this.toolAdminUsers(args);
+      case 'get_coupon_list':              return this.toolCouponList(args);
+      case 'get_coupon_usage':             return this.toolCouponUsage(args);
+      case 'get_feedback_list':            return this.toolFeedbackList(args);
+      case 'get_whatsapp_queue':           return this.toolWhatsAppQueue();
+      case 'get_whatsapp_messages':        return this.toolWhatsAppMessages(args);
+      case 'get_reminders':               return this.toolReminders();
+      case 'preview_email_report':         return this.toolPreviewEmail(args);
+      case 'send_email_report':            return this.toolSendEmail(args);
+      default:
+        return { error: `Unknown tool: ${name}` };
+    }
+  }
+
+  // ─── Tool implementations ─────────────────────────────────────────────────────
+
+  private async toolDashboard() {
+    const stats = await this.analyticsService.getDashboardStats() as any;
+    return {
+      todayOrders: stats.todayOrders ?? 0,
+      todayRevenue: stats.todayRevenue ?? 0,
+      monthOrders: stats.monthOrders ?? 0,
+      monthRevenue: stats.monthRevenue ?? 0,
+      totalCustomers: stats.totalCustomers ?? 0,
+      pendingOrders: stats.pendingOrders ?? 0,
+      recentOrders: (stats.recentOrders ?? []).slice(0, 5).map((o: any) => ({
+        orderNumber: o.orderNumber,
+        customer: o.user?.name ?? 'Guest',
+        total: o.total,
+        status: o.status,
+      })),
+    };
+  }
+
+  private async toolSearchOrders(args: Record<string, unknown>) {
+    const limit = Number(args.limit ?? 15);
+    const STATUS_MAP: Record<string, string> = { shipped: 'out_for_delivery', pending: 'placed', processing: 'preparing', dispatched: 'out_for_delivery', completed: 'delivered', done: 'delivered' };
+    const rawStatus = args.status as string | undefined;
+    const status = rawStatus ? (STATUS_MAP[rawStatus.toLowerCase()] ?? rawStatus.toLowerCase()) : undefined;
+    const customerName = String(args.customerName ?? '').trim();
+    const paymentMethod = String(args.paymentMethod ?? '').trim().toLowerCase();
+    const orderNumber = String(args.orderNumber ?? '').trim();
+
+    const filter: Record<string, unknown> = {};
+    if (orderNumber) filter.orderNumber = { $regex: this.escape(orderNumber), $options: 'i' };
+    if (status) filter.status = status;
+    if (paymentMethod) filter.paymentMethod = { $regex: paymentMethod, $options: 'i' };
+    if (args.from && args.to) {
+      const fromD = new Date(args.from as string);
+      const toD = new Date(args.to as string);
+      if (!isNaN(fromD.getTime()) && !isNaN(toD.getTime()))
+        filter.createdAt = { $gte: fromD, $lte: toD };
+    }
+
+    if (customerName) {
+      const esc = this.escape(customerName);
+      const users = await this.userRepository.getModel()
+        .find({ $or: [{ name: { $regex: esc, $options: 'i' } }, { phone: { $regex: esc, $options: 'i' } }] })
+        .select('_id').limit(20).lean();
+      if (!users.length) return { orders: [], total: 0, message: `No customer found matching "${customerName}"` };
+      filter.user = { $in: users.map((u: any) => u._id) };
+    }
+
+    const orders = await this.orderRepository.getModel()
+      .find(filter).sort({ createdAt: -1 }).limit(limit)
+      .populate('user', 'name phone').lean();
+
+    return {
+      total: orders.length,
+      orders: orders.map((o: any) => ({
+        orderNumber: o.orderNumber,
+        customer: o.user?.name ?? 'Guest',
+        phone: o.user?.phone ?? '',
+        total: o.total,
+        status: o.status,
+        paymentMethod: o.paymentMethod,
+        paymentStatus: o.paymentStatus,
+        createdAt: o.createdAt,
+        couponCode: o.couponCode,
+        discount: o.discount,
+        walletUsed: o.walletUsed,
+        items: (o.items ?? []).map((i: any) => `${i.name}${i.variantName ? ` (${i.variantName})` : ''} x${i.quantity} @₹${i.price}`),
+      })),
+    };
+  }
+
+  private async toolOrderDetail(args: Record<string, unknown>) {
+    const orderNum = String(args.orderNumber ?? '').trim();
+    const order = await this.orderRepository.getModel()
+      .findOne({ orderNumber: { $regex: this.escape(orderNum), $options: 'i' } })
+      .populate('user', 'name phone email')
+      .lean();
+
+    if (!order) return { error: `Order "${orderNum}" not found` };
+
+    const o = order as any;
+    let agentName = '';
+    if (o.assignedDeliveryUserId) {
+      const agent = await this.adminUserRepository.getModel().findById(o.assignedDeliveryUserId).select('name').lean().catch(() => null);
+      agentName = (agent as any)?.name ?? String(o.assignedDeliveryUserId);
+    }
+
+    return {
+      orderNumber: o.orderNumber,
+      customer: { name: o.user?.name, phone: o.user?.phone, email: o.user?.email },
+      status: o.status,
+      total: o.total,
+      gstTotal: o.gstTotal,
+      shippingCharge: o.shippingCharge,
+      discount: o.discount,
+      walletUsed: o.walletUsed,
+      couponCode: o.couponCode,
+      paymentMethod: o.paymentMethod,
+      paymentStatus: o.paymentStatus,
+      shippingAddress: o.shippingAddress,
+      items: (o.items ?? []).map((i: any) => ({ name: i.name, variant: i.variantName, qty: i.quantity, price: i.price, total: i.total })),
+      timeline: (o.timeline ?? []).map((t: any) => ({ status: t.status, at: t.changedAt, by: t.changedBy })),
+      assignedDeliveryAgent: agentName,
+      deliveredAt: o.deliveredAt,
+      packedAt: o.packedAt,
+      packedBy: o.packedBy,
+      adminNotes: o.adminNotes,
+      amountCollected: o.amountCollected,
+      collectionStatus: o.collectionStatus,
+      createdAt: o.createdAt,
+    };
+  }
+
+  private async toolOrdersByStatus() {
+    const counts = await this.orderRepository.getOrdersByStatus();
+    const total = Object.values(counts).reduce((s: number, n: any) => s + (n || 0), 0);
+    return { total, byStatus: counts };
+  }
+
+  private async toolComparePeriods(args: Record<string, unknown>) {
+    const days = Number(args.days ?? 7);
+    const now = new Date();
+    const aEnd = now;
+    const aStart = new Date(now.getTime() - days * 86_400_000);
+    const bEnd = new Date(aStart.getTime());
+    const bStart = new Date(bEnd.getTime() - days * 86_400_000);
+
+    const [ma, mb, ca, cb] = await Promise.all([
+      this.analyticsService.getOrderMetrics(aStart, aEnd),
+      this.analyticsService.getOrderMetrics(bStart, bEnd),
+      this.analyticsService.getCustomerMetrics(aStart, aEnd),
+      this.analyticsService.getCustomerMetrics(bStart, bEnd),
+    ]);
+
+    const a = ma as any; const b = mb as any;
+    return {
+      periodA: { from: aStart, to: aEnd, days },
+      periodB: { from: bStart, to: bEnd, days },
+      orders: { current: a.totalOrders ?? 0, previous: b.totalOrders ?? 0 },
+      revenue: { current: a.totalRevenue ?? 0, previous: b.totalRevenue ?? 0 },
+      avgOrderValue: { current: Math.round(a.avgOrderValue ?? 0), previous: Math.round(b.avgOrderValue ?? 0) },
+      newCustomers: { current: (ca as any).newCustomers ?? 0, previous: (cb as any).newCustomers ?? 0 },
+      delivered: { current: a.completedOrders ?? 0, previous: b.completedOrders ?? 0 },
+      cancelled: { current: a.cancelledOrders ?? 0, previous: b.cancelledOrders ?? 0 },
+    };
+  }
+
+  private async toolSearchProducts(args: Record<string, unknown>) {
+    const term = String(args.searchTerm ?? '').trim();
+    const items = await this.productRepository.searchByText(term);
+    return {
+      total: items.length,
+      products: items.slice(0, 10).map((p: any) => ({
+        name: p.name,
+        sku: p.sku,
+        price: p.price,
+        mrp: p.mrp,
+        stock: p.stock,
+        isActive: p.isActive,
+        updatedAt: p.updatedAt,
+        category: (p.category as any)?.name ?? '',
+        variants: Array.isArray(p.variants) ? p.variants.map((v: any) => ({ name: v.name, sku: v.sku, price: v.price, stock: v.stock })) : [],
+      })),
+    };
+  }
+
+  private async toolProductDetail(args: Record<string, unknown>) {
+    const name = String(args.productName ?? '').trim();
+    const product = await this.productRepository.getModel()
+      .findOne({ name: { $regex: this.escape(name), $options: 'i' } })
+      .populate('category', 'name')
+      .lean();
+    if (!product) return { error: `Product "${name}" not found` };
+    const p = product as any;
+    return {
+      name: p.name, sku: p.sku, price: p.price, mrp: p.mrp,
+      stock: p.stock, isActive: p.isActive, trackStock: p.trackStock,
+      lowStockThreshold: p.lowStockThreshold, gstPercentage: p.gstPercentage,
+      category: (p.category as any)?.name ?? '',
+      description: p.description,
+      updatedAt: p.updatedAt, createdAt: p.createdAt,
+      variants: Array.isArray(p.variants) ? p.variants.map((v: any) => ({
+        name: v.name, sku: v.sku, price: v.price, mrp: v.mrp, stock: v.stock, isActive: v.isActive,
+      })) : [],
+    };
+  }
+
+  private async toolLowStock(args: Record<string, unknown>) {
+    const searchTerm = String(args.searchTerm ?? '').trim();
+    const nameFilter = searchTerm ? { name: { $regex: this.escape(searchTerm), $options: 'i' } } : {};
+    const THRESHOLD = 10;
+    const items = await this.productRepository.getModel().aggregate([
+      { $match: { isActive: true, ...nameFilter } },
+      { $addFields: {
+        totalStock: { $add: ['$stock', { $ifNull: [{ $sum: '$variants.stock' }, 0] }] },
+        effectiveThreshold: { $cond: [{ $and: [{ $eq: ['$trackStock', true] }, { $gt: ['$lowStockThreshold', 0] }] }, '$lowStockThreshold', THRESHOLD] },
+      }},
+      { $match: { $expr: { $lte: ['$totalStock', '$effectiveThreshold'] } } },
+      { $sort: { totalStock: 1 } }, { $limit: 20 },
+    ]).exec();
+    return {
+      count: items.length,
+      products: items.map((p: any) => ({ name: p.name, sku: p.sku, stock: p.totalStock, threshold: p.lowStockThreshold || THRESHOLD })),
+    };
+  }
+
+  private async toolOutOfStock(args: Record<string, unknown>) {
+    const searchTerm = String(args.searchTerm ?? '').trim();
+    const nameFilter = searchTerm ? { name: { $regex: this.escape(searchTerm), $options: 'i' } } : {};
+    const items = await this.productRepository.getModel().aggregate([
+      { $match: { isActive: true, trackStock: { $ne: false }, ...nameFilter } },
+      { $addFields: { totalStock: { $add: ['$stock', { $ifNull: [{ $sum: '$variants.stock' }, 0] }] } } },
+      { $match: { totalStock: { $lte: 0 } } },
+      { $sort: { name: 1 } }, { $limit: 50 },
+    ]).exec();
+    return {
+      count: items.length,
+      products: items.map((p: any) => ({ name: p.name, sku: p.sku ?? 'N/A', price: p.price })),
+    };
+  }
+
+  private async toolInStock(args: Record<string, unknown>) {
+    const searchTerm = String(args.searchTerm ?? '').trim();
+    const nameFilter = searchTerm ? { name: { $regex: this.escape(searchTerm), $options: 'i' } } : {};
+    const items = await this.productRepository.getModel().aggregate([
+      { $match: { isActive: true, ...nameFilter } },
+      { $addFields: { totalStock: { $add: ['$stock', { $ifNull: [{ $sum: '$variants.stock' }, 0] }] } } },
+      { $match: { $or: [{ trackStock: false }, { totalStock: { $gt: 0 } }] } },
+      { $sort: { name: 1 } }, { $limit: 30 },
+    ]).exec();
+    return {
+      count: items.length,
+      products: items.map((p: any) => ({ name: p.name, sku: p.sku, stock: p.trackStock === false ? 'unlimited' : p.totalStock, price: p.price })),
+    };
+  }
+
+  private async toolStoreStock(args: Record<string, unknown>) {
+    const storeName = String(args.storeName ?? '').trim();
+    const productName = String(args.productName ?? '').trim();
+    const lowStockOnly = Boolean(args.lowStockOnly);
+
+    const pipeline: any[] = [
+      {
+        $lookup: {
+          from: 'stores', localField: 'store', foreignField: '_id',
+          pipeline: [{ $project: { name: 1, code: 1 } }], as: 'storeInfo',
+        },
+      },
+      { $unwind: '$storeInfo' },
+      {
+        $lookup: {
+          from: 'products', localField: 'product', foreignField: '_id',
+          pipeline: [{ $project: { name: 1, sku: 1 } }], as: 'productInfo',
+        },
+      },
+      { $unwind: { path: '$productInfo', preserveNullAndEmptyArrays: true } },
+    ];
+
+    const matchConds: any[] = [];
+    if (storeName) matchConds.push({ $or: [{ 'storeInfo.name': { $regex: this.escape(storeName), $options: 'i' } }, { 'storeInfo.code': { $regex: this.escape(storeName), $options: 'i' } }] });
+    if (productName) matchConds.push({ 'productInfo.name': { $regex: this.escape(productName), $options: 'i' } });
+    if (lowStockOnly) matchConds.push({ $expr: { $lte: ['$stock', '$lowStockThreshold'] } });
+    if (matchConds.length) pipeline.push({ $match: { $and: matchConds } });
+
+    pipeline.push({ $sort: { 'storeInfo.name': 1, 'productInfo.name': 1 } }, { $limit: 100 });
+
+    const rows = await this.storeStockRepository.getModel().aggregate(pipeline).exec();
+    return {
+      count: rows.length,
+      items: rows.map((r: any) => ({
+        store: r.storeInfo?.name ?? 'Unknown',
+        product: r.productInfo?.name ?? 'Unknown',
+        sku: r.productInfo?.sku,
+        stock: r.stock,
+        stockIn: r.stockIn,
+        returned: r.returned,
+        damaged: r.damaged,
+        threshold: r.lowStockThreshold,
+        updatedAt: r.updatedAt,
+      })),
+    };
+  }
+
+  private async toolRawMaterials(args: Record<string, unknown>) {
+    const storeName = String(args.storeName ?? '').trim();
+    const searchTerm = String(args.searchTerm ?? '').trim();
+
+    let storeIds: any[] = [];
+    if (storeName) {
+      const stores = await this.storeModel.find({ $or: [{ name: { $regex: this.escape(storeName), $options: 'i' } }, { code: { $regex: this.escape(storeName), $options: 'i' } }] }).select('_id').lean();
+      storeIds = stores.map((s: any) => s._id);
+      if (!storeIds.length) return { materials: [], message: `No store found matching "${storeName}"` };
+    }
+
+    const filter: any = { isActive: true };
+    if (storeIds.length) filter.store = { $in: storeIds };
+    if (searchTerm) filter.name = { $regex: this.escape(searchTerm), $options: 'i' };
+
+    const materials = await this.rawMaterialModel.find(filter).populate('store', 'name code').sort({ name: 1 }).lean();
+    return {
+      count: materials.length,
+      materials: materials.map((m: any) => ({
+        name: m.name,
+        unit: m.unit,
+        totalStock: m.totalStock,
+        store: (m.store as any)?.name ?? 'Unknown',
+        updatedAt: m.updatedAt,
+      })),
+    };
+  }
+
+  private async toolRawMaterialSnapshots(args: Record<string, unknown>) {
+    const { from, to } = this.resolveRange({ ...args, days: args.days ?? 7 });
+    const storeName = String(args.storeName ?? '').trim();
+    const materialName = String(args.materialName ?? '').trim();
+
+    const pipeline: any[] = [
+      { $match: { date: { $gte: from.toISOString().split('T')[0], $lte: to.toISOString().split('T')[0] } } },
+      { $lookup: { from: 'rawmaterials', localField: 'rawMaterial', foreignField: '_id', pipeline: [{ $project: { name: 1, unit: 1 } }], as: 'mat' } },
+      { $unwind: { path: '$mat', preserveNullAndEmptyArrays: true } },
+      { $lookup: { from: 'stores', localField: 'store', foreignField: '_id', pipeline: [{ $project: { name: 1, code: 1 } }], as: 'storeInfo' } },
+      { $unwind: { path: '$storeInfo', preserveNullAndEmptyArrays: true } },
+    ];
+
+    const matchConds: any[] = [];
+    if (storeName) matchConds.push({ $or: [{ 'storeInfo.name': { $regex: this.escape(storeName), $options: 'i' } }, { 'storeInfo.code': { $regex: this.escape(storeName), $options: 'i' } }] });
+    if (materialName) matchConds.push({ 'mat.name': { $regex: this.escape(materialName), $options: 'i' } });
+    if (matchConds.length) pipeline.push({ $match: { $and: matchConds } });
+
+    pipeline.push({ $sort: { date: -1 } }, { $limit: 50 });
+
+    const entries = await this.rawMaterialEntryModel.aggregate(pipeline).exec();
+    return {
+      count: entries.length,
+      period: `${from.toDateString()} to ${to.toDateString()}`,
+      entries: entries.map((e: any) => ({
+        date: e.date,
+        material: e.mat?.name ?? 'Unknown',
+        unit: e.mat?.unit,
+        store: e.storeInfo?.name ?? 'Unknown',
+        openingStock: e.openingStock,
+        stockIn: e.stockIn,
+        processed: e.processed,
+        outputLitres: e.outputLitres,
+        closing: e.closing,
+      })),
+    };
+  }
+
+  private async toolCategories() {
+    const cats = await this.categoryRepository.getModel().find({}).lean();
+    const counts = await this.productRepository.getModel().aggregate([
+      { $group: { _id: '$category', count: { $sum: 1 } } },
+    ]).exec();
+    const countMap = new Map(counts.map((c: any) => [c._id?.toString(), c.count]));
+    return {
+      count: cats.length,
+      categories: cats.map((c: any) => ({ name: c.name, slug: c.slug, productCount: countMap.get(c._id?.toString()) ?? 0 })),
+    };
+  }
+
+  private async toolStores() {
+    const stores = await this.storeModel.find({}).sort({ isActive: -1, name: 1 }).lean();
+    return {
+      count: stores.length,
+      stores: stores.map((s: any) => ({
+        name: s.name, code: s.code, address: s.address, phone: s.phone,
+        isActive: s.isActive, isMainStore: s.isMainStore,
+      })),
+    };
+  }
+
+  private async toolSearchCustomers(args: Record<string, unknown>) {
+    const term = String(args.searchTerm ?? '').trim();
+    const limit = Number(args.limit ?? 10);
+    if (!term) return { error: 'searchTerm required' };
+    const esc = this.escape(term);
+    const customers = await this.userRepository.getModel()
+      .find({ $or: [{ name: { $regex: esc, $options: 'i' } }, { phone: { $regex: esc, $options: 'i' } }, { email: { $regex: esc, $options: 'i' } }] })
+      .sort({ totalSpent: -1 }).limit(limit).lean();
+    return {
+      count: customers.length,
+      customers: customers.map((c: any) => {
+        const addr = c.addresses?.find((a: any) => a.isDefault) ?? c.addresses?.[0];
+        return {
+          name: c.name, phone: c.phone, email: c.email,
+          totalOrders: c.totalOrders, totalSpent: c.totalSpent,
+          isBlocked: c.isBlocked, blockedReason: c.blockedReason,
+          isActive: c.isActive, tags: c.tags, notes: c.notes,
+          lastOrderAt: c.lastOrderAt, createdAt: c.createdAt,
+          defaultAddress: addr ? `${addr.street ?? ''}, ${addr.city ?? ''}, ${addr.state ?? ''} ${addr.pincode ?? ''}`.trim() : null,
+        };
+      }),
+    };
+  }
+
+  private async toolCustomerOrders(args: Record<string, unknown>) {
+    const phone = String(args.phone ?? '').trim();
+    const name = String(args.name ?? '').trim();
+    const limit = Number(args.limit ?? 10);
+
+    let user: any = null;
+    if (phone) {
+      user = await this.userRepository.getModel().findOne({ phone: { $regex: this.escape(phone), $options: 'i' } }).lean().catch(() => null);
+    }
+    if (!user && name) {
+      user = await this.userRepository.getModel().findOne({ name: { $regex: this.escape(name), $options: 'i' } }).sort({ totalOrders: -1 }).lean().catch(() => null);
+    }
+    if (!user) return { error: `No customer found for ${phone || name}` };
+
+    const orders = await this.orderRepository.getModel().find({ user: user._id }).sort({ createdAt: -1 }).limit(limit).lean();
+    const addr = user.addresses?.find((a: any) => a.isDefault) ?? user.addresses?.[0];
+
+    return {
+      customer: {
+        name: user.name, phone: user.phone, email: user.email,
+        totalOrders: user.totalOrders, totalSpent: user.totalSpent,
+        isBlocked: user.isBlocked, blockedReason: user.blockedReason,
+        lastOrderAt: user.lastOrderAt, createdAt: user.createdAt,
+        address: addr ? `${addr.street ?? ''}, ${addr.city ?? ''}, ${addr.state ?? ''} ${addr.pincode ?? ''}`.trim() : null,
+        tags: user.tags, notes: user.notes,
+      },
+      orders: orders.map((o: any) => ({
+        orderNumber: o.orderNumber, total: o.total, status: o.status,
+        paymentMethod: o.paymentMethod, paymentStatus: o.paymentStatus,
+        createdAt: o.createdAt, deliveredAt: o.deliveredAt,
+        items: (o.items ?? []).map((i: any) => `${i.name}${i.variantName ? ` (${i.variantName})` : ''} x${i.quantity} @₹${i.price}`),
+      })),
+    };
+  }
+
+  private async toolTopCustomers(args: Record<string, unknown>) {
+    const limit = Number(args.limit ?? 10);
+    const minSpent = args.minSpent ? Number(args.minSpent) : 0;
+    const filter: any = { totalOrders: { $gt: 0 } };
+    if (minSpent > 0) filter.totalSpent = { $gte: minSpent };
+    const customers = await this.userRepository.getModel().find(filter).sort({ totalSpent: -1 }).limit(limit).lean();
+    return {
+      count: customers.length,
+      customers: customers.map((c: any, i: number) => ({
+        rank: i + 1, name: c.name, phone: c.phone,
+        totalOrders: c.totalOrders, totalSpent: c.totalSpent,
+        lastOrderAt: c.lastOrderAt,
+      })),
+    };
+  }
+
+  private async toolNewCustomers(args: Record<string, unknown>) {
+    const { from } = this.resolveRange({ ...args, days: args.days ?? 7 });
+    const to = args.to ? new Date(args.to as string) : new Date();
+    const [count, customers] = await Promise.all([
+      this.userRepository.getModel().countDocuments({ createdAt: { $gte: from, $lte: to } }),
+      this.userRepository.getModel().find({ createdAt: { $gte: from, $lte: to } }).sort({ createdAt: -1 }).limit(20).lean(),
+    ]);
+    return {
+      count,
+      customers: customers.map((c: any) => ({
+        name: c.name, phone: c.phone, email: c.email,
+        totalOrders: c.totalOrders, totalSpent: c.totalSpent, createdAt: c.createdAt,
+      })),
+    };
+  }
+
+  private async toolInactiveCustomers(args: Record<string, unknown>) {
+    const days = Number(args.days ?? 30);
+    const limit = Number(args.limit ?? 20);
+    const cutoff = new Date(Date.now() - days * 86_400_000);
+    const customers = await this.userRepository.getModel()
+      .find({ totalOrders: { $gt: 0 }, $or: [{ lastOrderAt: { $lt: cutoff } }, { lastOrderAt: { $exists: false } }] })
+      .sort({ lastOrderAt: 1 }).limit(limit).lean();
+    return {
+      count: customers.length,
+      inactiveDays: days,
+      customers: customers.map((c: any) => ({
+        name: c.name, phone: c.phone,
+        totalOrders: c.totalOrders, totalSpent: c.totalSpent,
+        lastOrderAt: c.lastOrderAt,
+      })),
+    };
+  }
+
+  private async toolBlockedCustomers() {
+    const customers = await this.userRepository.getModel()
+      .find({ isBlocked: true }).sort({ updatedAt: -1 }).limit(50).lean();
+    return {
+      count: customers.length,
+      customers: customers.map((c: any) => ({
+        name: c.name, phone: c.phone, email: c.email,
+        blockedReason: c.blockedReason, updatedAt: c.updatedAt,
+      })),
+    };
+  }
+
+  private async toolRevenueTrend(args: Record<string, unknown>) {
+    const { from, to } = this.resolveRange(args);
+    const days = Math.round((to.getTime() - from.getTime()) / 86_400_000);
+    const trend = await this.analyticsService.getRevenueByDay(days);
+    const totalRev = trend.reduce((s: number, d: any) => s + (d.revenue ?? 0), 0);
+    const totalOrd = trend.reduce((s: number, d: any) => s + (d.orders ?? 0), 0);
+    return {
+      period: { from, to },
+      totalRevenue: totalRev,
+      totalOrders: totalOrd,
+      days: trend.map((d: any) => ({ date: d.date, revenue: d.revenue, orders: d.orders })),
+    };
+  }
+
+  private async toolAnalyticsPeriod(args: Record<string, unknown>) {
+    const { from, to } = this.resolveRange(args);
+    const [orders, customers, products, topSellers, topCustomers] = await Promise.all([
+      this.analyticsService.getOrderMetrics(from, to),
+      this.analyticsService.getCustomerMetrics(from, to),
+      this.analyticsService.getProductMetrics(from, to),
+      this.analyticsService.getTopSellingOverall(from, to, 5),
+      this.userRepository.getModel().find({ totalOrders: { $gt: 0 } }).sort({ totalSpent: -1 }).limit(5).lean(),
+    ]);
+    const o = orders as any; const c = customers as any; const p = products as any;
+    return {
+      period: { from, to },
+      orders: { total: o.totalOrders, revenue: o.totalRevenue, avgOrderValue: Math.round(o.avgOrderValue ?? 0), delivered: o.completedOrders, pending: o.pendingOrders, cancelled: o.cancelledOrders, cod: o.codOrders, prepaid: o.prepaidOrders },
+      customers: { total: c.totalCustomers, newCustomers: c.newCustomers, returning: c.returningCustomers },
+      inventory: { outOfStock: p.outOfStockProducts, lowStock: p.lowStockProducts },
+      topProducts: topSellers.slice(0, 5).map((s: any) => ({ name: s.name, unitsSold: s.quantitySold, revenue: s.revenue })),
+      topCustomers: (topCustomers as any[]).slice(0, 5).map((tc: any) => ({ name: tc.name, phone: tc.phone, totalSpent: tc.totalSpent, totalOrders: tc.totalOrders })),
+    };
+  }
+
+  private async toolTopSelling(args: Record<string, unknown>) {
+    const { from, to } = this.resolveRange(args);
+    const limit = Number(args.limit ?? 8);
+    const searchTerm = String(args.searchTerm ?? '').trim();
+    const [onlineMetrics, storeTop] = await Promise.all([
+      this.analyticsService.getProductMetrics(from, to),
+      this.analyticsService.getTopSellingOverall(from, to, limit * 2),
+    ]);
+    const filter = (name: string) => !searchTerm || name.toLowerCase().includes(searchTerm.toLowerCase());
+    return {
+      period: { from, to },
+      online: ((onlineMetrics as any).topSellingProducts ?? []).filter((p: any) => filter(p.name)).slice(0, limit).map((p: any) => ({ name: p.name, unitsSold: p.quantitySold, revenue: p.revenue })),
+      store: storeTop.filter((p: any) => filter(p.name)).slice(0, limit).map((p: any) => ({ name: p.name, unitsSold: p.quantitySold, revenue: p.revenue })),
+    };
+  }
+
+  private async toolAbandonedCarts(args: Record<string, unknown>) {
+    const limit = Number(args.limit ?? 30);
+    const productSearch = String(args.productSearch ?? '').trim().toLowerCase();
+    const whatsappSettings = await this.settingsService.getWhatsAppSettings();
+    const delayMinutes = whatsappSettings.abandonedCartReminderDelayMinutes ?? 60;
+    const cutoff = new Date(Date.now() - delayMinutes * 60_000);
+
+    const carts = await this.cartRepository.getModel().aggregate([
+      { $match: { 'items.0': { $exists: true }, updatedAt: { $lt: cutoff } } },
+      { $lookup: { from: 'users', localField: 'user', foreignField: '_id', pipeline: [{ $project: { name: 1, phone: 1, isBlocked: 1 } }], as: 'userInfo' } },
+      { $unwind: { path: '$userInfo', preserveNullAndEmptyArrays: true } },
+      { $match: { 'userInfo.isBlocked': { $ne: true } } },
+      { $lookup: { from: 'orders', let: { userId: '$user', cartUpdatedAt: '$updatedAt' }, pipeline: [{ $match: { $expr: { $and: [{ $eq: ['$user', '$$userId'] }, { $gt: ['$createdAt', '$$cartUpdatedAt'] }, { $ne: ['$status', 'cancelled'] }] } } }, { $limit: 1 }], as: 'ordersAfterCart' } },
+      { $match: { ordersAfterCart: { $size: 0 } } },
+      { $sort: { updatedAt: -1 } }, { $limit: limit },
+    ]).exec();
+
+    const filtered = productSearch ? carts.filter((c: any) => c.items.some((i: any) => i.name?.toLowerCase().includes(productSearch))) : carts;
+
+    return {
+      count: filtered.length,
+      inactiveMinutes: delayMinutes,
+      carts: filtered.map((c: any) => ({
+        customer: c.userInfo?.name ?? c.userInfo?.phone ?? 'Unknown',
+        phone: c.userInfo?.phone,
+        cartTotal: c.total ?? 0,
+        idleHours: Math.round((Date.now() - new Date(c.updatedAt).getTime()) / 3_600_000),
+        items: c.items.map((i: any) => `${i.name} x${i.quantity}`),
+      })),
+    };
+  }
+
+  private async toolStoreSales(args: Record<string, unknown>) {
+    const { from, to } = this.resolveRange(args);
+    const limit = Number(args.limit ?? 20);
+    const [sales, totalAgg] = await Promise.all([
+      this.storeSaleRepository.getModel().find({
+        $and: [
+          { $or: [{ dueDate: { $exists: true, $ne: null, $gte: from, $lte: to } }, { $or: [{ dueDate: { $exists: false } }, { dueDate: null }], createdAt: { $gte: from, $lte: to } }] },
+          { $or: [{ voidedAt: { $exists: false } }, { voidedAt: null }] },
+        ],
+      }).populate('store', 'name code').sort({ createdAt: -1 }).limit(limit).lean(),
+      this.storeSaleRepository.getModel().aggregate([
+        { $addFields: { effectiveDate: { $ifNull: ['$dueDate', '$createdAt'] } } },
+        { $match: { effectiveDate: { $gte: from, $lte: to }, $or: [{ voidedAt: { $exists: false } }, { voidedAt: null }] } },
+        { $group: { _id: null, totalRevenue: { $sum: '$total' }, count: { $sum: 1 }, walkIn: { $sum: { $cond: [{ $eq: ['$saleType', 'walk_in'] }, 1, 0] } }, delivery: { $sum: { $cond: [{ $eq: ['$saleType', 'delivery'] }, 1, 0] } } } },
+      ]).exec(),
+    ]);
+    const agg = totalAgg[0] ?? { totalRevenue: 0, count: 0, walkIn: 0, delivery: 0 };
+    return {
+      period: { from, to },
+      summary: { count: agg.count, totalRevenue: agg.totalRevenue, walkIn: agg.walkIn, delivery: agg.delivery },
+      sales: sales.map((s: any) => ({
+        saleNumber: s.saleNumber,
+        store: (s.store as any)?.name ?? 'Unknown',
+        type: s.saleType,
+        total: s.total,
+        customerName: s.customerName,
+        customerPhone: s.customerPhone,
+        paymentMethod: s.paymentMethod,
+        date: s.dueDate ?? s.createdAt,
+        loggedBy: s.loggedBy,
+      })),
+    };
+  }
+
+  private async toolSaleDetail(args: Record<string, unknown>) {
+    const saleNum = String(args.saleNumber ?? '').trim();
+    const sale = await this.storeSaleRepository.getModel()
+      .findOne({ saleNumber: { $regex: this.escape(saleNum), $options: 'i' } })
+      .populate('store', 'name code').lean();
+    if (!sale) return { error: `Sale "${saleNum}" not found` };
+    const s = sale as any;
+    return {
+      saleNumber: s.saleNumber,
+      store: (s.store as any)?.name,
+      type: s.saleType,
+      total: s.total,
+      discount: s.discount,
+      customerName: s.customerName,
+      customerPhone: s.customerPhone,
+      customerAddress: s.customerAddress,
+      paymentMethod: s.paymentMethod,
+      notes: s.notes,
+      loggedBy: s.loggedBy,
+      date: s.dueDate ?? s.createdAt,
+      items: (s.items ?? []).map((i: any) => ({ name: i.name, qty: i.quantity, price: i.price, total: i.total })),
+    };
+  }
+
+  private async toolDeliveryCollections(args: Record<string, unknown>) {
+    const { from, to } = this.resolveRange(args);
+    const agentName = String(args.agentName ?? '').trim();
+
+    let agentIds: any[] | null = null;
+    if (agentName) {
+      const agents = await this.adminUserRepository.getModel()
+        .find({ name: { $regex: this.escape(agentName), $options: 'i' } }).select('_id name').lean();
+      agentIds = agents.map((a: any) => a._id.toString());
+      if (!agentIds.length) return { agents: [], message: `No agent found matching "${agentName}"` };
+    }
+
+    const match: any = { status: 'delivered', deliveredAt: { $gte: from, $lte: to }, assignedDeliveryUserId: { $exists: true, $ne: null } };
+    if (agentIds) match.assignedDeliveryUserId = { $in: agentIds };
+
+    const rows = await this.orderRepository.getModel().aggregate([
+      { $match: match },
+      { $group: {
+        _id: { $toString: '$assignedDeliveryUserId' },
+        totalOrders: { $sum: 1 },
+        totalCashCollected: { $sum: { $cond: [{ $in: ['$paymentMethod', ['cash', 'cod']] }, { $ifNull: ['$amountCollected', 0] }, 0] } },
+        totalUpiCollected: { $sum: { $cond: [{ $eq: ['$paymentMethod', 'upi'] }, { $ifNull: ['$amountCollected', 0] }, 0] } },
+        pendingCash: { $sum: { $cond: [{ $and: [{ $in: ['$paymentMethod', ['cash', 'cod']] }, { $ne: ['$collectionStatus', 'settled'] }] }, { $ifNull: ['$amountCollected', 0] }, 0] } },
+      }},
+    ]).exec();
+
+    const userIds = rows.map((r: any) => r._id).filter(Boolean);
+    const users = userIds.length ? await this.adminUserRepository.getModel().find({ _id: { $in: userIds } }, 'name email').lean() : [];
+    const userMap = new Map((users as any[]).map((u: any) => [u._id.toString(), u]));
+
+    const [outstanding] = await this.orderRepository.getModel().aggregate([
+      { $match: { status: 'delivered', paymentMethod: { $in: ['cash', 'cod'] }, collectionStatus: { $ne: 'settled' }, amountCollected: { $gt: 0 } } },
+      { $group: { _id: { $toString: '$assignedDeliveryUserId' }, total: { $sum: '$amountCollected' } } },
+    ]).exec().then((r: any[]) => [new Map(r.map((x: any) => [x._id, x.total]))]).catch(() => [new Map()]);
+
+    return {
+      period: { from, to },
+      agents: rows.map((r: any) => {
+        const u = userMap.get(r._id);
+        return {
+          agentId: r._id,
+          name: (u as any)?.name ?? r._id,
+          totalOrders: r.totalOrders,
+          cashCollected: r.totalCashCollected,
+          upiCollected: r.totalUpiCollected,
+          pendingCashInPeriod: r.pendingCash,
+          totalOutstandingAllTime: (outstanding as Map<string, number>).get(r._id) ?? 0,
+        };
+      }),
+    };
+  }
+
+  private async toolDeliveryHistory(args: Record<string, unknown>) {
+    const { from, to } = this.resolveRange(args);
+    const limit = Number(args.limit ?? 20);
+    const agentName = String(args.agentName ?? '').trim();
+
+    const filter: any = { status: 'delivered', deliveredAt: { $gte: from, $lte: to } };
+    if (agentName) {
+      const agents = await this.adminUserRepository.getModel().find({ name: { $regex: this.escape(agentName), $options: 'i' } }).select('_id').lean();
+      if (agents.length) filter.assignedDeliveryUserId = { $in: agents.map((a: any) => a._id.toString()) };
+    }
+
+    const orders = await this.orderRepository.getModel()
+      .find(filter)
+      .select('orderNumber shippingAddress total amountCollected paymentMethod collectionStatus deliveredAt assignedDeliveryUserId')
+      .sort({ deliveredAt: -1 }).limit(limit).lean();
+
+    const agentIdSet = [...new Set(orders.map((o: any) => o.assignedDeliveryUserId).filter(Boolean))];
+    const agentsData = agentIdSet.length ? await this.adminUserRepository.getModel().find({ _id: { $in: agentIdSet } }, 'name').lean() : [];
+    const agentMap = new Map((agentsData as any[]).map((a: any) => [a._id.toString(), a.name]));
+
+    return {
+      count: orders.length,
+      period: { from, to },
+      orders: orders.map((o: any) => ({
+        orderNumber: o.orderNumber,
+        customer: (o.shippingAddress as any)?.name ?? 'N/A',
+        total: o.total,
+        amountCollected: o.amountCollected,
+        paymentMethod: o.paymentMethod,
+        collectionStatus: o.collectionStatus,
+        deliveredAt: o.deliveredAt,
+        agent: agentMap.get(String(o.assignedDeliveryUserId)) ?? 'Unassigned',
+      })),
+    };
+  }
+
+  private async toolPendingCollections(args: Record<string, unknown>) {
+    const agentName = String(args.agentName ?? '').trim();
+    let agentFilter: any = {};
+    if (agentName) {
+      const agents = await this.adminUserRepository.getModel().find({ name: { $regex: this.escape(agentName), $options: 'i' } }).select('_id name').lean();
+      if (!agents.length) return { orders: [], message: `No agent found matching "${agentName}"` };
+      agentFilter = { assignedDeliveryUserId: { $in: agents.map((a: any) => a._id.toString()) } };
+    }
+    const orders = await this.orderRepository.getModel()
+      .find({ status: 'delivered', paymentMethod: { $in: ['cash', 'cod'] }, collectionStatus: { $ne: 'settled' }, amountCollected: { $gt: 0 }, ...agentFilter })
+      .select('orderNumber shippingAddress total amountCollected paymentMethod deliveredAt assignedDeliveryUserId')
+      .sort({ deliveredAt: -1 }).limit(50).lean();
+    return {
+      count: orders.length,
+      totalPending: orders.reduce((s: number, o: any) => s + (o.amountCollected ?? 0), 0),
+      orders: orders.map((o: any) => ({
+        orderNumber: o.orderNumber,
+        customer: (o.shippingAddress as any)?.name ?? 'N/A',
+        amountCollected: o.amountCollected,
+        paymentMethod: o.paymentMethod,
+        deliveredAt: o.deliveredAt,
+      })),
+    };
+  }
+
+  private async toolWalletBalances(args: Record<string, unknown>) {
+    const limit = Number(args.limit ?? 20);
+    const wallets = await this.walletRepository.getModel()
+      .find({ balance: { $gt: 0 } }).sort({ balance: -1 }).limit(limit)
+      .populate('user', 'name phone').lean();
+    const total = wallets.reduce((s: number, w: any) => s + (w.balance ?? 0), 0);
+    return {
+      count: wallets.length,
+      totalOutstandingRupees: +(total / 100).toFixed(2),
+      wallets: wallets.map((w: any) => ({
+        customer: (w.user as any)?.name ?? (w.user as any)?.phone ?? 'N/A',
+        phone: (w.user as any)?.phone,
+        balanceRupees: +((w.balance ?? 0) / 100).toFixed(2),
+      })),
+    };
+  }
+
+  private async toolWalletTransactions(args: Record<string, unknown>) {
+    const phone = String(args.phone ?? '').trim();
+    const customerName = String(args.customerName ?? '').trim();
+    const limit = Number(args.limit ?? 20);
+
+    let user: any = null;
+    if (phone) user = await this.userRepository.getModel().findOne({ phone: { $regex: this.escape(phone), $options: 'i' } }).lean().catch(() => null);
+    if (!user && customerName) user = await this.userRepository.getModel().findOne({ name: { $regex: this.escape(customerName), $options: 'i' } }).lean().catch(() => null);
+    if (!user) return { error: `No customer found for ${phone || customerName}` };
+
+    const txns = await this.walletTransactionRepository.getModel()
+      .find({ user: user._id }).sort({ createdAt: -1 }).limit(limit).lean();
+    return {
+      customer: { name: user.name, phone: user.phone },
+      count: txns.length,
+      transactions: txns.map((t: any) => ({
+        type: t.type,
+        amountRupees: +((t.amount ?? 0) / 100).toFixed(2),
+        reason: t.reason,
+        orderId: t.orderId,
+        createdAt: t.createdAt,
+      })),
+    };
+  }
+
+  private async toolSubscriptionData() {
+    const [active, paused, upcoming] = await Promise.all([
+      this.subscriptionModel.find({ status: 'active' }).populate('user', 'name phone').sort({ nextDeliveryDate: 1 }).limit(30).lean(),
+      this.subscriptionModel.find({ status: 'paused' }).populate('user', 'name phone').limit(10).lean(),
+      this.subscriptionModel.find({ status: 'active', nextDeliveryDate: { $lte: new Date(Date.now() + 3 * 86_400_000) } }).populate('user', 'name phone').sort({ nextDeliveryDate: 1 }).lean(),
+    ]);
+    const fmt = (s: any) => ({
+      customer: (s.user as any)?.name ?? (s.user as any)?.phone ?? 'N/A',
+      phone: (s.user as any)?.phone,
+      frequency: s.frequency,
+      totalAmount: s.totalAmount,
+      nextDeliveryDate: s.nextDeliveryDate,
+      items: (s.items ?? []).map((i: any) => `${i.name} x${i.quantity}`),
+    });
+    return {
+      activeCount: active.length,
+      pausedCount: paused.length,
+      active: active.slice(0, 20).map(fmt),
+      paused: paused.map(fmt),
+      upcomingDeliveries3Days: upcoming.map(fmt),
+    };
+  }
+
+  private async toolSubscriptionDetail(args: Record<string, unknown>) {
+    const phone = String(args.phone ?? '').trim();
+    const customerName = String(args.customerName ?? '').trim();
+
+    let user: any = null;
+    if (phone) user = await this.userRepository.getModel().findOne({ phone: { $regex: this.escape(phone), $options: 'i' } }).lean().catch(() => null);
+    if (!user && customerName) user = await this.userRepository.getModel().findOne({ name: { $regex: this.escape(customerName), $options: 'i' } }).lean().catch(() => null);
+    if (!user) return { error: `No customer found for ${phone || customerName}` };
+
+    const sub = await this.subscriptionModel.findOne({ user: user._id }).lean();
+    if (!sub) return { error: `No subscription found for ${user.name ?? phone}` };
+    const s = sub as any;
+    return {
+      customer: { name: user.name, phone: user.phone },
+      status: s.status, frequency: s.frequency,
+      totalAmount: s.totalAmount, nextDeliveryDate: s.nextDeliveryDate,
+      items: (s.items ?? []).map((i: any) => ({ name: i.name, qty: i.quantity, price: i.price })),
+      createdAt: s.createdAt, updatedAt: s.updatedAt,
+    };
+  }
+
+  private async toolPayments(args: Record<string, unknown>) {
+    const status = String(args.status ?? 'failed').trim();
+    const limit = Number(args.limit ?? 20);
+    const filter: any = {};
+    if (status) filter.status = status;
+    if (args.from && args.to) {
+      const fromD = new Date(args.from as string);
+      const toD = new Date(args.to as string);
+      if (!isNaN(fromD.getTime())) filter.createdAt = { $gte: fromD, $lte: toD };
+    }
+    const payments = await this.paymentRepository.getModel()
+      .find(filter).sort({ createdAt: -1 }).limit(limit)
+      .populate('user', 'name phone').populate('order', 'orderNumber total').lean();
+    return {
+      count: payments.length,
+      status,
+      payments: payments.map((p: any) => ({
+        customer: (p.user as any)?.name ?? (p.user as any)?.phone ?? 'N/A',
+        phone: (p.user as any)?.phone,
+        orderNumber: (p.order as any)?.orderNumber ?? 'N/A',
+        amountRupees: p.amount,
+        status: p.status,
+        gateway: p.gateway,
+        failureReason: p.failureReason,
+        refundAmount: p.refundAmount,
+        refundedAt: p.refundedAt,
+        createdAt: p.createdAt,
+      })),
+    };
+  }
+
+  private async toolRefundHistory(args: Record<string, unknown>) {
+    const { from, to } = this.resolveRange(args);
+    const limit = Number(args.limit ?? 20);
+    const payments = await this.paymentRepository.getModel()
+      .find({ status: 'refunded', refundedAt: { $gte: from, $lte: to } })
+      .sort({ refundedAt: -1 }).limit(limit)
+      .populate('user', 'name phone').populate('order', 'orderNumber').lean();
+    const total = payments.reduce((s: number, p: any) => s + (p.refundAmount ?? 0), 0);
+    return {
+      count: payments.length,
+      totalRefundedRupees: total,
+      period: { from, to },
+      refunds: payments.map((p: any) => ({
+        customer: (p.user as any)?.name ?? (p.user as any)?.phone ?? 'N/A',
+        phone: (p.user as any)?.phone,
+        orderNumber: (p.order as any)?.orderNumber,
+        refundAmount: p.refundAmount,
+        refundReason: p.refundReason,
+        refundedAt: p.refundedAt,
+      })),
+    };
+  }
+
+  private async toolAuditLogs(args: Record<string, unknown>) {
+    const limit = Number(args.limit ?? 20);
+    const filter: any = {};
+    if (args.action) filter.action = args.action;
+    if (args.targetName) filter.targetName = { $regex: this.escape(String(args.targetName)), $options: 'i' };
+    if (args.from && args.to) {
+      const fromD = new Date(args.from as string);
+      const toD = new Date(args.to as string);
+      if (!isNaN(fromD.getTime())) filter.createdAt = { $gte: fromD, $lte: toD };
+    }
+    const [count, logs] = await Promise.all([
+      this.auditLogRepository.getModel().countDocuments(filter),
+      this.auditLogRepository.getModel().find(filter).sort({ createdAt: -1 }).limit(limit).lean(),
+    ]);
+    return {
+      count,
+      logs: logs.map((l: any) => ({
+        action: l.action,
+        performer: l.performedByName ?? l.performedBy,
+        target: l.targetName,
+        ipAddress: l.ipAddress,
+        previousValues: l.previousValues,
+        newValues: l.newValues,
+        timestamp: l.createdAt,
+      })),
+    };
+  }
+
+  private async toolAdminUsers(args: Record<string, unknown>) {
+    const filter: any = {};
+    if (args.role) filter.role = args.role;
+    if (args.department) filter.departmentType = args.department;
+    const users = await this.adminUserRepository.getModel()
+      .find(filter).select('-password').populate('store', 'name code').sort({ role: 1, name: 1 }).lean();
+    return {
+      count: users.length,
+      staff: users.map((u: any) => ({
+        name: u.name, email: u.email, phone: u.phone,
+        role: u.role, department: u.departmentType,
+        store: (u.store as any)?.name,
+        isActive: u.isActive, lastLoginAt: u.lastLoginAt, lastLoginIp: u.lastLoginIp,
+      })),
+    };
+  }
+
+  private async toolCouponList(args: Record<string, unknown>) {
+    const statusFilter = String(args.status ?? '').trim().toLowerCase();
+    const coupons = await this.couponRepository.getModel().find({}).sort({ createdAt: -1 }).limit(50).lean();
+    const now = new Date();
+    const rows = coupons.map((c: any) => {
+      const notYetValid = new Date(c.validFrom) > now;
+      const expired = new Date(c.validUntil) < now;
+      const active = c.isActive && !expired && !notYetValid;
+      const statusKey = active ? 'active' : notYetValid ? 'upcoming' : expired ? 'expired' : 'inactive';
+      return { statusKey, coupon: { code: c.code, discountType: c.discountType, discountValue: c.discountValue, usedCount: c.usedCount ?? 0, maxUsageCount: c.maxUsageCount, status: statusKey, minOrderAmount: c.minOrderAmount, validFrom: c.validFrom, validUntil: c.validUntil } };
+    });
+    const filtered = statusFilter ? rows.filter((r) => r.statusKey === statusFilter) : rows;
+    const summary = { total: rows.length, active: rows.filter((r) => r.statusKey === 'active').length, upcoming: rows.filter((r) => r.statusKey === 'upcoming').length, expired: rows.filter((r) => r.statusKey === 'expired').length };
+    return { summary, coupons: filtered.map((r) => r.coupon) };
+  }
+
+  private async toolCouponUsage(args: Record<string, unknown>) {
+    const couponCode = String(args.couponCode ?? '').trim().toUpperCase();
+    const orders = await this.orderRepository.getModel()
+      .find({ couponCode: { $regex: `^${this.escape(couponCode)}$`, $options: 'i' } })
+      .select('orderNumber user couponCode discount createdAt')
+      .sort({ createdAt: -1 }).limit(50)
+      .populate('user', 'name phone').lean();
+    return {
+      couponCode,
+      usageCount: orders.length,
+      totalDiscountGiven: orders.reduce((s: number, o: any) => s + (o.discount ?? 0), 0),
+      usages: orders.map((o: any) => ({
+        customer: (o.user as any)?.name ?? 'Guest',
+        phone: (o.user as any)?.phone,
+        orderNumber: o.orderNumber,
+        discount: o.discount,
+        usedAt: o.createdAt,
+      })),
+    };
+  }
+
+  private async toolFeedbackList(args: Record<string, unknown>) {
+    const limit = Number(args.limit ?? 15);
+    const filter: any = {};
+    if (args.minRating != null || args.maxRating != null) {
+      filter.rating = { ...(args.minRating != null ? { $gte: Number(args.minRating) } : {}), ...(args.maxRating != null ? { $lte: Number(args.maxRating) } : {}) };
+    }
+    if (args.type) filter.type = { $regex: String(args.type), $options: 'i' };
+    const productName = String(args.productName ?? '').trim();
+    const feedbacks = await this.feedbackRepository.getModel()
+      .find(filter).populate('user', 'name phone').populate('product', 'name')
+      .sort({ createdAt: -1 }).limit(productName ? limit * 3 : limit).lean();
+    const filtered = productName ? feedbacks.filter((f: any) => f.product?.name?.toLowerCase().includes(productName.toLowerCase())) : feedbacks;
+    return {
+      count: filtered.length,
+      feedback: filtered.slice(0, limit).map((f: any) => ({
+        customer: (f.user as any)?.name ?? 'Anonymous',
+        product: (f.product as any)?.name ?? 'General',
+        rating: f.rating,
+        type: f.type,
+        message: (f.message ?? '').slice(0, 150),
+        status: f.status,
+        createdAt: f.createdAt,
+      })),
+    };
+  }
+
+  private async toolWhatsAppQueue() {
+    const [support, recent] = await Promise.all([
+      this.chatSessionRepository.getModel()
+        .find({ isHandedOffToSupport: true, isExpired: { $ne: true } })
+        .sort({ supportHandoffAt: -1 }).limit(30).populate('user', 'name phone').lean(),
+      this.messageLogRepository.getModel()
+        .find({ direction: 'inbound', createdAt: { $gte: new Date(Date.now() - 60 * 60_000) } })
+        .sort({ createdAt: -1 }).limit(20).lean(),
+    ]);
+    const activePhones = [...new Set((recent as any[]).map((m: any) => m.phone))];
+    return {
+      supportQueueCount: support.length,
+      sessions: (support as any[]).map((s: any) => ({
+        customer: (s.user as any)?.name ?? s.metadata?.contactName ?? s.phone,
+        phone: s.phone,
+        waitingMinutes: s.supportHandoffAt ? Math.round((Date.now() - new Date(s.supportHandoffAt).getTime()) / 60_000) : 0,
+        hasAgent: Boolean(s.supportAgentId),
+      })),
+      activeLastHour: activePhones.length,
+    };
+  }
+
+  private async toolWhatsAppMessages(args: Record<string, unknown>) {
+    const phone = String(args.phone ?? '').trim();
+    const limit = Number(args.limit ?? 20);
+    const msgs = await this.messageLogRepository.getModel()
+      .find({ phone }).sort({ createdAt: -1 }).limit(limit).lean();
+    return {
+      phone,
+      count: msgs.length,
+      messages: msgs.reverse().map((m: any) => ({
+        direction: m.direction,
+        type: m.messageType,
+        text: m.content?.text ?? m.content?.caption ?? m.content?.templateName ?? '[media]',
+        timestamp: m.createdAt,
+      })),
+    };
+  }
+
+  private async toolReminders() {
+    const now = new Date();
+    const soon = new Date(now.getTime() + 24 * 60 * 60_000);
+    const [overdue, upcoming] = await Promise.all([
+      this.reminderRepository.getModel().find({ dueAt: { $lt: now }, isDismissed: false }).sort({ dueAt: 1 }).limit(20).populate('sale', 'saleNumber customerName total').populate('store', 'name code').lean(),
+      this.reminderRepository.getModel().find({ dueAt: { $gte: now, $lte: soon }, isDismissed: false }).sort({ dueAt: 1 }).limit(20).populate('sale', 'saleNumber customerName total').populate('store', 'name code').lean(),
+    ]);
+    const fmt = (r: any) => ({
+      store: (r.store as any)?.name ?? 'Unknown',
+      saleNumber: (r.sale as any)?.saleNumber,
+      saleTotal: (r.sale as any)?.total,
+      message: r.message,
+      dueAt: r.dueAt,
+    });
+    return {
+      overdueCount: overdue.length,
+      upcomingCount: upcoming.length,
+      overdue: overdue.map(fmt),
+      upcoming: upcoming.map(fmt),
+    };
+  }
+
+  private async toolPreviewEmail(args: Record<string, unknown>) {
+    const to = String(args.to ?? '').trim();
+    const reportType = String(args.reportType ?? 'dashboard').trim().toLowerCase();
+    if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to))
+      return { status: 'error', message: `Invalid email address: "${to}"` };
+    try {
+      const preview = await this.buildReportPreview(reportType);
+      return { status: 'preview', to, reportType, subject: preview.subject, summary: preview.summary, readyToSend: true };
+    } catch (err) {
+      return { status: 'error', message: (err as Error).message };
+    }
+  }
+
+  private async toolSendEmail(args: Record<string, unknown>) {
+    const to = String(args.to ?? '').trim();
+    const reportType = String(args.reportType ?? 'dashboard').trim().toLowerCase();
+    if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to))
+      return { status: 'error', message: `Invalid email address: "${to}"` };
+    try {
+      const report = await this.buildReportPreview(reportType);
+      await this.emailService.sendAdminReport(to, report.subject, report.html);
+      this.logger.log(`Admin report "${reportType}" sent to ${to}`);
+      return { status: 'sent', to, subject: report.subject };
+    } catch (err) {
+      return { status: 'error', message: (err as Error).message };
+    }
+  }
+
+  // ─── Public API ───────────────────────────────────────────────────────────────
+
+  async chat(
     message: string,
     history: HistoryItem[],
     adminId: string | undefined,
-    apiKey: string,
-  ): Promise<{ reply: string; contextBlocks: string[]; failedTools: string[] }> {
-    // ── 1. Fingerprint + history-aware cache key ──────────────────────────────────
-    const normalized = normalizeQuery(message);
-    const fingerprint = queryFingerprint(normalized);
-    const isEmailFlow = /\byes\b|\bconfirm\b|\bsend\s+it\b|\bgo\s+ahead\b/i.test(message) &&
-      history.some((h) => h.role === 'assistant' && /preview_email_report|READY_TO_SEND/i.test(h.text));
-    const replyCacheKey = `chatbot:reply:${fingerprint}:${this.historyContextHash(history)}`;
-
-    if (!isEmailFlow) {
-      const cachedReply = await this.redisService.get(replyCacheKey).catch(() => null);
-      if (cachedReply) {
-        this.logger.debug(`Reply cache HIT: ${replyCacheKey}`);
-        if (adminId) {
-          const ts = new Date().toISOString();
-          await this.adminChatSessionRepository.appendMessages(adminId, [
-            { id: `${Date.now()}-u`, sender: 'user', text: message, timestamp: ts },
-            { id: `${Date.now()}-a`, sender: 'assistant', text: cachedReply, timestamp: ts },
-          ]).catch(() => {});
-        }
-        return { reply: cachedReply, contextBlocks: [], failedTools: [] };
-      }
-    }
-
-    // ── 2. Retrieve context (planner + DB tools + rerank + compress) ──────────────
-    const { finalPlan, rawBlocks, compressedText, failedTools, error } =
-      await this.retrieveContext(message, history, apiKey);
-
-    if (error) {
-      return { reply: error, contextBlocks: [], failedTools };
-    }
-
-    // ── 3. Synthesise ─────────────────────────────────────────────────────────────
-    const synthesisData = await this.geminiRequest(
-      apiKey,
-      {
-        contents: [{ parts: [{ text: this.buildSynthesisPrompt(message, compressedText, history) }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
-      },
-      'synthesis',
-      true,
-    );
-    const aiReply = this.extractText(synthesisData);
-
-    const rawFallback = this.formatRawDataFallback(rawBlocks, failedTools, message);
-    const baseReply = aiReply || rawFallback;
-    const finalReply = failedTools.length > 0
-      ? `${baseReply}\n\n> ⚠️ *Partial data — could not load: ${failedTools.join(', ')}*`
-      : baseReply;
-
-    // ── 4. Cache + persist ────────────────────────────────────────────────────────
-    const ACTION_TOOLS = new Set(['send_email_report', 'preview_email_report']);
-    const isActionPlan = finalPlan.some((s) => ACTION_TOOLS.has(s.tool));
-    if (aiReply && !isActionPlan && !isEmailFlow) {
-      await this.redisService.set(replyCacheKey, finalReply, SYNTHESIS_CACHE_TTL_SECONDS).catch(() => {});
-    }
-    if (adminId) {
-      const ts = new Date().toISOString();
-      await this.adminChatSessionRepository.appendMessages(adminId, [
-        { id: `${Date.now()}-u`, sender: 'user', text: message, timestamp: ts },
-        { id: `${Date.now()}-a`, sender: 'assistant', text: finalReply, timestamp: ts },
-      ]).catch(() => {});
-    }
-
-    return { reply: finalReply, contextBlocks: rawBlocks, failedTools };
-  }
-
-  // ─── History context hash (cache key scoping) ─────────────────────────────────
-
-  private historyContextHash(history: HistoryItem[]): string {
-    const ctx = history
-      .filter((h) => h.role === 'assistant')
-      .slice(-2)
-      .map((h) => h.text.slice(0, 80))
-      .join('|');
-    return ctx ? queryFingerprint(ctx).slice(0, 8) : '0';
-  }
-
-  // ─── Context retrieval (planner → tools → rerank → compress) ─────────────────
-
-  private async retrieveContext(
-    message: string,
-    history: HistoryItem[],
-    apiKey: string,
-  ): Promise<{
-    finalPlan: RagStep[];
-    rawBlocks: string[];
-    compressedText: string;
-    failedTools: string[];
-    error: string | null;
-  }> {
-    const failedTools: string[] = [];
-    const normalized = normalizeQuery(message);
-
-    let plan: RagStep[] = [];
-    let planSource = 'gemini';
-
-    const planData = await this.geminiRequest(
-      apiKey,
-      {
-        contents: [{ parts: [{ text: this.buildPlannerPrompt(message, history) }] }],
-        generationConfig: { temperature: 0.0, maxOutputTokens: 400, responseMimeType: 'application/json' },
-      },
-      'planner',
-    );
-
-    if (planData) {
-      try {
-        let raw = this.extractText(planData).trim();
-        if (raw.startsWith('```')) raw = raw.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '');
-        const parsed = JSON.parse(raw.trim());
-        if (Array.isArray(parsed) && parsed.length > 0) plan = parsed;
-      } catch {
-        this.logger.warn('Planner JSON parse failed — keyword fallback');
-      }
-    }
-
-    if (!plan.length) {
-      const retryData = await this.geminiRequest(
-        apiKey,
-        {
-          contents: [{ parts: [{ text: this.buildCompactPlannerPrompt(message) }] }],
-          generationConfig: { temperature: 0.0, maxOutputTokens: 200, responseMimeType: 'application/json' },
-        },
-        'planner-retry',
-      );
-      if (retryData) {
-        try {
-          let raw = this.extractText(retryData).trim();
-          if (raw.startsWith('```')) raw = raw.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '');
-          const parsed = JSON.parse(raw.trim());
-          if (Array.isArray(parsed) && parsed.length > 0) { plan = parsed; planSource = 'gemini-retry'; }
-        } catch {
-          this.logger.warn('Planner retry parse failed — keyword fallback');
-        }
-      }
-      if (!plan.length) {
-        planSource = 'keyword-fallback';
-        plan = this.keywordFallbackPlan(message);
-      }
-    }
-
-    const finalPlan = this.deduplicatePlan(plan);
-    this.logger.log(`Plan (${planSource}): ${finalPlan.map((s) => s.tool).join(', ')}`);
-
-    const toolResults = await Promise.all(
-      finalPlan.map(async (step, index) => {
-        try {
-          const block = await this.executeTool(step);
-          return { index, block };
-        } catch (err) {
-          this.logger.error(`Tool "${step.tool}" failed: ${(err as Error).message}`);
-          failedTools.push(step.tool);
-          return { index, block: null };
-        }
-      }),
-    );
-
-    const rawBlocks = toolResults
-      .sort((a, b) => a.index - b.index)
-      .map((r) => r.block)
-      .filter((b): b is string => b !== null);
-
-    if (rawBlocks.length === 0) {
-      return {
-        finalPlan,
-        rawBlocks: [],
-        compressedText: '',
-        failedTools,
-        error: `⚠️ **Could not load data.**\n\nAll queries failed (${failedTools.join(', ')}). Check DB connection.`,
-      };
-    }
-
-    const rankedBlocks = rerankContextBlocks(rawBlocks, normalized);
-    const compressedBlocks = compressContext(rankedBlocks, normalized, MAX_CONTEXT_CHARS);
-    const compressedText = compressedBlocks.join('\n\n').slice(0, MAX_CONTEXT_CHARS);
-
-    return { finalPlan, rawBlocks, compressedText, failedTools, error: null };
-  }
-
-  // ─── Gemini SSE streaming ─────────────────────────────────────────────────────
-
-  private async geminiStreamText(
-    apiKey: string,
-    body: object,
-    onChunk: (text: string) => void,
-  ): Promise<string> {
-    const url = `${GEMINI_BASE}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
-    let fullText = '';
-    let response: any;
+  ): Promise<{ reply: string }> {
     try {
-      response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-    } catch {
-      return '';
-    }
-    if (!response?.ok || !response.body) return '';
-
-    const reader = (response.body as ReadableStream<Uint8Array>).getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const jsonStr = line.slice(6).trim();
-          if (!jsonStr || jsonStr === '[DONE]') continue;
-          try {
-            const chunk = JSON.parse(jsonStr) as GeminiResponse;
-            const text = chunk?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-            if (text) { onChunk(text); fullText += text; }
-          } catch { /* ignore malformed chunk */ }
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
-    return fullText;
-  }
-
-  // ─── Main chat entry point ────────────────────────────────────────────────────
-
-  async chat(message: string, history: HistoryItem[] = [], adminId?: string): Promise<{ reply: string }> {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey)
-      return { reply: `⚠️ **AI assistant not configured.**\n\nAdd \`GEMINI_API_KEY\` to the backend \`.env\` file.` };
-
-    // Validate input with Zod
-    let safe: { message: string; history: HistoryItem[] };
-    try {
-      safe = this.validateChatRequest(message, history);
-    } catch (e) {
-      return { reply: `⚠️ ${(e as Error).message}` };
-    }
-
-    try {
-      const { reply } = await this.runRagPipeline(safe.message, safe.history, adminId, apiKey);
+      const safe = this.sanitize(message);
+      const reply = await this.runAgenticLoop(safe, this.historyToContent(history));
+      if (adminId) await this.persistSession(adminId, safe, reply);
       return { reply };
     } catch (err) {
-      if (err instanceof GeminiRateLimitError) {
-        return {
-          reply:
-            `> ⚠️ **Gemini API rate limit reached.**\n\n` +
-            `The AI is temporarily unavailable. Please wait a minute and try again.\n\n` +
-            `_Your data was retrieved — only the AI summary step failed._`,
-        };
-      }
-      this.logger.error(`chat() error: ${(err as Error).message}`, (err as Error).stack);
-      return { reply: `⚠️ **Something went wrong on the server.**\n\nPlease try again.` };
+      this.logger.error(`chat() error: ${(err as Error).message}`);
+      return { reply: '⚠️ Something went wrong. Please try again.' };
     }
   }
 
-  // ─── BullMQ async chat (non-streaming) ───────────────────────────────────────
+  async streamChat(
+    message: string,
+    history: HistoryItem[],
+    adminId: string | undefined,
+    res: any,
+  ): Promise<void> {
+    try {
+      const safe = this.sanitize(message);
+      const reply = await this.runAgenticLoop(safe, this.historyToContent(history));
+      res.write(`data: ${JSON.stringify({ delta: reply })}\n\n`);
+      if (adminId) await this.persistSession(adminId, safe, reply);
+    } catch (err) {
+      this.logger.error(`streamChat error: ${(err as Error).message}`);
+      res.write(`data: ${JSON.stringify({ delta: '⚠️ Something went wrong. Please try again.' })}\n\n`);
+    }
+    res.write('data: [DONE]\n\n');
+  }
 
-  /**
-   * Queue a chat job for async processing. Returns a jobId the client can use to
-   * poll `GET /admin/chatbot/result/:jobId` for the reply.
-   * Rate-limited to 50 Gemini calls/min via the chatbot queue's limiter.
-   */
   async enqueueChat(
     message: string,
     history: HistoryItem[],
     adminId: string | undefined,
   ): Promise<{ jobId: string }> {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
-
-    let safe: { message: string; history: HistoryItem[] };
-    try {
-      safe = this.validateChatRequest(message, history);
-    } catch (e) {
-      throw new Error(`Validation failed: ${(e as Error).message}`);
-    }
-
+    if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not configured');
     const job = await this.chatbotQueue.add(
       CHATBOT_JOBS.CHAT_QUERY,
-      { message: safe.message, history: safe.history, adminId },
+      { message: this.sanitize(message), history, adminId },
       {
         ...DEFAULT_JOB_OPTIONS,
         attempts: 2,
@@ -739,173 +1941,33 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     return { jobId: job.id! };
   }
 
-  /** Retrieve the result of an async chat job from Redis. */
   async getChatJobResult(jobId: string): Promise<{ status: 'pending' | 'done' | 'failed'; reply?: string }> {
     const job = await this.chatbotQueue.getJob(jobId);
     if (!job) return { status: 'failed', reply: 'Job not found.' };
     const state = await job.getState();
-    if (state === 'completed') {
-      const result = job.returnvalue as { reply: string } | undefined;
-      return { status: 'done', reply: result?.reply ?? '(empty)' };
-    }
+    if (state === 'completed') return { status: 'done', reply: (job.returnvalue as any)?.reply ?? '(empty)' };
     if (state === 'failed') return { status: 'failed', reply: job.failedReason ?? 'Unknown error' };
     return { status: 'pending' };
   }
 
-  /** Called by the BullMQ processor to execute an async chat job. */
   async _executeChatQuery(data: { message: string; history: HistoryItem[]; adminId?: string }): Promise<{ reply: string }> {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return { reply: '⚠️ GEMINI_API_KEY not configured.' };
     try {
-      const { compressedText, error } = await this.retrieveContext(data.message, data.history, apiKey);
-      if (error) return { reply: `⚠️ ${error}` };
-
-      const synthData = await this.geminiRequest(
-        apiKey,
-        {
-          contents: [{ parts: [{ text: this.buildSynthesisPrompt(data.message, compressedText, data.history) }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
-        },
-        'synthesis',
-      );
-
-      const reply = synthData ? this.extractText(synthData).trim() : '⚠️ No response from AI.';
-
-      if (data.adminId) {
-        const ts = new Date().toISOString();
-        await this.adminChatSessionRepository.appendMessages(data.adminId, [
-          { id: `${Date.now()}-u`, sender: 'user', text: data.message, timestamp: ts },
-          { id: `${Date.now()}-a`, sender: 'assistant', text: reply, timestamp: ts },
-        ]);
-      }
+      const reply = await this.runAgenticLoop(data.message, this.historyToContent(data.history));
+      if (data.adminId) await this.persistSession(data.adminId, data.message, reply);
       return { reply };
     } catch (err) {
-      if (err instanceof GeminiRateLimitError) {
-        return { reply: '> ⚠️ Gemini rate limit reached. Please retry in a minute.' };
-      }
-      throw err;
+      this.logger.error(`_executeChatQuery error: ${(err as Error).message}`);
+      return { reply: '⚠️ Something went wrong.' };
     }
   }
-
-  // ─── Streaming synthesis ──────────────────────────────────────────────────────
-
-  async streamChat(
-    message: string,
-    history: HistoryItem[],
-    adminId: string | undefined,
-    res: any,
-  ): Promise<void> {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      res.write(`data: ${JSON.stringify({ delta: '⚠️ GEMINI_API_KEY not configured.' })}\n\n`);
-      res.write('data: [DONE]\n\n');
-      return;
-    }
-
-    // Validate input
-    let safe: { message: string; history: HistoryItem[] };
-    try {
-      safe = this.validateChatRequest(message, history);
-    } catch (e) {
-      res.write(`data: ${JSON.stringify({ delta: `⚠️ ${(e as Error).message}` })}\n\n`);
-      res.write('data: [DONE]\n\n');
-      return;
-    }
-
-    try {
-      // ── 1. History-aware cache check ─────────────────────────────────────────
-      const normalized = normalizeQuery(safe.message);
-      const fingerprint = queryFingerprint(normalized);
-      const isEmailFlow = /\byes\b|\bconfirm\b|\bsend\s+it\b|\bgo\s+ahead\b/i.test(safe.message) &&
-        safe.history.some((h) => h.role === 'assistant' && /preview_email_report|READY_TO_SEND/i.test(h.text));
-      const replyCacheKey = `chatbot:reply:${fingerprint}:${this.historyContextHash(safe.history)}`;
-
-      if (!isEmailFlow) {
-        const cachedReply = await this.redisService.get(replyCacheKey).catch(() => null);
-        if (cachedReply) {
-          res.write(`data: ${JSON.stringify({ delta: cachedReply })}\n\n`);
-          res.write('data: [DONE]\n\n');
-          if (adminId) {
-            const ts = new Date().toISOString();
-            await this.adminChatSessionRepository.appendMessages(adminId, [
-              { id: `${Date.now()}-u`, sender: 'user', text: safe.message, timestamp: ts },
-              { id: `${Date.now()}-a`, sender: 'assistant', text: cachedReply, timestamp: ts },
-            ]).catch(() => {});
-          }
-          return;
-        }
-      }
-
-      // ── 2. Retrieve context (DB queries + planner) ─────────────────────────────
-      const { finalPlan, rawBlocks, compressedText, failedTools, error } =
-        await this.retrieveContext(safe.message, safe.history, apiKey);
-
-      if (error || rawBlocks.length === 0) {
-        res.write(`data: ${JSON.stringify({ delta: error ?? '⚠️ Could not load data. Check database connection.' })}\n\n`);
-        res.write('data: [DONE]\n\n');
-        return;
-      }
-
-      // ── 3. Stream synthesis directly from Gemini SSE ───────────────────────────
-      const ACTION_TOOLS = new Set(['send_email_report', 'preview_email_report']);
-      const isActionPlan = finalPlan.some((s) => ACTION_TOOLS.has(s.tool));
-
-      let fullReply = await this.geminiStreamText(
-        apiKey,
-        {
-          contents: [{ parts: [{ text: this.buildSynthesisPrompt(safe.message, compressedText, safe.history) }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
-        },
-        (chunk) => res.write(`data: ${JSON.stringify({ delta: chunk })}\n\n`),
-      );
-
-      if (!fullReply) {
-        // Gemini stream returned nothing — fall back to raw formatted data
-        fullReply = this.formatRawDataFallback(rawBlocks, failedTools, safe.message);
-        res.write(`data: ${JSON.stringify({ delta: fullReply })}\n\n`);
-      }
-      if (failedTools.length > 0) {
-        const notice = `\n\n> ⚠️ *Partial data — could not load: ${failedTools.join(', ')}*`;
-        fullReply += notice;
-        res.write(`data: ${JSON.stringify({ delta: notice })}\n\n`);
-      }
-      res.write('data: [DONE]\n\n');
-
-      // ── 4. Cache + persist ─────────────────────────────────────────────────────
-      if (fullReply && !isActionPlan && !isEmailFlow) {
-        await this.redisService.set(replyCacheKey, fullReply, SYNTHESIS_CACHE_TTL_SECONDS).catch(() => {});
-      }
-      if (adminId) {
-        const ts = new Date().toISOString();
-        await this.adminChatSessionRepository.appendMessages(adminId, [
-          { id: `${Date.now()}-u`, sender: 'user', text: safe.message, timestamp: ts },
-          { id: `${Date.now()}-a`, sender: 'assistant', text: fullReply, timestamp: ts },
-        ]).catch(() => {});
-      }
-
-    } catch (err) {
-      if (err instanceof GeminiRateLimitError) {
-        res.write(`data: ${JSON.stringify({ delta: '> ⚠️ **Gemini API rate limit reached.**\n\nPlease wait a minute and try again.' })}\n\n`);
-      } else {
-        this.logger.error(`streamChat error: ${(err as Error).message}`);
-        res.write(`data: ${JSON.stringify({ delta: '⚠️ Something went wrong. Please try again.' })}\n\n`);
-      }
-      res.write('data: [DONE]\n\n');
-    }
-  }
-
-  // ─── Proactive briefing ───────────────────────────────────────────────────────
 
   async getBriefing(): Promise<Record<string, unknown>> {
     const [dashboard, statusCounts, lowStock] = await Promise.allSettled([
-      this.executeTool({ tool: 'get_dashboard_summary', params: {} }),
-      this.executeTool({ tool: 'get_orders_by_status', params: {} }),
-      this.executeTool({ tool: 'search_low_stock_products', params: {} }),
+      this.executeTool('get_dashboard_summary', {}),
+      this.executeTool('get_orders_by_status', {}),
+      this.executeTool('search_low_stock_products', {}),
     ]);
-
-    const extract = (r: PromiseSettledResult<string | null>) =>
-      r.status === 'fulfilled' && r.value ? r.value.replace(/^\[RAG:[^\]]+\]\n?/, '') : null;
-
+    const extract = (r: PromiseSettledResult<any>) => r.status === 'fulfilled' ? r.value : null;
     return {
       dashboard: extract(dashboard),
       orderStatus: extract(statusCounts),
@@ -913,11 +1975,8 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     };
   }
 
-  // ─── Conversation persistence ─────────────────────────────────────────────────
-
   async getHistory(adminId: string) {
     const session = await this.adminChatSessionRepository.getByAdminId(adminId);
-    // Return last 50 messages — enough for UI display, avoids transferring full 100-msg document
     return (session?.messages ?? []).slice(-50);
   }
 
@@ -929,1069 +1988,106 @@ export class AdminChatbotService implements OnApplicationBootstrap {
 
   async onApplicationBootstrap(): Promise<void> {
     const adminEmail = process.env.ADMIN_REPORT_EMAIL;
-    if (adminEmail) {
-      try {
-        const repeatableJobs = await this.adminQueue.getRepeatableJobs();
-        for (const job of repeatableJobs) {
-          if (job.name === ADMIN_JOBS.DAILY_BRIEFING) {
-            await this.adminQueue.removeRepeatableByKey(job.key);
-          }
-        }
-
-        await this.adminQueue.add(
-          ADMIN_JOBS.DAILY_BRIEFING,
-          { adminEmail },
-          {
-            repeat: {
-              pattern: '0 9 * * *', // Daily at 9:00 AM
-              tz: 'Asia/Kolkata',
-            },
-            jobId: 'repeatable-daily-briefing',
-          },
-        );
-        this.logger.log(`Repeatable daily briefing job scheduled for ${adminEmail} at 9 AM IST`);
-      } catch (err) {
-        this.logger.error(`Failed to schedule repeatable daily briefing: ${(err as Error).message}`);
+    if (!adminEmail) return;
+    try {
+      const repeatableJobs = await this.adminQueue.getRepeatableJobs();
+      for (const job of repeatableJobs) {
+        if (job.name === ADMIN_JOBS.DAILY_BRIEFING) await this.adminQueue.removeRepeatableByKey(job.key);
       }
+      await this.adminQueue.add(
+        ADMIN_JOBS.DAILY_BRIEFING,
+        { adminEmail },
+        { repeat: { pattern: '0 9 * * *', tz: 'Asia/Kolkata' }, jobId: 'repeatable-daily-briefing' },
+      );
+      this.logger.log(`Daily briefing scheduled for ${adminEmail} at 9 AM IST`);
+    } catch (err) {
+      this.logger.error(`Failed to schedule daily briefing: ${(err as Error).message}`);
     }
   }
 
   async _executeDailyBriefing(data: { adminEmail: string }): Promise<void> {
-    const { adminEmail } = data;
-    this.logger.log(`Executing daily briefing for ${adminEmail}`);
-
     const briefing = await this.getBriefing();
-    const html = `
-      <!DOCTYPE html><html><body style="font-family:sans-serif;color:#1a1a1a;max-width:600px;margin:auto">
-        <div style="background:#1E3D2B;padding:20px;text-align:center">
-          <h1 style="color:#E8A838;margin:0;font-size:20px">Naturelite — Daily Briefing</h1>
-          <p style="color:#aaa;font-size:12px;margin:4px 0 0">${new Date().toLocaleDateString('en-IN', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}</p>
-        </div>
-        <div style="padding:24px">
-          ${briefing.dashboard ? `<h3 style="color:#1E3D2B;border-bottom:2px solid #E8A838;padding-bottom:6px">Dashboard Summary</h3><pre style="background:#f5f5f5;padding:12px;border-radius:8px;font-size:13px;white-space:pre-wrap">${briefing.dashboard}</pre>` : ''}
-          ${briefing.orderStatus ? `<h3 style="color:#1E3D2B;border-bottom:2px solid #E8A838;padding-bottom:6px">Order Status</h3><pre style="background:#f5f5f5;padding:12px;border-radius:8px;font-size:13px;white-space:pre-wrap">${briefing.orderStatus}</pre>` : ''}
-          ${briefing.lowStock ? `<h3 style="color:#c0392b;border-bottom:2px solid #c0392b;padding-bottom:6px">Low Stock Alert</h3><pre style="background:#fff5f5;padding:12px;border-radius:8px;font-size:13px;white-space:pre-wrap">${briefing.lowStock}</pre>` : ''}
-        </div>
-        <div style="background:#f0f0f0;padding:12px;text-align:center;font-size:11px;color:#888">
-          AI — Aditya Intelligence | Naturelite Admin
-        </div>
-      </body></html>
-    `;
-    await this.emailService.sendAdminReport(
-      adminEmail,
-      `Naturelite Daily Briefing — ${new Date().toLocaleDateString('en-IN')}`,
-      html,
-    );
-    this.logger.log(`Daily briefing sent to ${adminEmail}`);
-  }
-
-  // ─── Tool executor ────────────────────────────────────────────────────────────
-
-  private toolCacheKey(step: RagStep): { key: string | null; ttl: number } {
-    // Only cache read-only, non-action tools
-    const UNCACHED = new Set(['preview_email_report', 'send_email_report']);
-    if (UNCACHED.has(step.tool)) return { key: null, ttl: 0 };
-
-    const TTL_MAP: Record<string, number> = {
-      get_dashboard_summary: 45,
-      get_orders_by_status: 45,
-      search_low_stock_products: 90,
-      search_out_of_stock_products: 90,
-      search_in_stock_products: 90,
-      search_products: 120,
-      get_revenue_trend: 90,
-      get_analytics_period: 600,
-      get_top_selling_products: 300,
-      get_top_customers_online: 300,
-      get_new_customers: 60,
-      get_store_sales: 90,
-      get_payment_failures: 45,
-      get_subscription_data: 90,
-      get_whatsapp_queue: 30,
-      get_reminders: 30,
-      get_coupon_list: 180,
-      get_feedback_list: 60,
-      search_recent_orders: 45,
-      search_orders_by_date_range: 90,
-      search_customers: 120,
-      get_customer_orders: 60,
-      search_abandoned_carts: 90,
-      get_wallet_balances: 45,
-      get_login_audit_logs: 60,
-      compare_periods: 90,
+    const date = new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const section = (title: string, data: any, color = '#1E3D2B') => {
+      if (!data) return '';
+      const body = JSON.stringify(data, null, 2).slice(0, 800);
+      return `<div style="margin-bottom:24px"><h3 style="color:${color};border-bottom:2px solid #E8A838;padding-bottom:6px">${title}</h3><pre style="background:#f5f5f5;padding:12px;border-radius:8px;font-size:12px;white-space:pre-wrap;overflow-wrap:break-word">${body}</pre></div>`;
     };
-
-    const ttl = TTL_MAP[step.tool] ?? 120;
-    const paramHash = step.params && Object.keys(step.params).length
-      ? `:${Buffer.from(JSON.stringify(step.params)).toString('base64url')}`
-      : '';
-    return { key: `chatbot:tool:${step.tool}${paramHash}`, ttl };
-  }
-
-  async executeTool(step: RagStep): Promise<string | null> {
-    const { key, ttl } = this.toolCacheKey(step);
-    if (key) {
-      return this.redisService.cached<string | null>(key, ttl, () => this._runTool(step));
-    }
-    return this._runTool(step);
-  }
-
-  private async _runTool(step: RagStep): Promise<string | null> {
-    switch (step.tool) {
-
-      case 'get_dashboard_summary': {
-        const stats = await this.analyticsService.getDashboardStats() as any;
-        const recentLines = (stats.recentOrders ?? []).slice(0, 5).map((o: any) =>
-          `- **#${o.orderNumber}** | ${o.user?.name ?? 'Guest'} | ₹${(o.total || 0).toLocaleString('en-IN')} | \`${o.status}\``
-        ).join('\n');
-        const formatted = [
-          `**Today's Orders:** ${stats.todayOrders || 0} | ₹${(stats.todayRevenue || 0).toLocaleString('en-IN')} revenue (0 means no orders placed yet today, not the all-time total)`,
-          `**This Month's Orders:** ${stats.monthOrders || 0} | ₹${(stats.monthRevenue || 0).toLocaleString('en-IN')} revenue`,
-          `**Total Customers:** ${stats.totalCustomers || 0}`,
-          `**Pending Fulfillment:** ${stats.pendingOrders || 0} orders`,
-          recentLines ? `\n**5 Most Recent Orders:**\n${recentLines}` : '',
-        ].filter(Boolean).join('\n');
-        return `[RAG: get_dashboard_summary]\n${formatted}`;
-      }
-
-      case 'search_out_of_stock_products': {
-        const searchTerm = String(step.params?.searchTerm ?? '').trim();
-        const nameFilter = searchTerm
-          ? { name: { $regex: searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }
-          : {};
-        const items = await this.productRepository.getModel().aggregate([
-          { $match: { isActive: true, trackStock: { $ne: false }, ...nameFilter } },
-          { $addFields: {
-            totalStock: { $add: ['$stock', { $ifNull: [{ $sum: '$variants.stock' }, 0] }] },
-          }},
-          { $match: { totalStock: { $lte: 0 } } },
-          { $sort: { name: 1 } }, { $limit: 50 },
-        ]).exec();
-        const label = searchTerm ? `search_out_of_stock_products ("${searchTerm}")` : 'search_out_of_stock_products';
-        const formatted = items.length > 0
-          ? items.map((p: any) => `- **${p.name}** (SKU: ${p.sku || 'N/A'}) | Stock: **0** | Price: ₹${p.price || 0}`).join('\n')
-          : `No out-of-stock products found${searchTerm ? ` matching "${searchTerm}"` : ''}.`;
-        return `[RAG: ${label}]\n**${items.length}** products currently out of stock\n\n${formatted}`;
-      }
-
-      case 'search_in_stock_products': {
-        const searchTerm = String(step.params?.searchTerm ?? '').trim();
-        const nameFilter = searchTerm
-          ? { name: { $regex: searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }
-          : {};
-        const items = await this.productRepository.getModel().aggregate([
-          { $match: { isActive: true, ...nameFilter } },
-          { $addFields: {
-            totalStock: { $add: ['$stock', { $ifNull: [{ $sum: '$variants.stock' }, 0] }] },
-          }},
-          { $match: { $or: [{ trackStock: false }, { totalStock: { $gt: 0 } }] } },
-          { $sort: { name: 1 } }, { $limit: 30 },
-        ]).exec();
-        const label = searchTerm ? `search_in_stock_products ("${searchTerm}")` : 'search_in_stock_products';
-        const formatted = items.length > 0
-          ? items.map((p: any) => `- **${p.name}** (SKU: ${p.sku || 'N/A'}) | Stock: **${p.trackStock === false ? 'Available' : p.totalStock}** | Price: ₹${p.price || 0}`).join('\n')
-          : `No in-stock products found${searchTerm ? ` matching "${searchTerm}"` : ''}.`;
-        return `[RAG: ${label}]\n**${items.length}** products in stock${searchTerm ? ` matching "${searchTerm}"` : ''}\n\n${formatted}`;
-      }
-
-      case 'search_low_stock_products': {
-        const THRESHOLD = 10;
-        const searchTerm = String(step.params?.searchTerm ?? '').trim();
-        const nameFilter = searchTerm
-          ? { name: { $regex: searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }
-          : {};
-        const items = await this.productRepository.getModel().aggregate([
-          { $match: { isActive: true, ...nameFilter } },
-          { $addFields: {
-            totalStock: { $add: ['$stock', { $ifNull: [{ $sum: '$variants.stock' }, 0] }] },
-            effectiveThreshold: { $cond: { if: { $and: [{ $eq: ['$trackStock', true] }, { $gt: ['$lowStockThreshold', 0] }] }, then: '$lowStockThreshold', else: THRESHOLD } },
-          }},
-          { $match: { $expr: { $lte: ['$totalStock', '$effectiveThreshold'] } } },
-          { $sort: { totalStock: 1 } }, { $limit: 20 },
-        ]).exec();
-        const label = searchTerm ? `search_low_stock_products ("${searchTerm}")` : 'search_low_stock_products';
-        const formatted = items.length > 0
-          ? items.map((p: any) => `- **${p.name}** (SKU: ${p.sku}) | Stock: **${p.totalStock}** | Threshold: ${p.lowStockThreshold || THRESHOLD}`).join('\n')
-          : `No low stock products found${searchTerm ? ` matching "${searchTerm}"` : ''}.`;
-        const header = items.length > 0
-          ? `**${items.length}** products low on stock${searchTerm ? ` matching "${searchTerm}"` : ''} (sorted by lowest stock):`
-          : '';
-        return `[RAG: ${label}]\n${header}${header ? '\n\n' : ''}${formatted}`;
-      }
-
-      case 'search_products': {
-        const term = String(step.params?.searchTerm ?? '').trim();
-        const items = await this.productRepository.searchByText(term);
-        const formatted = items.slice(0, 10).map((p: any) => {
-          const variants = p.variants?.map((v: any) => `${v.name || v.sku}: ${v.stock} units @ ₹${v.price || p.price}`).join(', ') ?? '';
-          return `- **${p.name}** (SKU: ${p.sku || 'N/A'}) | Stock: **${p.stock}** | Price: ₹${p.price}${p.mrp && p.mrp > p.price ? ` (MRP ₹${p.mrp})` : ''} | ${p.isActive ? 'Active' : 'Inactive'}${variants ? ` | Variants: [${variants}]` : ''}`;
-        }).join('\n') || 'No matching products found.';
-        return `[RAG: search_products ("${term}")]\n**${items.length}** result(s)\n${formatted}`;
-      }
-
-      case 'get_login_audit_logs': {
-        const [count, logs] = await Promise.all([
-          this.auditLogRepository.getModel().countDocuments({ action: 'admin.login' }),
-          this.auditLogRepository.getModel().find({ action: 'admin.login' }).sort({ createdAt: -1 }).limit(10).exec(),
-        ]);
-        const lines = logs.map((l: any) =>
-          `- **${l.performedByName || l.performedBy}** | IP: ${l.ipAddress || 'N/A'} | ${l.createdAt ? new Date(l.createdAt).toLocaleString('en-IN') : 'N/A'}`
-        ).join('\n') || 'No login logs found.';
-        return `[RAG: get_login_audit_logs]\nTotal Admin Logins: **${count}**\n\nRecent:\n${lines}`;
-      }
-
-      case 'search_abandoned_carts': {
-        const limit = Number(step.params?.limit ?? 30);
-        const whatsappSettings = await this.settingsService.getWhatsAppSettings();
-        const delayMinutes = whatsappSettings.abandonedCartReminderDelayMinutes ?? 60;
-        const cutoff = new Date(Date.now() - delayMinutes * 60 * 1000);
-        const abandonedCarts = await this.cartRepository.getModel().aggregate([
-          { $match: { 'items.0': { $exists: true }, updatedAt: { $lt: cutoff } } },
-          { $lookup: { from: 'users', localField: 'user', foreignField: '_id', pipeline: [{ $project: { name: 1, phone: 1, isBlocked: 1 } }], as: 'userInfo' } },
-          { $unwind: { path: '$userInfo', preserveNullAndEmptyArrays: true } },
-          { $match: { 'userInfo.isBlocked': { $ne: true } } },
-          { $lookup: { from: 'orders', let: { userId: '$user', cartUpdatedAt: '$updatedAt' }, pipeline: [{ $match: { $expr: { $and: [{ $eq: ['$user', '$$userId'] }, { $gt: ['$createdAt', '$$cartUpdatedAt'] }, { $ne: ['$status', 'cancelled'] }] } } }, { $limit: 1 }], as: 'ordersAfterCart' } },
-          { $match: { ordersAfterCart: { $size: 0 } } },
-          { $sort: { updatedAt: -1 } }, { $limit: limit },
-        ]).exec();
-        const coveredPhones = new Set(abandonedCarts.map((c: any) => c.userInfo?.phone).filter(Boolean));
-        const stuckSessions = await this.chatSessionRepository.getModel()
-          .find({ currentState: { $in: ['cart', 'coupon_prompt', 'coupon_input', 'checkout', 'address_input', 'payment_selection'] }, isExpired: { $ne: true }, lastMessageAt: { $lt: cutoff } })
-          .sort({ lastMessageAt: -1 }).limit(20).populate('user', 'name phone').exec();
-        const productSearch = String(step.params?.productSearch ?? '').trim().toLowerCase();
-
-        // Collect all phones we need chat history for (parallel fetch)
-        const cartPhones = abandonedCarts
-          .filter((cart: any) => !productSearch || cart.items.some((i: any) => i.name?.toLowerCase().includes(productSearch)))
-          .map((cart: any) => cart.userInfo?.phone as string | undefined)
-          .filter((p): p is string => Boolean(p));
-        const sessionPhones = productSearch ? [] : stuckSessions
-          .filter((s: any) => !coveredPhones.has((s.user as any)?.phone ?? s.phone))
-          .map((s: any) => (s.phone || (s.user as any)?.phone) as string | undefined)
-          .filter((p): p is string => Boolean(p));
-        const allPhones = [...new Set([...cartPhones, ...sessionPhones])];
-
-        const chatSnippetMap = new Map<string, string>();
-        if (allPhones.length > 0) {
-          const results = await Promise.all(
-            allPhones.map(async (phone) => {
-              const msgs = await this.messageLogRepository.findByPhone(phone, 4);
-              if (!msgs.length) return [phone, ''] as [string, string];
-              const lines = [...msgs].reverse().map((m) => {
-                const who = m.direction === 'inbound' ? 'Cust' : 'Store';
-                const text = (m.content?.text || m.content?.caption || (m.content as any)?.buttonText || m.content?.templateName || '[media]').slice(0, 100);
-                return `    ${who}: ${text}`;
-              });
-              return [phone, lines.join('\n')] as [string, string];
-            }),
-          );
-          for (const [phone, snippet] of results) {
-            if (snippet) chatSnippetMap.set(phone, snippet);
-          }
-        }
-
-        const cartLines = abandonedCarts
-          .filter((cart: any) => !productSearch || cart.items.some((i: any) => i.name?.toLowerCase().includes(productSearch)))
-          .map((cart: any) => {
-            const phone = cart.userInfo?.phone || 'No Phone';
-            const name = cart.userInfo?.name || phone;
-            const items = cart.items.map((i: any) => `${i.name} (x${i.quantity})`).join(', ');
-            const hrs = Math.round((Date.now() - new Date(cart.updatedAt).getTime()) / 3_600_000);
-            const snippet = chatSnippetMap.get(phone);
-            const chatPart = snippet ? `\n  Last chat:\n${snippet}` : '';
-            return `- 📱 **${name}** | ${phone} | ₹${(cart.total || 0).toLocaleString('en-IN')} | [${items}] | ~${hrs}h ago${chatPart}`;
-          });
-        // Sessions don't carry product data — skip them when productSearch is active
-        const sessionLines = productSearch ? [] : stuckSessions
-          .filter((s: any) => !coveredPhones.has((s.user as any)?.phone ?? s.phone))
-          .map((s: any) => {
-            const phone = s.phone || (s.user as any)?.phone || '';
-            const name = (s.user as any)?.name || s.metadata?.contactName || phone || 'Unknown';
-            const mins = Math.round((Date.now() - new Date(s.lastMessageAt ?? s.updatedAt).getTime()) / 60_000);
-            const snippet = chatSnippetMap.get(phone);
-            const chatPart = snippet ? `\n  Last chat:\n${snippet}` : '';
-            return `- 📱 **${name}** | ${phone} | Stuck at \`${s.currentState}\` | ~${mins} min${chatPart}`;
-          });
-        const all = [...cartLines, ...sessionLines];
-        return `[RAG: search_abandoned_carts]\n**${all.length}** customers with items who did not order (${delayMinutes}+ min inactive)\n\n${all.join('\n') || 'None found.'}`;
-      }
-
-      case 'get_top_selling_products': {
-        const { from, to } = this.resolveRange(step.params);
-        const limit = Number(step.params?.limit ?? 8);
-        const searchTerm = String(step.params?.searchTerm ?? '').trim();
-        const [online, store] = await Promise.all([
-          this.analyticsService.getProductMetrics(from, to),
-          this.analyticsService.getTopSellingOverall(from, to, limit * 3), // fetch extra to allow filtering
-        ]);
-        const nameFilter = (name: string) => !searchTerm || name.toLowerCase().includes(searchTerm.toLowerCase());
-        const fmtOnline = (online as any).topSellingProducts
-          ?.filter((p: any) => nameFilter(p.name))
-          .slice(0, limit)
-          .map((p: any) => `- **${p.name}** | ${p.quantitySold} units | ₹${(p.revenue || 0).toLocaleString('en-IN')} (Online)`)
-          .join('\n') || `No online top sellers${searchTerm ? ` matching "${searchTerm}"` : ''}.`;
-        const fmtStore = store
-          .filter((p: any) => nameFilter(p.name))
-          .slice(0, limit)
-          .map((p: any) => `- **${p.name}** | ${p.quantitySold} units | ₹${(p.revenue || 0).toLocaleString('en-IN')} (Store)`)
-          .join('\n') || `No store top sellers${searchTerm ? ` matching "${searchTerm}"` : ''}.`;
-        const label = searchTerm ? `get_top_selling_products ("${searchTerm}")` : 'get_top_selling_products';
-        return `[RAG: ${label}]\nOnline:\n${fmtOnline}\n\nStore:\n${fmtStore}`;
-      }
-
-      case 'search_recent_orders': {
-        const limit = Number(step.params?.limit ?? 10);
-        const STATUS_MAP: Record<string, string> = { shipped: 'out_for_delivery', pending: 'placed', processing: 'preparing', dispatched: 'out_for_delivery', completed: 'delivered', done: 'delivered' };
-        const rawStatus = step.params?.status as string | undefined;
-        const status = rawStatus ? (STATUS_MAP[rawStatus.toLowerCase()] ?? rawStatus.toLowerCase()) : undefined;
-        const customerSearch = String(step.params?.customerSearch ?? '').trim();
-        const paymentMethod = String(step.params?.paymentMethod ?? '').trim().toLowerCase();
-
-        const orderNumber = String(step.params?.orderNumber ?? '').trim();
-
-        const filter: Record<string, unknown> = {};
-        if (orderNumber) {
-          filter.orderNumber = { $regex: orderNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
-        }
-        if (status) filter.status = status;
-        if (step.params?.from && step.params?.to) {
-          const fromD = new Date(step.params.from as string);
-          const toD = new Date(step.params.to as string);
-          if (!isNaN(fromD.getTime()) && !isNaN(toD.getTime()))
-            filter.createdAt = { $gte: fromD, $lte: toD };
-        }
-        if (paymentMethod) filter.paymentMethod = { $regex: paymentMethod, $options: 'i' };
-
-        // If customer name/phone given, look up user first
-        let userIdFilter: unknown[] | null = null;
-        if (customerSearch) {
-          const esc = customerSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const users = await this.userRepository.getModel()
-            .find({ $or: [{ name: { $regex: esc, $options: 'i' } }, { phone: { $regex: esc, $options: 'i' } }] })
-            .select('_id').limit(20).exec();
-          userIdFilter = users.map((u: any) => u._id);
-          if (userIdFilter.length) filter.user = { $in: userIdFilter };
-          else return `[RAG: search_recent_orders]\nNo customer found matching "${customerSearch}".`;
-        }
-
-        const orders = await this.orderRepository.getModel().find(filter).sort({ createdAt: -1 }).limit(limit).populate('user', 'name phone').exec();
-        const formatted = orders.map((o: any) => {
-          const itemsStr = o.items?.length
-            ? o.items.map((i: any) => `${i.name}${i.variantName ? ` (${i.variantName})` : ''} ×${i.quantity}`).join(', ')
-            : 'no items';
-          return `- **#${o.orderNumber}** | ${o.user?.name ?? 'Guest'} (${o.user?.phone ?? ''}) | ₹${o.total} | \`${o.status}\` | ${o.paymentMethod} (${o.paymentStatus}) | ${o.createdAt ? new Date(o.createdAt).toLocaleString('en-IN') : 'N/A'} | Items: ${itemsStr}`;
-        }).join('\n') || 'No orders found.';
-        const desc = [status, customerSearch ? `customer: ${customerSearch}` : '', paymentMethod].filter(Boolean).join(', ');
-        return `[RAG: search_recent_orders${desc ? ` (${desc})` : ''}]\n**${orders.length}** order(s)\n${formatted}`;
-      }
-
-      case 'search_orders_by_date_range': {
-        const limit = Number(step.params?.limit ?? 20);
-        const { from, to } = this.resolveRange(step.params);
-        const orders = await this.orderRepository.getModel()
-          .find({ createdAt: { $gte: from, $lte: to } })
-          .sort({ createdAt: -1 }).limit(limit).populate('user', 'name phone').exec();
-        const totalRevenue = orders.reduce((s: number, o: any) => s + (o.total || 0), 0);
-        const formatted = orders.map((o: any) =>
-          `- **#${o.orderNumber}** | ${o.user?.name ?? 'Guest'} (${(o.user as any)?.phone ?? 'N/A'}) | ₹${o.total} | \`${o.status}\` | ${o.paymentMethod} (${o.paymentStatus}) | ${o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-IN') : 'N/A'}`
-        ).join('\n') || 'No orders in this range.';
-        return `[RAG: search_orders_by_date_range (${from.toLocaleDateString('en-IN')} – ${to.toLocaleDateString('en-IN')})]\n**${orders.length}** orders | Total: ₹${totalRevenue.toLocaleString('en-IN')}\n\n${formatted}`;
-      }
-
-      case 'search_customers': {
-        const term = String(step.params?.searchTerm ?? '').trim();
-        const limit = Number(step.params?.limit ?? 10);
-        if (!term) return `[RAG: search_customers]\nNo search term provided — specify a name or phone number.`;
-        const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const customers = await this.userRepository.getModel()
-          .find({ $or: [{ name: { $regex: escaped, $options: 'i' } }, { phone: { $regex: escaped, $options: 'i' } }, { email: { $regex: escaped, $options: 'i' } }] })
-          .sort({ totalSpent: -1 }).limit(limit).exec();
-        const formatted = customers.map((c: any) => {
-          const addr = c.addresses?.find((a: any) => a.isDefault) || c.addresses?.[0];
-          const addrStr = addr ? `${addr.city}, ${addr.state}` : 'No address';
-          return `- **${c.name || 'Unnamed'}** | ${c.phone || 'N/A'}${c.email ? ` | ${c.email}` : ''} | Orders: ${c.totalOrders} | Spent: ₹${(c.totalSpent || 0).toLocaleString('en-IN')} | ${c.isBlocked ? '🚫 Blocked' : c.isActive ? 'Active' : 'Inactive'} | ${addrStr} | Joined: ${c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-IN') : 'N/A'}${c.tags?.length ? ` | Tags: ${c.tags.join(', ')}` : ''}${c.notes ? ` | Notes: ${c.notes}` : ''}`;
-        }).join('\n') || 'No matching customers.';
-        return `[RAG: search_customers ("${term}")]\n**${customers.length}** match(es) found:\n${formatted}`;
-      }
-
-      case 'get_top_customers_online': {
-        const limit = Number(step.params?.limit ?? 10);
-        const minSpent = step.params?.minSpent != null ? Number(step.params.minSpent) : 0;
-        const customers = await this.userRepository.getModel()
-          .find({ totalOrders: { $gt: 0 }, ...(minSpent > 0 ? { totalSpent: { $gte: minSpent } } : {}) })
-          .sort({ totalSpent: -1 }).limit(limit).exec();
-        const formatted = customers.map((c: any, i: number) =>
-          `${i + 1}. **${c.name || 'Unnamed'}** (${c.phone || 'N/A'}) | ${c.totalOrders} orders | ₹${(c.totalSpent || 0).toLocaleString('en-IN')} | Last: ${c.lastOrderAt ? new Date(c.lastOrderAt).toLocaleDateString('en-IN') : 'N/A'}`
-        ).join('\n') || 'No data.';
-        return `[RAG: get_top_customers_online (Top ${limit})]\n${formatted}`;
-      }
-
-      case 'get_customer_orders': {
-        const phone = String(step.params?.phone ?? '').trim();
-        const name = String(step.params?.name ?? '').trim();
-        const limit = Number(step.params?.limit ?? 10);
-        let user: any = null;
-        if (phone) {
-          user = await this.userRepository.findOneByPhone(phone).catch(() => null);
-          if (!user) user = await this.userRepository.getModel().findOne({ phone: { $regex: phone.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }).exec().catch(() => null);
-        }
-        if (!user && name) {
-          user = await this.userRepository.getModel().findOne({ name: { $regex: name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }).sort({ totalOrders: -1 }).exec().catch(() => null);
-        }
-        if (!user) return `[RAG: get_customer_orders]\nNo customer found for ${phone ? `phone "${phone}"` : `name "${name}"`}.`;
-        const orders = await this.orderRepository.getModel().find({ user: user._id }).sort({ createdAt: -1 }).limit(limit).exec();
-
-        const defaultAddr = user.addresses?.find((a: any) => a.isDefault) || user.addresses?.[0];
-        const addrStr = defaultAddr ? `${defaultAddr.street}, ${defaultAddr.city}, ${defaultAddr.state}${defaultAddr.pincode ? ' ' + defaultAddr.pincode : ''}` : 'No saved address';
-        const profileLines = [
-          `**${user.name || 'Unnamed'}** | 📞 ${user.phone || 'N/A'}${user.email ? ` | 📧 ${user.email}` : ''}`,
-          `Status: ${user.isBlocked ? '🚫 Blocked' + (user.blockedReason ? ` (${user.blockedReason})` : '') : user.isActive ? '✅ Active' : '⚪ Inactive'}`,
-          `Total Orders: ${user.totalOrders} | Total Spent: ₹${(user.totalSpent || 0).toLocaleString('en-IN')}`,
-          `Address: ${addrStr}`,
-          user.lastOrderAt ? `Last Order: ${new Date(user.lastOrderAt).toLocaleDateString('en-IN')}` : null,
-          user.tags?.length ? `Tags: ${user.tags.join(', ')}` : null,
-          user.notes ? `Notes: ${user.notes}` : null,
-        ].filter(Boolean).join('\n');
-
-        const formatted = orders.map((o: any) => {
-          const itemsStr = o.items?.length
-            ? o.items.map((i: any) => `    • ${i.name}${i.variantName ? ` (${i.variantName})` : ''} ×${i.quantity} @ ₹${i.price}`).join('\n')
-            : '    • (no items)';
-          return `- **#${o.orderNumber}** | ₹${o.total} | \`${o.status}\` | ${o.paymentMethod} (${o.paymentStatus}) | ${o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-IN') : 'N/A'}\n${itemsStr}`;
-        }).join('\n') || 'No orders found.';
-
-        return `[RAG: get_customer_orders — ${user.name || phone}]\n${profileLines}\n\n**Recent Orders (${orders.length}):**\n${formatted}`;
-      }
-
-      case 'get_revenue_trend': {
-        const { from, to } = this.resolveRange(step.params);
-        const days = dateRangeToDays({ from, to });
-        const trend = await this.analyticsService.getRevenueByDay(days);
-        const formatted = trend.map((d: any) => `- ${d.date} | ₹${(d.revenue || 0).toLocaleString('en-IN')} | ${d.orders} orders`).join('\n') || 'No data.';
-        const totalRev = trend.reduce((s: number, d: any) => s + (d.revenue || 0), 0);
-        const totalOrd = trend.reduce((s: number, d: any) => s + (d.orders || 0), 0);
-        return `[RAG: get_revenue_trend (${from.toLocaleDateString('en-IN')} – ${to.toLocaleDateString('en-IN')})]\nTotal: ₹${totalRev.toLocaleString('en-IN')} | ${totalOrd} orders\n\n${formatted}`;
-      }
-
-      case 'get_orders_by_status': {
-        const counts = await this.orderRepository.getOrdersByStatus();
-        const formatted = Object.entries(counts).map(([s, n]) => `- \`${s}\`: **${n}** orders`).join('\n') || 'No data.';
-        const total = Object.values(counts).reduce((s: number, n: any) => s + (n || 0), 0);
-        return `[RAG: get_orders_by_status]\nAll-time Total: **${total}**\n\n${formatted}`;
-      }
-
-      case 'get_feedback_list': {
-        const limit = Number(step.params?.limit ?? 15);
-        const minRating = step.params?.minRating != null ? Number(step.params.minRating) : undefined;
-        const maxRating = step.params?.maxRating != null ? Number(step.params.maxRating) : undefined;
-        const feedbackType = String(step.params?.type ?? '').trim().toLowerCase(); // review | complaint | suggestion
-        const productName = String(step.params?.productName ?? '').trim();
-
-        const filter: Record<string, unknown> = {};
-        if (minRating != null || maxRating != null) {
-          filter.rating = { ...(minRating != null ? { $gte: minRating } : {}), ...(maxRating != null ? { $lte: maxRating } : {}) };
-        }
-        if (feedbackType) filter.type = { $regex: feedbackType, $options: 'i' };
-
-        const feedbacks = await this.feedbackRepository.getModel()
-          .find(filter)
-          .populate('user', 'name phone')
-          .populate('product', 'name')
-          .sort({ createdAt: -1 })
-          .limit(productName ? limit * 3 : limit)
-          .lean().exec();
-
-        const filtered = productName
-          ? feedbacks.filter((f: any) => f.product?.name?.toLowerCase().includes(productName.toLowerCase()))
-          : feedbacks;
-
-        const formatted = filtered.slice(0, limit).map((f: any) =>
-          `- **${f.user?.name || 'Anonymous'}** on **${f.product?.name || 'General'}** ${f.rating ? `⭐${f.rating}/5` : ''} | ${f.type} | ${f.status} | "${f.message?.slice(0, 120) || ''}" | ${f.createdAt ? new Date(f.createdAt).toLocaleDateString('en-IN') : 'N/A'}`
-        ).join('\n') || 'No feedback found matching the criteria.';
-
-        const desc = [feedbackType, minRating != null ? `≥${minRating}★` : maxRating != null ? `≤${maxRating}★` : '', productName].filter(Boolean).join(', ');
-        return `[RAG: get_feedback_list${desc ? ` (${desc})` : ''}]\nTotal shown: ${filtered.length}\n\n${formatted}`;
-      }
-
-      case 'get_coupon_list': {
-        const statusFilter = String(step.params?.status ?? '').trim().toLowerCase(); // active | expired | upcoming | inactive
-        const coupons = await this.couponRepository.getModel().find({}).sort({ createdAt: -1 }).limit(50).exec();
-        const now = new Date();
-
-        const rows = coupons.map((c: any) => {
-          const notYetValid = new Date(c.validFrom) > now;
-          const expired = new Date(c.validUntil) < now;
-          const active = c.isActive && !expired && !notYetValid;
-          const statusKey = active ? 'active' : notYetValid ? 'upcoming' : expired ? 'expired' : 'inactive';
-          const discount = c.discountType === 'percentage' ? `${c.discountValue}% off` : `₹${c.discountValue} off`;
-          const usage = c.maxUsageCount ? `${c.usedCount || 0}/${c.maxUsageCount}` : `${c.usedCount || 0} used`;
-          const statusLabel = active ? '✅ Active' : notYetValid ? '⏳ Upcoming' : expired ? '❌ Expired' : '⏸ Inactive';
-          return { statusKey, line: `- **${c.code}** | ${discount} | ${usage} | ${statusLabel} | Min ₹${c.minOrderAmount || 0} | ${new Date(c.validFrom).toLocaleDateString('en-IN')} – ${new Date(c.validUntil).toLocaleDateString('en-IN')}` };
-        });
-
-        const filtered = statusFilter ? rows.filter(r => r.statusKey === statusFilter) : rows;
-        const formatted = filtered.map(r => r.line).join('\n') || `No ${statusFilter || ''} coupons found.`;
-        const activeCnt = rows.filter(r => r.statusKey === 'active').length;
-        const expiredCnt = rows.filter(r => r.statusKey === 'expired').length;
-        const upcomingCnt = rows.filter(r => r.statusKey === 'upcoming').length;
-        const summary = statusFilter
-          ? `**${filtered.length}** ${statusFilter} coupons`
-          : `**${rows.length}** coupons total — ✅ ${activeCnt} active | ⏳ ${upcomingCnt} upcoming | ❌ ${expiredCnt} expired`;
-        return `[RAG: get_coupon_list${statusFilter ? ` (${statusFilter})` : ''}]\n${summary}\n\n${formatted}`;
-      }
-
-      case 'get_analytics_period': {
-        const { from: start, to: end } = this.resolveRange(step.params);
-        const [orders, customers, products, chat, topSellers, topCustomers] = await Promise.all([
-          this.analyticsService.getOrderMetrics(start, end),
-          this.analyticsService.getCustomerMetrics(start, end),
-          this.analyticsService.getProductMetrics(start, end),
-          this.analyticsService.getChatMetrics(start, end),
-          this.analyticsService.getTopSellingOverall(start, end, 5),
-          this.userRepository.getModel().find({ totalOrders: { $gt: 0 } }).sort({ totalSpent: -1 }).limit(5).lean().exec(),
-        ]);
-        const o = orders as any; const c = customers as any; const p = products as any; const m = chat as any;
-        const sellers = topSellers.slice(0, 5).map((s: any, i: number) => `  ${i + 1}. **${s.name}** — ${s.quantitySold} units, ₹${(s.revenue || 0).toLocaleString('en-IN')}`).join('\n') || '  No data.';
-        const topC = (topCustomers as any[]).slice(0, 5).map((tc: any, i: number) => `  ${i + 1}. **${tc.name || tc.phone || 'N/A'}** (${tc.phone || 'N/A'}) — ₹${(tc.totalSpent || 0).toLocaleString('en-IN')}, ${tc.totalOrders} orders`).join('\n') || '  No data.';
-        const summary = [`Period: ${start.toLocaleDateString('en-IN')} – ${end.toLocaleDateString('en-IN')}`,
-          `**Orders:** ${o.totalOrders || 0} total | ₹${(o.totalRevenue || 0).toLocaleString('en-IN')} | AOV ₹${Math.round(o.avgOrderValue || 0)}`,
-          `**Status:** ${o.completedOrders || 0} delivered | ${o.pendingOrders || 0} pending | ${o.cancelledOrders || 0} cancelled`,
-          `**Payment:** ${o.codOrders || 0} COD | ${o.prepaidOrders || 0} prepaid`,
-          `**Customers:** ${c.totalCustomers || 0} total | +${c.newCustomers || 0} new | ${c.returningCustomers || 0} returning`,
-          `**Inventory:** ${p.outOfStockProducts || 0} out of stock | ${p.lowStockProducts || 0} low stock`,
-          `**WhatsApp:** ${m.totalSessions || 0} sessions | ${m.supportHandoffs || 0} handoffs`,
-          `\n**Top Products:**\n${sellers}`, `**Top Customers:**\n${topC}`].join('\n');
-        return `[RAG: get_analytics_period]\n${summary}`;
-      }
-
-      case 'get_new_customers': {
-        const { from: since } = this.resolveRange(step.params);
-        const [count, customers] = await Promise.all([
-          this.userRepository.getModel().countDocuments({ createdAt: { $gte: since } }),
-          this.userRepository.getModel().find({ createdAt: { $gte: since } }).sort({ createdAt: -1 }).limit(20).exec(),
-        ]);
-        const formatted = customers.map((c: any) =>
-          `- **${c.name || 'Unnamed'}** | ${c.phone || 'N/A'}${c.email ? ` | ${c.email}` : ''} | Joined: ${c.createdAt ? new Date(c.createdAt).toLocaleString('en-IN') : 'N/A'} | Orders: ${c.totalOrders || 0} | Spent: ₹${(c.totalSpent || 0).toLocaleString('en-IN')}`
-        ).join('\n') || 'None.';
-        return `[RAG: get_new_customers]\nTotal New: **${count}**\n\n${formatted}`;
-      }
-
-      // ── NEW TOOLS ─────────────────────────────────────────────────────────────
-
-      case 'get_store_sales': {
-        const { from, to } = this.resolveRange(step.params);
-        const limit = Number(step.params?.limit ?? 20);
-        const [sales, totalAgg] = await Promise.all([
-          this.storeSaleRepository.getModel().find({
-            $and: [
-              {
-                $or: [
-                  { dueDate: { $exists: true, $ne: null, $gte: from, $lte: to } },
-                  { $or: [{ dueDate: { $exists: false } }, { dueDate: null }], createdAt: { $gte: from, $lte: to } },
-                ]
-              },
-              {
-                $or: [{ voidedAt: { $exists: false } }, { voidedAt: null }]
-              }
-            ]
-          }).populate('store', 'name code').sort({ createdAt: -1 }).limit(limit).exec(),
-          this.storeSaleRepository.getModel().aggregate([
-            {
-              $addFields: {
-                effectiveDate: { $ifNull: ['$dueDate', '$createdAt'] },
-              },
-            },
-            {
-              $match: {
-                effectiveDate: { $gte: from, $lte: to },
-                $or: [{ voidedAt: { $exists: false } }, { voidedAt: null }],
-              },
-            },
-            { $group: { _id: null, totalRevenue: { $sum: '$total' }, count: { $sum: 1 }, walkIn: { $sum: { $cond: [{ $eq: ['$saleType', 'walk_in'] }, 1, 0] } }, delivery: { $sum: { $cond: [{ $eq: ['$saleType', 'delivery'] }, 1, 0] } } } },
-          ]).exec(),
-        ]);
-        const agg = totalAgg[0] || { totalRevenue: 0, count: 0, walkIn: 0, delivery: 0 };
-        const recentLines = sales.map((s: any) => {
-          const store = (s.store as any)?.name || 'Unknown Store';
-          const displayDate = s.dueDate || s.createdAt;
-          return `- **#${s.saleNumber}** | ${store} | ${s.saleType} | ₹${s.total.toLocaleString('en-IN')} | ${s.customerName || 'Walk-in'} | ${s.paymentMethod} | ${new Date(displayDate).toLocaleDateString('en-IN')}`;
-        }).join('\n');
-        return `[RAG: get_store_sales (${from.toLocaleDateString('en-IN')} – ${to.toLocaleDateString('en-IN')})]\n**${agg.count}** sales | ₹${(agg.totalRevenue || 0).toLocaleString('en-IN')} revenue | Walk-in: ${agg.walkIn} | Delivery: ${agg.delivery}\n\n${recentLines || 'No store sales in this period.'}`;
-      }
-
-      case 'get_wallet_balances': {
-        const limit = Number(step.params?.limit ?? 20);
-        const wallets = await this.walletRepository.getModel()
-          .find({ balance: { $gt: 0 } })
-          .sort({ balance: -1 })
-          .limit(limit)
-          .populate('user', 'name phone')
-          .exec();
-        const totalCredits = wallets.reduce((s: number, w: any) => s + (w.balance || 0), 0);
-        const formatted = wallets.map((w: any, i: number) => {
-          const user = w.user as any;
-          return `${i + 1}. **${user?.name || user?.phone || 'N/A'}** (${user?.phone || 'N/A'}) | Wallet: **₹${((w.balance || 0) / 100).toFixed(2)}**`;
-        }).join('\n') || 'No customers with wallet balance.';
-        return `[RAG: get_wallet_balances]\nCustomers with unused credits: **${wallets.length}** | Total outstanding: **₹${(totalCredits / 100).toFixed(2)}**\n\n${formatted}`;
-      }
-
-      case 'get_payment_failures': {
-        const limit = Number(step.params?.limit ?? 20);
-        const [failures, pending] = await Promise.all([
-          this.paymentRepository.getModel()
-            .find({ status: 'failed' }).sort({ createdAt: -1 }).limit(limit)
-            .populate('user', 'name phone').populate('order', 'orderNumber total').exec(),
-          this.paymentRepository.getModel()
-            .find({ status: 'pending' }).sort({ createdAt: -1 }).limit(10)
-            .populate('user', 'name phone').populate('order', 'orderNumber').exec(),
-        ]);
-        const failLines = failures.map((p: any) =>
-          `- **${(p.user as any)?.name || (p.user as any)?.phone || 'N/A'}** (${(p.user as any)?.phone || 'N/A'}) | Order **#${(p.order as any)?.orderNumber || 'N/A'}** | ₹${p.amount.toLocaleString('en-IN')} | ${p.gateway} | ${p.failureReason || 'No reason'} | ${new Date(p.createdAt).toLocaleString('en-IN')}`
-        ).join('\n') || 'No failed payments.';
-        const pendingLines = pending.map((p: any) =>
-          `- **${(p.user as any)?.name || (p.user as any)?.phone || 'N/A'}** | Order **#${(p.order as any)?.orderNumber || 'N/A'}** | ₹${p.amount.toLocaleString('en-IN')} | ${p.gateway} | ${new Date(p.createdAt).toLocaleString('en-IN')}`
-        ).join('\n') || 'None.';
-        return `[RAG: get_payment_failures]\n**Failed Payments (${failures.length}):**\n${failLines}\n\n**Pending Payments (${pending.length}):**\n${pendingLines}`;
-      }
-
-      case 'get_subscription_data': {
-        const [active, paused, upcoming] = await Promise.all([
-          this.subscriptionModel.find({ status: 'active' }).populate('user', 'name phone').sort({ nextDeliveryDate: 1 }).limit(30).exec(),
-          this.subscriptionModel.find({ status: 'paused' }).populate('user', 'name phone').limit(10).exec(),
-          this.subscriptionModel.find({ status: 'active', nextDeliveryDate: { $lte: new Date(Date.now() + 3 * 86_400_000) } }).populate('user', 'name phone').sort({ nextDeliveryDate: 1 }).exec(),
-        ]);
-        const activeLines = active.slice(0, 20).map((s: any) => {
-          const user = s.user as any;
-          const items = s.items.map((i: any) => `${i.name} x${i.quantity}`).join(', ');
-          return `- **${user?.name || user?.phone || 'N/A'}** (${user?.phone || 'N/A'}) | ${s.frequency} | [${items}] | ₹${s.totalAmount}/delivery | Next: ${new Date(s.nextDeliveryDate).toLocaleDateString('en-IN')}`;
-        }).join('\n') || 'None.';
-        const pausedLines = paused.slice(0, 10).map((s: any) => {
-          const user = s.user as any;
-          const items = s.items.map((i: any) => `${i.name} x${i.quantity}`).join(', ');
-          return `- **${user?.name || user?.phone || 'N/A'}** (${user?.phone || 'N/A'}) | ${s.frequency} | [${items}] | ₹${s.totalAmount}/delivery | ⏸ Paused`;
-        }).join('\n') || 'None.';
-        const upcomingLines = upcoming.map((s: any) => {
-          const user = s.user as any;
-          return `- **${user?.name || user?.phone || 'N/A'}** | Next: ${new Date(s.nextDeliveryDate).toLocaleDateString('en-IN')} | ₹${s.totalAmount}`;
-        }).join('\n') || 'None.';
-        return `[RAG: get_subscription_data]\n**Active:** ${active.length} | **Paused:** ${paused.length}\n\n**Active Subscriptions (first 20):**\n${activeLines}\n\n**Paused Subscriptions:**\n${pausedLines}\n\n**Upcoming Deliveries (3 days):**\n${upcomingLines}`;
-      }
-
-      case 'get_whatsapp_queue': {
-        const [supportSessions, recentActivity] = await Promise.all([
-          this.chatSessionRepository.getModel()
-            .find({ isHandedOffToSupport: true, isExpired: { $ne: true } })
-            .sort({ supportHandoffAt: -1 }).limit(30)
-            .populate('user', 'name phone').exec(),
-          this.messageLogRepository.getModel()
-            .find({ direction: 'inbound', createdAt: { $gte: new Date(Date.now() - 60 * 60_000) } })
-            .sort({ createdAt: -1 }).limit(20).exec(),
-        ]);
-        const queueLines = supportSessions.map((s: any) => {
-          const user = s.user as any;
-          const waitMins = s.supportHandoffAt ? Math.round((Date.now() - new Date(s.supportHandoffAt).getTime()) / 60_000) : 0;
-          return `- 📱 **${user?.name || s.metadata?.contactName || s.phone}** | ${s.phone} | Waiting: ${waitMins} min${s.supportAgentId ? ` | Agent: ${s.supportAgentId}` : ' | ⚠️ Unassigned'}`;
-        }).join('\n') || 'No active support sessions.';
-        const recentPhones = [...new Set(recentActivity.map((m: any) => m.phone))];
-        return `[RAG: get_whatsapp_queue]\n**Support Queue: ${supportSessions.length} sessions**\n\n${queueLines}\n\n**Active in last hour:** ${recentPhones.length} unique numbers`;
-      }
-
-      case 'get_reminders': {
-        const now = new Date();
-        const soon = new Date(now.getTime() + 24 * 60 * 60_000);
-        const [overdue, upcoming] = await Promise.all([
-          this.reminderRepository.getModel()
-            .find({ dueAt: { $lt: now }, isDismissed: false })
-            .sort({ dueAt: 1 }).limit(20)
-            .populate('sale', 'saleNumber customerName total')
-            .populate('store', 'name code').exec(),
-          this.reminderRepository.getModel()
-            .find({ dueAt: { $gte: now, $lte: soon }, isDismissed: false })
-            .sort({ dueAt: 1 }).limit(20)
-            .populate('sale', 'saleNumber customerName total')
-            .populate('store', 'name code').exec(),
-        ]);
-        const overdueLines = overdue.map((r: any) => {
-          const store = (r.store as any)?.name || 'Unknown';
-          const sale = r.sale as any;
-          return `- ⚠️ **${store}** | Sale #${sale?.saleNumber || 'N/A'} | ${r.message} | Overdue since ${new Date(r.dueAt).toLocaleString('en-IN')}`;
-        }).join('\n') || 'None overdue.';
-        const upcomingLines = upcoming.map((r: any) => {
-          const store = (r.store as any)?.name || 'Unknown';
-          return `- 🔔 **${store}** | ${r.message} | Due: ${new Date(r.dueAt).toLocaleString('en-IN')}`;
-        }).join('\n') || 'None in next 24h.';
-        return `[RAG: get_reminders]\n**Overdue (${overdue.length}):**\n${overdueLines}\n\n**Upcoming 24h (${upcoming.length}):**\n${upcomingLines}`;
-      }
-
-      case 'compare_periods': {
-        const days = Number(step.params?.days ?? 7);
-        const now = new Date();
-        const periodAEnd = now;
-        const periodAStart = new Date(now.getTime() - days * 86_400_000);
-        const periodBEnd = new Date(periodAStart.getTime());
-        const periodBStart = new Date(periodBEnd.getTime() - days * 86_400_000);
-
-        const [metricsA, metricsB, customersA, customersB] = await Promise.all([
-          this.analyticsService.getOrderMetrics(periodAStart, periodAEnd),
-          this.analyticsService.getOrderMetrics(periodBStart, periodBEnd),
-          this.analyticsService.getCustomerMetrics(periodAStart, periodAEnd),
-          this.analyticsService.getCustomerMetrics(periodBStart, periodBEnd),
-        ]);
-
-        const a = metricsA as any; const b = metricsB as any;
-        const ca = customersA as any; const cb = customersB as any;
-
-        const diff = (curr: number, prev: number) => {
-          if (prev === 0) return curr > 0 ? '🆕 New' : '—';
-          const pct = Math.round(((curr - prev) / prev) * 100);
-          return `${pct > 0 ? '▲' : '▼'} ${Math.abs(pct)}%`;
-        };
-
-        // Use order metrics revenue (already scoped to correct date ranges)
-        const revA = a.totalRevenue || 0;
-        const revB = b.totalRevenue || 0;
-
-        const lines = [
-          `**Period A (current):** ${periodAStart.toLocaleDateString('en-IN')} – ${periodAEnd.toLocaleDateString('en-IN')}`,
-          `**Period B (previous):** ${periodBStart.toLocaleDateString('en-IN')} – ${periodBEnd.toLocaleDateString('en-IN')}`,
-          ``,
-          `| Metric | Period A | Period B | Change |`,
-          `|--------|----------|----------|--------|`,
-          `| Orders | ${a.totalOrders || 0} | ${b.totalOrders || 0} | ${diff(a.totalOrders || 0, b.totalOrders || 0)} |`,
-          `| Revenue | ₹${(revA || 0).toLocaleString('en-IN')} | ₹${(revB || 0).toLocaleString('en-IN')} | ${diff(revA || 0, revB || 0)} |`,
-          `| AOV | ₹${Math.round(a.avgOrderValue || 0)} | ₹${Math.round(b.avgOrderValue || 0)} | ${diff(Math.round(a.avgOrderValue || 0), Math.round(b.avgOrderValue || 0))} |`,
-          `| New Customers | ${ca.newCustomers || 0} | ${cb.newCustomers || 0} | ${diff(ca.newCustomers || 0, cb.newCustomers || 0)} |`,
-          `| Delivered | ${a.completedOrders || 0} | ${b.completedOrders || 0} | ${diff(a.completedOrders || 0, b.completedOrders || 0)} |`,
-          `| Cancelled | ${a.cancelledOrders || 0} | ${b.cancelledOrders || 0} | ${diff(a.cancelledOrders || 0, b.cancelledOrders || 0)} |`,
-        ];
-        return `[RAG: compare_periods (${days}d vs ${days}d)]\n${lines.join('\n')}`;
-      }
-
-      // ── ACTION TOOLS ──────────────────────────────────────────────────────────
-
-      case 'preview_email_report': {
-        const to = String(step.params?.to ?? '').trim();
-        const reportType = String(step.params?.reportType ?? 'dashboard').trim().toLowerCase();
-        if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to))
-          return `[ACTION: preview_email_report]\nINVALID_EMAIL: "${to}" is not a valid email address.`;
-        try {
-          const preview = await this.buildReportPreview(reportType);
-          return `[ACTION: preview_email_report]\nREADY_TO_SEND\nto: ${to}\nreportType: ${reportType}\nsubject: ${preview.subject}\npreview: ${preview.summary}`;
-        } catch (err) {
-          return `[ACTION: preview_email_report]\nERROR: Could not build report preview — ${(err as Error).message}`;
-        }
-      }
-
-      case 'send_email_report': {
-        const to = String(step.params?.to ?? '').trim();
-        const reportType = String(step.params?.reportType ?? 'dashboard').trim().toLowerCase();
-        if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to))
-          return `[ACTION: send_email_report]\nERROR: Invalid email address "${to}".`;
-
-        try {
-          const report = await this.buildReportPreview(reportType);
-          await this.emailService.sendAdminReport(to, report.subject, report.html);
-          this.logger.log(`Admin report "${reportType}" sent to ${to}`);
-          return `[ACTION: send_email_report]\nSUCCESS\nto: ${to}\nsubject: ${report.subject}`;
-        } catch (err) {
-          this.logger.error(`Failed to send report email: ${(err as Error).message}`);
-          return `[ACTION: send_email_report]\nERROR: Failed to send email — ${(err as Error).message}`;
-        }
-      }
-
-      default:
-        this.logger.warn(`Unknown tool: "${step.tool}"`);
-        return null;
-    }
+    const html = `<!DOCTYPE html><html><body style="font-family:sans-serif;background:#f5f5f0">
+      <div style="max-width:620px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden">
+        <div style="background:#1E3D2B;padding:28px;text-align:center">
+          <h1 style="color:#E8A838;margin:0;font-size:22px">Naturelite Daily Briefing</h1>
+          <p style="color:rgba(255,255,255,0.7);margin:6px 0 0;font-size:13px">${date}</p>
+        </div>
+        <div style="padding:28px">
+          ${section('Dashboard', briefing.dashboard)}
+          ${section('Order Status', briefing.orderStatus)}
+          ${section('Low Stock Alert', briefing.lowStock, '#c0392b')}
+        </div>
+        <div style="background:#f0f0ea;padding:16px;text-align:center;font-size:11px;color:#888">AI Admin — Naturelite</div>
+      </div>
+    </body></html>`;
+    await this.emailService.sendAdminReport(data.adminEmail, `Naturelite Daily Briefing — ${date}`, html);
+    this.logger.log(`Daily briefing sent to ${data.adminEmail}`);
   }
 
   // ─── Email report builder ─────────────────────────────────────────────────────
 
   private async buildReportPreview(reportType: string): Promise<{ subject: string; summary: string; html: string }> {
-    const REPORT_MAP: Record<string, { label: string; tools: RagStep[] }> = {
-      ims:            { label: 'IMS Analytics',        tools: [{ tool: 'search_low_stock_products', params: {} }, { tool: 'get_analytics_period', params: { days: 30 } }] },
-      inventory:      { label: 'Inventory Report',     tools: [{ tool: 'search_low_stock_products', params: {} }] },
-      'low-stock':    { label: 'Low Stock Alert',      tools: [{ tool: 'search_low_stock_products', params: {} }] },
-      low_stock:      { label: 'Low Stock Alert',      tools: [{ tool: 'search_low_stock_products', params: {} }] },
-      analytics:      { label: 'Analytics Report',     tools: [{ tool: 'get_analytics_period', params: { days: 30 } }] },
-      monthly:        { label: 'Monthly Analytics',    tools: [{ tool: 'get_analytics_period', params: { days: 30 } }] },
-      weekly:         { label: 'Weekly Analytics',     tools: [{ tool: 'get_analytics_period', params: { days: 7 } }] },
-      orders:         { label: 'Orders Summary',       tools: [{ tool: 'search_recent_orders', params: { limit: 20 } }, { tool: 'get_orders_by_status', params: {} }] },
-      revenue:        { label: 'Revenue Report',       tools: [{ tool: 'get_revenue_trend', params: { days: 14 } }] },
-      dashboard:      { label: 'Dashboard Summary',    tools: [{ tool: 'get_dashboard_summary', params: {} }, { tool: 'get_orders_by_status', params: {} }, { tool: 'search_low_stock_products', params: {} }] },
-      customers:      { label: 'Customer Report',      tools: [{ tool: 'get_new_customers', params: { days: 7 } }, { tool: 'get_top_customers_online', params: { limit: 10 } }] },
-      feedback:       { label: 'Feedback Report',      tools: [{ tool: 'get_feedback_list', params: { limit: 20 } }] },
-      coupons:        { label: 'Coupon Report',        tools: [{ tool: 'get_coupon_list', params: {} }] },
-      'store-sales':  { label: 'Store Sales Report',   tools: [{ tool: 'get_store_sales', params: { days: 30 } }] },
-      store_sales:    { label: 'Store Sales Report',   tools: [{ tool: 'get_store_sales', params: { days: 30 } }] },
-      abandoned:      { label: 'Abandoned Carts',      tools: [{ tool: 'search_abandoned_carts', params: { limit: 30 } }] },
-      payments:       { label: 'Payment Failures',     tools: [{ tool: 'get_payment_failures', params: { limit: 20 } }] },
+    const REPORT_MAP: Record<string, { label: string; tools: Array<[string, Record<string, unknown>]> }> = {
+      dashboard:   { label: 'Dashboard Summary',  tools: [['get_dashboard_summary', {}], ['get_orders_by_status', {}], ['search_low_stock_products', {}]] },
+      analytics:   { label: 'Analytics Report',   tools: [['get_analytics_period', { days: 30 }]] },
+      monthly:     { label: 'Monthly Analytics',  tools: [['get_analytics_period', { days: 30 }]] },
+      weekly:      { label: 'Weekly Analytics',   tools: [['get_analytics_period', { days: 7 }]] },
+      orders:      { label: 'Orders Summary',     tools: [['search_orders', { limit: 20 }], ['get_orders_by_status', {}]] },
+      revenue:     { label: 'Revenue Report',     tools: [['get_revenue_trend', { days: 14 }]] },
+      customers:   { label: 'Customer Report',    tools: [['get_new_customers', { days: 7 }], ['get_top_customers', { limit: 10 }]] },
+      feedback:    { label: 'Feedback Report',    tools: [['get_feedback_list', { limit: 20 }]] },
+      coupons:     { label: 'Coupon Report',      tools: [['get_coupon_list', {}]] },
+      store_sales: { label: 'Store Sales Report', tools: [['get_store_sales', { days: 30 }]] },
+      inventory:   { label: 'Inventory Report',   tools: [['search_low_stock_products', {}], ['search_out_of_stock_products', {}]] },
+      abandoned:   { label: 'Abandoned Carts',    tools: [['search_abandoned_carts', { limit: 30 }]] },
+      payments:    { label: 'Payment Report',     tools: [['get_payments', { status: 'failed', limit: 20 }]] },
     };
 
     const config = REPORT_MAP[reportType] ?? REPORT_MAP['dashboard'];
     const date = new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    const subject = `📊 Naturelite — ${config.label} | ${date}`;
+    const subject = `Naturelite — ${config.label} | ${date}`;
 
-    // Run all tools for this report
     const blocks = await Promise.all(
-      config.tools.map(async (t) => {
-        try { return await this.executeTool(t); } catch { return null; }
+      config.tools.map(async ([toolName, toolArgs]) => {
+        try { return { tool: toolName, data: await this.executeTool(toolName, toolArgs) }; }
+        catch { return null; }
       })
     );
-    const dataBlocks = blocks.filter(Boolean) as string[];
+    const validBlocks = blocks.filter(Boolean) as Array<{ tool: string; data: any }>;
 
-    // Build plain-text summary (first 300 chars of first block)
-    const firstBlock = dataBlocks[0]?.replace(/^\[RAG:[^\]]+\]\n?/, '').trim() ?? 'No data available.';
-    const summary = firstBlock.slice(0, 280) + (firstBlock.length > 280 ? '...' : '');
+    const firstData = validBlocks[0]?.data;
+    const summary = firstData ? JSON.stringify(firstData).slice(0, 280) : 'No data available.';
 
-    // Build HTML email
-    const sectionsHtml = dataBlocks.map((block) => {
-      const titleMatch = block.match(/^\[(?:RAG|ACTION):\s*([^\]]+)\]/);
-      const title = titleMatch ? titleMatch[1].trim().replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Data';
-      const body = block.replace(/^\[(?:RAG|ACTION):[^\]]+\]\n?/, '').trim();
-
-      // Convert markdown to simple HTML
-      const bodyHtml = body
+    const sectionsHtml = validBlocks.map(({ tool, data }) => {
+      const title = tool.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+      const body = JSON.stringify(data, null, 2)
         .split('\n')
-        .map(line => {
-          if (line.startsWith('- ')) return `<li style="margin:4px 0;font-size:13px;color:#333">${line.slice(2).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/`(.*?)`/g, '<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:12px">$1</code>')}</li>`;
-          if (line.startsWith('**') && line.endsWith('**')) return `<p style="margin:6px 0;font-weight:bold;font-size:13px;color:#1E3D2B">${line.replace(/\*\*/g, '')}</p>`;
-          if (line.trim() === '') return '<br/>';
-          return `<p style="margin:4px 0;font-size:13px;color:#444">${line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/`(.*?)`/g, '<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:12px">$1</code>')}</p>`;
-        })
+        .map((line) => `<p style="margin:2px 0;font-size:12px;font-family:monospace;color:#333">${line.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`)
         .join('');
-      const listWrapped = bodyHtml.includes('<li') ? `<ul style="margin:8px 0;padding-left:18px">${bodyHtml}</ul>` : bodyHtml;
-
-      return `
-        <div style="margin-bottom:24px">
-          <h3 style="margin:0 0 10px;padding-bottom:6px;border-bottom:2px solid #E8A838;color:#1E3D2B;font-size:15px">${title}</h3>
-          ${listWrapped}
-        </div>`;
+      return `<div style="margin-bottom:24px"><h3 style="color:#1E3D2B;border-bottom:2px solid #E8A838;padding-bottom:6px;font-size:15px">${title}</h3><div style="background:#f5f5f5;padding:12px;border-radius:8px;overflow-wrap:break-word">${body}</div></div>`;
     }).join('');
 
-    const html = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f5f5f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
-  <div style="max-width:620px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 16px rgba(0,0,0,0.08)">
-    <div style="background:#1E3D2B;padding:28px 32px;text-align:center">
-      <h1 style="margin:0;color:#E8A838;font-size:22px;letter-spacing:-0.5px">🌿 Naturelite</h1>
-      <p style="margin:6px 0 0;color:rgba(255,255,255,0.7);font-size:13px">${config.label}</p>
-      <p style="margin:4px 0 0;color:rgba(255,255,255,0.45);font-size:11px">${date}</p>
-    </div>
-    <div style="padding:28px 32px">
-      ${sectionsHtml}
-    </div>
-    <div style="background:#f0f0ea;padding:16px 32px;text-align:center;border-top:1px solid #e8e8e0">
-      <p style="margin:0;font-size:11px;color:#888">Sent via AI — Aditya Intelligence · Naturelite Admin</p>
-    </div>
-  </div>
-</body></html>`;
+    const html = `<!DOCTYPE html><html><body style="margin:0;background:#f5f5f0;font-family:sans-serif">
+      <div style="max-width:620px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden">
+        <div style="background:#1E3D2B;padding:28px 32px;text-align:center">
+          <h1 style="margin:0;color:#E8A838;font-size:22px">Naturelite</h1>
+          <p style="margin:6px 0 0;color:rgba(255,255,255,0.7);font-size:13px">${config.label}</p>
+          <p style="margin:4px 0 0;color:rgba(255,255,255,0.45);font-size:11px">${date}</p>
+        </div>
+        <div style="padding:28px 32px">${sectionsHtml}</div>
+        <div style="background:#f0f0ea;padding:16px 32px;text-align:center;border-top:1px solid #e8e8e0">
+          <p style="margin:0;font-size:11px;color:#888">AI Admin · Naturelite</p>
+        </div>
+      </div>
+    </body></html>`;
 
     return { subject, summary, html };
-  }
-
-  // ─── Prompt builders ──────────────────────────────────────────────────────────
-
-  private buildCompactPlannerPrompt(message: string): string {
-    const today = new Date().toISOString().split('T')[0];
-    return `Today: ${today}. Pick 1-2 best tools for this admin query. Return ONLY a JSON array, no explanation.
-
-Tools: get_dashboard_summary | search_recent_orders(limit,status?,from?,to?,customerSearch?,orderNumber?) | get_orders_by_status | get_revenue_trend(from?,to?,days?) | search_low_stock_products(searchTerm?) | search_out_of_stock_products(searchTerm?) | search_in_stock_products(searchTerm?) | get_feedback_list(limit,minRating?,type?,productName?) | get_coupon_list(status?) | get_analytics_period(from?,to?,days?) | get_top_selling_products(limit,searchTerm?) | get_top_customers_online(limit,minSpent?) | search_customers(searchTerm,limit) | get_customer_orders(name?,phone?,limit) | get_store_sales | get_payment_failures | get_subscription_data | get_whatsapp_queue | get_reminders | compare_periods(days) | get_new_customers(from?,to?,days?) | get_wallet_balances | search_abandoned_carts | get_login_audit_logs | preview_email_report(to,reportType) | send_email_report(to,reportType)
-
-Query: "${message.slice(0, 300)}"`;
-  }
-
-  private buildPlannerPrompt(message: string, history: HistoryItem[]): string {
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-    const todayStart = `${todayStr}T00:00:00.000Z`;
-    const todayEnd = `${todayStr}T23:59:59.000Z`;
-    const yesterdayStr = new Date(now.getTime() - 86_400_000).toISOString().split('T')[0];
-    const weekAgoStr = new Date(now.getTime() - 7 * 86_400_000).toISOString().split('T')[0];
-    const monthAgoStr = new Date(now.getTime() - 30 * 86_400_000).toISOString().split('T')[0];
-    // Calendar week: Monday of the current week (not rolling 7 days)
-    const weekStartDate = new Date(now);
-    const dow = weekStartDate.getDay();
-    weekStartDate.setDate(weekStartDate.getDate() - (dow === 0 ? 6 : dow - 1));
-    weekStartDate.setHours(0, 0, 0, 0);
-    const weekStartStr = weekStartDate.toISOString().split('T')[0];
-
-    const historySection = history.length > 0
-      ? `\n=== CONVERSATION HISTORY ===\n${history.slice(-4).map((h) => {
-        const label = h.role === 'user' ? 'User' : 'AI';
-        const text = h.role === 'user' ? h.text : h.text.length > 150 ? `${h.text.slice(0, 130)}…` : h.text;
-        return `${label}: ${text}`;
-      }).join('\n')}\n===========================\n`
-      : '';
-
-    return `You are the data planner for NatureLite's e-commerce admin dashboard.
-
-TODAY: ${todayStr}  |  YESTERDAY: ${yesterdayStr}  |  7 DAYS AGO: ${weekAgoStr}  |  30 DAYS AGO: ${monthAgoStr}
-
-── STEP 1: UNDERSTAND THE QUESTION ──────────────────────────────────────────────
-Before selecting tools, identify:
-• Data topic: orders / revenue / customers / inventory / coupons / feedback / payments / subscriptions / store-sales / wallet / reminders / whatsapp
-• Time period: convert ALL relative dates to ISO ("today" → ${todayStart}–${todayEnd}, "yesterday" → ${yesterdayStr}T00:00:00.000Z–${yesterdayStr}T23:59:59.000Z, "this week" → ${weekStartStr}T00:00:00.000Z–${todayEnd}, "last week" → 7 days before ${weekStartStr}, "last month" → ${monthAgoStr}T00:00:00.000Z–${todayEnd})
-• Filters: customer name/phone, product name, status, payment method, rating range, coupon status
-• Follow-up: use conversation history to resolve "that customer", "same period", "those orders"
-
-── STEP 2: SELECT MINIMUM TOOLS ────────────────────────────────────────────────
-Return ONLY a raw JSON array. Pick the fewest tools that directly answer the question. Never include tools for data the admin didn't ask about.
-${historySection}
-TOOLS:
-1. {"tool":"get_dashboard_summary","params":{}}
-2. {"tool":"search_out_of_stock_products","params":{"searchTerm":"string"}} — finds products with stock = 0 (completely out); use for "out of stock" queries
-3. {"tool":"search_low_stock_products","params":{"searchTerm":"string"}} — finds products with stock ≤ threshold (running low); searchTerm narrows by product type ("oil", "ghee")
-3b. {"tool":"search_in_stock_products","params":{"searchTerm":"string"}} — finds products with stock > 0 or untracked; use for "available", "in stock", "which X can I sell" queries
-4. {"tool":"search_products","params":{"searchTerm":"string"}} — general product search by name/SKU
-5. {"tool":"get_login_audit_logs","params":{"limit":20}}
-6. {"tool":"search_abandoned_carts","params":{"limit":30,"productSearch":"string"}}
-7. {"tool":"get_top_selling_products","params":{"limit":8,"from":"ISO","to":"ISO","searchTerm":"string"}}
-8. {"tool":"search_recent_orders","params":{"limit":10,"status":"string","from":"ISO","to":"ISO","customerSearch":"string","paymentMethod":"string","orderNumber":"string"}} — orderNumber param for direct order lookup (e.g. "ORD-2025-001")
-9. {"tool":"search_orders_by_date_range","params":{"from":"ISO","to":"ISO","limit":20}}
-10. {"tool":"search_customers","params":{"searchTerm":"string","limit":10}}
-11. {"tool":"get_top_customers_online","params":{"limit":10,"minSpent":0}}
-12. {"tool":"get_customer_orders","params":{"phone":"string","name":"string","limit":10}}
-13. {"tool":"get_revenue_trend","params":{"from":"ISO","to":"ISO"}}
-14. {"tool":"get_orders_by_status","params":{}}
-15. {"tool":"get_feedback_list","params":{"limit":15,"minRating":1,"maxRating":5,"type":"review|complaint|suggestion","productName":"string"}}
-16. {"tool":"get_coupon_list","params":{"status":"active|expired|upcoming|inactive"}}
-17. {"tool":"get_analytics_period","params":{"from":"ISO","to":"ISO","days":30}}
-18. {"tool":"get_new_customers","params":{"from":"ISO","to":"ISO","days":7}}
-19. {"tool":"get_store_sales","params":{"from":"ISO","to":"ISO"}}
-20. {"tool":"get_wallet_balances","params":{"limit":20}}
-21. {"tool":"get_payment_failures","params":{"limit":20}}
-22. {"tool":"get_subscription_data","params":{}}
-23. {"tool":"get_whatsapp_queue","params":{}}
-24. {"tool":"get_reminders","params":{}}
-25. {"tool":"compare_periods","params":{"days":7}}
-26. {"tool":"preview_email_report","params":{"to":"email","reportType":"ims|low_stock|analytics|monthly|weekly|orders|revenue|dashboard|customers|feedback|coupons|store_sales|abandoned|payments"}} — ALWAYS preview first
-27. {"tool":"send_email_report","params":{"to":"email","reportType":"string"}} — ONLY after user confirms in history
-
-EMAIL RULE: preview_email_report first, send_email_report only when history shows user said yes/confirm/send it/go ahead.
-
-TOOL SELECTION RULES:
-• "how many orders" / "total orders" / "show orders" → ALWAYS include get_orders_by_status (all-time counts) + search_recent_orders
-• "low in stock" / "running low" / "need restock" → search_low_stock_products (NOT search_in_stock_products)
-• "in stock" / "available" / "which X is available" / "can I sell X" → search_in_stock_products (tool 3b)
-• "out of stock" / "zero stock" → search_out_of_stock_products
-• "show order #ORD-xxx" / "order number XXX" / "status of order XXX" → search_recent_orders with orderNumber param, limit:1
-• "total customers" / "how many customers" → get_dashboard_summary (has totalCustomers field)
-• "new customers today/this week/this month" → get_new_customers with from date (NOT get_dashboard_summary)
-• "revenue" with no date → get_revenue_trend with days:30
-• "compare X vs Y" weeks → compare_periods days:7; months → compare_periods days:30
-• "tell me about [name]" / "customer profile/info/details for [name/phone]" / "who is [name]" → search_customers (searchTerm=name/phone) + get_customer_orders (both tools)
-• "orders by [customer] today/this week" / "[customer]'s orders on [date]" → search_recent_orders with customerSearch + date range (NOT get_customer_orders)
-• Specific customer name/phone for orders history only → get_customer_orders only
-• otherwise → get_top_customers_online
-• "payments" / "failed payments" → get_payment_failures
-• For any date-relative query, resolve dates to ISO strings before passing as params
-
-EXAMPLES:
-"today's orders" → [{"tool":"get_orders_by_status","params":{}},{"tool":"search_recent_orders","params":{"from":"${todayStart}","to":"${todayEnd}","limit":20}}]
-"how many orders do I have" → [{"tool":"get_orders_by_status","params":{}},{"tool":"search_recent_orders","params":{"limit":10}}]
-"show orders" → [{"tool":"get_orders_by_status","params":{}},{"tool":"search_recent_orders","params":{"limit":10}}]
-"yesterday revenue" → [{"tool":"get_revenue_trend","params":{"from":"${yesterdayStr}T00:00:00.000Z","to":"${yesterdayStr}T23:59:59.000Z"}}]
-"this week's revenue" → [{"tool":"get_revenue_trend","params":{"from":"${weekStartStr}T00:00:00.000Z","to":"${todayEnd}"}}]
-"last 30 days analytics" → [{"tool":"get_analytics_period","params":{"from":"${monthAgoStr}T00:00:00.000Z","to":"${todayEnd}","days":30}}]
-"orders in May 2025" → [{"tool":"search_orders_by_date_range","params":{"from":"2025-05-01T00:00:00.000Z","to":"2025-05-31T23:59:59.000Z","limit":20}}]
-"this week vs last week" → [{"tool":"compare_periods","params":{"days":7}}]
-"this month vs last month" → [{"tool":"compare_periods","params":{"days":30}}]
-"which oil products low in stock" → [{"tool":"search_low_stock_products","params":{"searchTerm":"oil"}}]
-"ghee low stock" → [{"tool":"search_low_stock_products","params":{"searchTerm":"ghee"}}]
-"which ghee is available" → [{"tool":"search_in_stock_products","params":{"searchTerm":"ghee"}}]
-"show order ORD-2025-001" → [{"tool":"search_recent_orders","params":{"orderNumber":"ORD-2025-001","limit":1}}]
-"status of order #1234" → [{"tool":"search_recent_orders","params":{"orderNumber":"1234","limit":1}}]
-"out of stock" → [{"tool":"search_out_of_stock_products","params":{}}]
-"out of stock ghee" → [{"tool":"search_out_of_stock_products","params":{"searchTerm":"ghee"}}]
-"low stock" → [{"tool":"search_low_stock_products","params":{}}]
-"total customers" → [{"tool":"get_dashboard_summary","params":{}}]
-"new customers today" → [{"tool":"get_new_customers","params":{"from":"${todayStart}","to":"${todayEnd}"}}]
-"new customers this week" → [{"tool":"get_new_customers","params":{"from":"${weekStartStr}T00:00:00.000Z","to":"${todayEnd}"}}]
-"orders by Rahul today" → [{"tool":"search_recent_orders","params":{"customerSearch":"Rahul","from":"${todayStart}","to":"${todayEnd}","limit":20}}]
-"COD orders by Priya this week" → [{"tool":"search_recent_orders","params":{"customerSearch":"Priya","paymentMethod":"cod","from":"${weekStartStr}T00:00:00.000Z","to":"${todayEnd}","limit":20}}]
-"active subscriptions" → [{"tool":"get_subscription_data","params":{}}]
-"best selling oil" → [{"tool":"get_top_selling_products","params":{"searchTerm":"oil","limit":8}}]
-"Rahul's orders" → [{"tool":"get_customer_orders","params":{"name":"Rahul","limit":10}}]
-"tell me about Rahul" → [{"tool":"search_customers","params":{"searchTerm":"Rahul","limit":5}},{"tool":"get_customer_orders","params":{"name":"Rahul","limit":10}}]
-"customer profile for 9876543210" → [{"tool":"search_customers","params":{"searchTerm":"9876543210","limit":5}},{"tool":"get_customer_orders","params":{"phone":"9876543210","limit":10}}]
-"COD orders today" → [{"tool":"search_recent_orders","params":{"paymentMethod":"cod","from":"${todayStart}","to":"${todayEnd}","limit":20}}]
-"cancelled orders" → [{"tool":"get_orders_by_status","params":{}},{"tool":"search_recent_orders","params":{"status":"cancelled","limit":10}}]
-"1 star reviews" → [{"tool":"get_feedback_list","params":{"maxRating":1,"limit":15}}]
-"complaints about ghee" → [{"tool":"get_feedback_list","params":{"type":"complaint","productName":"ghee","limit":15}}]
-"active coupons" → [{"tool":"get_coupon_list","params":{"status":"active"}}]
-"who has ghee in abandoned cart" → [{"tool":"search_abandoned_carts","params":{"productSearch":"ghee","limit":30}}]
-"customers who spent over 5000" → [{"tool":"get_top_customers_online","params":{"minSpent":5000,"limit":20}}]
-"failed payments" → [{"tool":"get_payment_failures","params":{"limit":20}}]
-"whatsapp support queue" → [{"tool":"get_whatsapp_queue","params":{}}]
-"send analytics to admin@store.com" → [{"tool":"preview_email_report","params":{"to":"admin@store.com","reportType":"analytics"}}]
-"yes" (after email preview in history) → [{"tool":"send_email_report","params":{"to":"<email from history>","reportType":"<type from history>"}}]
-"overview" → [{"tool":"get_dashboard_summary","params":{}},{"tool":"get_orders_by_status","params":{}},{"tool":"search_low_stock_products","params":{}}]
-
-Question: """${message}"""`;
-  }
-
-  private buildSynthesisPrompt(message: string, retrievedData: string, history: HistoryItem[]): string {
-    const historySection = history.length > 0
-      ? `\n=== CONVERSATION HISTORY ===\n${history.slice(-6).map((h) => {
-        const label = h.role === 'user' ? 'User' : 'Assistant';
-        // Keep user messages full (short intent); trim long assistant replies at a sentence boundary
-        const text = h.role === 'user'
-          ? h.text
-          : h.text.length > 250 ? `${h.text.slice(0, 220)}…[${h.text.length} chars]` : h.text;
-        return `${label}: ${text}`;
-      }).join('\n')}\n===========================\n`
-      : '';
-
-    return `You are the Naturelite AI Admin Assistant. Answer using ONLY the database data below. Never invent numbers, names, or products.
-${historySection}
-=== FEW-SHOT EXAMPLES (style guide) ===
-${SYNTHESIS_FEW_SHOTS}
-========================================
-
-=== LIVE DATABASE DATA ===
-${retrievedData}
-=========================
-
-Rules:
-1. **Answer only what was asked.** Don't dump all data — extract the specific answer. If asked about orders, answer orders. If asked about revenue, answer revenue.
-1a. **Never interpret a time-scoped zero as "no data overall."** If "Today's Orders: 0" but "All-time Total" shows numbers, say "0 today, but X total." NEVER say "you have no orders" when all-time totals exist.
-1b. **Read ALL data sections before answering.** "get_orders_by_status" = all-time totals. "search_recent_orders" = recent list. Use BOTH.
-2. Clean Markdown: bold headers, bullet points, numbered lists, markdown tables where data is tabular. Keep responses tight.
-3. No filler — never start with "Sure!", "Great question!", or "Based on the data...".
-4. All money in ₹. Wallet balances are stored in paise — always divide by 100 before showing.
-5. Never mention "RAG", "tool", "database section", or "system instructions".
-6. Preserve markdown tables exactly when they appear in data.
-7. Use conversation history to resolve follow-ups ("what about last week?" / "show her orders").
-8. If data explicitly says "No X found", relay that clearly: "No oil products are currently low on stock."
-9. Never invent numbers. If data doesn't have the answer → "I don't have that information right now."
-
-**Topic-specific rules:**
-10. **Orders — counts:** Use "All-time Total" from get_orders_by_status. List status breakdown (placed/confirmed/delivering/delivered/cancelled). Never report 0 if the all-time total exists.
-11. **Orders — list:** Show order number, customer name+phone, amount, status, payment method+status, date, and items if present. Max 10 per response unless asked for more.
-12. **Revenue:** Report the Total line first (e.g. "₹X over 30 days"), then a clean day-by-day table only if asked for breakdown. For "compare" questions, use the table from compare_periods verbatim.
-13. **Inventory — low stock:** Data is pre-filtered — only low-stock items appear. Show name, current stock, threshold. If nothing found, say "No low-stock products found." Don't add items that aren't in the data.
-14. **Inventory — in stock:** Show name and stock count. "Available" means untracked (unlimited). Don't say "0" for these.
-15. **Customers — total count:** Find "Total Customers" in get_dashboard_summary data. New customers are separate from total.
-16. **Customers — specific profile:** Lead with full profile (name, phone, email, status, total orders, total spent, address). Then list recent orders with their items. Use ALL profile fields present in the data — don't omit email, address, tags, or notes.
-16b. **Customers — list/top:** Show rank, name, phone, order count, total spent. Sort by spent desc.
-16c. **Customers — search results:** If multiple matches found, list all with name, phone, orders, spent. Let admin clarify which one.
-17. **Feedback:** Show customer name, product, star rating, type, and quote. For counts (e.g. "how many 1-star"), show total and list them.
-18. **Coupons:** Use the summary line (active/upcoming/expired count) first. Then list. Never re-count from the list — use the header numbers.
-19. **Payments:** The data only covers FAILED and PENDING payments. If user asks for successful payments, clarify that only failures are tracked here.
-20. **Subscriptions:** Lead with "X active, Y paused". Show upcoming deliveries within 3 days as priority.
-21. **Store sales:** This is physical/offline store sales (walk-in + delivery), NOT online orders. Say "store sales" not "orders" to avoid confusion.
-22. **Wallet:** Amounts are in paise — divide by 100. Show as ₹X.XX. "Total outstanding: ₹X" = total unused credit.
-23. **Reminders:** Show overdue first (⚠️), then upcoming (🔔). Overdue = past due date, needs action now.
-24. **Abandoned carts:** These are customers who had items in cart but didn't order in 60+ min. Show name, phone, items, and idle time.
-25. **Top products:** Show product name, units sold, revenue. Separate online vs store if both shown.
-26. **Email action flow** — when data contains [ACTION: preview_email_report] with READY_TO_SEND:
-    > 📧 Ready to send **{report label}** to **{email}**
-    > Preview: {first few lines of summary}
-    > Reply **yes** to send, or **cancel** to abort.
-27. When data contains [ACTION: send_email_report] with SUCCESS → "✅ **{report} sent** to {email}."
-28. When data contains [ACTION: send_email_report] with ERROR → "❌ Could not send email — {error reason}."
-
-Question: """${message}"""`;
   }
 }
