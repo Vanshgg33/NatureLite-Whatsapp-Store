@@ -359,7 +359,7 @@ export default function AdminChatbotPage() {
     currentMessages.slice(-MAX_HISTORY_TURNS).map((m) => ({
       role: m.sender === 'user' ? 'user' : 'assistant',
       // Assistant replies can be 2000+ char tables — send max 400 chars; user messages are already short
-      text: m.sender === 'user' ? m.text : m.text.slice(0, 400),
+      text: m.sender === 'user' ? (m.text ?? '') : (m.text ?? '').slice(0, 400),
     })), []);
 
   const handleSendMessage = async (text: string) => {
@@ -578,7 +578,7 @@ export default function AdminChatbotPage() {
                         ) : (
                           // Text streaming in
                           <div className="space-y-1.5 break-words">
-                            {renderMarkdown(msg.text)}
+                            {renderMarkdown(msg.text ?? '')}
                             {msg.streaming && (
                               <span className="inline-block h-[1.1em] w-[2px] bg-brand-green rounded-full animate-[pulse_0.8s_ease-in-out_infinite] ml-0.5 align-middle" />
                             )}
@@ -590,7 +590,7 @@ export default function AdminChatbotPage() {
                           </span>
                           {msg.sender === 'assistant' && !msg.streaming && (
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              {msg.text.startsWith('❌') && (
+                              {msg.text?.startsWith('❌') && (
                                 <button onClick={handleRetry} title="Retry" className="flex items-center gap-1 text-[10px] text-red-500 hover:text-red-600 bg-red-50 dark:bg-red-950/20 hover:bg-red-100 px-2 py-0.5 rounded-full transition-colors">
                                   <RotateCcw className="h-3 w-3" /> Retry
                                 </button>
