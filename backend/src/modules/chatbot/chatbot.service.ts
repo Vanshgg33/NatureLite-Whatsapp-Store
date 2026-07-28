@@ -2497,91 +2497,94 @@ export class ChatbotService implements OnModuleInit {
       paymentMethod,
     });
 
-    const placedWhen = this.formatStepTimestamp(order.createdAt);
-    const itemsPreview = this.formatOrderItemsPreview(order.items as any[]);
-    const billingLines: string[] = [];
-    if ((order as any).subtotal && (order as any).subtotal !== order.total) {
-      billingLines.push(`Subtotal:  ${this.formatCurrency((order as any).subtotal)}`);
-    }
-    if ((order as any).discount > 0) {
-      billingLines.push(`\uD83C\uDFF7 ${(order as any).couponCode || 'Discount'}:  \u2212${this.formatCurrency((order as any).discount)}`);
-    }
-    billingLines.push(bold(`Total:  ${this.formatCurrency(order.total)}`));
-
-    const summary =
-      `*#${order.orderNumber}*  \u00B7  _${placedWhen || 'Just now'}_\n\n` +
-      `\uD83D\uDCE6 *Items (${order.items.length})*\n${itemsPreview}\n\n` +
-      billingLines.join('\n');
-
-    if (paymentMethod === 'cod') {
-      await this.whatsappService.sendInteractiveButtons({
-        phone,
-        headerText: '\u2705 Order Confirmed',
-        bodyText: `${summary}\n\nWe'll notify you when it ships. \uD83D\uDE9A`,
-        footerText: 'Cash on delivery',
-        buttons: [
-          { id: BTN.BROWSE, title: '\uD83D\uDECD Keep shopping' },
-        ],
-      });
-    } else {
-      let payUrl = '';
-      try {
-        payUrl = await this.paymentsService.generateShortPayUrl(
-          order._id.toString(),
-          session.user.toString(),
-        );
-      } catch (signErr) {
-        this.logger.warn('WhatsApp pay token failed', signErr);
-        payUrl = '';
+    try {
+      const placedWhen = this.formatStepTimestamp(order.createdAt);
+      const itemsPreview = this.formatOrderItemsPreview(order.items as any[]);
+      const billingLines: string[] = [];
+      if ((order as any).subtotal && (order as any).subtotal !== order.total) {
+        billingLines.push(`Subtotal:  ${this.formatCurrency((order as any).subtotal)}`);
       }
+      if ((order as any).discount > 0) {
+        billingLines.push(`\uD83C\uDFF7 ${(order as any).couponCode || 'Discount'}:  \u2212${this.formatCurrency((order as any).discount)}`);
+      }
+      billingLines.push(bold(`Total:  ${this.formatCurrency(order.total)}`));
 
-      // When we have a link, offer the customer the link directly. When we
-      // don't (token failure, missing FRONTEND_URL), tell them to reply *pay*
-      // \u2014 that triggers `sendFreshPayLink` which retries link generation. The
-      // old "sign in to our website" copy was a dead-end for chat-only
-      // customers who never registered on the web.
-      const body =
-        `${summary}\n\n` +
-        (payUrl
-          ? `\uD83D\uDCB3 Complete your payment:\n${payUrl}`
-          : `Reply *pay* to get your payment link, or contact support with order *${order.orderNumber}*.`);
+      const summary =
+        `*#${order.orderNumber}*  \u00B7  _${placedWhen || 'Just now'}_\n\n` +
+        `\uD83D\uDCE6 *Items (${order.items.length})*\n${itemsPreview}\n\n` +
+        billingLines.join('\n');
 
-      try {
+      if (paymentMethod === 'cod') {
         await this.whatsappService.sendInteractiveButtons({
           phone,
-          headerText: '\u23F3 Payment Pending',
-          bodyText: body,
-          footerText: payUrl ? 'Link expires in 48 hours' : undefined,
+          headerText: '\u2705 Order Confirmed',
+          bodyText: `${summary}\n\nWe'll notify you when it ships. \uD83D\uDE9A`,
+          footerText: 'Cash on delivery',
           buttons: [
             { id: BTN.BROWSE, title: '\uD83D\uDECD Keep shopping' },
           ],
         });
-      } catch (sendErr) {
-        // The order is already saved \u2014 losing this confirmation message must
-        // not strand the customer. Log + try a plain text fallback so they at
-        // least know the order exists and can reply *pay* to retry.
-        this.logger.error(
-          `Order created (${order._id.toString()}) but post-order WhatsApp send failed: ${
-            sendErr instanceof Error ? sendErr.message : 'unknown'
-          }`,
-        );
+      } else {
+        let payUrl = '';
         try {
-          await this.whatsappService.sendTextMessage({
+          payUrl = await this.paymentsService.generateShortPayUrl(
+            order._id.toString(),
+            session.user.toString(),
+          );
+        } catch (signErr) {
+          this.logger.warn('WhatsApp pay token failed', signErr);
+          payUrl = '';
+        }
+
+        // When we have a link, offer the customer the link directly. When we
+        // don't (token failure, missing FRONTEND_URL), tell them to reply *pay*
+        // \u2014 that triggers `sendFreshPayLink` which retries link generation. The
+        // old "sign in to our website" copy was a dead-end for chat-only
+        // customers who never registered on the web.
+        const body =
+          `${summary}\n\n` +
+          (payUrl
+            ? `\uD83D\uDCB3 Complete your payment:\n${payUrl}`
+            : `Reply *pay* to get your payment link, or contact support with order *${order.orderNumber}*.`);
+
+        try {
+          await this.whatsappService.sendInteractiveButtons({
             phone,
-            message: `Order ${bold(order.orderNumber)} created. Reply *pay* to get your payment link.`,
+            headerText: '\u23F3 Payment Pending',
+            bodyText: body,
+            footerText: payUrl ? 'Link expires in 48 hours' : undefined,
+            buttons: [
+              { id: BTN.BROWSE, title: '\uD83D\uDECD Keep shopping' },
+            ],
           });
-        } catch (fallbackErr) {
+        } catch (sendErr) {
+          // The order is already saved \u2014 losing this confirmation message must
+          // not strand the customer. Log + try a plain text fallback so they at
+          // least know the order exists and can reply *pay* to retry.
           this.logger.error(
-            `Plain-text fallback also failed for ${order._id.toString()}: ${
-              fallbackErr instanceof Error ? fallbackErr.message : 'unknown'
+            `Order created (${order._id.toString()}) but post-order WhatsApp send failed: ${
+              sendErr instanceof Error ? sendErr.message : 'unknown'
             }`,
           );
+          try {
+            await this.whatsappService.sendTextMessage({
+              phone,
+              message: `Order ${bold(order.orderNumber)} created. Reply *pay* to get your payment link.`,
+            });
+          } catch (fallbackErr) {
+            this.logger.error(
+              `Plain-text fallback also failed for ${order._id.toString()}: ${
+                fallbackErr instanceof Error ? fallbackErr.message : 'unknown'
+              }`,
+            );
+          }
         }
       }
-    }
 
-    await this.transitionToState(session, 'main_menu');
-    await this.chatSessionRepository.releaseCheckoutLock(session._id);
+      await this.transitionToState(session, 'main_menu');
+    } finally {
+      await this.chatSessionRepository.releaseCheckoutLock(session._id);
+    }
   }
 
   private async openAddressPickerFromPayment(
@@ -2752,21 +2755,11 @@ export class ChatbotService implements OnModuleInit {
         await this.sendOrdersList(phone, session);
         return;
       }
-      if (session.user) {
-        const orderUserId = this.getOrderUserId(order);
-        if (orderUserId && orderUserId !== session.user.toString()) {
-          await this.whatsappService.sendTextMessage({
-            phone,
-            message: 'You do not have access to this order.',
-          });
-          await this.sendOrdersList(phone, session);
-          return;
-        }
-      }
-      if (session.user && !this.getOrderUserId(order)) {
+      const orderUserId = this.getOrderUserId(order);
+      if (!session.user || !orderUserId || orderUserId !== session.user.toString()) {
         await this.whatsappService.sendTextMessage({
           phone,
-          message: '\u274C You do not have access to this order.',
+          message: 'You do not have access to this order.',
         });
         await this.sendOrdersList(phone, session);
         return;
@@ -2828,21 +2821,11 @@ export class ChatbotService implements OnModuleInit {
         await this.sendOrdersList(phone, session);
         return;
       }
-      if (session.user) {
-        const orderUserId = this.getOrderUserId(order);
-        if (orderUserId && orderUserId !== session.user.toString()) {
-          await this.whatsappService.sendTextMessage({
-            phone,
-            message: 'You do not have access to this order.',
-          });
-          await this.sendOrdersList(phone, session);
-          return;
-        }
-      }
-      if (session.user && !this.getOrderUserId(order)) {
+      const reorderOrderUserId = this.getOrderUserId(order);
+      if (!session.user || !reorderOrderUserId || reorderOrderUserId !== session.user.toString()) {
         await this.whatsappService.sendTextMessage({
           phone,
-          message: '❌ You do not have access to this order.',
+          message: 'You do not have access to this order.',
         });
         await this.sendOrdersList(phone, session);
         return;

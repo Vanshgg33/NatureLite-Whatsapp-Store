@@ -6,11 +6,14 @@ import {
 } from '@nestjs/common';
 import {
   GoogleGenerativeAI,
+  HarmCategory,
+  HarmBlockThreshold,
   type Content,
   type FunctionDeclaration,
   FunctionCallingMode,
   type Part,
 } from '@google/generative-ai';
+import { GoogleAICacheManager } from '@google/generative-ai/server';
 import type { ChatSessionDocument } from './schemas/chat-session.schema';
 import { ChatSessionRepository } from './repositories/chat-session.repository';
 import { RedisService } from '../redis/redis.service';
@@ -37,226 +40,15 @@ const MAX_HISTORY_ENTRIES = 60;
 const MAX_TOOL_ITERATIONS = 8;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tool declarations — Gemini uses these to decide which function to call.
-// Keep descriptions crisp: the model reads them verbatim to pick the right tool.
+// Static system prompt — no dynamic content so it can be Gemini-cached.
+// The customer's name is injected per-message via a [Customer: name="..."] prefix.
 // ─────────────────────────────────────────────────────────────────────────────
-const TOOL_DECLARATIONS: FunctionDeclaration[] = [
-  {
-    name: 'search_products',
-    description:
-      'Search products by keyword, category, or price. Call for ANY shopping / browsing intent, even vague ones like "something healthy".',
-    parameters: {
-      type: 'OBJECT' as any,
-      properties: {
-        query: { type: 'STRING' as any, description: 'Search keyword e.g. "moong dal", "cold pressed oil"' },
-        categoryId: { type: 'STRING' as any, description: 'Category ID to filter (from get_categories)' },
-        maxPrice: { type: 'NUMBER' as any, description: 'Max price in rupees' },
-        minPrice: { type: 'NUMBER' as any, description: 'Min price in rupees' },
-      },
-    },
-  },
-  {
-    name: 'get_categories',
-    description:
-      'Get all product categories. Call when user asks what we sell or wants to browse by category.',
-    parameters: { type: 'OBJECT' as any, properties: {} },
-  },
-  {
-    name: 'get_product_detail',
-    description: 'Get full details of a product by its ID.',
-    parameters: {
-      type: 'OBJECT' as any,
-      properties: {
-        productId: { type: 'STRING' as any, description: 'Product _id' },
-      },
-      required: ['productId'],
-    },
-  },
-  {
-    name: 'get_cart',
-    description: 'Get current cart contents, totals, and applied coupons.',
-    parameters: { type: 'OBJECT' as any, properties: {} },
-  },
-  {
-    name: 'add_to_cart',
-    description: 'Add a product to the cart. If the product has variants, variantSku is required.',
-    parameters: {
-      type: 'OBJECT' as any,
-      properties: {
-        productId: { type: 'STRING' as any, description: 'Product _id to add' },
-        quantity: { type: 'NUMBER' as any, description: 'Units to add (min 1)' },
-        variantSku: { type: 'STRING' as any, description: 'Variant SKU — required when the product has variants' },
-      },
-      required: ['productId', 'quantity'],
-    },
-  },
-  {
-    name: 'remove_from_cart',
-    description: 'Remove a product from the cart.',
-    parameters: {
-      type: 'OBJECT' as any,
-      properties: {
-        productId: { type: 'STRING' as any, description: 'Product _id to remove' },
-      },
-      required: ['productId'],
-    },
-  },
-  {
-    name: 'update_cart_quantity',
-    description: 'Change the quantity of a cart item.',
-    parameters: {
-      type: 'OBJECT' as any,
-      properties: {
-        productId: { type: 'STRING' as any, description: 'Product _id' },
-        quantity: { type: 'NUMBER' as any, description: 'New quantity' },
-      },
-      required: ['productId', 'quantity'],
-    },
-  },
-  {
-    name: 'get_orders',
-    description: 'Get the user order history.',
-    parameters: {
-      type: 'OBJECT' as any,
-      properties: {
-        limit: { type: 'NUMBER' as any, description: 'Max orders to return (default 5)' },
-      },
-    },
-  },
-  {
-    name: 'track_order',
-    description:
-      'Get tracking info for a specific order or the latest order if no order number is given.',
-    parameters: {
-      type: 'OBJECT' as any,
-      properties: {
-        orderNumber: { type: 'STRING' as any, description: 'Order number like ORD-001. Omit = latest.' },
-      },
-    },
-  },
-  {
-    name: 'get_available_coupons',
-    description: 'Get discount coupons applicable to the current cart.',
-    parameters: { type: 'OBJECT' as any, properties: {} },
-  },
-  {
-    name: 'apply_coupon',
-    description: 'Apply a coupon code to the cart.',
-    parameters: {
-      type: 'OBJECT' as any,
-      properties: {
-        code: { type: 'STRING' as any, description: 'Coupon code' },
-      },
-      required: ['code'],
-    },
-  },
-  {
-    name: 'get_account_info',
-    description: "Get the user's profile: name, email, saved addresses.",
-    parameters: { type: 'OBJECT' as any, properties: {} },
-  },
-  {
-    name: 'get_wallet_balance',
-    description: "Get the user's NatureLite wallet balance.",
-    parameters: { type: 'OBJECT' as any, properties: {} },
-  },
-  {
-    name: 'cancel_order',
-    description:
-      'Cancel an order that is still in placed or confirmed status. Always confirm the order details with the user before calling. Do NOT call for delivered, out_for_delivery, or already cancelled orders.',
-    parameters: {
-      type: 'OBJECT' as any,
-      properties: {
-        orderNumber: { type: 'STRING' as any, description: 'Order number like ORD-001. Omit to cancel the latest cancellable order.' },
-        reason: { type: 'STRING' as any, description: 'Brief reason for cancellation' },
-      },
-      required: ['reason'],
-    },
-  },
-  {
-    name: 'reorder_last',
-    description:
-      'Repeat the most recent previous order — adds all items to cart and starts checkout. Call when user says "same as last time", "reorder", "dobara order", "phir se", or wants to repeat a past purchase.',
-    parameters: { type: 'OBJECT' as any, properties: {} },
-  },
-  {
-    name: 'initiate_checkout',
-    description:
-      'Start checkout (address → payment). Call when user says "order", "buy", "checkout", "place order", or confirms they want to purchase.',
-    parameters: { type: 'OBJECT' as any, properties: {} },
-  },
-  {
-    name: 'request_human_support',
-    description:
-      'Hand off to a human agent. Call when user explicitly asks for a human, is clearly frustrated, or asks something the bot cannot resolve.',
-    parameters: {
-      type: 'OBJECT' as any,
-      properties: {
-        reason: { type: 'STRING' as any, description: 'Why human support is needed' },
-      },
-    },
-  },
-];
-
-@Injectable()
-export class ChatbotAiService {
-  private readonly logger = new Logger(ChatbotAiService.name);
-  private readonly genai: GoogleGenerativeAI;
-
-  // Per-user lock: prevents parallel Gemini calls for the same phone number.
-  // Without this, rapid double-taps cause race conditions on session.save()
-  // and waste tokens on duplicate requests.
-  private readonly inFlight = new Map<string, true>();
-
-  // Global concurrency semaphore: caps simultaneous Gemini requests across all users.
-  // Gemini free-tier is 15 RPM; even paid tiers have burst limits.
-  private activeAiCalls = 0;
-  private readonly MAX_CONCURRENT_AI = 8;
-  private readonly aiWaitQueue: Array<() => void> = [];
-
-  private static readonly SEARCH_CACHE_TTL = 120;   // 2 min
-  private static readonly CATEGORY_CACHE_TTL = 300; // 5 min
-
-  constructor(
-    private readonly whatsappService: WhatsAppService,
-    private readonly productsService: ProductsService,
-    private readonly categoriesService: CategoriesService,
-    private readonly cartService: CartService,
-    private readonly ordersService: OrdersService,
-    private readonly couponsService: CouponsService,
-    private readonly usersService: UsersService,
-    private readonly walletService: WalletService,
-    private readonly chatSessionRepository: ChatSessionRepository,
-    private readonly redisService: RedisService,
-    @Inject(forwardRef(() => ChatbotService))
-    private readonly chatbotService: ChatbotService,
-  ) {
-    const apiKey = process.env.GEMINI_API_KEY || '';
-    if (!apiKey) {
-      this.logger.warn('GEMINI_API_KEY is not set — AI chatbot layer is disabled.');
-    }
-    this.genai = new GoogleGenerativeAI(apiKey);
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // SYSTEM PROMPT
-  // This is the single source of truth for how the AI behaves.
-  // Edit this method to change tone, business rules, or what the AI can do.
-  // The dynamic section at the top is rebuilt every turn with live user data.
-  // ─────────────────────────────────────────────────────────────────────────
-  private buildSystemPrompt(session: ChatSessionDocument): string {
-    const userName = (session.metadata as Record<string, string>)?.contactName || 'Customer';
-    const hasName = userName !== 'Customer';
-
-    return `
+const CUSTOMER_SYSTEM_PROMPT = `
 # IDENTITY
 You are *NatureLite Assistant* — the official WhatsApp shopping bot for *NatureLite Foods*, a 100% natural & chemical-free food store based in Raipur, Chhattisgarh, India.
 Your ONLY job is to help customers discover products, manage their cart, track orders, and complete purchases — with the fewest messages possible.
 You are NOT a general-purpose AI. You are NOT a therapist, teacher, coder, or news source.
-
-## Current Session
-- Customer name: ${hasName ? userName : 'not set (address them warmly without a name)'}
-- Account: linked by phone — cart and checkout always work
+Each message begins with a [Customer: name="…"] note — use that name naturally when greeting or addressing them.
 
 ---
 
@@ -436,6 +228,272 @@ If you genuinely cannot help (product not found, tool error, out of scope):
 3. Never guess or make up information
 If stuck more than twice on the same issue → call request_human_support()
 `.trim();
+
+// Gemini content-safety settings applied at the API layer — orthogonal to prompt-level guardrails.
+const SAFETY_SETTINGS = [
+  { category: HarmCategory.HARM_CATEGORY_HARASSMENT,        threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE },
+  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,       threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE },
+  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tool declarations — Gemini uses these to decide which function to call.
+// Keep descriptions crisp: the model reads them verbatim to pick the right tool.
+// ─────────────────────────────────────────────────────────────────────────────
+const TOOL_DECLARATIONS: FunctionDeclaration[] = [
+  {
+    name: 'search_products',
+    description:
+      'Search products by keyword, category, or price. Call for ANY shopping / browsing intent, even vague ones like "something healthy".',
+    parameters: {
+      type: 'OBJECT' as any,
+      properties: {
+        query: { type: 'STRING' as any, description: 'Search keyword e.g. "moong dal", "cold pressed oil"' },
+        categoryId: { type: 'STRING' as any, description: 'Category ID to filter (from get_categories)' },
+        maxPrice: { type: 'NUMBER' as any, description: 'Max price in rupees' },
+        minPrice: { type: 'NUMBER' as any, description: 'Min price in rupees' },
+      },
+    },
+  },
+  {
+    name: 'get_categories',
+    description:
+      'Get all product categories. Call when user asks what we sell or wants to browse by category.',
+    parameters: { type: 'OBJECT' as any, properties: {} },
+  },
+  {
+    name: 'get_product_detail',
+    description: 'Get full details of a product by its ID.',
+    parameters: {
+      type: 'OBJECT' as any,
+      properties: {
+        productId: { type: 'STRING' as any, description: 'Product _id' },
+      },
+      required: ['productId'],
+    },
+  },
+  {
+    name: 'get_cart',
+    description: 'Get current cart contents, totals, and applied coupons.',
+    parameters: { type: 'OBJECT' as any, properties: {} },
+  },
+  {
+    name: 'add_to_cart',
+    description: 'Add a product to the cart. If the product has variants, variantSku is required.',
+    parameters: {
+      type: 'OBJECT' as any,
+      properties: {
+        productId: { type: 'STRING' as any, description: 'Product _id to add' },
+        quantity: { type: 'NUMBER' as any, description: 'Units to add (min 1)' },
+        variantSku: { type: 'STRING' as any, description: 'Variant SKU — required when the product has variants' },
+      },
+      required: ['productId', 'quantity'],
+    },
+  },
+  {
+    name: 'remove_from_cart',
+    description: 'Remove a product from the cart.',
+    parameters: {
+      type: 'OBJECT' as any,
+      properties: {
+        productId: { type: 'STRING' as any, description: 'Product _id to remove' },
+      },
+      required: ['productId'],
+    },
+  },
+  {
+    name: 'update_cart_quantity',
+    description: 'Change the quantity of a cart item.',
+    parameters: {
+      type: 'OBJECT' as any,
+      properties: {
+        productId: { type: 'STRING' as any, description: 'Product _id' },
+        quantity: { type: 'NUMBER' as any, description: 'New quantity' },
+      },
+      required: ['productId', 'quantity'],
+    },
+  },
+  {
+    name: 'get_orders',
+    description: 'Get the user order history.',
+    parameters: {
+      type: 'OBJECT' as any,
+      properties: {
+        limit: { type: 'NUMBER' as any, description: 'Max orders to return (default 5)' },
+      },
+    },
+  },
+  {
+    name: 'track_order',
+    description:
+      'Get tracking info for a specific order or the latest order if no order number is given.',
+    parameters: {
+      type: 'OBJECT' as any,
+      properties: {
+        orderNumber: { type: 'STRING' as any, description: 'Order number like ORD-001. Omit = latest.' },
+      },
+    },
+  },
+  {
+    name: 'get_available_coupons',
+    description: 'Get discount coupons applicable to the current cart.',
+    parameters: { type: 'OBJECT' as any, properties: {} },
+  },
+  {
+    name: 'apply_coupon',
+    description: 'Apply a coupon code to the cart.',
+    parameters: {
+      type: 'OBJECT' as any,
+      properties: {
+        code: { type: 'STRING' as any, description: 'Coupon code' },
+      },
+      required: ['code'],
+    },
+  },
+  {
+    name: 'get_account_info',
+    description: "Get the user's profile: name, email, saved addresses.",
+    parameters: { type: 'OBJECT' as any, properties: {} },
+  },
+  {
+    name: 'get_wallet_balance',
+    description: "Get the user's NatureLite wallet balance.",
+    parameters: { type: 'OBJECT' as any, properties: {} },
+  },
+  {
+    name: 'cancel_order',
+    description:
+      'Cancel an order that is still in placed or confirmed status. Always confirm the order details with the user before calling. Do NOT call for delivered, out_for_delivery, or already cancelled orders.',
+    parameters: {
+      type: 'OBJECT' as any,
+      properties: {
+        orderNumber: { type: 'STRING' as any, description: 'Order number like ORD-001. Omit to cancel the latest cancellable order.' },
+        reason: { type: 'STRING' as any, description: 'Brief reason for cancellation' },
+      },
+      required: ['reason'],
+    },
+  },
+  {
+    name: 'reorder_last',
+    description:
+      'Repeat the most recent previous order — adds all items to cart and starts checkout. Call when user says "same as last time", "reorder", "dobara order", "phir se", or wants to repeat a past purchase.',
+    parameters: { type: 'OBJECT' as any, properties: {} },
+  },
+  {
+    name: 'initiate_checkout',
+    description:
+      'Start checkout (address → payment). Call when user says "order", "buy", "checkout", "place order", or confirms they want to purchase.',
+    parameters: { type: 'OBJECT' as any, properties: {} },
+  },
+  {
+    name: 'request_human_support',
+    description:
+      'Hand off to a human agent. Call when user explicitly asks for a human, is clearly frustrated, or asks something the bot cannot resolve.',
+    parameters: {
+      type: 'OBJECT' as any,
+      properties: {
+        reason: { type: 'STRING' as any, description: 'Why human support is needed' },
+      },
+    },
+  },
+];
+
+@Injectable()
+export class ChatbotAiService {
+  private readonly logger = new Logger(ChatbotAiService.name);
+  private readonly genai: GoogleGenerativeAI;
+
+  // Per-user lock: prevents parallel Gemini calls for the same phone number.
+  // Without this, rapid double-taps cause race conditions on session.save()
+  // and waste tokens on duplicate requests.
+  private readonly inFlight = new Map<string, true>();
+
+  // Global concurrency semaphore: caps simultaneous Gemini requests across all users.
+  // Gemini free-tier is 15 RPM; even paid tiers have burst limits.
+  private activeAiCalls = 0;
+  private readonly MAX_CONCURRENT_AI = 8;
+  private readonly aiWaitQueue: Array<() => void> = [];
+  // ponytail: global queue cap — per-user quotas if one user can monopolise slots
+  private readonly MAX_AI_QUEUE = 50;
+
+  // Gemini context cache — caches system prompt + tool declarations server-side.
+  // Same pattern as AdminChatbotService. Falls back to uncached on error.
+  private _geminiCache: any = null;
+  private _cacheExpiry: Date | null = null;
+  private _cacheCreationPromise: Promise<any> | null = null;
+  private _cacheFailedUntil = 0;
+
+  private static readonly SEARCH_CACHE_TTL = 120;   // 2 min
+  private static readonly CATEGORY_CACHE_TTL = 300; // 5 min
+
+  constructor(
+    private readonly whatsappService: WhatsAppService,
+    private readonly productsService: ProductsService,
+    private readonly categoriesService: CategoriesService,
+    private readonly cartService: CartService,
+    private readonly ordersService: OrdersService,
+    private readonly couponsService: CouponsService,
+    private readonly usersService: UsersService,
+    private readonly walletService: WalletService,
+    private readonly chatSessionRepository: ChatSessionRepository,
+    private readonly redisService: RedisService,
+    @Inject(forwardRef(() => ChatbotService))
+    private readonly chatbotService: ChatbotService,
+  ) {
+    const apiKey = process.env.GEMINI_API_KEY || '';
+    if (!apiKey) {
+      this.logger.warn('GEMINI_API_KEY is not set — AI chatbot layer is disabled.');
+    }
+    this.genai = new GoogleGenerativeAI(apiKey);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CONTEXT CACHE
+  // Caches CUSTOMER_SYSTEM_PROMPT + TOOL_DECLARATIONS server-side on Gemini.
+  // Falls back to uncached model transparently. Same pattern as admin chatbot.
+  // ─────────────────────────────────────────────────────────────────────────
+  private async getOrRefreshCache(apiKey: string, modelName: string): Promise<any> {
+    const now = Date.now();
+    const tenMinutes = 10 * 60 * 1000;
+
+    if (this._geminiCache && this._cacheExpiry && this._cacheExpiry.getTime() - now > tenMinutes) {
+      return this._geminiCache;
+    }
+    if (now < this._cacheFailedUntil) return null;
+    if (this._cacheCreationPromise) return this._cacheCreationPromise;
+
+    this._cacheCreationPromise = (async () => {
+      try {
+        const mgr = new GoogleAICacheManager(apiKey);
+        const cache = await mgr.create({
+          model: modelName,
+          systemInstruction: CUSTOMER_SYSTEM_PROMPT,
+          tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
+          contents: [],
+          ttlSeconds: 3600,
+        });
+        this._geminiCache = cache;
+        this._cacheExpiry = new Date(cache.expireTime as string);
+        this.logger.log(`[Customer AI] Context cache created, expires ${this._cacheExpiry.toISOString()}`);
+        return cache;
+      } catch (err) {
+        this.logger.warn(`[Customer AI] Context cache failed (${(err as Error).message}), retrying in 5 min`);
+        this._geminiCache = null;
+        this._cacheFailedUntil = Date.now() + 5 * 60 * 1000;
+        return null;
+      } finally {
+        this._cacheCreationPromise = null;
+      }
+    })();
+
+    return this._cacheCreationPromise;
+  }
+
+  /** Builds the per-turn context prefix injected into the user message (keeps system prompt cacheable). */
+  private buildSessionContext(session: ChatSessionDocument): string {
+    const userName = (session.metadata as Record<string, string>)?.contactName || 'unknown';
+    return `[Customer: name="${userName}"]\n`;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -447,6 +505,9 @@ If stuck more than twice on the same issue → call request_human_support()
     if (this.activeAiCalls < this.MAX_CONCURRENT_AI) {
       this.activeAiCalls++;
       return Promise.resolve(() => this.releaseAiSlot());
+    }
+    if (this.aiWaitQueue.length >= this.MAX_AI_QUEUE) {
+      return Promise.reject(new Error('overloaded'));
     }
     return new Promise((resolve) => {
       this.aiWaitQueue.push(() => {
@@ -499,6 +560,16 @@ If stuck more than twice on the same issue → call request_human_support()
       });
       return;
     }
+
+    // Fast-reject before acquiring inFlight slot — avoids queuing when system is saturated.
+    if (this.activeAiCalls >= this.MAX_CONCURRENT_AI && this.aiWaitQueue.length >= this.MAX_AI_QUEUE) {
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: "I'm handling a lot of requests right now — please try again in a minute.",
+      });
+      return;
+    }
+
     this.inFlight.set(phone, true);
 
     // Mark message read + show typing indicator immediately so the user knows we're working.
@@ -508,7 +579,10 @@ If stuck more than twice on the same issue → call request_human_support()
     const releaseSlot = await this.acquireAiSlot();
 
     try {
-      const systemInstruction = this.buildSystemPrompt(session);
+      const apiKey = process.env.GEMINI_API_KEY!;
+      const modelName = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+      const generationConfig = { temperature: 0.3, maxOutputTokens: 500 };
+      const toolConfig = { functionCallingConfig: { mode: FunctionCallingMode.AUTO } };
 
       // Build the history from the session (Gemini Content[] format).
       // Strip any functionCall/functionResponse entries — startChat only accepts
@@ -519,24 +593,35 @@ If stuck more than twice on the same issue → call request_human_support()
           : []
       ).filter((c) => c.parts.some((p: any) => typeof p.text === 'string'));
 
-      const model = this.genai.getGenerativeModel({
-        model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
-        systemInstruction,
-        tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
-        toolConfig: { functionCallingConfig: { mode: FunctionCallingMode.AUTO } },
-        generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 500,
-        },
-      });
+      // Use cached system prompt + tools when available; fall back to uncached.
+      const cache = await this.getOrRefreshCache(apiKey, modelName);
+      const model = cache
+        ? this.genai.getGenerativeModelFromCachedContent(cache, {
+            generationConfig,
+            toolConfig,
+            safetySettings: SAFETY_SETTINGS,
+          } as any)
+        : this.genai.getGenerativeModel({
+            model: modelName,
+            systemInstruction: CUSTOMER_SYSTEM_PROMPT,
+            tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
+            toolConfig,
+            generationConfig,
+            safetySettings: SAFETY_SETTINGS,
+          });
 
       const chat = model.startChat({ history });
 
       // Working accumulator for this turn's contents (used to persist history)
       const turnAdditions: Content[] = [];
 
+      // Prepend session context to this turn's message — keeps system prompt static (cacheable)
+      // while still giving Gemini the customer name per turn. History stores clean userInput.
+      const contextPrefix = this.buildSessionContext(session);
+      const messageToSend = contextPrefix + (userInput || 'hi');
+
       // First send: user message
-      let result = await this.geminiWithTimeout(chat.sendMessage(userInput || 'hi'));
+      let result = await this.geminiWithTimeout(chat.sendMessage(messageToSend));
       turnAdditions.push({ role: 'user', parts: [{ text: userInput || 'hi' }] });
 
       // Agentic loop: execute tool calls until Gemini returns plain text
@@ -638,13 +723,15 @@ If stuck more than twice on the same issue → call request_human_support()
       const userMsg =
         msg === 'gemini_timeout'
           ? 'Taking a bit longer than usual — please try again in a moment.'
+          : msg === 'overloaded'
+          ? "I'm very busy right now — please try again in a minute."
           : isRateLimit
           ? "I'm handling a lot of requests right now — please try again in 30 seconds."
           : 'Something went wrong on our end. Type *menu* to start over.';
       await this.whatsappService.sendTextMessage({ phone, message: userMsg });
     } finally {
       this.inFlight.delete(phone);
-      releaseSlot();
+      releaseSlot?.();
     }
   }
 
