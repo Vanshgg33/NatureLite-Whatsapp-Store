@@ -41,7 +41,32 @@ import { parseDateRange } from '../../common/utils/date-parse.util';
 
 export type HistoryItem = { role: 'user' | 'assistant'; text: string };
 
-const MAX_TOOL_ITERATIONS = 10;
+const MAX_TOOL_ITERATIONS = 4;
+
+const UNCACHED_TOOLS = new Set(['send_email_report', 'preview_email_report']);
+
+const TOOL_TTL: Record<string, number> = {
+  get_dashboard_summary: 45, search_orders: 45, get_order_detail: 30,
+  get_orders_by_status: 45, compare_periods: 90, search_products: 120,
+  get_product_detail: 120, get_products_by_stock: 90, get_store_stock: 60,
+  get_raw_materials: 90, get_raw_material_snapshots: 120, get_categories: 300,
+  get_stores: 300, search_customers: 120, get_customer_orders: 60,
+  get_top_customers: 300, get_customers_filtered: 90, get_revenue_trend: 90,
+  get_analytics_period: 300, get_top_selling_products: 300, search_abandoned_carts: 90,
+  get_store_sales: 90, get_sale_detail: 60, get_delivery_data: 60,
+  get_wallet: 60, get_subscriptions: 90, get_payments: 60,
+  search_audit_logs: 60, get_admin_users: 300, get_coupon_list: 180,
+  get_coupon_usage: 90, get_feedback_list: 60, get_whatsapp_queue: 30,
+  get_whatsapp_messages: 30, get_reminders: 30,
+};
+
+function capArrays(obj: Record<string, unknown>, max: number): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    out[k] = Array.isArray(v) && v.length > max ? v.slice(0, max) : v;
+  }
+  return out;
+}
 
 // ─── Tool Declarations ────────────────────────────────────────────────────────
 
@@ -627,7 +652,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       systemInstruction: ADMIN_SYSTEM_PROMPT,
       tools: [{ functionDeclarations: ADMIN_TOOL_DECLARATIONS }],
       toolConfig: { functionCallingConfig: { mode: FunctionCallingMode.AUTO } },
-      generationConfig: { temperature: 0.2, maxOutputTokens: 3000 },
+      generationConfig: { temperature: 0.2, maxOutputTokens: 800 },
     });
 
     const chat = model.startChat({ history: geminiHistory });
@@ -650,7 +675,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         this.logger.log(`[Admin AI] ${name}(${JSON.stringify(args)})`);
         try {
           const toolResult = await this.executeTool(name, args ?? {});
-          toolResponseParts.push({ functionResponse: { name, response: toolResult } } as any);
+          toolResponseParts.push({ functionResponse: { name, response: capArrays(toolResult, 10) } } as any);
         } catch (err) {
           toolResponseParts.push({ functionResponse: { name, response: { error: (err as Error).message } } } as any);
         }
@@ -665,27 +690,11 @@ export class AdminChatbotService implements OnApplicationBootstrap {
   // ─── Tool dispatcher ──────────────────────────────────────────────────────────
 
   async executeTool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const UNCACHED = new Set(['send_email_report', 'preview_email_report']);
-    const TTL: Record<string, number> = {
-      get_dashboard_summary: 45, search_orders: 45, get_order_detail: 30,
-      get_orders_by_status: 45, compare_periods: 90, search_products: 120,
-      get_product_detail: 120, get_products_by_stock: 90, get_store_stock: 60,
-      get_raw_materials: 90, get_raw_material_snapshots: 120, get_categories: 300,
-      get_stores: 300, search_customers: 120, get_customer_orders: 60,
-      get_top_customers: 300, get_customers_filtered: 90, get_revenue_trend: 90,
-      get_analytics_period: 300, get_top_selling_products: 300, search_abandoned_carts: 90,
-      get_store_sales: 90, get_sale_detail: 60, get_delivery_data: 60,
-      get_wallet: 60, get_subscriptions: 90, get_payments: 60,
-      search_audit_logs: 60, get_admin_users: 300, get_coupon_list: 180,
-      get_coupon_usage: 90, get_feedback_list: 60, get_whatsapp_queue: 30,
-      get_whatsapp_messages: 30, get_reminders: 30,
-    };
-
-    if (UNCACHED.has(name)) {
+    if (UNCACHED_TOOLS.has(name)) {
       return this._runTool(name, args);
     }
 
-    return this.cachedTool(name, args, () => this._runTool(name, args), TTL[name] ?? 90);
+    return this.cachedTool(name, args, () => this._runTool(name, args), TOOL_TTL[name] ?? 90);
   }
 
   private async _runTool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
