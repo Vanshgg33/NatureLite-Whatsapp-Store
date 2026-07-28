@@ -563,9 +563,9 @@ Call multiple tools in a single turn when a question spans domains — e.g., cus
 
 2. **Copy numbers verbatim.** Never round, estimate, or paraphrase a quantity from a tool result. If the tool says 42 — write 42.
 
-3. **Dates: always convert ISO to readable.** Format every ISO timestamp as "DD Mon YYYY, HH:MM AM/PM IST".
+3. **Dates are pre-formatted in IST.** Report date/time strings exactly as received from tool results — do NOT re-convert or add/subtract hours.
    ✓ "Last updated on **15 Jan 2025, 3:42 PM IST** by Rahul."
-   ✗ "Updated at 2025-01-15T10:12:00.000Z."
+   ✗ Modifying the time shown in the tool result.
 
 4. **Empty result ≠ zero.** If the tool returns an empty array, say "No [X] found" — not "0 orders". If stock field is 0, say "Out of stock (0 units)."
 
@@ -645,6 +645,23 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       role: h.role === 'user' ? 'user' : 'model',
       parts: [{ text: h.text }],
     }));
+  }
+
+  private toIST(d: Date | string | null | undefined, dateOnly = false): string {
+    if (!d) return '';
+    const date = d instanceof Date ? d : new Date(d as string);
+    if (isNaN(date.getTime())) return '';
+    const ist = new Date(date.getTime() + 19_800_000); // UTC+5:30
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const dd = String(ist.getUTCDate()).padStart(2, '0');
+    const mon = months[ist.getUTCMonth()];
+    const yyyy = ist.getUTCFullYear();
+    if (dateOnly) return `${dd} ${mon} ${yyyy}`;
+    let h = ist.getUTCHours();
+    const min = String(ist.getUTCMinutes()).padStart(2, '0');
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return `${dd} ${mon} ${yyyy}, ${h}:${min} ${ampm} IST`;
   }
 
   private async cachedTool<T>(
@@ -863,7 +880,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         status: o.status,
         paymentMethod: o.paymentMethod,
         paymentStatus: o.paymentStatus,
-        createdAt: o.createdAt,
+        createdAt: this.toIST(o.createdAt),
         couponCode: o.couponCode,
         discount: o.discount,
         walletUsed: o.walletUsed,
@@ -902,15 +919,15 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       paymentStatus: o.paymentStatus,
       shippingAddress: o.shippingAddress,
       items: (o.items ?? []).map((i: any) => ({ name: i.name, variant: i.variantName, qty: i.quantity, price: i.price, total: i.total })),
-      timeline: (o.timeline ?? []).map((t: any) => ({ status: t.status, at: t.changedAt, by: t.changedBy })),
+      timeline: (o.timeline ?? []).map((t: any) => ({ status: t.status, at: this.toIST(t.changedAt), by: t.changedBy })),
       assignedDeliveryAgent: agentName,
-      deliveredAt: o.deliveredAt,
-      packedAt: o.packedAt,
+      deliveredAt: this.toIST(o.deliveredAt),
+      packedAt: this.toIST(o.packedAt),
       packedBy: o.packedBy,
       adminNotes: o.adminNotes,
       amountCollected: o.amountCollected,
       collectionStatus: o.collectionStatus,
-      createdAt: o.createdAt,
+      createdAt: this.toIST(o.createdAt),
     };
   }
 
@@ -937,8 +954,8 @@ export class AdminChatbotService implements OnApplicationBootstrap {
 
     const a = ma as any; const b = mb as any;
     return {
-      periodA: { from: aStart, to: aEnd, days },
-      periodB: { from: bStart, to: bEnd, days },
+      periodA: { from: this.toIST(aStart, true), to: this.toIST(aEnd, true), days },
+      periodB: { from: this.toIST(bStart, true), to: this.toIST(bEnd, true), days },
       orders: { current: a.totalOrders ?? 0, previous: b.totalOrders ?? 0 },
       revenue: { current: a.totalRevenue ?? 0, previous: b.totalRevenue ?? 0 },
       avgOrderValue: { current: Math.round(a.avgOrderValue ?? 0), previous: Math.round(b.avgOrderValue ?? 0) },
@@ -960,7 +977,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         mrp: p.mrp,
         stock: p.stock,
         isActive: p.isActive,
-        updatedAt: p.updatedAt,
+        updatedAt: this.toIST(p.updatedAt),
         category: (p.category as any)?.name ?? '',
         variants: Array.isArray(p.variants) ? p.variants.map((v: any) => ({ name: v.name, sku: v.sku, price: v.price, stock: v.stock })) : [],
       })),
@@ -981,7 +998,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       lowStockThreshold: p.lowStockThreshold, gstPercentage: p.gstPercentage,
       category: (p.category as any)?.name ?? '',
       description: p.description,
-      updatedAt: p.updatedAt, createdAt: p.createdAt,
+      updatedAt: this.toIST(p.updatedAt), createdAt: this.toIST(p.createdAt),
       variants: Array.isArray(p.variants) ? p.variants.map((v: any) => ({
         name: v.name, sku: v.sku, price: v.price, mrp: v.mrp, stock: v.stock, isActive: v.isActive,
       })) : [],
@@ -1079,7 +1096,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         returned: r.returned,
         damaged: r.damaged,
         threshold: r.lowStockThreshold,
-        updatedAt: r.updatedAt,
+        updatedAt: this.toIST(r.updatedAt),
       })),
     };
   }
@@ -1107,7 +1124,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         unit: m.unit,
         totalStock: m.totalStock,
         store: (m.store as any)?.name ?? 'Unknown',
-        updatedAt: m.updatedAt,
+        updatedAt: this.toIST(m.updatedAt),
       })),
     };
   }
@@ -1190,7 +1207,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
           totalOrders: c.totalOrders, totalSpent: c.totalSpent,
           isBlocked: c.isBlocked, blockedReason: c.blockedReason,
           isActive: c.isActive, tags: c.tags, notes: c.notes,
-          lastOrderAt: c.lastOrderAt, createdAt: c.createdAt,
+          lastOrderAt: this.toIST(c.lastOrderAt), createdAt: this.toIST(c.createdAt),
           defaultAddress: addr ? `${addr.street ?? ''}, ${addr.city ?? ''}, ${addr.state ?? ''} ${addr.pincode ?? ''}`.trim() : null,
         };
       }),
@@ -1219,14 +1236,14 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         name: user.name, phone: user.phone, email: user.email,
         totalOrders: user.totalOrders, totalSpent: user.totalSpent,
         isBlocked: user.isBlocked, blockedReason: user.blockedReason,
-        lastOrderAt: user.lastOrderAt, createdAt: user.createdAt,
+        lastOrderAt: this.toIST(user.lastOrderAt), createdAt: this.toIST(user.createdAt),
         address: addr ? `${addr.street ?? ''}, ${addr.city ?? ''}, ${addr.state ?? ''} ${addr.pincode ?? ''}`.trim() : null,
         tags: user.tags, notes: user.notes,
       },
       orders: orders.map((o: any) => ({
         orderNumber: o.orderNumber, total: o.total, status: o.status,
         paymentMethod: o.paymentMethod, paymentStatus: o.paymentStatus,
-        createdAt: o.createdAt, deliveredAt: o.deliveredAt,
+        createdAt: this.toIST(o.createdAt), deliveredAt: this.toIST(o.deliveredAt),
         items: (o.items ?? []).map((i: any) => `${i.name}${i.variantName ? ` (${i.variantName})` : ''} x${i.quantity} @₹${i.price}`),
       })),
     };
@@ -1243,7 +1260,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       customers: customers.map((c: any, i: number) => ({
         rank: i + 1, name: c.name, phone: c.phone,
         totalOrders: c.totalOrders, totalSpent: c.totalSpent,
-        lastOrderAt: c.lastOrderAt,
+        lastOrderAt: this.toIST(c.lastOrderAt),
       })),
     };
   }
@@ -1259,7 +1276,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       count,
       customers: customers.map((c: any) => ({
         name: c.name, phone: c.phone, email: c.email,
-        totalOrders: c.totalOrders, totalSpent: c.totalSpent, createdAt: c.createdAt,
+        totalOrders: c.totalOrders, totalSpent: c.totalSpent, createdAt: this.toIST(c.createdAt),
       })),
     };
   }
@@ -1277,7 +1294,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       customers: customers.map((c: any) => ({
         name: c.name, phone: c.phone,
         totalOrders: c.totalOrders, totalSpent: c.totalSpent,
-        lastOrderAt: c.lastOrderAt,
+        lastOrderAt: this.toIST(c.lastOrderAt),
       })),
     };
   }
@@ -1289,7 +1306,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       count: customers.length,
       customers: customers.map((c: any) => ({
         name: c.name, phone: c.phone, email: c.email,
-        blockedReason: c.blockedReason, updatedAt: c.updatedAt,
+        blockedReason: c.blockedReason, updatedAt: this.toIST(c.updatedAt),
       })),
     };
   }
@@ -1301,7 +1318,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     const totalRev = trend.reduce((s: number, d: any) => s + (d.revenue ?? 0), 0);
     const totalOrd = trend.reduce((s: number, d: any) => s + (d.orders ?? 0), 0);
     return {
-      period: { from, to },
+      period: { from: this.toIST(from, true), to: this.toIST(to, true) },
       totalRevenue: totalRev,
       totalOrders: totalOrd,
       days: trend.map((d: any) => ({ date: d.date, revenue: d.revenue, orders: d.orders })),
@@ -1319,7 +1336,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     ]);
     const o = orders as any; const c = customers as any; const p = products as any;
     return {
-      period: { from, to },
+      period: { from: this.toIST(from, true), to: this.toIST(to, true) },
       orders: { total: o.totalOrders, revenue: o.totalRevenue, avgOrderValue: Math.round(o.avgOrderValue ?? 0), delivered: o.completedOrders, pending: o.pendingOrders, cancelled: o.cancelledOrders, cod: o.codOrders, prepaid: o.prepaidOrders },
       customers: { total: c.totalCustomers, newCustomers: c.newCustomers, returning: c.returningCustomers },
       inventory: { outOfStock: p.outOfStockProducts, lowStock: p.lowStockProducts },
@@ -1338,7 +1355,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     ]);
     const filter = (name: string) => !searchTerm || name.toLowerCase().includes(searchTerm.toLowerCase());
     return {
-      period: { from, to },
+      period: { from: this.toIST(from, true), to: this.toIST(to, true) },
       online: ((onlineMetrics as any).topSellingProducts ?? []).filter((p: any) => filter(p.name)).slice(0, limit).map((p: any) => ({ name: p.name, unitsSold: p.quantitySold, revenue: p.revenue })),
       store: storeTop.filter((p: any) => filter(p.name)).slice(0, limit).map((p: any) => ({ name: p.name, unitsSold: p.quantitySold, revenue: p.revenue })),
     };
@@ -1394,7 +1411,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     ]);
     const agg = totalAgg[0] ?? { totalRevenue: 0, count: 0, walkIn: 0, delivery: 0 };
     return {
-      period: { from, to },
+      period: { from: this.toIST(from, true), to: this.toIST(to, true) },
       summary: { count: agg.count, totalRevenue: agg.totalRevenue, walkIn: agg.walkIn, delivery: agg.delivery },
       sales: sales.map((s: any) => ({
         saleNumber: s.saleNumber,
@@ -1404,7 +1421,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         customerName: s.customerName,
         customerPhone: s.customerPhone,
         paymentMethod: s.paymentMethod,
-        date: s.dueDate ?? s.createdAt,
+        date: this.toIST(s.dueDate ?? s.createdAt),
         loggedBy: s.loggedBy,
       })),
     };
@@ -1429,7 +1446,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       paymentMethod: s.paymentMethod,
       notes: s.notes,
       loggedBy: s.loggedBy,
-      date: s.dueDate ?? s.createdAt,
+      date: this.toIST(s.dueDate ?? s.createdAt),
       items: (s.items ?? []).map((i: any) => ({ name: i.name, qty: i.quantity, price: i.price, total: i.total })),
     };
   }
@@ -1470,7 +1487,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     ]).exec().then((r: any[]) => [new Map(r.map((x: any) => [x._id, x.total]))]).catch(() => [new Map()]);
 
     return {
-      period: { from, to },
+      period: { from: this.toIST(from, true), to: this.toIST(to, true) },
       agents: rows.map((r: any) => {
         const u = userMap.get(r._id);
         return {
@@ -1508,7 +1525,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
 
     return {
       count: orders.length,
-      period: { from, to },
+      period: { from: this.toIST(from, true), to: this.toIST(to, true) },
       orders: orders.map((o: any) => ({
         orderNumber: o.orderNumber,
         customer: (o.shippingAddress as any)?.name ?? 'N/A',
@@ -1516,7 +1533,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         amountCollected: o.amountCollected,
         paymentMethod: o.paymentMethod,
         collectionStatus: o.collectionStatus,
-        deliveredAt: o.deliveredAt,
+        deliveredAt: this.toIST(o.deliveredAt),
         agent: agentMap.get(String(o.assignedDeliveryUserId)) ?? 'Unassigned',
       })),
     };
@@ -1542,7 +1559,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         customer: (o.shippingAddress as any)?.name ?? 'N/A',
         amountCollected: o.amountCollected,
         paymentMethod: o.paymentMethod,
-        deliveredAt: o.deliveredAt,
+        deliveredAt: this.toIST(o.deliveredAt),
       })),
     };
   }
@@ -1584,7 +1601,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         amountRupees: +((t.amount ?? 0) / 100).toFixed(2),
         reason: t.reason,
         orderId: t.orderId,
-        createdAt: t.createdAt,
+        createdAt: this.toIST(t.createdAt),
       })),
     };
   }
@@ -1600,7 +1617,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       phone: (s.user as any)?.phone,
       frequency: s.frequency,
       totalAmount: s.totalAmount,
-      nextDeliveryDate: s.nextDeliveryDate,
+      nextDeliveryDate: this.toIST(s.nextDeliveryDate, true),
       items: (s.items ?? []).map((i: any) => `${i.name} x${i.quantity}`),
     });
     return {
@@ -1627,9 +1644,9 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     return {
       customer: { name: user.name, phone: user.phone },
       status: s.status, frequency: s.frequency,
-      totalAmount: s.totalAmount, nextDeliveryDate: s.nextDeliveryDate,
+      totalAmount: s.totalAmount, nextDeliveryDate: this.toIST(s.nextDeliveryDate, true),
       items: (s.items ?? []).map((i: any) => ({ name: i.name, qty: i.quantity, price: i.price })),
-      createdAt: s.createdAt, updatedAt: s.updatedAt,
+      createdAt: this.toIST(s.createdAt), updatedAt: this.toIST(s.updatedAt),
     };
   }
 
@@ -1658,8 +1675,8 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         gateway: p.gateway,
         failureReason: p.failureReason,
         refundAmount: p.refundAmount,
-        refundedAt: p.refundedAt,
-        createdAt: p.createdAt,
+        refundedAt: this.toIST(p.refundedAt),
+        createdAt: this.toIST(p.createdAt),
       })),
     };
   }
@@ -1675,14 +1692,14 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     return {
       count: payments.length,
       totalRefundedRupees: total,
-      period: { from, to },
+      period: { from: this.toIST(from, true), to: this.toIST(to, true) },
       refunds: payments.map((p: any) => ({
         customer: (p.user as any)?.name ?? (p.user as any)?.phone ?? 'N/A',
         phone: (p.user as any)?.phone,
         orderNumber: (p.order as any)?.orderNumber,
         refundAmount: p.refundAmount,
         refundReason: p.refundReason,
-        refundedAt: p.refundedAt,
+        refundedAt: this.toIST(p.refundedAt),
       })),
     };
   }
@@ -1710,7 +1727,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         ipAddress: l.ipAddress,
         previousValues: l.previousValues,
         newValues: l.newValues,
-        timestamp: l.createdAt,
+        timestamp: this.toIST(l.createdAt),
       })),
     };
   }
@@ -1727,7 +1744,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         name: u.name, email: u.email, phone: u.phone,
         role: u.role, department: u.departmentType,
         store: (u.store as any)?.name,
-        isActive: u.isActive, lastLoginAt: u.lastLoginAt, lastLoginIp: u.lastLoginIp,
+        isActive: u.isActive, lastLoginAt: this.toIST(u.lastLoginAt), lastLoginIp: u.lastLoginIp,
       })),
     };
   }
@@ -1741,7 +1758,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       const expired = new Date(c.validUntil) < now;
       const active = c.isActive && !expired && !notYetValid;
       const statusKey = active ? 'active' : notYetValid ? 'upcoming' : expired ? 'expired' : 'inactive';
-      return { statusKey, coupon: { code: c.code, discountType: c.discountType, discountValue: c.discountValue, usedCount: c.usedCount ?? 0, maxUsageCount: c.maxUsageCount, status: statusKey, minOrderAmount: c.minOrderAmount, validFrom: c.validFrom, validUntil: c.validUntil } };
+      return { statusKey, coupon: { code: c.code, discountType: c.discountType, discountValue: c.discountValue, usedCount: c.usedCount ?? 0, maxUsageCount: c.maxUsageCount, status: statusKey, minOrderAmount: c.minOrderAmount, validFrom: this.toIST(c.validFrom, true), validUntil: this.toIST(c.validUntil, true) } };
     });
     const filtered = statusFilter ? rows.filter((r) => r.statusKey === statusFilter) : rows;
     const summary = { total: rows.length, active: rows.filter((r) => r.statusKey === 'active').length, upcoming: rows.filter((r) => r.statusKey === 'upcoming').length, expired: rows.filter((r) => r.statusKey === 'expired').length };
@@ -1764,7 +1781,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         phone: (o.user as any)?.phone,
         orderNumber: o.orderNumber,
         discount: o.discount,
-        usedAt: o.createdAt,
+        usedAt: this.toIST(o.createdAt),
       })),
     };
   }
@@ -1790,7 +1807,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         type: f.type,
         message: (f.message ?? '').slice(0, 150),
         status: f.status,
-        createdAt: f.createdAt,
+        createdAt: this.toIST(f.createdAt),
       })),
     };
   }
@@ -1829,7 +1846,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         direction: m.direction,
         type: m.messageType,
         text: m.content?.text ?? m.content?.caption ?? m.content?.templateName ?? '[media]',
-        timestamp: m.createdAt,
+        timestamp: this.toIST(m.createdAt),
       })),
     };
   }
@@ -1846,7 +1863,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       saleNumber: (r.sale as any)?.saleNumber,
       saleTotal: (r.sale as any)?.total,
       message: r.message,
-      dueAt: r.dueAt,
+      dueAt: this.toIST(r.dueAt),
     });
     return {
       overdueCount: overdue.length,
