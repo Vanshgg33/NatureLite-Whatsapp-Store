@@ -120,33 +120,15 @@ const ADMIN_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
-    name: 'search_low_stock_products',
-    description: 'Find products with stock at or below their low-stock threshold. Use for "low stock", "running low", "need restock".',
+    name: 'get_products_by_stock',
+    description: 'Find products by stock status. status=low: at/below threshold ("low stock", "running low", "need restock"); status=out: zero stock ("out of stock", "no stock"); status=in: available ("in stock", "available", "which X can I sell").',
     parameters: {
       type: O,
       properties: {
+        status: { type: S, description: 'low | out | in' },
         searchTerm: { type: S, description: 'Optional product name filter e.g. "oil", "ghee"' },
       },
-    },
-  },
-  {
-    name: 'search_out_of_stock_products',
-    description: 'Find products with zero stock. Use for "out of stock", "no stock".',
-    parameters: {
-      type: O,
-      properties: {
-        searchTerm: { type: S, description: 'Optional product name filter' },
-      },
-    },
-  },
-  {
-    name: 'search_in_stock_products',
-    description: 'Find products currently available (stock > 0 or untracked). Use for "available", "in stock", "which X can I sell".',
-    parameters: {
-      type: O,
-      properties: {
-        searchTerm: { type: S, description: 'Optional product name filter' },
-      },
+      required: ['status'],
     },
   },
   {
@@ -231,32 +213,17 @@ const ADMIN_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
-    name: 'get_new_customers',
-    description: 'Get customers who joined in a date range.',
+    name: 'get_customers_filtered',
+    description: 'Get customers by type: new=joined recently ("new customers", "joined this week"); inactive=not ordered in N days ("churned", "inactive", "haven\'t ordered"); blocked=blocked accounts.',
     parameters: {
       type: O,
       properties: {
-        from: { type: S, description: 'ISO date start' },
-        to: { type: S, description: 'ISO date end' },
-        days: { type: N, description: 'Lookback days if no from/to' },
-      },
-    },
-  },
-  {
-    name: 'get_inactive_customers',
-    description: 'Get customers who have not placed an order in N days (churned/inactive).',
-    parameters: {
-      type: O,
-      properties: {
-        days: { type: N, description: 'Inactivity threshold days, default 30' },
+        type: { type: S, description: 'new | inactive | blocked' },
+        days: { type: N, description: 'Lookback days for new (default 7); inactivity threshold for inactive (default 30)' },
         limit: { type: N, description: 'Max results, default 20' },
       },
+      required: ['type'],
     },
-  },
-  {
-    name: 'get_blocked_customers',
-    description: 'List all blocked customers with reason.',
-    parameters: { type: O, properties: {} },
   },
   {
     name: 'get_revenue_trend',
@@ -330,97 +297,52 @@ const ADMIN_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
-    name: 'get_delivery_collections',
-    description: 'Get cash/UPI collections ledger per delivery agent for a period.',
+    name: 'get_delivery_data',
+    description: 'Delivery agent data. view=collections: cash/UPI collected per agent for a period; view=history: delivered orders with amounts and settlement status; view=pending: unsettled cash for a specific agent.',
     parameters: {
       type: O,
       properties: {
-        agentName: { type: S, description: 'Filter by delivery agent name' },
-        from: { type: S, description: 'ISO date start' },
-        to: { type: S, description: 'ISO date end' },
-      },
-    },
-  },
-  {
-    name: 'get_delivery_history',
-    description: 'Get delivered orders with agent assignment, amounts collected, settlement status.',
-    parameters: {
-      type: O,
-      properties: {
+        view: { type: S, description: 'collections | history | pending' },
         agentName: { type: S, description: 'Filter by delivery agent name' },
         from: { type: S, description: 'ISO date start' },
         to: { type: S, description: 'ISO date end' },
         limit: { type: N, description: 'Max results, default 20' },
       },
+      required: ['view'],
     },
   },
   {
-    name: 'get_delivery_pending_collections',
-    description: 'Get unsettled (pending) cash collections for a specific delivery agent.',
+    name: 'get_wallet',
+    description: 'Wallet data. type=balances: customers with unused wallet credit (amounts in paise ÷ 100 = rupees); type=transactions: credit/debit history for a specific customer (requires phone or customerName).',
     parameters: {
       type: O,
       properties: {
-        agentName: { type: S, description: 'Delivery agent name' },
+        type: { type: S, description: 'balances | transactions' },
+        phone: { type: S, description: 'Customer phone (required for transactions)' },
+        customerName: { type: S, description: 'Customer name (for transactions)' },
+        limit: { type: N, description: 'Max results' },
       },
+      required: ['type'],
     },
   },
   {
-    name: 'get_wallet_balances',
-    description: 'Get customers with unused wallet credit balance.',
+    name: 'get_subscriptions',
+    description: 'Subscription data. Without phone/customerName: all active/paused subscriptions and upcoming deliveries. With phone or customerName: that customer\'s subscription detail.',
     parameters: {
       type: O,
       properties: {
-        limit: { type: N, description: 'Max customers, default 20' },
-      },
-    },
-  },
-  {
-    name: 'get_wallet_transactions',
-    description: 'Get wallet credit/debit history for a specific customer.',
-    parameters: {
-      type: O,
-      properties: {
-        phone: { type: S, description: 'Customer phone number' },
-        customerName: { type: S, description: 'Customer name' },
-        limit: { type: N, description: 'Max transactions, default 20' },
-      },
-    },
-  },
-  {
-    name: 'get_subscription_data',
-    description: 'Get active and paused subscriptions with upcoming deliveries.',
-    parameters: { type: O, properties: {} },
-  },
-  {
-    name: 'get_subscription_detail',
-    description: 'Get subscription details for a specific customer.',
-    parameters: {
-      type: O,
-      properties: {
-        phone: { type: S, description: 'Customer phone' },
-        customerName: { type: S, description: 'Customer name' },
+        phone: { type: S, description: 'Customer phone for detail lookup' },
+        customerName: { type: S, description: 'Customer name for detail lookup' },
       },
     },
   },
   {
     name: 'get_payments',
-    description: 'Get payment records filtered by status (failed, pending, success, refunded). Use for payment failures, successful payments, refund queries.',
+    description: 'Get payment records by status: failed | pending | success | refunded. When status=refunded, returns refund-specific details (refund amount, reason, refund date). Use for payment failures, successful payments, and refund queries.',
     parameters: {
       type: O,
       properties: {
         status: { type: S, description: 'failed | pending | success | refunded' },
-        from: { type: S, description: 'ISO date start' },
-        to: { type: S, description: 'ISO date end' },
-        limit: { type: N, description: 'Max results, default 20' },
-      },
-    },
-  },
-  {
-    name: 'get_refund_history',
-    description: 'Get all refunded payments with amounts, reasons, and dates.',
-    parameters: {
-      type: O,
-      properties: {
         from: { type: S, description: 'ISO date start' },
         to: { type: S, description: 'ISO date end' },
         limit: { type: N, description: 'Max results, default 20' },
@@ -552,7 +474,12 @@ Call multiple tools in a single turn when a question spans domains — e.g., cus
 - "who logged in / login history" → search_audit_logs with action="admin.login"
 - IMS / in-store stock → get_store_stock
 - PMS / RMS / raw materials / processing → get_raw_materials or get_raw_material_snapshots
-- wallet balance → get_wallet_balances; wallet history → get_wallet_transactions (amounts are in paise ÷ 100 = rupees)
+- low stock / out of stock / in stock → get_products_by_stock with status=low|out|in
+- wallet balance → get_wallet(type="balances"); wallet history → get_wallet(type="transactions", phone=...)
+- new/inactive/blocked customers → get_customers_filtered with type=new|inactive|blocked
+- delivery collections/history/pending → get_delivery_data with view=collections|history|pending
+- subscriptions → get_subscriptions (add phone/customerName for one customer's detail)
+- refunds → get_payments(status="refunded")
 - email report → preview_email_report first, send only after user confirms
 
 ## Precision rules — read carefully
@@ -742,16 +669,13 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     const TTL: Record<string, number> = {
       get_dashboard_summary: 45, search_orders: 45, get_order_detail: 30,
       get_orders_by_status: 45, compare_periods: 90, search_products: 120,
-      get_product_detail: 120, search_low_stock_products: 90, search_out_of_stock_products: 90,
-      search_in_stock_products: 90, get_store_stock: 60, get_raw_materials: 90,
-      get_raw_material_snapshots: 120, get_categories: 300, get_stores: 300,
-      search_customers: 120, get_customer_orders: 60, get_top_customers: 300,
-      get_new_customers: 60, get_inactive_customers: 180, get_blocked_customers: 120,
-      get_revenue_trend: 90, get_analytics_period: 300, get_top_selling_products: 300,
-      search_abandoned_carts: 90, get_store_sales: 90, get_sale_detail: 60,
-      get_delivery_collections: 60, get_delivery_history: 60, get_delivery_pending_collections: 45,
-      get_wallet_balances: 45, get_wallet_transactions: 60, get_subscription_data: 90,
-      get_subscription_detail: 60, get_payments: 45, get_refund_history: 90,
+      get_product_detail: 120, get_products_by_stock: 90, get_store_stock: 60,
+      get_raw_materials: 90, get_raw_material_snapshots: 120, get_categories: 300,
+      get_stores: 300, search_customers: 120, get_customer_orders: 60,
+      get_top_customers: 300, get_customers_filtered: 90, get_revenue_trend: 90,
+      get_analytics_period: 300, get_top_selling_products: 300, search_abandoned_carts: 90,
+      get_store_sales: 90, get_sale_detail: 60, get_delivery_data: 60,
+      get_wallet: 60, get_subscriptions: 90, get_payments: 60,
       search_audit_logs: 60, get_admin_users: 300, get_coupon_list: 180,
       get_coupon_usage: 90, get_feedback_list: 60, get_whatsapp_queue: 30,
       get_whatsapp_messages: 30, get_reminders: 30,
@@ -766,52 +690,67 @@ export class AdminChatbotService implements OnApplicationBootstrap {
 
   private async _runTool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     switch (name) {
-      case 'get_dashboard_summary':        return this.toolDashboard();
-      case 'search_orders':                return this.toolSearchOrders(args);
-      case 'get_order_detail':             return this.toolOrderDetail(args);
-      case 'get_orders_by_status':         return this.toolOrdersByStatus();
-      case 'compare_periods':              return this.toolComparePeriods(args);
-      case 'search_products':              return this.toolSearchProducts(args);
-      case 'get_product_detail':           return this.toolProductDetail(args);
-      case 'search_low_stock_products':    return this.toolLowStock(args);
-      case 'search_out_of_stock_products': return this.toolOutOfStock(args);
-      case 'search_in_stock_products':     return this.toolInStock(args);
-      case 'get_store_stock':              return this.toolStoreStock(args);
-      case 'get_raw_materials':            return this.toolRawMaterials(args);
-      case 'get_raw_material_snapshots':   return this.toolRawMaterialSnapshots(args);
-      case 'get_categories':               return this.toolCategories();
-      case 'get_stores':                   return this.toolStores();
-      case 'search_customers':             return this.toolSearchCustomers(args);
-      case 'get_customer_orders':          return this.toolCustomerOrders(args);
-      case 'get_top_customers':            return this.toolTopCustomers(args);
-      case 'get_new_customers':            return this.toolNewCustomers(args);
-      case 'get_inactive_customers':       return this.toolInactiveCustomers(args);
-      case 'get_blocked_customers':        return this.toolBlockedCustomers();
-      case 'get_revenue_trend':            return this.toolRevenueTrend(args);
-      case 'get_analytics_period':         return this.toolAnalyticsPeriod(args);
-      case 'get_top_selling_products':     return this.toolTopSelling(args);
-      case 'search_abandoned_carts':       return this.toolAbandonedCarts(args);
-      case 'get_store_sales':              return this.toolStoreSales(args);
-      case 'get_sale_detail':              return this.toolSaleDetail(args);
-      case 'get_delivery_collections':     return this.toolDeliveryCollections(args);
-      case 'get_delivery_history':         return this.toolDeliveryHistory(args);
-      case 'get_delivery_pending_collections': return this.toolPendingCollections(args);
-      case 'get_wallet_balances':          return this.toolWalletBalances(args);
-      case 'get_wallet_transactions':      return this.toolWalletTransactions(args);
-      case 'get_subscription_data':        return this.toolSubscriptionData();
-      case 'get_subscription_detail':      return this.toolSubscriptionDetail(args);
-      case 'get_payments':                 return this.toolPayments(args);
-      case 'get_refund_history':           return this.toolRefundHistory(args);
-      case 'search_audit_logs':            return this.toolAuditLogs(args);
-      case 'get_admin_users':              return this.toolAdminUsers(args);
-      case 'get_coupon_list':              return this.toolCouponList(args);
-      case 'get_coupon_usage':             return this.toolCouponUsage(args);
-      case 'get_feedback_list':            return this.toolFeedbackList(args);
-      case 'get_whatsapp_queue':           return this.toolWhatsAppQueue();
-      case 'get_whatsapp_messages':        return this.toolWhatsAppMessages(args);
-      case 'get_reminders':               return this.toolReminders();
-      case 'preview_email_report':         return this.toolPreviewEmail(args);
-      case 'send_email_report':            return this.toolSendEmail(args);
+      case 'get_dashboard_summary':    return this.toolDashboard();
+      case 'search_orders':            return this.toolSearchOrders(args);
+      case 'get_order_detail':         return this.toolOrderDetail(args);
+      case 'get_orders_by_status':     return this.toolOrdersByStatus();
+      case 'compare_periods':          return this.toolComparePeriods(args);
+      case 'search_products':          return this.toolSearchProducts(args);
+      case 'get_product_detail':       return this.toolProductDetail(args);
+      case 'get_products_by_stock': {
+        const s = String(args.status ?? '').toLowerCase();
+        if (s === 'out') return this.toolOutOfStock(args);
+        if (s === 'in')  return this.toolInStock(args);
+        return this.toolLowStock(args); // 'low' default
+      }
+      case 'get_store_stock':          return this.toolStoreStock(args);
+      case 'get_raw_materials':        return this.toolRawMaterials(args);
+      case 'get_raw_material_snapshots': return this.toolRawMaterialSnapshots(args);
+      case 'get_categories':           return this.toolCategories();
+      case 'get_stores':               return this.toolStores();
+      case 'search_customers':         return this.toolSearchCustomers(args);
+      case 'get_customer_orders':      return this.toolCustomerOrders(args);
+      case 'get_top_customers':        return this.toolTopCustomers(args);
+      case 'get_customers_filtered': {
+        const t = String(args.type ?? '').toLowerCase();
+        if (t === 'new')     return this.toolNewCustomers(args);
+        if (t === 'blocked') return this.toolBlockedCustomers();
+        return this.toolInactiveCustomers(args); // 'inactive' default
+      }
+      case 'get_revenue_trend':        return this.toolRevenueTrend(args);
+      case 'get_analytics_period':     return this.toolAnalyticsPeriod(args);
+      case 'get_top_selling_products': return this.toolTopSelling(args);
+      case 'search_abandoned_carts':   return this.toolAbandonedCarts(args);
+      case 'get_store_sales':          return this.toolStoreSales(args);
+      case 'get_sale_detail':          return this.toolSaleDetail(args);
+      case 'get_delivery_data': {
+        const v = String(args.view ?? '').toLowerCase();
+        if (v === 'collections') return this.toolDeliveryCollections(args);
+        if (v === 'pending')     return this.toolPendingCollections(args);
+        return this.toolDeliveryHistory(args); // 'history' default
+      }
+      case 'get_wallet':
+        return String(args.type ?? '').toLowerCase() === 'transactions'
+          ? this.toolWalletTransactions(args)
+          : this.toolWalletBalances(args);
+      case 'get_subscriptions':
+        return (args.phone || args.customerName)
+          ? this.toolSubscriptionDetail(args)
+          : this.toolSubscriptionData();
+      case 'get_payments':
+        return String(args.status ?? '').toLowerCase() === 'refunded'
+          ? this.toolRefundHistory(args)
+          : this.toolPayments(args);
+      case 'search_audit_logs':        return this.toolAuditLogs(args);
+      case 'get_admin_users':          return this.toolAdminUsers(args);
+      case 'get_coupon_list':          return this.toolCouponList(args);
+      case 'get_coupon_usage':         return this.toolCouponUsage(args);
+      case 'get_feedback_list':        return this.toolFeedbackList(args);
+      case 'get_whatsapp_queue':       return this.toolWhatsAppQueue();
+      case 'get_whatsapp_messages':    return this.toolWhatsAppMessages(args);
+      case 'get_reminders':            return this.toolReminders();
+      case 'preview_email_report':     return this.toolPreviewEmail(args);
+      case 'send_email_report':        return this.toolSendEmail(args);
       default:
         return { error: `Unknown tool: ${name}` };
     }
@@ -1982,7 +1921,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     const [dashboard, statusCounts, lowStock] = await Promise.allSettled([
       this.executeTool('get_dashboard_summary', {}),
       this.executeTool('get_orders_by_status', {}),
-      this.executeTool('search_low_stock_products', {}),
+      this.executeTool('get_products_by_stock', { status: 'low' }),
     ]);
     const toText = (r: PromiseSettledResult<any>): string | null => {
       if (r.status !== 'fulfilled' || !r.value) return null;
@@ -2065,17 +2004,17 @@ export class AdminChatbotService implements OnApplicationBootstrap {
 
   private async buildReportPreview(reportType: string): Promise<{ subject: string; summary: string; html: string }> {
     const REPORT_MAP: Record<string, { label: string; tools: Array<[string, Record<string, unknown>]> }> = {
-      dashboard:   { label: 'Dashboard Summary',  tools: [['get_dashboard_summary', {}], ['get_orders_by_status', {}], ['search_low_stock_products', {}]] },
+      dashboard:   { label: 'Dashboard Summary',  tools: [['get_dashboard_summary', {}], ['get_orders_by_status', {}], ['get_products_by_stock', { status: 'low' }]] },
       analytics:   { label: 'Analytics Report',   tools: [['get_analytics_period', { days: 30 }]] },
       monthly:     { label: 'Monthly Analytics',  tools: [['get_analytics_period', { days: 30 }]] },
       weekly:      { label: 'Weekly Analytics',   tools: [['get_analytics_period', { days: 7 }]] },
       orders:      { label: 'Orders Summary',     tools: [['search_orders', { limit: 20 }], ['get_orders_by_status', {}]] },
       revenue:     { label: 'Revenue Report',     tools: [['get_revenue_trend', { days: 14 }]] },
-      customers:   { label: 'Customer Report',    tools: [['get_new_customers', { days: 7 }], ['get_top_customers', { limit: 10 }]] },
+      customers:   { label: 'Customer Report',    tools: [['get_customers_filtered', { type: 'new', days: 7 }], ['get_top_customers', { limit: 10 }]] },
       feedback:    { label: 'Feedback Report',    tools: [['get_feedback_list', { limit: 20 }]] },
       coupons:     { label: 'Coupon Report',      tools: [['get_coupon_list', {}]] },
       store_sales: { label: 'Store Sales Report', tools: [['get_store_sales', { days: 30 }]] },
-      inventory:   { label: 'Inventory Report',   tools: [['search_low_stock_products', {}], ['search_out_of_stock_products', {}]] },
+      inventory:   { label: 'Inventory Report',   tools: [['get_products_by_stock', { status: 'low' }], ['get_products_by_stock', { status: 'out' }]] },
       abandoned:   { label: 'Abandoned Carts',    tools: [['search_abandoned_carts', { limit: 30 }]] },
       payments:    { label: 'Payment Report',     tools: [['get_payments', { status: 'failed', limit: 20 }]] },
     };
