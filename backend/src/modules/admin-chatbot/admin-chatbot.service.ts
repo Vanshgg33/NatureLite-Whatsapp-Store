@@ -651,6 +651,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         model: modelName,
         systemInstruction: ADMIN_SYSTEM_PROMPT,
         tools: [{ functionDeclarations: ADMIN_TOOL_DECLARATIONS }],
+        contents: [],
         ttlSeconds: 3600,
       });
       this._geminiCache = cache;
