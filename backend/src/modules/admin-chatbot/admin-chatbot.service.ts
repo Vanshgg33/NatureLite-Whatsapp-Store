@@ -543,6 +543,8 @@ export class AdminChatbotService implements OnApplicationBootstrap {
   private _geminiCache: any = null;
   private _cacheExpiry: Date | null = null;
   private _cachedModelName: string | null = null;
+  private _cacheCreationPromise: Promise<any> | null = null;
+  private _cacheFailedUntil: number = 0;
 
   constructor(
     private readonly productRepository: ProductRepository,
@@ -637,6 +639,8 @@ export class AdminChatbotService implements OnApplicationBootstrap {
   private async getOrRefreshCache(apiKey: string, modelName: string): Promise<any> {
     const now = Date.now();
     const tenMinutes = 10 * 60 * 1000;
+
+    // Return existing cache if still valid
     if (
       this._geminiCache &&
       this._cacheExpiry &&
@@ -645,25 +649,39 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     ) {
       return this._geminiCache;
     }
-    try {
-      const mgr = new GoogleAICacheManager(apiKey);
-      const cache = await mgr.create({
-        model: modelName,
-        systemInstruction: ADMIN_SYSTEM_PROMPT,
-        tools: [{ functionDeclarations: ADMIN_TOOL_DECLARATIONS }],
-        contents: [],
-        ttlSeconds: 3600,
-      });
-      this._geminiCache = cache;
-      this._cacheExpiry = new Date(cache.expireTime as string);
-      this._cachedModelName = modelName;
-      this.logger.log(`[Admin AI] Context cache created, expires ${this._cacheExpiry.toISOString()}`);
-      return cache;
-    } catch (err) {
-      this.logger.warn(`[Admin AI] Context cache failed (${(err as Error).message}), falling back to uncached`);
-      this._geminiCache = null;
-      return null;
-    }
+
+    // Cooldown: don't retry within 5 minutes of a failure
+    if (now < this._cacheFailedUntil) return null;
+
+    // Reuse in-flight creation to prevent race condition
+    if (this._cacheCreationPromise) return this._cacheCreationPromise;
+
+    this._cacheCreationPromise = (async () => {
+      try {
+        const mgr = new GoogleAICacheManager(apiKey);
+        const cache = await mgr.create({
+          model: modelName,
+          systemInstruction: ADMIN_SYSTEM_PROMPT,
+          tools: [{ functionDeclarations: ADMIN_TOOL_DECLARATIONS }],
+          contents: [],
+          ttlSeconds: 3600,
+        });
+        this._geminiCache = cache;
+        this._cacheExpiry = new Date(cache.expireTime as string);
+        this._cachedModelName = modelName;
+        this.logger.log(`[Admin AI] Context cache created, expires ${this._cacheExpiry.toISOString()}`);
+        return cache;
+      } catch (err) {
+        this.logger.warn(`[Admin AI] Context cache failed (${(err as Error).message}), retrying in 5 min`);
+        this._geminiCache = null;
+        this._cacheFailedUntil = Date.now() + 5 * 60 * 1000;
+        return null;
+      } finally {
+        this._cacheCreationPromise = null;
+      }
+    })();
+
+    return this._cacheCreationPromise;
   }
 
   private async persistSession(adminId: string, userMsg: string, reply: string) {
@@ -1717,8 +1735,8 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         performer: l.performedByName ?? l.performedBy,
         target: l.targetName,
         ipAddress: l.ipAddress,
-        previousValues: l.previousValues,
-        newValues: l.newValues,
+        previousValues: l.previousValues ? JSON.stringify(l.previousValues).slice(0, 300) : null,
+        newValues: l.newValues ? JSON.stringify(l.newValues).slice(0, 300) : null,
         timestamp: this.toIST(l.createdAt),
       })),
     };
@@ -1999,7 +2017,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
 
   async getHistory(adminId: string) {
     const session = await this.adminChatSessionRepository.getByAdminId(adminId);
-    return (session?.messages ?? []).slice(-50);
+    return (session?.messages ?? []).slice(-20);
   }
 
   async clearHistory(adminId: string): Promise<void> {
