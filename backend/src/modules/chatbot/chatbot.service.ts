@@ -5450,14 +5450,9 @@ export class ChatbotService implements OnModuleInit {
 
     const rating = this.parseRatingFromText(inputText);
     const trimmed = inputText.trim();
-    // Only capture as feedback if it's an explicit numeric rating, OR a very short
-    // message (≤ 40 chars) that doesn't contain shopping/order intent keywords.
-    // Long messages and anything mentioning products/orders fall through to AI.
-    const SHOPPING_KEYWORDS = /\b(order|ghee|dal|flour|oil|spice|grain|want|buy|add|cart|price|kg|ltr|litre|gram|packet|bottle|deliver|checkout)\b/i;
-    const looksLikeFeedback =
-      rating !== null ||
-      (trimmed.length >= 3 && trimmed.length <= 40 && !SHOPPING_KEYWORDS.test(trimmed));
-    if (!looksLikeFeedback) return false;
+    // Only intercept if there's an explicit numeric/sentiment rating (1-5, "good", "great", etc.)
+    // Any other text falls through to the AI so real questions don't get swallowed as feedback.
+    if (rating === null) return false;
 
     try {
       await this.feedbackService.create(session.user.toString(), {
