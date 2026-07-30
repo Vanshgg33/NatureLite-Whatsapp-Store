@@ -46,7 +46,7 @@ export class WishlistService {
         product: productObjId as Types.ObjectId,
         name: product.name,
         slug: product.slug,
-        image: product.images[0],
+        image: product.images?.[0],
         price: product.price,
         addedAt: new Date(),
       };

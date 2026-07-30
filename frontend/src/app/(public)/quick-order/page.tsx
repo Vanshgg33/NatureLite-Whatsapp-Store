@@ -124,10 +124,10 @@ export default function QuickOrderPage() {
       if (p.variants?.length > 0) {
         p.variants.forEach((v, vIdx) => {
           if (!v.isActive) return;
-          list.push({ id: `${p._id}-${vIdx}`, productId: p._id, product: p, name: p.name, slug: p.slug, variantName: v.name, variantSku: v.sku, sku: v.sku, price: v.price, compareAtPrice: v.compareAtPrice, stock: v.stock, image: (v.images && v.images.length > 0) ? v.images[0] : p.images[0], category: catId });
+          list.push({ id: `${p._id}-${vIdx}`, productId: p._id, product: p, name: p.name, slug: p.slug, variantName: v.name, variantSku: v.sku, sku: v.sku, price: v.price, compareAtPrice: v.compareAtPrice, stock: v.stock, image: (v.images && v.images.length > 0) ? v.images[0] : p.images?.[0], category: catId });
         });
       } else {
-        list.push({ id: p._id, productId: p._id, product: p, name: p.name, slug: p.slug, sku: p.sku, price: p.price, compareAtPrice: p.compareAtPrice, stock: p.stock, image: p.images[0], category: catId });
+        list.push({ id: p._id, productId: p._id, product: p, name: p.name, slug: p.slug, sku: p.sku, price: p.price, compareAtPrice: p.compareAtPrice, stock: p.stock, image: p.images?.[0], category: catId });
       }
     });
     return list;

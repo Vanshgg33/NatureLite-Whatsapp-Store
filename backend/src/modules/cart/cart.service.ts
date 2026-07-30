@@ -227,7 +227,7 @@ export class CartService {
         price,
         name: product.name,
         slug: product.slug,
-        image: product.images[0],
+        image: product.images?.[0],
         addedAt: now,
         priceCapturedAt: now,
         gstPercentage: (product.category as any)?.gstPercentage ?? 0,

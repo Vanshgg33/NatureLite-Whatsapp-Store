@@ -227,7 +227,7 @@ export class OrdersService implements OnModuleInit {
             quantity: item.quantity,
             price: resolvedPrice,
             total: resolvedPrice * item.quantity,
-            image: product.images[0],
+            image: product.images?.[0],
             gstAmount: (resolvedPrice * item.quantity * ((product.category as any)?.gstPercentage ?? 0)) / 100,
           };
 
@@ -262,24 +262,22 @@ export class OrdersService implements OnModuleInit {
           collectCategoryId(product.category);
           let price = product.price;
 
-          if (item.variantSku) {
-            const variant = product.variants.find((v) => v.sku === item.variantSku);
-            if (variant) {
-              price = variant.price;
-            }
+          const matchedVariant = item.variantSku
+            ? product.variants.find((v) => v.sku === item.variantSku)
+            : undefined;
+          if (matchedVariant && Number.isFinite(matchedVariant.price) && matchedVariant.price > 0) {
+            price = matchedVariant.price;
           }
 
           const orderItem: OrderItem = {
             product: productIdObj,
             name: product.name,
             variantSku: item.variantSku,
-            variantName: item.variantSku
-              ? product.variants.find((v) => v.sku === item.variantSku)?.name
-              : undefined,
+            variantName: matchedVariant?.name,
             quantity: item.quantity,
             price,
             total: price * item.quantity,
-            image: product.images[0],
+            image: product.images?.[0],
             gstAmount: (price * item.quantity * ((product.category as any)?.gstPercentage ?? 0)) / 100,
           };
 
@@ -1434,7 +1432,7 @@ export class OrdersService implements OnModuleInit {
           quantity: item.quantity,
           price,
           total: lineTotal,
-          image: product.images[0],
+          image: product.images?.[0],
           gstAmount: (lineTotal * gstPct) / 100,
         });
         newSubtotal += lineTotal;

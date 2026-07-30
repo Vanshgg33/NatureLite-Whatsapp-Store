@@ -37,7 +37,7 @@ export class AdminWalletController {
     @Param('userId') userId: string,
     @Body() dto: AdminAdjustWalletDto,
   ): Promise<WalletBalanceResponse> {
-    const amountPaise = dto.amount * 100;
+    const amountPaise = Math.round(dto.amount * 100);
     const wallet = await this.walletService.credit(userId, amountPaise, dto.note || 'manual_admin_credit');
 
     return {
@@ -51,7 +51,7 @@ export class AdminWalletController {
     @Param('userId') userId: string,
     @Body() dto: AdminAdjustWalletDto,
   ): Promise<WalletBalanceResponse> {
-    const amountPaise = dto.amount * 100;
+    const amountPaise = Math.round(dto.amount * 100);
     const wallet = await this.walletService.debit(userId, amountPaise, dto.note || 'manual_admin_debit');
 
     return {

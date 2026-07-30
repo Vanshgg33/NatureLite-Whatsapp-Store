@@ -4145,7 +4145,7 @@ export class ChatbotService implements OnModuleInit {
         `${priceLine}\n` +
         `\uD83D\uDFE2 In stock`;
       try {
-        if (prod.images[0]) {
+        if (prod.images?.[0]) {
           await this.whatsappService.sendMediaMessage({
             phone,
             mediaType: 'image',
@@ -4245,7 +4245,7 @@ export class ChatbotService implements OnModuleInit {
       `${stockBadge}\n\n` +
       `${(product.description || '').toString().slice(0, 600)}`;
 
-    if (product.images[0]) {
+    if (product.images?.[0]) {
       await this.whatsappService.sendMediaMessage({
         phone,
         mediaType: 'image',
@@ -4264,7 +4264,7 @@ export class ChatbotService implements OnModuleInit {
     // \u2014 surface a recovery action immediately instead of letting the customer
     // discover it 3 screens later at order placement.
     if (!inStock) {
-      const followUpBody = product.images[0]
+      const followUpBody = product.images?.[0]
         ? `${stockBadge} \u00B7 "${product.name}" is unavailable right now.`
         : `${caption}\n\n${stockBadge} \u00B7 unavailable right now.`;
       await this.whatsappService.sendInteractiveButtons({
@@ -4278,7 +4278,7 @@ export class ChatbotService implements OnModuleInit {
       return;
     }
 
-    const followUpBody = product.images[0]
+    const followUpBody = product.images?.[0]
       ? 'Ready to add?'
       : `${caption}\n\nReady to add?`;
 
