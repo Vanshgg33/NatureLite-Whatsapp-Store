@@ -120,26 +120,32 @@ export default function ImmersiveHeroSection() {
     );
   }
 
-  /* ── Photo banner: natural image height, no cropping ── */
+  /* ── Photo banner: all slides pre-rendered and stacked; crossfade via opacity ── */
   return (
-    <div className="relative w-full overflow-hidden">
-      <AnimatePresence mode="sync">
+    <div className="relative w-full overflow-hidden" style={{ background: '#1a1a1a' }}>
+      {activeBanners.map((b, i) => (
         <motion.div
-          key={banner.id}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          key={b.id}
+          animate={{ opacity: i === index ? 1 : 0 }}
+          initial={false}
           transition={{ duration: 0.6 }}
+          style={{
+            position: i === 0 ? 'relative' : 'absolute',
+            inset: 0,
+            width: '100%',
+            zIndex: i === index ? 1 : 0,
+            pointerEvents: i === index ? 'auto' : 'none',
+          }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={banner.imageUrl}
-            alt={banner.headline || ''}
+            src={b.imageUrl}
+            alt={b.headline || ''}
+            loading="eager"
             style={{ width: '100%', height: 'auto', display: 'block' }}
-            loading={index === 0 ? 'eager' : 'lazy'}
           />
         </motion.div>
-      </AnimatePresence>
+      ))}
       {activeBanners.length > 1 && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1 z-10">
           {activeBanners.map((_, i) => (
