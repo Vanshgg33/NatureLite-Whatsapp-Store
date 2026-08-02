@@ -212,10 +212,11 @@ export default function PackingDetailPage() {
               </div>
             ))}
             {order.items.map((item, idx) => {
+              const itemProductId = typeof item.product === 'string' ? item.product : (item.product as any)?._id;
               const change = isRepack
                 ? editChanges.find(
                     (c) =>
-                      c.name === item.name &&
+                      (c.productId ? c.productId === itemProductId : c.name === item.name) &&
                       (c.variantSku || '') === (item.variantSku || '') &&
                       c.type !== 'item_removed',
                   )

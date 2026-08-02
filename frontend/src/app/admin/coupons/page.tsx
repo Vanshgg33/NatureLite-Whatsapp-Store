@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { getApiError } from '@/lib/api-error';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Pencil, Tag, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, Pencil, Tag, AlertCircle, ChevronDown, ChevronUp, X as XIcon, Search } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -40,7 +40,7 @@ import {
 } from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { formatCurrency, formatShortDate } from '@/lib/utils';
-import { Coupon, CreateCouponDto } from '@/types';
+import { Coupon, CreateCouponDto, Product, Category, User } from '@/types';
 
 export default function CouponsPage() {
   const [page, setPage] = useState(1);
@@ -61,11 +61,39 @@ export default function CouponsPage() {
     validFrom: new Date().toISOString().split('T')[0],
     validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     isActive: true,
+    isFirstOrderOnly: false,
+    allowedUsers: [] as string[],
+    allowedProducts: [] as string[],
+    allowedCategories: [] as string[],
   });
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
+  const [userSearch, setUserSearch] = useState('');
+  // id → display label for chips (populated when user searches + selects, or shows raw id on edit)
+  const [productLabels, setProductLabels] = useState<Record<string, string>>({});
+  const [userLabels, setUserLabels] = useState<Record<string, string>>({});
 
   const { data, isLoading } = useQuery({
     queryKey: ['coupons', page],
     queryFn: () => api.getCoupons({ page, limit: 20 }),
+  });
+
+  const { data: categoriesData } = useQuery({
+    queryKey: ['categories-all'],
+    queryFn: () => api.getCategories({ limit: 100, isActive: true }),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: productResults } = useQuery({
+    queryKey: ['coupon-product-search', productSearch],
+    queryFn: () => api.getProducts({ search: productSearch, limit: 8, isActive: true }),
+    enabled: productSearch.length >= 2,
+  });
+
+  const { data: userResults } = useQuery({
+    queryKey: ['coupon-user-search', userSearch],
+    queryFn: () => api.getUsers({ search: userSearch, limit: 8 }),
+    enabled: userSearch.length >= 2,
   });
 
   const createMutation = useMutation({
@@ -150,12 +178,23 @@ export default function CouponsPage() {
       validFrom: new Date().toISOString().split('T')[0],
       validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       isActive: true,
+      isFirstOrderOnly: false,
+      allowedUsers: [],
+      allowedProducts: [],
+      allowedCategories: [],
     });
+    setProductLabels({});
+    setUserLabels({});
+    setProductSearch('');
+    setUserSearch('');
+    setShowAdvanced(false);
     setIsDialogOpen(true);
   };
 
   const openEditDialog = (coupon: Coupon) => {
     setEditingCoupon(coupon);
+    const existingProducts = coupon.allowedProducts || [];
+    const existingUsers = coupon.allowedUsers || [];
     setFormData({
       code: coupon.code,
       description: coupon.description,
@@ -167,7 +206,18 @@ export default function CouponsPage() {
       validFrom: coupon.validFrom ? new Date(coupon.validFrom).toISOString().split('T')[0] : '',
       validUntil: coupon.validUntil ? new Date(coupon.validUntil).toISOString().split('T')[0] : '',
       isActive: coupon.isActive,
+      isFirstOrderOnly: coupon.isFirstOrderOnly || false,
+      allowedUsers: existingUsers,
+      allowedProducts: existingProducts,
+      allowedCategories: coupon.allowedCategories || [],
     });
+    // Seed label maps with raw IDs — admin can see what's set (names would require extra fetches)
+    setProductLabels(Object.fromEntries(existingProducts.map((id) => [id, id])));
+    setUserLabels(Object.fromEntries(existingUsers.map((id) => [id, id])));
+    setProductSearch('');
+    setUserSearch('');
+    const hasAdvanced = coupon.isFirstOrderOnly || existingProducts.length > 0 || existingUsers.length > 0 || (coupon.allowedCategories?.length ?? 0) > 0;
+    setShowAdvanced(!!hasAdvanced);
     setIsDialogOpen(true);
   };
 
@@ -175,6 +225,11 @@ export default function CouponsPage() {
     setIsDialogOpen(false);
     setEditingCoupon(null);
     setSubmitError(null);
+    setProductSearch('');
+    setUserSearch('');
+    setProductLabels({});
+    setUserLabels({});
+    setShowAdvanced(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -191,6 +246,10 @@ export default function CouponsPage() {
       validFrom: new Date(formData.validFrom).toISOString(),
       validUntil: new Date(formData.validUntil).toISOString(),
       isActive: formData.isActive,
+      isFirstOrderOnly: formData.isFirstOrderOnly || undefined,
+      allowedUsers: formData.allowedUsers.length > 0 ? formData.allowedUsers : undefined,
+      allowedProducts: formData.allowedProducts.length > 0 ? formData.allowedProducts : undefined,
+      allowedCategories: formData.allowedCategories.length > 0 ? formData.allowedCategories : undefined,
     };
 
     if (editingCoupon) {
@@ -376,7 +435,7 @@ export default function CouponsPage() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
-            <div className="grid gap-4 py-4">
+            <div className="grid gap-4 py-4 max-h-[65vh] overflow-y-auto pr-1">
               {submitError && (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
@@ -548,6 +607,167 @@ export default function CouponsPage() {
                   }
                 />
                 <Label htmlFor="isActive">Active</Label>
+              </div>
+
+              {/* Advanced Restrictions */}
+              <div className="border rounded-lg overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced((v) => !v)}
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-left hover:bg-muted/50 transition-colors"
+                >
+                  <span>Advanced Restrictions</span>
+                  {showAdvanced ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                </button>
+
+                {showAdvanced && (
+                  <div className="px-4 pb-4 pt-2 space-y-5 border-t">
+
+                    {/* First order only */}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-sm font-medium">First Order Only</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Only valid on a customer&apos;s first order</p>
+                      </div>
+                      <Switch
+                        checked={formData.isFirstOrderOnly}
+                        onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, isFirstOrderOnly: checked }))}
+                      />
+                    </div>
+
+                    {/* Restrict to categories */}
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Restrict to Categories</Label>
+                      <p className="text-xs text-muted-foreground mb-2">Leave empty to allow all categories</p>
+                      {categoriesData?.items?.length ? (
+                        <div className="grid grid-cols-2 gap-1.5 max-h-36 overflow-y-auto">
+                          {categoriesData.items.map((cat: Category) => (
+                            <label key={cat._id} className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                className="h-3.5 w-3.5 rounded border-border"
+                                checked={formData.allowedCategories.includes(cat._id)}
+                                onChange={(e) => {
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    allowedCategories: e.target.checked
+                                      ? [...prev.allowedCategories, cat._id]
+                                      : prev.allowedCategories.filter((id) => id !== cat._id),
+                                  }));
+                                }}
+                              />
+                              <span className="truncate">{cat.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">No categories found</p>
+                      )}
+                    </div>
+
+                    {/* Restrict to products */}
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Restrict to Products</Label>
+                      <p className="text-xs text-muted-foreground mb-2">Leave empty to allow all products</p>
+                      {formData.allowedProducts.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                          {formData.allowedProducts.map((id) => (
+                            <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs">
+                              {productLabels[id] || id}
+                              <button type="button" onClick={() => {
+                                setFormData((prev) => ({ ...prev, allowedProducts: prev.allowedProducts.filter((p) => p !== id) }));
+                                setProductLabels((prev) => { const n = { ...prev }; delete n[id]; return n; });
+                              }}>
+                                <XIcon className="h-3 w-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                        <Input
+                          placeholder="Search products..."
+                          value={productSearch}
+                          onChange={(e) => setProductSearch(e.target.value)}
+                          className="pl-8 h-8 text-sm"
+                        />
+                      </div>
+                      {productSearch.length >= 2 && productResults?.items && (
+                        <div className="border rounded-md mt-1 max-h-36 overflow-y-auto divide-y">
+                          {productResults.items.length === 0 ? (
+                            <p className="text-xs text-muted-foreground px-3 py-2">No products found</p>
+                          ) : productResults.items.filter((p: Product) => !formData.allowedProducts.includes(p._id)).map((p: Product) => (
+                            <button
+                              key={p._id}
+                              type="button"
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
+                              onClick={() => {
+                                setFormData((prev) => ({ ...prev, allowedProducts: [...prev.allowedProducts, p._id] }));
+                                setProductLabels((prev) => ({ ...prev, [p._id]: p.name }));
+                                setProductSearch('');
+                              }}
+                            >
+                              {p.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Restrict to users */}
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Restrict to Specific Users</Label>
+                      <p className="text-xs text-muted-foreground mb-2">Leave empty to allow all users</p>
+                      {formData.allowedUsers.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                          {formData.allowedUsers.map((id) => (
+                            <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs">
+                              {userLabels[id] || id}
+                              <button type="button" onClick={() => {
+                                setFormData((prev) => ({ ...prev, allowedUsers: prev.allowedUsers.filter((u) => u !== id) }));
+                                setUserLabels((prev) => { const n = { ...prev }; delete n[id]; return n; });
+                              }}>
+                                <XIcon className="h-3 w-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                        <Input
+                          placeholder="Search by name or phone..."
+                          value={userSearch}
+                          onChange={(e) => setUserSearch(e.target.value)}
+                          className="pl-8 h-8 text-sm"
+                        />
+                      </div>
+                      {userSearch.length >= 2 && userResults?.items && (
+                        <div className="border rounded-md mt-1 max-h-36 overflow-y-auto divide-y">
+                          {userResults.items.length === 0 ? (
+                            <p className="text-xs text-muted-foreground px-3 py-2">No users found</p>
+                          ) : userResults.items.filter((u: User) => !formData.allowedUsers.includes(u._id)).map((u: User) => (
+                            <button
+                              key={u._id}
+                              type="button"
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
+                              onClick={() => {
+                                setFormData((prev) => ({ ...prev, allowedUsers: [...prev.allowedUsers, u._id] }));
+                                setUserLabels((prev) => ({ ...prev, [u._id]: u.name ? `${u.name} (${u.phone})` : u.phone }));
+                                setUserSearch('');
+                              }}
+                            >
+                              <span className="font-medium">{u.name || '—'}</span>
+                              <span className="text-muted-foreground ml-2 text-xs">{u.phone}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
+                )}
               </div>
             </div>
             <DialogFooter>

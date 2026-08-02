@@ -33,6 +33,7 @@ export function CartSummary({
     getTotal,
     applyCoupon,
     removeCoupon,
+    setLocalCoupon,
   } = useCartStore();
   const items = useCartStore((state) => state.items);
 
@@ -96,15 +97,18 @@ export function CartSummary({
             title: 'Coupon applied!',
             description: `You saved ${formatPrice(savedAmount)}`,
           });
-        } else {
-          // Fallback: set local coupon for guests or when server sync fails
-          // Always use 'fixed' because discountAmount is already the calculated value
-          const { setLocalCoupon } = useCartStore.getState();
+        } else if (result.message?.toLowerCase().includes('unauthorized') || result.message?.toLowerCase().includes('not authenticated')) {
+          // Guest user — no server cart, apply locally; backend validates at order creation
           setLocalCoupon(couponInput, savedAmount, 'fixed');
           setCouponInput('');
           toast({
             title: 'Coupon applied!',
             description: `You saved ${formatPrice(savedAmount)}`,
+          });
+        } else {
+          setCouponHint({
+            type: 'error',
+            message: result.message || 'Could not apply coupon. Please try again.',
           });
         }
       } else if (validationResult.minOrderAmount) {

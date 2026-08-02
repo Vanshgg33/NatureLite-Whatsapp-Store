@@ -523,10 +523,6 @@ export default function OrdersPage() {
                 setSelectedStore(city);
                 setCityFilter(city);
                 setPage(1);
-                if (city === 'Raipur') { setAddrCity('Raipur'); setAddrState('Chhattisgarh'); }
-                else if (city === 'Bhilai') { setAddrCity('Bhilai'); setAddrState('Chhattisgarh'); }
-                else if (city === 'Durg') { setAddrCity('Durg'); setAddrState('Chhattisgarh'); }
-                else { setAddrCity(''); setAddrState('Chhattisgarh'); }
               }}
             >
               <option value="">All Cities</option>
@@ -708,7 +704,11 @@ export default function OrdersPage() {
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-col gap-1">
-                              <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
+                              <Badge className={getStatusColor(order.status)}>{
+                            order.status === 'confirmed' ? 'Packed' :
+                            order.status === 'out_for_delivery' ? 'Out for Delivery' :
+                            order.status.charAt(0).toUpperCase() + order.status.slice(1)
+                          }</Badge>
                               {order.scheduledFor && (
                                 <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold leading-none bg-amber-100 text-amber-700 border border-amber-300 w-fit">
                                   SCHEDULED

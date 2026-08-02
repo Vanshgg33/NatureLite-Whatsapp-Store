@@ -8,7 +8,7 @@ import { motion } from 'framer-motion';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ArrowLeft, CreditCard, Banknote, Smartphone, ShieldCheck, Check, ShoppingBag, MapPin } from 'lucide-react';
+import { ArrowLeft, CreditCard, Banknote, Smartphone, ShieldCheck, Check, ShoppingBag, MapPin, Tag, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CartItem } from '@/components/ecommerce/cart-item';
@@ -66,7 +66,7 @@ const PINCODE_CITY_STATE: { prefix: string; city: string; state: string }[] = [
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items, getSubtotal, getGstTotal, getDiscountAmount, getTotal, clearCart } = useCartStore();
+  const { items, getSubtotal, getGstTotal, getDiscountAmount, getTotal, clearCart, couponCode, applyCoupon, removeCoupon, setLocalCoupon } = useCartStore();
   const syncCart = useSyncCartOnAuth();
   const { customer, isAuthenticated } = useCustomerStore();
   const { toast } = useToast();
@@ -75,6 +75,9 @@ export default function CheckoutPage() {
   const [mounted, setMounted] = useState(false);
   const [useWallet, setUseWallet] = useState(false);
   const [walletAmount, setWalletAmount] = useState(0);
+  const [couponInput, setCouponInput] = useState('');
+  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
   const idempotencyKeyRef = useRef<string>('');
   useEffect(() => {
     setMounted(true);
@@ -154,6 +157,40 @@ export default function CheckoutPage() {
     const currentState = (getValues('state') || '').trim();
     if (!currentCity) setValue('city', match.city);
     if (!currentState) setValue('state', match.state);
+  };
+
+  const handleApplyCoupon = async () => {
+    if (!couponInput.trim()) return;
+    setIsValidatingCoupon(true);
+    setCouponError(null);
+    try {
+      const validation = await api.validateCoupon(couponInput, getSubtotal());
+      const savedAmount = validation.discountAmount || 0;
+      if (validation.valid && savedAmount > 0) {
+        const result = await applyCoupon(couponInput);
+        if (result.success) {
+          setCouponInput('');
+          toast({ title: 'Coupon applied!', description: `You saved ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(savedAmount)}` });
+        } else if (result.message?.toLowerCase().includes('unauthorized') || result.message?.toLowerCase().includes('not authenticated')) {
+          setLocalCoupon(couponInput, savedAmount, 'fixed');
+          setCouponInput('');
+          toast({ title: 'Coupon applied!', description: `You saved ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(savedAmount)}` });
+        } else {
+          setCouponError(result.message || 'Could not apply coupon. Please try again.');
+        }
+      } else {
+        setCouponError(validation.message || 'This coupon is not valid');
+      }
+    } catch {
+      setCouponError('Could not validate coupon. Please try again.');
+    } finally {
+      setIsValidatingCoupon(false);
+    }
+  };
+
+  const handleRemoveCoupon = async () => {
+    await removeCoupon();
+    toast({ title: 'Coupon removed' });
   };
 
   const formatPrice = (price: number) => {
@@ -668,6 +705,47 @@ export default function CheckoutPage() {
                     />
                   ))}
                 </div>
+
+                {/* Coupon */}
+                {!couponCode ? (
+                  <div className="mb-4">
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-muted" />
+                        <Input
+                          type="text"
+                          placeholder="Coupon code"
+                          value={couponInput}
+                          onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponError(null); }}
+                          className="pl-10 bg-brand-sand border-0 text-sm h-9"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={handleApplyCoupon}
+                        disabled={isValidatingCoupon || !couponInput.trim()}
+                        variant="outline"
+                        className="border-brand-charcoal text-sm h-9 px-3"
+                      >
+                        {isValidatingCoupon ? '...' : 'Apply'}
+                      </Button>
+                    </div>
+                    {couponError && (
+                      <p className="text-xs text-red-500 mt-1.5">{couponError}</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mb-4 p-2.5 bg-brand-green/10 rounded-xl flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Tag className="w-4 h-4 text-brand-green" />
+                      <span className="font-body text-sm font-medium text-brand-green">{couponCode}</span>
+                      <span className="font-body text-xs text-brand-green">(-{formatPrice(discount)})</span>
+                    </div>
+                    <button type="button" onClick={handleRemoveCoupon} className="p-1 hover:bg-brand-green/10 rounded cursor-pointer">
+                      <X className="w-4 h-4 text-brand-green" />
+                    </button>
+                  </div>
+                )}
 
                 {/* Totals */}
                 <div className="space-y-3 pt-4 border-t border-brand-border">

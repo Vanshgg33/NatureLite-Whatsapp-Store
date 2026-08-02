@@ -132,7 +132,7 @@ export default function PackingDashboardPage() {
                         )}
                       </div>
                       <button
-                        onClick={() => { if (window.confirm('Delete this order? This cannot be undone.')) deleteOrder.mutate(order._id); }}
+                        onClick={() => { if (window.confirm('Remove from packing queue? The order stays in the system and can be restored from admin orders.')) deleteOrder.mutate(order._id); }}
                         className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -164,10 +164,11 @@ export default function PackingDashboardPage() {
                       </div>
                     ))}
                     {order.items.map((item, idx) => {
+                      const itemProductId = typeof item.product === 'string' ? item.product : (item.product as any)?._id;
                       const change = isRepack
                         ? editChanges.find(
                             (c) =>
-                              c.name === item.name &&
+                              (c.productId ? c.productId === itemProductId : c.name === item.name) &&
                               (c.variantSku || '') === (item.variantSku || '') &&
                               c.type !== 'item_removed',
                           )
