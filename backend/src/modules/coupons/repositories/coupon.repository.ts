@@ -54,10 +54,13 @@ export class CouponRepository extends BaseRepository<CouponDocument> {
 
   async findActiveCoupons(): Promise<CouponDocument[]> {
     const now = new Date();
+    // Compare validUntil against start-of-day (UTC) so a coupon expiring "today"
+    // (stored as midnight UTC) is still valid throughout the entire day.
+    const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
     return this.model.find({
       isActive: true,
       validFrom: { $lte: now },
-      validUntil: { $gte: now },
+      validUntil: { $gte: startOfToday },
       $or: [
         { maxUsageCount: { $exists: false } },
         { maxUsageCount: null },
