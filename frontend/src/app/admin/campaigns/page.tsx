@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2, Megaphone, Phone, Send, Users, Image as ImageIcon,
   Upload, X, Search, LinkIcon, RefreshCw, Clock, AlertCircle, Smartphone, FileSpreadsheet,
-  Columns, Grid, Eye, ChevronRight, TrendingUp,
+  Columns, Grid, Eye, ChevronRight,
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -865,6 +865,200 @@ export default function CampaignsPage() {
   };
 
   // ─────────────────────────────────────────────────────────────────────────
+  // ── Campaign detail full page ──────────────────────────────────────────
+  if (selectedCampaign) {
+    const c = selectedCampaign;
+    const delivered  = c.delivered ?? 0;
+    const read       = c.read ?? 0;
+    const failedDel  = c.failedDelivery ?? 0;
+    const pending    = Math.max(0, c.sent - delivered - failedDel);
+    const readRate    = c.sent > 0 ? Math.round((read / c.sent) * 100) : 0;
+    const deliverRate = c.sent > 0 ? Math.round((delivered / c.sent) * 100) : 0;
+    const failRate    = c.sent > 0 ? Math.round((failedDel / c.sent) * 100) : 0;
+    const pendRate    = c.sent > 0 ? Math.round((pending / c.sent) * 100) : 0;
+    const hasDelivery = delivered > 0 || read > 0 || failedDel > 0;
+    const duration    = c.completedAt
+      ? (() => { const s = Math.round((new Date(c.completedAt).getTime() - new Date(c.createdAt).getTime()) / 1000); return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`; })()
+      : null;
+    const gradientBg =
+      c.status === 'done'    ? 'from-emerald-500 to-green-600' :
+      c.status === 'sending' ? 'from-blue-500 to-blue-600' :
+      c.status === 'failed'  ? 'from-red-500 to-red-600' :
+                               'from-gray-400 to-gray-500';
+
+    return (
+      <div>
+        <Header
+          title={c.label}
+          description={`${c.type === 'template' ? 'Template' : 'Image / Media'} · ${fmtTime(c.createdAt)}`}
+          icon={
+            <button
+              onClick={() => setSelectedCampaign(null)}
+              className="mr-1 flex items-center justify-center w-8 h-8 rounded-lg hover:bg-black/5 text-gray-500 hover:text-gray-800 transition-colors shrink-0"
+              title="Back to campaigns"
+            >
+              <ChevronRight className="h-5 w-5 rotate-180" />
+            </button>
+          }
+          action={<StatusBadge status={c.status} />}
+        />
+
+        <div className="p-6 space-y-6 max-w-7xl">
+
+          {/* Hero gradient banner */}
+          <div className={`bg-gradient-to-br ${gradientBg} rounded-2xl px-8 py-8 text-white`}>
+            <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-6">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest opacity-70 mb-2">
+                  {c.type === 'template' ? 'Template Campaign' : 'Image / Media Campaign'}
+                </p>
+                {read > 0 ? (
+                  <>
+                    <p className="text-[72px] font-black leading-none tracking-tight">{readRate}%</p>
+                    <p className="text-sm opacity-75 mt-2">read rate · {read} of {c.sent} recipients opened</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-5xl font-black leading-none">{c.sent}</p>
+                    <p className="text-sm opacity-75 mt-2">messages submitted to WhatsApp</p>
+                  </>
+                )}
+              </div>
+              {read > 0 && (
+                <div className="flex gap-6 sm:text-right">
+                  <div>
+                    <p className="text-3xl font-bold">{deliverRate}%</p>
+                    <p className="text-xs opacity-70 mt-0.5">delivered</p>
+                  </div>
+                  <div>
+                    <p className="text-3xl font-bold">{c.sent}</p>
+                    <p className="text-xs opacity-70 mt-0.5">submitted</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Stat tiles */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {[
+              { label: 'Total Targets',  value: c.totalPhones, sub: 'phone numbers',       cls: 'text-foreground',   bg: 'bg-card border' },
+              { label: 'Submitted',      value: c.sent,        sub: 'accepted by WA API',  cls: 'text-blue-600',     bg: 'bg-blue-50 border border-blue-100' },
+              { label: 'Rejected',       value: c.skipped,     sub: 'by WhatsApp API',     cls: c.skipped > 0 ? 'text-orange-500' : 'text-muted-foreground', bg: c.skipped > 0 ? 'bg-orange-50 border border-orange-100' : 'bg-card border' },
+              { label: 'Send Duration',  value: duration ?? '—', sub: c.completedAt ? 'to send all messages' : 'still in progress', cls: 'text-foreground', bg: 'bg-card border' },
+            ].map(({ label, value, sub, cls, bg }) => (
+              <div key={label} className={`rounded-2xl ${bg} p-5`}>
+                <p className={`text-3xl font-bold ${cls}`}>{value}</p>
+                <p className="text-sm font-semibold mt-1.5">{label}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Main content: delivery + meta */}
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+
+            {/* Delivery breakdown */}
+            <div className="rounded-2xl border bg-card p-6 space-y-5">
+              <h3 className="font-semibold text-base">Delivery Breakdown</h3>
+
+              {!hasDelivery ? (
+                <div className="flex flex-col items-center justify-center py-14 gap-3 text-muted-foreground">
+                  <Clock className="h-10 w-10 opacity-20 animate-pulse" />
+                  <p className="text-sm font-medium">Waiting for delivery receipts</p>
+                  <p className="text-xs opacity-60 text-center max-w-xs">WhatsApp sends delivery status updates as recipients receive and open messages.</p>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {/* Stacked bar */}
+                  <div className="flex h-5 rounded-full overflow-hidden bg-muted gap-px">
+                    {read > 0        && <div className="bg-blue-500  transition-all" style={{ width: `${readRate}%` }} />}
+                    {delivered - read > 0 && <div className="bg-green-400 transition-all" style={{ width: `${Math.round(((delivered - read) / c.sent) * 100)}%` }} />}
+                    {failedDel > 0   && <div className="bg-red-400   transition-all" style={{ width: `${failRate}%` }} />}
+                    {pending > 0     && <div className="bg-muted-foreground/15 transition-all" style={{ width: `${pendRate}%` }} />}
+                  </div>
+
+                  {/* Rows */}
+                  <div className="space-y-3">
+                    {([
+                      { label: 'Read',             value: read,      rate: readRate,    bar: 'bg-blue-500',  track: 'bg-blue-100',  text: 'text-blue-700',         bg: 'bg-blue-50/60',   show: true },
+                      { label: 'Delivered',         value: delivered, rate: deliverRate, bar: 'bg-green-500', track: 'bg-green-100', text: 'text-green-700',        bg: 'bg-green-50/60',  show: true },
+                      { label: 'Failed delivery',   value: failedDel, rate: failRate,    bar: 'bg-red-400',   track: 'bg-red-100',   text: 'text-red-600',          bg: 'bg-red-50/60',    show: failedDel > 0 },
+                      { label: 'Pending',           value: pending,   rate: pendRate,    bar: 'bg-gray-300',  track: 'bg-gray-100',  text: 'text-muted-foreground', bg: 'bg-muted/30',     show: pending > 0 },
+                    ] as const).filter(r => r.show).map(({ label, value, rate, bar, track, text, bg }) => (
+                      <div key={label} className={`${bg} rounded-xl px-5 py-4`}>
+                        <div className="flex items-center justify-between mb-2.5">
+                          <div className="flex items-center gap-2.5">
+                            <div className={`w-3 h-3 rounded-full shrink-0 ${bar}`} />
+                            <span className={`text-sm font-semibold ${text}`}>{label}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xl font-bold">{value}</span>
+                            <span className="text-sm text-muted-foreground w-12 text-right tabular-nums">{rate}%</span>
+                          </div>
+                        </div>
+                        <div className={`h-2 rounded-full ${track} overflow-hidden`}>
+                          <div className={`h-full rounded-full ${bar} transition-all`} style={{ width: `${rate}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Right column */}
+            <div className="space-y-4">
+              {/* Timeline */}
+              <div className="rounded-2xl border bg-card p-5">
+                <h3 className="font-semibold mb-4">Timeline</h3>
+                <div className="space-y-0 divide-y">
+                  {[
+                    { label: 'Sent',      value: fmtTime(c.createdAt) },
+                    ...(c.completedAt ? [
+                      { label: 'Completed', value: fmtTime(c.completedAt) },
+                      { label: 'Duration',  value: duration! },
+                    ] : []),
+                  ].map(({ label, value }) => (
+                    <div key={label} className="flex justify-between py-3">
+                      <span className="text-sm text-muted-foreground">{label}</span>
+                      <span className="text-sm font-medium">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Details */}
+              <div className="rounded-2xl border bg-card p-5">
+                <h3 className="font-semibold mb-4">Details</h3>
+                <div className="space-y-0 divide-y">
+                  {[
+                    { label: 'Type',   value: <span className="text-sm font-medium">{c.type === 'template' ? 'Template' : 'Image / Media'}</span> },
+                    { label: 'Status', value: <StatusBadge status={c.status} /> },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="flex justify-between items-center py-3">
+                      <span className="text-sm text-muted-foreground">{label}</span>
+                      {value}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Error */}
+              {(c.errorSummary || c.status === 'failed') && (
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700 flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>{c.errorSummary ?? 'Campaign failed — check server logs for details.'}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
     <div>
@@ -1672,141 +1866,6 @@ export default function CampaignsPage() {
 
       </div>
     </div>
-
-    {/* ── Campaign Detail Dialog ───────────────────────────────────────────── */}
-    <Dialog open={!!selectedCampaign} onOpenChange={(open) => { if (!open) setSelectedCampaign(null); }}>
-      <DialogContent className="sm:max-w-md w-full p-0 overflow-hidden">
-        {selectedCampaign && (() => {
-          const c = selectedCampaign;
-          const delivered = c.delivered ?? 0;
-          const read = c.read ?? 0;
-          const failedDel = c.failedDelivery ?? 0;
-          const pending = Math.max(0, c.sent - delivered - failedDel);
-          const readRate    = c.sent > 0 ? Math.round((read / c.sent) * 100) : 0;
-          const deliverRate = c.sent > 0 ? Math.round((delivered / c.sent) * 100) : 0;
-          const failRate    = c.sent > 0 ? Math.round((failedDel / c.sent) * 100) : 0;
-          const pendRate    = c.sent > 0 ? Math.round((pending / c.sent) * 100) : 0;
-          const hasDelivery = delivered > 0 || read > 0 || failedDel > 0;
-
-          const headerBg =
-            c.status === 'done'    ? 'from-green-500 to-emerald-600' :
-            c.status === 'sending' ? 'from-blue-500 to-blue-600' :
-            c.status === 'failed'  ? 'from-red-500 to-red-600' :
-                                     'from-gray-400 to-gray-500';
-
-          return (
-            <>
-              {/* Coloured header */}
-              <div className={`bg-gradient-to-br ${headerBg} px-6 pt-6 pb-5 text-white`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium opacity-75 uppercase tracking-wide mb-1">
-                      {c.type === 'template' ? 'Template campaign' : 'Image / Media campaign'}
-                    </p>
-                    <h2 className="text-lg font-bold leading-tight truncate pr-2">{c.label}</h2>
-                    <p className="text-xs opacity-70 mt-1" title={fmtTime(c.createdAt)}>
-                      {timeAgo(c.createdAt)} · {fmtTime(c.createdAt)}
-                    </p>
-                  </div>
-                  <div className="shrink-0 pt-0.5">
-                    <StatusBadge status={c.status} />
-                  </div>
-                </div>
-
-                {/* Hero read rate */}
-                {read > 0 && (
-                  <div className="mt-4 flex items-center gap-3 bg-white/15 rounded-xl px-4 py-3">
-                    <TrendingUp className="h-5 w-5 opacity-90 shrink-0" />
-                    <div>
-                      <p className="text-2xl font-bold leading-none">{readRate}%</p>
-                      <p className="text-xs opacity-75 mt-0.5">read rate · {read} opened</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="px-6 py-5 space-y-5">
-                {/* Sending summary tiles */}
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { label: 'Targets',   value: c.totalPhones, cls: 'text-foreground',   bg: 'bg-muted/40' },
-                    { label: 'Submitted', value: c.sent,        cls: 'text-blue-600',     bg: 'bg-blue-50' },
-                    { label: 'Rejected',  value: c.skipped,     cls: c.skipped > 0 ? 'text-orange-500' : 'text-muted-foreground', bg: c.skipped > 0 ? 'bg-orange-50' : 'bg-muted/40' },
-                  ].map(({ label, value, cls, bg }) => (
-                    <div key={label} className={`rounded-xl ${bg} p-3 text-center`}>
-                      <p className={`text-xl font-bold ${cls}`}>{value}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wide">{label}</p>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Delivery breakdown */}
-                <div className="space-y-3">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Delivery breakdown</p>
-
-                  {!hasDelivery ? (
-                    <div className="flex items-center gap-2 rounded-xl bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-                      <Clock className="h-4 w-4 shrink-0 animate-pulse" />
-                      Waiting for receipts from WhatsApp…
-                    </div>
-                  ) : (
-                    <>
-                      {/* Stacked bar */}
-                      <div className="flex h-3 rounded-full overflow-hidden bg-muted gap-px">
-                        {read > 0 && <div className="bg-blue-500" style={{ width: `${readRate}%` }} />}
-                        {delivered - read > 0 && <div className="bg-green-400" style={{ width: `${Math.round(((delivered - read) / c.sent) * 100)}%` }} />}
-                        {failedDel > 0 && <div className="bg-red-400" style={{ width: `${failRate}%` }} />}
-                        {pending > 0 && <div className="bg-muted-foreground/20" style={{ width: `${pendRate}%` }} />}
-                      </div>
-
-                      <div className="space-y-2">
-                        {[
-                          { label: 'Read',      value: read,      rate: readRate,    bar: 'bg-blue-500',          text: 'text-blue-700',     bg: 'bg-blue-50',    show: true },
-                          { label: 'Delivered', value: delivered, rate: deliverRate, bar: 'bg-green-500',         text: 'text-green-700',    bg: 'bg-green-50',   show: true },
-                          { label: 'Failed',    value: failedDel, rate: failRate,    bar: 'bg-red-400',           text: 'text-red-600',      bg: 'bg-red-50',     show: failedDel > 0 },
-                          { label: 'Pending',   value: pending,   rate: pendRate,    bar: 'bg-muted-foreground/30', text: 'text-muted-foreground', bg: 'bg-muted/30', show: pending > 0 },
-                        ].filter(r => r.show).map(({ label, value, rate, bar, text, bg }) => (
-                          <div key={label} className={`flex items-center gap-3 rounded-lg ${bg} px-3 py-2`}>
-                            <div className={`w-2 h-2 rounded-full shrink-0 ${bar}`} />
-                            <span className={`text-sm font-medium flex-1 ${text}`}>{label}</span>
-                            <span className="text-sm font-semibold">{value}</span>
-                            <span className="text-xs text-muted-foreground w-10 text-right">{rate}%</span>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {/* Timing */}
-                {c.completedAt && (
-                  <div className="rounded-xl border bg-muted/20 divide-y text-sm">
-                    {[
-                      { label: 'Started',   value: fmtTime(c.createdAt) },
-                      { label: 'Completed', value: fmtTime(c.completedAt) },
-                      { label: 'Duration',  value: (() => { const s = Math.round((new Date(c.completedAt!).getTime() - new Date(c.createdAt).getTime()) / 1000); return s < 60 ? `${s}s` : `${Math.floor(s/60)}m ${s%60}s`; })() },
-                    ].map(({ label, value }) => (
-                      <div key={label} className="flex justify-between px-4 py-2.5">
-                        <span className="text-muted-foreground">{label}</span>
-                        <span className="font-medium">{value}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Error */}
-                {c.errorSummary && (
-                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-start gap-2">
-                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                    <span>{c.errorSummary}</span>
-                  </div>
-                )}
-              </div>
-            </>
-          );
-        })()}
-      </DialogContent>
-    </Dialog>
 
     {/* ── CSV Column Mapper Dialog ─────────────────────────────────────────── */}
     <Dialog open={csvMapperOpen} onOpenChange={setCsvMapperOpen}>
