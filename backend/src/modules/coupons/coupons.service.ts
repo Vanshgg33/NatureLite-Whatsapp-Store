@@ -78,7 +78,8 @@ export class CouponsService {
     if (now < coupon.validFrom) {
       return { valid: false, message: 'Coupon is not yet valid', discountAmount: 0 };
     }
-    if (now > coupon.validUntil) {
+    const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    if (coupon.validUntil < startOfToday) {
       return { valid: false, message: 'Coupon has expired', discountAmount: 0 };
     }
     if (coupon.maxUsageCount && coupon.usedCount >= coupon.maxUsageCount) {

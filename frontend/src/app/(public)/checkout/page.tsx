@@ -165,20 +165,21 @@ export default function CheckoutPage() {
     if (!currentState) setValue('state', match.state);
   };
 
-  const handleApplyCoupon = async () => {
-    if (!couponInput.trim()) return;
+  const handleApplyCoupon = async (code?: string) => {
+    const input = (code ?? couponInput).trim();
+    if (!input) return;
     setIsValidatingCoupon(true);
     setCouponError(null);
     try {
-      const validation = await api.validateCoupon(couponInput, getSubtotal());
+      const validation = await api.validateCoupon(input, getSubtotal());
       const savedAmount = validation.discountAmount || 0;
       if (validation.valid && savedAmount > 0) {
-        const result = await applyCoupon(couponInput);
+        const result = await applyCoupon(input);
         if (result.success) {
           setCouponInput('');
           toast({ title: 'Coupon applied!', description: `You saved ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(savedAmount)}` });
         } else if (result.message?.toLowerCase().includes('unauthorized') || result.message?.toLowerCase().includes('not authenticated')) {
-          setLocalCoupon(couponInput, savedAmount, 'fixed');
+          setLocalCoupon(input, savedAmount, 'fixed');
           setCouponInput('');
           toast({ title: 'Coupon applied!', description: `You saved ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(savedAmount)}` });
         } else {
@@ -745,7 +746,7 @@ export default function CheckoutPage() {
                           <button
                             key={c._id}
                             type="button"
-                            onClick={() => { setCouponInput(c.code); setCouponError(null); }}
+                            onClick={() => { setCouponError(null); handleApplyCoupon(c.code); }}
                             className="text-xs px-2 py-1 rounded-full border border-brand-mustard text-brand-mustard hover:bg-brand-mustard/10 font-medium transition-colors"
                             title={c.description || c.code}
                           >
