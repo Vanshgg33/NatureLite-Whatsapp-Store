@@ -28,13 +28,14 @@ function formatCoupon(coupon: Coupon): string {
 function isCouponActive(coupon: Coupon, now = new Date()): boolean {
   const validFrom = new Date(coupon.validFrom);
   const validUntil = new Date(coupon.validUntil);
+  const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const hasUsageLeft =
     !coupon.maxUsageCount || coupon.usedCount < coupon.maxUsageCount;
 
   return (
     coupon.isActive &&
     validFrom <= now &&
-    validUntil >= now &&
+    validUntil >= startOfToday &&
     hasUsageLeft
   );
 }
