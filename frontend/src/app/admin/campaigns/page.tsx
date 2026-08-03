@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2, Megaphone, Phone, Send, Users, Image as ImageIcon,
   Upload, X, Search, LinkIcon, RefreshCw, Clock, AlertCircle, Smartphone, FileSpreadsheet,
-  Columns, Grid, Eye,
+  Columns, Grid, Eye, ChevronRight, TrendingUp,
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -305,6 +305,15 @@ function extractPhonesFromRowsByIndex(
 const fmtTime = (iso: string) =>
   new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
+const timeAgo = (iso: string) => {
+  const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+};
+
 function StatusBadge({ status }: { status: CampaignRecord['status'] }) {
   if (status === 'done') return <Badge className="text-xs bg-green-100 text-green-800 border-green-200">Done</Badge>;
   if (status === 'sending') return <Badge className="text-xs bg-blue-100 text-blue-800 border-blue-200 animate-pulse">Sending…</Badge>;
@@ -431,6 +440,8 @@ export default function CampaignsPage() {
     onSuccess: () => refetchPresets(),
   });
 
+  const [selectedCampaign, setSelectedCampaign] = useState<CampaignRecord | null>(null);
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'sending' | 'done' | 'failed'>('all');
   const [clearHistoryConfirm, setClearHistoryConfirm] = useState(false);
   const clearHistoryMutation = useMutation({
     mutationFn: () => api.clearCampaignHistory(),
@@ -1502,28 +1513,26 @@ export default function CampaignsPage() {
           </div>
         </div>
 
-        {/* ── Campaign History (from DB) ─────────────────────────────────── */}
-        <div className="rounded-xl border bg-card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-base">Campaign History</h2>
-            <div className="flex items-center gap-2">
+        {/* ── Campaign History ───────────────────────────────────────────── */}
+        <div className="rounded-xl border bg-card">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b">
+            <div className="flex items-center gap-3">
+              <h2 className="font-semibold text-base">Campaign History</h2>
               {campaignsLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+              {campaigns.length > 0 && (
+                <Badge variant="secondary" className="text-xs">{campaigns.length}</Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
               {campaigns.length > 0 && (
                 clearHistoryConfirm ? (
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs text-muted-foreground">Sure?</span>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      className="h-7 text-xs px-2"
-                      disabled={clearHistoryMutation.isPending}
-                      onClick={() => clearHistoryMutation.mutate()}
-                    >
+                    <Button size="sm" variant="destructive" className="h-7 text-xs px-2" disabled={clearHistoryMutation.isPending} onClick={() => clearHistoryMutation.mutate()}>
                       {clearHistoryMutation.isPending ? 'Clearing…' : 'Yes, clear'}
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-7 text-xs px-2" onClick={() => setClearHistoryConfirm(false)}>
-                      Cancel
-                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs px-2" onClick={() => setClearHistoryConfirm(false)}>Cancel</Button>
                   </div>
                 ) : (
                   <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground hover:text-destructive px-2" onClick={() => setClearHistoryConfirm(true)}>
@@ -1534,101 +1543,270 @@ export default function CampaignsPage() {
             </div>
           </div>
 
-          {campaigns.length === 0 && !campaignsLoading ? (
-            <p className="text-sm text-muted-foreground text-center py-6">No campaigns sent yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {campaigns.map((c) => (
-                <div key={c._id} className="rounded-lg bg-muted/40 px-4 py-3 space-y-2">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium truncate">{c.label}</p>
-                        <StatusBadge status={c.status} />
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {fmtTime(c.createdAt)} · {c.totalPhones} target{c.totalPhones !== 1 ? 's' : ''}
-                        {c.type === 'template' ? ' · template' : ' · image'}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {c.status === 'queued' && (
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Clock className="h-3 w-3" /> Waiting
-                        </div>
-                      )}
-                      {c.status === 'sending' && (
-                        <p className="text-xs text-muted-foreground">{c.sent + c.skipped} / {c.totalPhones} submitted</p>
-                      )}
-                      {(c.status === 'done' || c.status === 'failed') && (
-                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                          <Badge variant="outline" className="text-xs flex items-center gap-1 text-blue-700 border-blue-200 bg-blue-50">
-                            <Send className="h-2.5 w-2.5" />{c.sent} submitted
-                          </Badge>
-                          {c.skipped > 0 && (
-                            <Badge variant="secondary" className="text-xs flex items-center gap-1 text-orange-700 bg-orange-50 border-orange-200">
-                              <AlertCircle className="h-2.5 w-2.5" />{c.skipped} rejected
-                            </Badge>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Delivery stats row — populated from WhatsApp webhook callbacks */}
-                  {(c.status === 'done' || c.status === 'sending') && (
-                    (() => {
-                      const delivered = c.delivered ?? 0;
-                      const read = c.read ?? 0;
-                      const failedDel = c.failedDelivery ?? 0;
-                      const hasStats = delivered > 0 || read > 0 || failedDel > 0;
-                      const pending = c.sent - delivered - failedDel;
-                      if (!hasStats) return (
-                        <p className="text-[11px] text-muted-foreground/70 flex items-center gap-1">
-                          <Clock className="h-3 w-3 shrink-0" />
-                          Delivery status pending — updates as recipients receive messages
-                        </p>
-                      );
-                      return (
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Delivery:</span>
-                          {delivered > 0 && (
-                            <span className="flex items-center gap-1 text-[11px] text-green-700 font-medium">
-                              <CheckCircle2 className="h-3 w-3" />{delivered} delivered
-                            </span>
-                          )}
-                          {read > 0 && (
-                            <span className="flex items-center gap-1 text-[11px] text-blue-600 font-medium">
-                              <Eye className="h-3 w-3" />{read} read
-                            </span>
-                          )}
-                          {failedDel > 0 && (
-                            <span className="flex items-center gap-1 text-[11px] text-red-600 font-medium">
-                              <AlertCircle className="h-3 w-3" />{failedDel} failed delivery
-                            </span>
-                          )}
-                          {pending > 0 && (
-                            <span className="text-[11px] text-muted-foreground">{pending} pending</span>
-                          )}
-                        </div>
-                      );
-                    })()
-                  )}
-
-                  {(c.errorSummary || c.status === 'failed') && (
-                    <p className="text-xs text-red-600 flex items-start gap-1">
-                      <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
-                      {c.errorSummary ?? 'Campaign processor crashed — check server logs for details'}
-                    </p>
-                  )}
-                </div>
-              ))}
+          {/* Filter tabs */}
+          {campaigns.length > 0 && (
+            <div className="flex gap-1 px-6 pt-3">
+              {(['all', 'sending', 'done', 'failed'] as const).map((f) => {
+                const count = f === 'all' ? campaigns.length : campaigns.filter(c => c.status === f).length;
+                return (
+                  <button
+                    key={f}
+                    onClick={() => setHistoryFilter(f)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                      historyFilter === f
+                        ? f === 'failed' ? 'bg-red-100 text-red-700'
+                          : f === 'done' ? 'bg-green-100 text-green-700'
+                          : f === 'sending' ? 'bg-blue-100 text-blue-700'
+                          : 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                    }`}
+                  >
+                    {f.charAt(0).toUpperCase() + f.slice(1)} {count > 0 && <span className="opacity-70">({count})</span>}
+                  </button>
+                );
+              })}
             </div>
           )}
+
+          {/* List */}
+          <div className="p-4 space-y-2">
+            {campaigns.length === 0 && !campaignsLoading ? (
+              <div className="text-center py-12 space-y-2">
+                <Megaphone className="h-8 w-8 text-muted-foreground/30 mx-auto" />
+                <p className="text-sm text-muted-foreground">No campaigns sent yet.</p>
+                <p className="text-xs text-muted-foreground/60">Create your first campaign above.</p>
+              </div>
+            ) : (
+              campaigns
+                .filter(c => historyFilter === 'all' || c.status === historyFilter)
+                .map((c) => {
+                  const delivered = c.delivered ?? 0;
+                  const read = c.read ?? 0;
+                  const failedDel = c.failedDelivery ?? 0;
+                  const pending = Math.max(0, c.sent - delivered - failedDel);
+                  const hasDelivery = delivered > 0 || read > 0 || failedDel > 0;
+                  const readRate = c.sent > 0 ? Math.round((read / c.sent) * 100) : 0;
+
+                  const statusAccent =
+                    c.status === 'done'    ? 'bg-green-500' :
+                    c.status === 'sending' ? 'bg-blue-500' :
+                    c.status === 'failed'  ? 'bg-red-500' :
+                                             'bg-gray-300';
+
+                  return (
+                    <div
+                      key={c._id}
+                      onClick={() => setSelectedCampaign(c)}
+                      className="group flex gap-3 rounded-xl border bg-card hover:bg-muted/40 hover:border-primary/20 transition-all cursor-pointer p-4"
+                    >
+                      {/* Status accent bar */}
+                      <div className={`w-1 rounded-full shrink-0 ${statusAccent}`} />
+
+                      <div className="flex-1 min-w-0 space-y-2">
+                        {/* Top row */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold truncate">{c.label}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              <span title={fmtTime(c.createdAt)}>{timeAgo(c.createdAt)}</span>
+                              {' · '}{c.totalPhones} recipient{c.totalPhones !== 1 ? 's' : ''}
+                              {' · '}{c.type === 'template' ? 'Template' : 'Image'}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <StatusBadge status={c.status} />
+                            {/* Read rate pill — only when we have data */}
+                            {read > 0 && (
+                              <span className="flex items-center gap-1 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5">
+                                <Eye className="h-3 w-3" />{readRate}% read
+                              </span>
+                            )}
+                            <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
+                          </div>
+                        </div>
+
+                        {/* Mini delivery bar */}
+                        {(c.status === 'done' || c.status === 'sending') && c.sent > 0 && (
+                          <div className="space-y-1">
+                            <div className="flex h-1.5 rounded-full overflow-hidden bg-muted gap-px">
+                              {hasDelivery ? (
+                                <>
+                                  {read > 0 && <div className="bg-blue-500" style={{ width: `${(read / c.sent) * 100}%` }} />}
+                                  {delivered - read > 0 && <div className="bg-green-400" style={{ width: `${((delivered - read) / c.sent) * 100}%` }} />}
+                                  {failedDel > 0 && <div className="bg-red-400" style={{ width: `${(failedDel / c.sent) * 100}%` }} />}
+                                  {pending > 0 && <div className="bg-muted-foreground/20" style={{ width: `${(pending / c.sent) * 100}%` }} />}
+                                </>
+                              ) : (
+                                <div className="bg-muted-foreground/20 w-full animate-pulse" />
+                              )}
+                            </div>
+                            {hasDelivery ? (
+                              <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                                {read > 0 && <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />{read} read</span>}
+                                {delivered > 0 && <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />{delivered} delivered</span>}
+                                {failedDel > 0 && <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />{failedDel} failed</span>}
+                                {pending > 0 && <span className="text-muted-foreground/60">{pending} pending</span>}
+                              </div>
+                            ) : (
+                              <p className="text-[10px] text-muted-foreground/50 flex items-center gap-1">
+                                <Clock className="h-2.5 w-2.5" /> Waiting for delivery receipts…
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Error */}
+                        {(c.errorSummary || c.status === 'failed') && (
+                          <p className="text-xs text-red-600 flex items-center gap-1">
+                            <AlertCircle className="h-3 w-3 shrink-0" />
+                            {c.errorSummary ?? 'Campaign failed — check server logs'}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+            )}
+          </div>
         </div>
 
       </div>
     </div>
+
+    {/* ── Campaign Detail Dialog ───────────────────────────────────────────── */}
+    <Dialog open={!!selectedCampaign} onOpenChange={(open) => { if (!open) setSelectedCampaign(null); }}>
+      <DialogContent className="sm:max-w-md w-full p-0 overflow-hidden">
+        {selectedCampaign && (() => {
+          const c = selectedCampaign;
+          const delivered = c.delivered ?? 0;
+          const read = c.read ?? 0;
+          const failedDel = c.failedDelivery ?? 0;
+          const pending = Math.max(0, c.sent - delivered - failedDel);
+          const readRate    = c.sent > 0 ? Math.round((read / c.sent) * 100) : 0;
+          const deliverRate = c.sent > 0 ? Math.round((delivered / c.sent) * 100) : 0;
+          const failRate    = c.sent > 0 ? Math.round((failedDel / c.sent) * 100) : 0;
+          const pendRate    = c.sent > 0 ? Math.round((pending / c.sent) * 100) : 0;
+          const hasDelivery = delivered > 0 || read > 0 || failedDel > 0;
+
+          const headerBg =
+            c.status === 'done'    ? 'from-green-500 to-emerald-600' :
+            c.status === 'sending' ? 'from-blue-500 to-blue-600' :
+            c.status === 'failed'  ? 'from-red-500 to-red-600' :
+                                     'from-gray-400 to-gray-500';
+
+          return (
+            <>
+              {/* Coloured header */}
+              <div className={`bg-gradient-to-br ${headerBg} px-6 pt-6 pb-5 text-white`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium opacity-75 uppercase tracking-wide mb-1">
+                      {c.type === 'template' ? 'Template campaign' : 'Image / Media campaign'}
+                    </p>
+                    <h2 className="text-lg font-bold leading-tight truncate pr-2">{c.label}</h2>
+                    <p className="text-xs opacity-70 mt-1" title={fmtTime(c.createdAt)}>
+                      {timeAgo(c.createdAt)} · {fmtTime(c.createdAt)}
+                    </p>
+                  </div>
+                  <div className="shrink-0 pt-0.5">
+                    <StatusBadge status={c.status} />
+                  </div>
+                </div>
+
+                {/* Hero read rate */}
+                {read > 0 && (
+                  <div className="mt-4 flex items-center gap-3 bg-white/15 rounded-xl px-4 py-3">
+                    <TrendingUp className="h-5 w-5 opacity-90 shrink-0" />
+                    <div>
+                      <p className="text-2xl font-bold leading-none">{readRate}%</p>
+                      <p className="text-xs opacity-75 mt-0.5">read rate · {read} opened</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-6 py-5 space-y-5">
+                {/* Sending summary tiles */}
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: 'Targets',   value: c.totalPhones, cls: 'text-foreground',   bg: 'bg-muted/40' },
+                    { label: 'Submitted', value: c.sent,        cls: 'text-blue-600',     bg: 'bg-blue-50' },
+                    { label: 'Rejected',  value: c.skipped,     cls: c.skipped > 0 ? 'text-orange-500' : 'text-muted-foreground', bg: c.skipped > 0 ? 'bg-orange-50' : 'bg-muted/40' },
+                  ].map(({ label, value, cls, bg }) => (
+                    <div key={label} className={`rounded-xl ${bg} p-3 text-center`}>
+                      <p className={`text-xl font-bold ${cls}`}>{value}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wide">{label}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Delivery breakdown */}
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Delivery breakdown</p>
+
+                  {!hasDelivery ? (
+                    <div className="flex items-center gap-2 rounded-xl bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                      <Clock className="h-4 w-4 shrink-0 animate-pulse" />
+                      Waiting for receipts from WhatsApp…
+                    </div>
+                  ) : (
+                    <>
+                      {/* Stacked bar */}
+                      <div className="flex h-3 rounded-full overflow-hidden bg-muted gap-px">
+                        {read > 0 && <div className="bg-blue-500" style={{ width: `${readRate}%` }} />}
+                        {delivered - read > 0 && <div className="bg-green-400" style={{ width: `${Math.round(((delivered - read) / c.sent) * 100)}%` }} />}
+                        {failedDel > 0 && <div className="bg-red-400" style={{ width: `${failRate}%` }} />}
+                        {pending > 0 && <div className="bg-muted-foreground/20" style={{ width: `${pendRate}%` }} />}
+                      </div>
+
+                      <div className="space-y-2">
+                        {[
+                          { label: 'Read',      value: read,      rate: readRate,    bar: 'bg-blue-500',          text: 'text-blue-700',     bg: 'bg-blue-50',    show: true },
+                          { label: 'Delivered', value: delivered, rate: deliverRate, bar: 'bg-green-500',         text: 'text-green-700',    bg: 'bg-green-50',   show: true },
+                          { label: 'Failed',    value: failedDel, rate: failRate,    bar: 'bg-red-400',           text: 'text-red-600',      bg: 'bg-red-50',     show: failedDel > 0 },
+                          { label: 'Pending',   value: pending,   rate: pendRate,    bar: 'bg-muted-foreground/30', text: 'text-muted-foreground', bg: 'bg-muted/30', show: pending > 0 },
+                        ].filter(r => r.show).map(({ label, value, rate, bar, text, bg }) => (
+                          <div key={label} className={`flex items-center gap-3 rounded-lg ${bg} px-3 py-2`}>
+                            <div className={`w-2 h-2 rounded-full shrink-0 ${bar}`} />
+                            <span className={`text-sm font-medium flex-1 ${text}`}>{label}</span>
+                            <span className="text-sm font-semibold">{value}</span>
+                            <span className="text-xs text-muted-foreground w-10 text-right">{rate}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Timing */}
+                {c.completedAt && (
+                  <div className="rounded-xl border bg-muted/20 divide-y text-sm">
+                    {[
+                      { label: 'Started',   value: fmtTime(c.createdAt) },
+                      { label: 'Completed', value: fmtTime(c.completedAt) },
+                      { label: 'Duration',  value: (() => { const s = Math.round((new Date(c.completedAt!).getTime() - new Date(c.createdAt).getTime()) / 1000); return s < 60 ? `${s}s` : `${Math.floor(s/60)}m ${s%60}s`; })() },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="flex justify-between px-4 py-2.5">
+                        <span className="text-muted-foreground">{label}</span>
+                        <span className="font-medium">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Error */}
+                {c.errorSummary && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>{c.errorSummary}</span>
+                  </div>
+                )}
+              </div>
+            </>
+          );
+        })()}
+      </DialogContent>
+    </Dialog>
 
     {/* ── CSV Column Mapper Dialog ─────────────────────────────────────────── */}
     <Dialog open={csvMapperOpen} onOpenChange={setCsvMapperOpen}>
