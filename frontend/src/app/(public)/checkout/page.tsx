@@ -729,7 +729,7 @@ export default function CheckoutPage() {
                       </div>
                       <Button
                         type="button"
-                        onClick={handleApplyCoupon}
+                        onClick={() => handleApplyCoupon()}
                         disabled={isValidatingCoupon || !couponInput.trim()}
                         variant="outline"
                         className="border-brand-charcoal text-sm h-9 px-3"
