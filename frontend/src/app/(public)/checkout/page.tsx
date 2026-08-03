@@ -98,7 +98,7 @@ export default function CheckoutPage() {
     freeShippingThreshold: publicSettings?.store?.freeShippingThreshold ?? 300,
     defaultShippingCharge: publicSettings?.store?.defaultShippingCharge ?? 50,
   };
-
+console.log("hahah came here");
   // BUG 26 FIX: staleTime was 60_000 (60 seconds). On the checkout page the user
   // is about to pay — showing a 60-second-old balance could cause them to apply
   // more wallet credit than they actually have. Always fetch fresh.
@@ -107,6 +107,7 @@ export default function CheckoutPage() {
     queryFn: () => api.getActiveCoupons(),
     staleTime: 0,
   });
+  console.log('Active coupons "hello called coupans hahahahahhahahaha:', activeCoupons);
 
   const { data: wallet }: { data: WalletBalance | undefined } = useQuery({
     queryKey: ['wallet-balance'],
