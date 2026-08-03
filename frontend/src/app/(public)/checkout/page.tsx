@@ -18,7 +18,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 import { getApiError } from '@/lib/api-error';
-import type { PaymentMethod, CreateOrderDto, GuestCreateOrderDto, WalletBalance } from '@/types';
+import type { PaymentMethod, CreateOrderDto, GuestCreateOrderDto, WalletBalance, Coupon } from '@/types';
 
 import type { RazorpayCheckoutResponse } from '@/types';
 
@@ -102,6 +102,12 @@ export default function CheckoutPage() {
   // BUG 26 FIX: staleTime was 60_000 (60 seconds). On the checkout page the user
   // is about to pay — showing a 60-second-old balance could cause them to apply
   // more wallet credit than they actually have. Always fetch fresh.
+  const { data: activeCoupons = [] } = useQuery<Coupon[]>({
+    queryKey: ['active-coupons'],
+    queryFn: () => api.getActiveCoupons(),
+    staleTime: 5 * 60 * 1000,
+  });
+
   const { data: wallet }: { data: WalletBalance | undefined } = useQuery({
     queryKey: ['wallet-balance'],
     queryFn: () => api.getWallet(),
@@ -732,6 +738,21 @@ export default function CheckoutPage() {
                     </div>
                     {couponError && (
                       <p className="text-xs text-red-500 mt-1.5">{couponError}</p>
+                    )}
+                    {activeCoupons.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {activeCoupons.map((c) => (
+                          <button
+                            key={c._id}
+                            type="button"
+                            onClick={() => { setCouponInput(c.code); setCouponError(null); }}
+                            className="text-xs px-2 py-1 rounded-full border border-brand-mustard text-brand-mustard hover:bg-brand-mustard/10 font-medium transition-colors"
+                            title={c.description || c.code}
+                          >
+                            {c.code}
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
                 ) : (
