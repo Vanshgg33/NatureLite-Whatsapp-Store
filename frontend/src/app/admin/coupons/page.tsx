@@ -244,7 +244,7 @@ export default function CouponsPage() {
       minOrderAmount: formData.minOrderAmount,
       maxUsageCount: formData.maxUsageCount ? parseInt(formData.maxUsageCount) : undefined,
       validFrom: new Date(formData.validFrom).toISOString(),
-      validUntil: new Date(formData.validUntil).toISOString(),
+      validUntil: (() => { const d = new Date(formData.validUntil); d.setUTCHours(23, 59, 59, 999); return d.toISOString(); })(),
       isActive: formData.isActive,
       isFirstOrderOnly: formData.isFirstOrderOnly || undefined,
       allowedUsers: formData.allowedUsers.length > 0 ? formData.allowedUsers : undefined,
