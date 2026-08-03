@@ -157,6 +157,49 @@ export class MessageLogRepository extends BaseRepository<MessageLogDocument> {
   }
 
   /**
+   * Aggregate delivery status counts from MessageLog for a batch of campaigns.
+   * idempotencyKey format: 'broadcast_{campaignId}_{phone}' (template)
+   *                    or: 'broadcast_media_{campaignId}_{phone}' (media)
+   */
+  async batchDeliveryStatsByCampaigns(
+    campaignIds: string[],
+  ): Promise<Record<string, { sent: number; delivered: number; read: number; failed: number }>> {
+    if (!campaignIds.length) return {};
+
+    const rows = await this.model.aggregate([
+      {
+        $match: {
+          direction: 'outbound',
+          'metadata.idempotencyKey': { $regex: '^broadcast_' },
+        },
+      },
+      {
+        $addFields: {
+          _cid: {
+            $cond: [
+              { $eq: [{ $substr: ['$metadata.idempotencyKey', 10, 6] }, 'media_'] },
+              { $substr: ['$metadata.idempotencyKey', 16, 24] },
+              { $substr: ['$metadata.idempotencyKey', 10, 24] },
+            ],
+          },
+        },
+      },
+      { $match: { _cid: { $in: campaignIds } } },
+      { $group: { _id: { cid: '$_cid', status: '$status' }, count: { $sum: 1 } } },
+    ]).exec();
+
+    const out: Record<string, { sent: number; delivered: number; read: number; failed: number }> = {};
+    for (const row of rows) {
+      const { cid, status } = row._id as { cid: string; status: string };
+      if (!out[cid]) out[cid] = { sent: 0, delivered: 0, read: 0, failed: 0 };
+      if (status === 'sent' || status === 'delivered' || status === 'read' || status === 'failed') {
+        out[cid][status as 'sent' | 'delivered' | 'read' | 'failed'] = row.count as number;
+      }
+    }
+    return out;
+  }
+
+  /**
    * Conversation list for the admin chat inbox: one row per phone with the most
    * recent message attached. Uses an aggregation instead of N+1 per-phone lookups.
    */

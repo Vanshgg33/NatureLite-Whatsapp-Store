@@ -513,6 +513,12 @@ export interface CampaignRecord {
   totalPhones: number;
   sent: number;
   skipped: number;
+  /** Messages confirmed delivered to device (WA status: delivered or read) */
+  delivered?: number;
+  /** Messages opened by recipient (WA status: read) */
+  read?: number;
+  /** Messages that failed device delivery after being accepted by WhatsApp */
+  failedDelivery?: number;
   createdAt: string;
   completedAt?: string;
   errorSummary?: string;

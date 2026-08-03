@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2, Megaphone, Phone, Send, Users, Image as ImageIcon,
   Upload, X, Search, LinkIcon, RefreshCw, Clock, AlertCircle, Smartphone, FileSpreadsheet,
-  Columns, Grid,
+  Columns, Grid, Eye,
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -1539,7 +1539,7 @@ export default function CampaignsPage() {
           ) : (
             <div className="space-y-2">
               {campaigns.map((c) => (
-                <div key={c._id} className="rounded-lg bg-muted/40 px-4 py-3">
+                <div key={c._id} className="rounded-lg bg-muted/40 px-4 py-3 space-y-2">
                   <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -1558,22 +1558,65 @@ export default function CampaignsPage() {
                         </div>
                       )}
                       {c.status === 'sending' && (
-                        <p className="text-xs text-muted-foreground">{c.sent + c.skipped} / {c.totalPhones}</p>
+                        <p className="text-xs text-muted-foreground">{c.sent + c.skipped} / {c.totalPhones} submitted</p>
                       )}
                       {(c.status === 'done' || c.status === 'failed') && (
-                        <>
-                          <Badge variant="default" className="text-xs">{c.sent} sent</Badge>
+                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                          <Badge variant="outline" className="text-xs flex items-center gap-1 text-blue-700 border-blue-200 bg-blue-50">
+                            <Send className="h-2.5 w-2.5" />{c.sent} submitted
+                          </Badge>
                           {c.skipped > 0 && (
-                            <Badge variant="secondary" className="text-xs flex items-center gap-1">
-                              <AlertCircle className="h-2.5 w-2.5" />{c.skipped} skipped
+                            <Badge variant="secondary" className="text-xs flex items-center gap-1 text-orange-700 bg-orange-50 border-orange-200">
+                              <AlertCircle className="h-2.5 w-2.5" />{c.skipped} rejected
                             </Badge>
                           )}
-                        </>
+                        </div>
                       )}
                     </div>
                   </div>
+
+                  {/* Delivery stats row — populated from WhatsApp webhook callbacks */}
+                  {(c.status === 'done' || c.status === 'sending') && (
+                    (() => {
+                      const delivered = c.delivered ?? 0;
+                      const read = c.read ?? 0;
+                      const failedDel = c.failedDelivery ?? 0;
+                      const hasStats = delivered > 0 || read > 0 || failedDel > 0;
+                      const pending = c.sent - delivered - failedDel;
+                      if (!hasStats) return (
+                        <p className="text-[11px] text-muted-foreground/70 flex items-center gap-1">
+                          <Clock className="h-3 w-3 shrink-0" />
+                          Delivery status pending — updates as recipients receive messages
+                        </p>
+                      );
+                      return (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Delivery:</span>
+                          {delivered > 0 && (
+                            <span className="flex items-center gap-1 text-[11px] text-green-700 font-medium">
+                              <CheckCircle2 className="h-3 w-3" />{delivered} delivered
+                            </span>
+                          )}
+                          {read > 0 && (
+                            <span className="flex items-center gap-1 text-[11px] text-blue-600 font-medium">
+                              <Eye className="h-3 w-3" />{read} read
+                            </span>
+                          )}
+                          {failedDel > 0 && (
+                            <span className="flex items-center gap-1 text-[11px] text-red-600 font-medium">
+                              <AlertCircle className="h-3 w-3" />{failedDel} failed delivery
+                            </span>
+                          )}
+                          {pending > 0 && (
+                            <span className="text-[11px] text-muted-foreground">{pending} pending</span>
+                          )}
+                        </div>
+                      );
+                    })()
+                  )}
+
                   {(c.errorSummary || c.status === 'failed') && (
-                    <p className="mt-1.5 text-xs text-red-600 flex items-start gap-1">
+                    <p className="text-xs text-red-600 flex items-start gap-1">
                       <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
                       {c.errorSummary ?? 'Campaign processor crashed — check server logs for details'}
                     </p>

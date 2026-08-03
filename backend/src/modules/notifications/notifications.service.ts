@@ -686,13 +686,29 @@ export class NotificationsService {
     return { campaignId: campaign._id.toString() };
   }
 
-  async listCampaigns(limit = 50): Promise<CampaignDocument[]> {
-    return this.campaignModel
+  async listCampaigns(limit = 50): Promise<object[]> {
+    const campaigns = await this.campaignModel
       .find()
       .sort({ createdAt: -1 })
       .limit(limit)
       .select('-phones')
+      .lean()
       .exec();
+
+    const ids = campaigns.map((c) => (c._id as { toString(): string }).toString());
+    const deliveryStats = await this.messageLogRepository.batchDeliveryStatsByCampaigns(ids);
+
+    return campaigns.map((c) => {
+      const id = (c._id as { toString(): string }).toString();
+      const s = deliveryStats[id] ?? { sent: 0, delivered: 0, read: 0, failed: 0 };
+      return {
+        ...c,
+        // 'delivered' here = device received (WA status 'delivered' or 'read')
+        delivered: s.delivered + s.read,
+        read: s.read,
+        failedDelivery: s.failed,
+      };
+    });
   }
 
   async clearCampaignHistory(): Promise<{ deleted: number }> {
