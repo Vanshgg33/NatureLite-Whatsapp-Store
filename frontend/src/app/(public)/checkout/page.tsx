@@ -105,7 +105,7 @@ export default function CheckoutPage() {
   const { data: activeCoupons = [] } = useQuery<Coupon[]>({
     queryKey: ['active-coupons'],
     queryFn: () => api.getActiveCoupons(),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 0,
   });
 
   const { data: wallet }: { data: WalletBalance | undefined } = useQuery({
