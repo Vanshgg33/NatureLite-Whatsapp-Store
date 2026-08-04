@@ -97,34 +97,39 @@ export function CartSummary({
     setIsValidating(true);
     setCouponHint(null);
     try {
-      // First validate the coupon
-      const validationResult = await api.validateCoupon(code, subtotal);
+      // First validate the coupon — pass productIds so product-restricted coupons validate correctly
+      const productIds = items.map((item) => item.productId);
+      const validationResult = await api.validateCoupon(code, subtotal, undefined, productIds);
       // Backend returns discountAmount (pre-calculated discount value)
       const savedAmount = validationResult.discountAmount || 0;
 
-      if (validationResult.valid && savedAmount > 0) {
-        // Apply coupon using store method (syncs with server if authenticated)
-        const result = await applyCoupon(code);
-
-        if (result.success) {
-          setCouponInput('');
-          toast({
-            title: 'Coupon applied!',
-            description: `You saved ${formatPrice(savedAmount)}`,
-          });
-        } else if (result.message?.toLowerCase().includes('unauthorized') || result.message?.toLowerCase().includes('not authenticated')) {
-          // Guest user — no server cart, apply locally; backend validates at order creation
-          setLocalCoupon(code, savedAmount, 'fixed');
-          setCouponInput('');
-          toast({
-            title: 'Coupon applied!',
-            description: `You saved ${formatPrice(savedAmount)}`,
-          });
+      if (validationResult.valid) {
+        if (savedAmount <= 0) {
+          setCouponHint({ type: 'error', message: 'This coupon provides no discount on your current order' });
         } else {
-          setCouponHint({
-            type: 'error',
-            message: result.message || 'Could not apply coupon. Please try again.',
-          });
+          // Apply coupon using store method (syncs with server if authenticated)
+          const result = await applyCoupon(code);
+
+          if (result.success) {
+            setCouponInput('');
+            toast({
+              title: 'Coupon applied!',
+              description: `You saved ${formatPrice(savedAmount)}`,
+            });
+          } else if (result.message?.toLowerCase().includes('unauthorized') || result.message?.toLowerCase().includes('not authenticated')) {
+            // Guest user — no server cart, apply locally; backend validates at order creation
+            setLocalCoupon(code, savedAmount, 'fixed');
+            setCouponInput('');
+            toast({
+              title: 'Coupon applied!',
+              description: `You saved ${formatPrice(savedAmount)}`,
+            });
+          } else {
+            setCouponHint({
+              type: 'error',
+              message: result.message || 'Could not apply coupon. Please try again.',
+            });
+          }
         }
       } else if (validationResult.minOrderAmount) {
         // Minimum order amount not met — show graceful inline hint

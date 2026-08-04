@@ -83,7 +83,6 @@ export default function CheckoutPage() {
   const storeActiveCoupons = useCouponStore((s) => s.activeCoupons);
   const [fetchedCoupons, setFetchedCoupons] = useState<Coupon[]>([]);
   const activeCoupons = storeActiveCoupons.length > 0 ? storeActiveCoupons : fetchedCoupons;
-  console.log('[CHECKOUT] render — store:', storeActiveCoupons.length, 'fetched:', fetchedCoupons.length, 'active:', activeCoupons.length);
   const idempotencyKeyRef = useRef<string>('');
   useEffect(() => {
     setMounted(true);
@@ -92,20 +91,16 @@ export default function CheckoutPage() {
 
   // Fetch coupons directly using raw fetch so it always hits the network
   useEffect(() => {
-    console.log('[CHECKOUT] coupon useEffect fired, store at this point:', storeActiveCoupons);
     let cancelled = false;
     const base = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7001/api/v1').replace(/\/$/, '');
-    const url = `${base}/coupons/active`;
-    console.log('[CHECKOUT] fetching:', url);
-    fetch(url, { credentials: 'include' })
-      .then((r) => { console.log('[CHECKOUT] fetch status:', r.status); return r.json(); })
+    fetch(`${base}/coupons/active`, { credentials: 'include' })
+      .then((r) => r.json())
       .then((json) => {
-        console.log('[CHECKOUT] fetch response:', json);
         if (cancelled) return;
         const list = json?.data ?? json;
         setFetchedCoupons(Array.isArray(list) ? list : []);
       })
-      .catch((err) => { console.error('[CHECKOUT] fetch error:', err); });
+      .catch(() => {});
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -188,19 +183,24 @@ export default function CheckoutPage() {
     setIsValidatingCoupon(true);
     setCouponError(null);
     try {
-      const validation = await api.validateCoupon(input, getSubtotal());
+      const productIds = items.map((item) => item.productId);
+      const validation = await api.validateCoupon(input, getSubtotal(), undefined, productIds);
       const savedAmount = validation.discountAmount || 0;
-      if (validation.valid && savedAmount > 0) {
-        const result = await applyCoupon(input);
-        if (result.success) {
-          setCouponInput('');
-          toast({ title: 'Coupon applied!', description: `You saved ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(savedAmount)}` });
-        } else if (result.message?.toLowerCase().includes('unauthorized') || result.message?.toLowerCase().includes('not authenticated')) {
-          setLocalCoupon(input, savedAmount, 'fixed');
-          setCouponInput('');
-          toast({ title: 'Coupon applied!', description: `You saved ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(savedAmount)}` });
+      if (validation.valid) {
+        if (savedAmount <= 0) {
+          setCouponError('This coupon provides no discount on your current order');
         } else {
-          setCouponError(result.message || 'Could not apply coupon. Please try again.');
+          const result = await applyCoupon(input);
+          if (result.success) {
+            setCouponInput('');
+            toast({ title: 'Coupon applied!', description: `You saved ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(savedAmount)}` });
+          } else if (result.message?.toLowerCase().includes('unauthorized') || result.message?.toLowerCase().includes('not authenticated')) {
+            setLocalCoupon(input, savedAmount, 'fixed');
+            setCouponInput('');
+            toast({ title: 'Coupon applied!', description: `You saved ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(savedAmount)}` });
+          } else {
+            setCouponError(result.message || 'Could not apply coupon. Please try again.');
+          }
         }
       } else {
         setCouponError(validation.message || 'This coupon is not valid');

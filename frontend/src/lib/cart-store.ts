@@ -143,7 +143,10 @@ export const useCartStore = create<CartState>()(
           return { success: true };
         } catch (error: unknown) {
           set({ isLoading: false });
-          const err = error as { response?: { data?: { message?: string } } };
+          const err = error as { response?: { status?: number; data?: { message?: string } } };
+          if (err.response?.status === 401) {
+            return { success: false, message: 'Unauthorized' };
+          }
           return {
             success: false,
             message: err.response?.data?.message || 'Invalid coupon code'
@@ -290,13 +293,8 @@ export const useCartStore = create<CartState>()(
       getDiscountAmount: () => {
         const state = get();
         const subtotal = state.getSubtotal();
-
         if (!state.couponCode || !state.discountType) return 0;
-
-        if (state.discountType === 'percentage') {
-          return (subtotal * state.discount) / 100;
-        }
-
+        // state.discount is always a pre-computed rupee amount (never a percentage rate)
         return Math.min(state.discount, subtotal);
       },
 

@@ -99,7 +99,7 @@ export class CouponsService {
         return { valid: false, message: 'Coupon is not valid for your account', discountAmount: 0 };
       }
     }
-    if (coupon.isFirstOrderOnly && (typeof dto.userOrderCount !== 'number' || dto.userOrderCount > 0)) {
+    if (coupon.isFirstOrderOnly && typeof dto.userOrderCount === 'number' && dto.userOrderCount > 0) {
       return {
         valid: false,
         message: 'This coupon is for first orders only',
