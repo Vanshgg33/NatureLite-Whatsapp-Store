@@ -18,7 +18,8 @@ import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 import { getApiError } from '@/lib/api-error';
-import type { PaymentMethod, CreateOrderDto, GuestCreateOrderDto, WalletBalance, Coupon } from '@/types';
+import { useCouponStore } from '@/lib/coupon-store';
+import type { PaymentMethod, CreateOrderDto, GuestCreateOrderDto, WalletBalance } from '@/types';
 
 import type { RazorpayCheckoutResponse } from '@/types';
 
@@ -79,7 +80,7 @@ export default function CheckoutPage() {
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
   const [showCoupons, setShowCoupons] = useState(false);
-  const [activeCoupons, setActiveCoupons] = useState<Coupon[]>([]);
+  const activeCoupons = useCouponStore((s) => s.activeCoupons);
   const idempotencyKeyRef = useRef<string>('');
   useEffect(() => {
     setMounted(true);
@@ -90,14 +91,6 @@ export default function CheckoutPage() {
   useEffect(() => {
     syncCart();
   }, [syncCart]);
-
-  useEffect(() => {
-    let cancelled = false;
-    api.getActiveCoupons().then((coupons) => {
-      if (!cancelled) setActiveCoupons(coupons ?? []);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
 
   const { data: publicSettings } = useQuery({
     queryKey: ['public-settings'],

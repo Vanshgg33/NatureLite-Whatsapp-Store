@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Truck, Tag, MessageCircle } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useCouponStore } from '@/lib/coupon-store';
 import type { Coupon } from '@/types';
 
 function formatCoupon(coupon: Coupon): string {
@@ -48,6 +49,7 @@ function isCouponActive(coupon: Coupon, now = new Date()): boolean {
 export function PromoBar() {
   const [freeShippingThreshold, setFreeShippingThreshold] = useState<number | null>(null);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const setActiveCoupons = useCouponStore((s) => s.setActiveCoupons);
 
   useEffect(() => {
     let isMounted = true;
@@ -63,7 +65,9 @@ export function PromoBar() {
 
         const threshold = publicSettings.store?.freeShippingThreshold;
         setFreeShippingThreshold(typeof threshold === 'number' ? threshold : null);
-        setCoupons((activeCoupons || []).filter((coupon) => isCouponActive(coupon)));
+        const active = (activeCoupons || []).filter((coupon) => isCouponActive(coupon));
+        setCoupons(active);
+        setActiveCoupons(active);
       } catch (error) {
         console.error('Failed to load promo data:', error);
       }
@@ -74,7 +78,7 @@ export function PromoBar() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [setActiveCoupons]);
 
   const primaryCoupon = coupons[0];
   const secondaryCoupon = coupons[1];
