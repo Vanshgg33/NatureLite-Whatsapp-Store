@@ -90,7 +90,8 @@ export function CartSummary({
   // GST is inclusive in item prices — do not add it on top
   const orderTotal = baseTotal;
 
-  const handleApplyCoupon = async (codeOverride?: string) => {
+  const handleApplyCoupon = async (codeOverride?: string | React.MouseEvent) => {
+    if (typeof codeOverride !== 'string') codeOverride = undefined;
     const code = (codeOverride ?? couponInput).trim();
     if (!code) return;
 

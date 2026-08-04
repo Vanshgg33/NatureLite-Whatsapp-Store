@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { api } from './api';
 
 export interface CartItem {
@@ -42,6 +43,7 @@ interface CartState {
 }
 
 export const useCartStore = create<CartState>()(
+  persist(
   (set, get) => ({
       items: [],
       couponCode: null,
@@ -317,7 +319,17 @@ export const useCartStore = create<CartState>()(
             item.productId === productId && item.variantSku === variantSku
         );
       },
-    })
+    }),
+    {
+      name: 'cart-storage',
+      partialize: (state) => ({
+        items: state.items,
+        couponCode: state.couponCode,
+        discount: state.discount,
+        discountType: state.discountType,
+      }),
+    }
+  )
 );
 
 // Hook to sync cart when auth state changes
