@@ -98,49 +98,27 @@ export function CartSummary({
     setIsValidating(true);
     setCouponHint(null);
     try {
-      // First validate the coupon — pass productIds so product-restricted coupons validate correctly
       const productIds = items.map((item) => item.productId);
       const validationResult = await api.validateCoupon(code, subtotal, undefined, productIds);
-      // Backend returns discountAmount (pre-calculated discount value)
       const savedAmount = validationResult.discountAmount || 0;
 
       if (validationResult.valid) {
         if (savedAmount <= 0) {
           setCouponHint({ type: 'error', message: 'This coupon provides no discount on your current order' });
         } else {
-          // Apply coupon using store method (syncs with server if authenticated)
-          const result = await applyCoupon(code);
-
-          if (result.success) {
-            setCouponInput('');
-            toast({
-              title: 'Coupon applied!',
-              description: `You saved ${formatPrice(savedAmount)}`,
-            });
-          } else if (result.message?.toLowerCase().includes('unauthorized') || result.message?.toLowerCase().includes('not authenticated')) {
-            // Guest user — no server cart, apply locally; backend validates at order creation
-            setLocalCoupon(code, savedAmount, 'fixed');
-            setCouponInput('');
-            toast({
-              title: 'Coupon applied!',
-              description: `You saved ${formatPrice(savedAmount)}`,
-            });
-          } else {
-            setCouponHint({
-              type: 'error',
-              message: result.message || 'Could not apply coupon. Please try again.',
-            });
-          }
+          // Apply locally immediately for instant feedback, sync with server in background
+          setLocalCoupon(code, savedAmount, 'fixed');
+          setCouponInput('');
+          toast({ title: 'Coupon applied!', description: `You saved ${formatPrice(savedAmount)}` });
+          applyCoupon(code).catch(() => {});
         }
       } else if (validationResult.minOrderAmount) {
-        // Minimum order amount not met — show graceful inline hint
         setCouponHint({
           type: 'minOrder',
           message: validationResult.message,
           minOrderAmount: validationResult.minOrderAmount,
         });
       } else {
-        // Other validation failures
         setCouponHint({
           type: 'error',
           message: validationResult.message || 'This coupon is not valid',
@@ -154,6 +132,27 @@ export function CartSummary({
     } finally {
       setIsValidating(false);
     }
+  };
+
+  const handleApplyCouponFromCard = (coupon: Coupon) => {
+    setCouponHint(null);
+    if (coupon.minOrderAmount > 0 && subtotal < coupon.minOrderAmount) {
+      setCouponHint({
+        type: 'minOrder',
+        message: `Minimum order of ₹${coupon.minOrderAmount} required`,
+        minOrderAmount: coupon.minOrderAmount,
+      });
+      return;
+    }
+    let localDiscount = coupon.discountType === 'percentage'
+      ? (subtotal * coupon.discountValue) / 100
+      : coupon.discountValue;
+    if (coupon.discountType === 'percentage' && coupon.maxDiscount) {
+      localDiscount = Math.min(localDiscount, coupon.maxDiscount);
+    }
+    setLocalCoupon(coupon.code, localDiscount, 'fixed');
+    toast({ title: 'Coupon applied!', description: `You saved ${formatPrice(localDiscount)}` });
+    applyCoupon(coupon.code).catch(() => {});
   };
 
   const handleRemoveCoupon = async () => {
@@ -226,9 +225,8 @@ export function CartSummary({
                     </div>
                     <button
                       type="button"
-                      disabled={isValidating}
-                      onClick={() => { setCouponHint(null); handleApplyCoupon(c.code); }}
-                      className="flex-shrink-0 text-xs font-bold text-brand-mustard border border-brand-mustard rounded-lg px-2.5 py-1.5 hover:bg-brand-mustard hover:text-white transition-colors disabled:opacity-50"
+                      onClick={() => handleApplyCouponFromCard(c)}
+                      className="flex-shrink-0 text-xs font-bold text-brand-mustard border border-brand-mustard rounded-lg px-2.5 py-1.5 hover:bg-brand-mustard hover:text-white transition-colors"
                     >
                       APPLY
                     </button>
