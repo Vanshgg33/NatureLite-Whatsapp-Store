@@ -83,19 +83,31 @@ export default function CheckoutPage() {
   const storeActiveCoupons = useCouponStore((s) => s.activeCoupons);
   const [fetchedCoupons, setFetchedCoupons] = useState<Coupon[]>([]);
   const activeCoupons = storeActiveCoupons.length > 0 ? storeActiveCoupons : fetchedCoupons;
+  console.log('[CHECKOUT] render — store:', storeActiveCoupons.length, 'fetched:', fetchedCoupons.length, 'active:', activeCoupons.length);
   const idempotencyKeyRef = useRef<string>('');
   useEffect(() => {
     setMounted(true);
     idempotencyKeyRef.current = crypto.randomUUID();
   }, []);
 
-  // Fetch coupons directly — store may not yet be populated when checkout mounts
+  // Fetch coupons directly using raw fetch so it always hits the network
   useEffect(() => {
+    console.log('[CHECKOUT] coupon useEffect fired, store at this point:', storeActiveCoupons);
     let cancelled = false;
-    api.getActiveCoupons()
-      .then((data) => { if (!cancelled) setFetchedCoupons(data ?? []); })
-      .catch(() => {});
+    const base = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7001/api/v1').replace(/\/$/, '');
+    const url = `${base}/coupons/active`;
+    console.log('[CHECKOUT] fetching:', url);
+    fetch(url, { credentials: 'include' })
+      .then((r) => { console.log('[CHECKOUT] fetch status:', r.status); return r.json(); })
+      .then((json) => {
+        console.log('[CHECKOUT] fetch response:', json);
+        if (cancelled) return;
+        const list = json?.data ?? json;
+        setFetchedCoupons(Array.isArray(list) ? list : []);
+      })
+      .catch((err) => { console.error('[CHECKOUT] fetch error:', err); });
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Ensure cart is synced from server for logged-in users when checkout loads
