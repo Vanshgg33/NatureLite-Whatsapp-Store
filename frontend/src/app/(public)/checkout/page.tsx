@@ -79,6 +79,7 @@ export default function CheckoutPage() {
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
   const [showCoupons, setShowCoupons] = useState(false);
+  const [activeCoupons, setActiveCoupons] = useState<Coupon[]>([]);
   const idempotencyKeyRef = useRef<string>('');
   useEffect(() => {
     setMounted(true);
@@ -90,6 +91,14 @@ export default function CheckoutPage() {
     syncCart();
   }, [syncCart]);
 
+  useEffect(() => {
+    let cancelled = false;
+    api.getActiveCoupons().then((coupons) => {
+      if (!cancelled) setActiveCoupons(coupons ?? []);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   const { data: publicSettings } = useQuery({
     queryKey: ['public-settings'],
     queryFn: () => api.getPublicSettings(),
@@ -99,16 +108,6 @@ export default function CheckoutPage() {
     freeShippingThreshold: publicSettings?.store?.freeShippingThreshold ?? 300,
     defaultShippingCharge: publicSettings?.store?.defaultShippingCharge ?? 50,
   };
-console.log("hahah came here");
-  // BUG 26 FIX: staleTime was 60_000 (60 seconds). On the checkout page the user
-  // is about to pay — showing a 60-second-old balance could cause them to apply
-  // more wallet credit than they actually have. Always fetch fresh.
-  const { data: activeCoupons = [] } = useQuery<Coupon[]>({
-    queryKey: ['active-coupons'],
-    queryFn: () => api.getActiveCoupons(),
-    staleTime: 0,
-  });
-  console.log('Active coupons "hello called coupans hahahahahhahahaha:', activeCoupons);
 
   const { data: wallet }: { data: WalletBalance | undefined } = useQuery({
     queryKey: ['wallet-balance'],
