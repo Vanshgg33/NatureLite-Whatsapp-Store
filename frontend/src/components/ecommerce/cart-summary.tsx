@@ -1,17 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Tag, Truck, ShieldCheck, ArrowRight, X, PartyPopper, Info, MessageCircle } from 'lucide-react';
+import { Tag, Truck, ShieldCheck, ArrowRight, X, PartyPopper, Info, MessageCircle, Ticket, ChevronDown, ChevronUp, Percent } from 'lucide-react';
 import { WhatsAppOrderModal } from './whatsapp-order-modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCartStore, CartItem } from '@/lib/cart-store';
+import { useCouponStore } from '@/lib/coupon-store';
 import { useToast } from '@/components/ui/use-toast';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import type { Coupon } from '@/types';
 
 
 interface CartSummaryProps {
@@ -36,6 +38,19 @@ export function CartSummary({
     setLocalCoupon,
   } = useCartStore();
   const items = useCartStore((state) => state.items);
+
+  const storeActiveCoupons = useCouponStore((s) => s.activeCoupons);
+  const [fetchedCoupons, setFetchedCoupons] = useState<Coupon[]>([]);
+  const activeCoupons = storeActiveCoupons.length > 0 ? storeActiveCoupons : fetchedCoupons;
+  const [showCouponList, setShowCouponList] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getActiveCoupons()
+      .then((data) => { if (!cancelled) setFetchedCoupons(data ?? []); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const [showWaModal, setShowWaModal] = useState(false);
   const [couponInput, setCouponInput] = useState('');
@@ -177,6 +192,57 @@ export function CartSummary({
               {isValidating ? 'Checking...' : 'Apply'}
             </Button>
           </div>
+
+          {/* Available coupons list */}
+          {activeCoupons.length > 0 && (
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => setShowCouponList((v) => !v)}
+                className="flex items-center gap-1.5 text-xs font-semibold text-brand-mustard hover:text-brand-mustard-dark transition-colors w-full"
+              >
+                <Ticket className="w-3.5 h-3.5" />
+                {activeCoupons.length} coupon{activeCoupons.length > 1 ? 's' : ''} available
+                {showCouponList ? <ChevronUp className="w-3.5 h-3.5 ml-auto" /> : <ChevronDown className="w-3.5 h-3.5 ml-auto" />}
+              </button>
+              {showCouponList && (
+                <div className="mt-2 space-y-2 max-h-64 overflow-y-auto">
+                  {activeCoupons.map((c) => (
+                    <div key={c._id} className="border border-dashed border-brand-mustard/60 rounded-xl p-3 bg-brand-mustard/5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <span className="font-mono text-sm font-bold text-brand-charcoal tracking-wider">{c.code}</span>
+                            {c.discountType === 'percentage' ? (
+                              <span className="text-[10px] bg-brand-mustard/20 text-brand-mustard font-semibold px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                                <Percent className="w-2.5 h-2.5" />{c.discountValue}% OFF
+                              </span>
+                            ) : (
+                              <span className="text-[10px] bg-brand-green/20 text-brand-green font-semibold px-1.5 py-0.5 rounded-full">
+                                ₹{c.discountValue} OFF
+                              </span>
+                            )}
+                          </div>
+                          {c.description && <p className="text-xs text-brand-muted leading-snug">{c.description}</p>}
+                          <div className="flex flex-wrap gap-x-2 mt-1">
+                            {c.minOrderAmount > 0 && <span className="text-[10px] text-brand-muted">Min. ₹{c.minOrderAmount}</span>}
+                            {c.maxDiscount && c.discountType === 'percentage' && <span className="text-[10px] text-brand-muted">Upto ₹{c.maxDiscount}</span>}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => { setCouponInput(c.code); setCouponHint(null); setShowCouponList(false); }}
+                          className="flex-shrink-0 text-xs font-bold text-brand-mustard border border-brand-mustard rounded-lg px-2.5 py-1.5 hover:bg-brand-mustard hover:text-white transition-colors"
+                        >
+                          APPLY
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Inline coupon hint */}
           {couponHint && (
