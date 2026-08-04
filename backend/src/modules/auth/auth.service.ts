@@ -279,7 +279,9 @@ export class AuthService {
       ?? await this.userRepository.findOneByPhone(`91${dto.phone}`);
 
     if (!user) {
-      user = await this.userRepository.create({ phone: dto.phone } as any);
+      // Normalize to 91XXXXXXXXXX so it matches guest/chatbot order records
+      const normalizedPhone = dto.phone.length === 10 ? `91${dto.phone}` : dto.phone;
+      user = await this.userRepository.create({ phone: normalizedPhone } as any);
     }
 
     if (user.isBlocked) {

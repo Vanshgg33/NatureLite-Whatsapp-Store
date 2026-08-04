@@ -83,12 +83,13 @@ export class OrdersController {
 
   @Get('my-orders')
   async getMyOrders(
-    @CurrentUser('sub') userId: string,
+    @CurrentUser() currentUser: JwtPayload,
     @Query('limit') limit?: string,
   ): Promise<Order[]> {
     return this.ordersService.findUserOrders(
-      userId,
+      currentUser.sub,
       limit ? parseInt(limit, 10) : 10,
+      currentUser.phone,
     );
   }
 

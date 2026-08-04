@@ -186,6 +186,10 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
     return this.model.find({ user: userId }).sort({ createdAt: -1 }).limit(limit).exec();
   }
 
+  async findUserOrdersByIds(userIds: Types.ObjectId[], limit: number): Promise<OrderDocument[]> {
+    return this.model.find({ user: { $in: userIds } }).sort({ createdAt: -1 }).limit(limit).exec();
+  }
+
   /**
    * Like findUserOrders but excludes cancelled orders. Used by the chatbot's
    * recent-order cooldown so a customer who just cancelled isn't blocked from

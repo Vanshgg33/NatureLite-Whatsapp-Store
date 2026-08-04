@@ -669,9 +669,33 @@ export class OrdersService implements OnModuleInit {
     return order;
   }
 
-  async findUserOrders(userId: string, limit: number = 10): Promise<Order[]> {
+  async findUserOrders(userId: string, limit: number = 10, phone?: string): Promise<Order[]> {
     const userObjId = parseObjectId(userId, 'userId');
-    return this.orderRepository.findUserOrders(userObjId, limit);
+    const userIds: Types.ObjectId[] = [userObjId];
+
+    // Resolve phone-format splits: a customer may have two user records if they
+    // first logged in via OTP (creating a raw 10-digit record) and later placed
+    // a guest/chatbot order that created a 91XXXXXXXXXX record (or vice-versa).
+    // Include orders from both user IDs so the customer sees all their orders.
+    if (phone) {
+      const digits = phone.replace(/[^\d]/g, '');
+      const altPhone = digits.length === 12 && digits.startsWith('91')
+        ? digits.slice(2)       // 91XXXXXXXXXX → XXXXXXXXXX
+        : digits.length === 10
+          ? `91${digits}`       // XXXXXXXXXX → 91XXXXXXXXXX
+          : null;
+      if (altPhone) {
+        const altUser = await this.usersService.findByPhone(altPhone);
+        if (altUser && altUser._id.toString() !== userId) {
+          userIds.push(altUser._id as unknown as Types.ObjectId);
+        }
+      }
+    }
+
+    if (userIds.length === 1) {
+      return this.orderRepository.findUserOrders(userObjId, limit);
+    }
+    return this.orderRepository.findUserOrdersByIds(userIds, limit);
   }
 
   async findUserOrdersExcludingCancelled(userId: string, limit: number = 10): Promise<Order[]> {
