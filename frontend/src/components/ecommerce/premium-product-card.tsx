@@ -4,7 +4,7 @@ import { useState, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, ShoppingBag, Eye, Check, Flame, Award } from 'lucide-react';
+import { Heart, ShoppingBag, ShoppingCart, Eye, Check, Flame, Award, Plus } from 'lucide-react';
 import { useCartStore, CartItem } from '@/lib/cart-store';
 import { useToast } from '@/components/ui/use-toast';
 import { useAddToCartAnimation } from '@/components/ecommerce/add-to-cart-animation';
@@ -588,9 +588,10 @@ export function PremiumProductCardCompact({ product, index = 0 }: Omit<PremiumPr
           </div>
         </div>
         <button onClick={handleAddToCart}
-          className="w-11 h-11 rounded-full bg-brand-cream flex items-center justify-center text-brand-charcoal hover:bg-brand-green hover:text-white transition-all duration-300 flex-shrink-0"
+          className="w-11 h-11 rounded-full bg-brand-cream flex items-center justify-center text-brand-charcoal hover:bg-brand-green hover:text-white transition-all duration-300 flex-shrink-0 relative"
         >
-          <ShoppingBag className="w-5 h-5" />
+          <ShoppingCart className="w-5 h-5" />
+          <Plus className="w-3 h-3 absolute top-1.5 right-1.5 font-bold" />
         </button>
       </Link>
     </motion.article>
