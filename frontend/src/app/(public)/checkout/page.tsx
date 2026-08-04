@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 import { getApiError } from '@/lib/api-error';
 import { useCouponStore } from '@/lib/coupon-store';
-import type { PaymentMethod, CreateOrderDto, GuestCreateOrderDto, WalletBalance } from '@/types';
+import type { PaymentMethod, CreateOrderDto, GuestCreateOrderDto, WalletBalance, Coupon } from '@/types';
 
 import type { RazorpayCheckoutResponse } from '@/types';
 
@@ -80,11 +80,22 @@ export default function CheckoutPage() {
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
   const [showCoupons, setShowCoupons] = useState(false);
-  const activeCoupons = useCouponStore((s) => s.activeCoupons);
+  const storeActiveCoupons = useCouponStore((s) => s.activeCoupons);
+  const [fetchedCoupons, setFetchedCoupons] = useState<Coupon[]>([]);
+  const activeCoupons = storeActiveCoupons.length > 0 ? storeActiveCoupons : fetchedCoupons;
   const idempotencyKeyRef = useRef<string>('');
   useEffect(() => {
     setMounted(true);
     idempotencyKeyRef.current = crypto.randomUUID();
+  }, []);
+
+  // Fetch coupons directly — store may not yet be populated when checkout mounts
+  useEffect(() => {
+    let cancelled = false;
+    api.getActiveCoupons()
+      .then((data) => { if (!cancelled) setFetchedCoupons(data ?? []); })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // Ensure cart is synced from server for logged-in users when checkout loads
