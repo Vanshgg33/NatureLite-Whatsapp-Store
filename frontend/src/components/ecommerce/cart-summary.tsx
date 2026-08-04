@@ -91,20 +91,21 @@ export function CartSummary({
   // GST is inclusive in item prices — do not add it on top
   const orderTotal = baseTotal;
 
-  const handleApplyCoupon = async () => {
-    if (!couponInput.trim()) return;
+  const handleApplyCoupon = async (codeOverride?: string) => {
+    const code = (codeOverride ?? couponInput).trim();
+    if (!code) return;
 
     setIsValidating(true);
     setCouponHint(null);
     try {
       // First validate the coupon
-      const validationResult = await api.validateCoupon(couponInput, subtotal);
+      const validationResult = await api.validateCoupon(code, subtotal);
       // Backend returns discountAmount (pre-calculated discount value)
       const savedAmount = validationResult.discountAmount || 0;
 
       if (validationResult.valid && savedAmount > 0) {
         // Apply coupon using store method (syncs with server if authenticated)
-        const result = await applyCoupon(couponInput);
+        const result = await applyCoupon(code);
 
         if (result.success) {
           setCouponInput('');
@@ -114,7 +115,7 @@ export function CartSummary({
           });
         } else if (result.message?.toLowerCase().includes('unauthorized') || result.message?.toLowerCase().includes('not authenticated')) {
           // Guest user — no server cart, apply locally; backend validates at order creation
-          setLocalCoupon(couponInput, savedAmount, 'fixed');
+          setLocalCoupon(code, savedAmount, 'fixed');
           setCouponInput('');
           toast({
             title: 'Coupon applied!',
@@ -231,8 +232,9 @@ export function CartSummary({
                         </div>
                         <button
                           type="button"
-                          onClick={() => { setCouponInput(c.code); setCouponHint(null); setShowCouponList(false); }}
-                          className="flex-shrink-0 text-xs font-bold text-brand-mustard border border-brand-mustard rounded-lg px-2.5 py-1.5 hover:bg-brand-mustard hover:text-white transition-colors"
+                          disabled={isValidating}
+                          onClick={() => { setCouponHint(null); setShowCouponList(false); handleApplyCoupon(c.code); }}
+                          className="flex-shrink-0 text-xs font-bold text-brand-mustard border border-brand-mustard rounded-lg px-2.5 py-1.5 hover:bg-brand-mustard hover:text-white transition-colors disabled:opacity-50"
                         >
                           APPLY
                         </button>
