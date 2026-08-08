@@ -142,6 +142,9 @@ export function CartSummary({
 
   const handleApplyCouponFromCard = (coupon: Coupon) => {
     setCouponHint(null);
+    // Show the progress-bar hint immediately for minimum order failures — avoids a round-trip
+    // for a condition we can check locally. All other validation (usage limits, user
+    // restrictions, product restrictions) is handled by handleApplyCoupon via the server.
     if (coupon.minOrderAmount > 0 && subtotal < coupon.minOrderAmount) {
       setCouponHint({
         type: 'minOrder',
@@ -150,20 +153,7 @@ export function CartSummary({
       });
       return;
     }
-    let localDiscount = coupon.discountType === 'percentage'
-      ? (subtotal * coupon.discountValue) / 100
-      : coupon.discountValue;
-    if (coupon.discountType === 'percentage' && coupon.maxDiscount) {
-      localDiscount = Math.min(localDiscount, coupon.maxDiscount);
-    }
-    setLocalCoupon(coupon.code, localDiscount, 'fixed');
-    toast({ title: 'Coupon applied!', description: `You saved ${formatPrice(localDiscount)}` });
-    applyCoupon(coupon.code).then((result) => {
-      if (!result.success && result.message !== 'Unauthorized') {
-        removeCoupon();
-        setCouponHint({ type: 'error', message: result.message || 'Coupon could not be applied' });
-      }
-    });
+    handleApplyCoupon(coupon.code);
   };
 
   const handleRemoveCoupon = async () => {

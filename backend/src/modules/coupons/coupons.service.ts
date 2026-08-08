@@ -180,6 +180,10 @@ export class CouponsService {
     }
   }
 
+  async decrementUsageCount(couponCode: string): Promise<void> {
+    await this.couponRepository.decrementUsageCount(couponCode);
+  }
+
   async update(id: string, dto: UpdateCouponDto): Promise<Coupon> {
     if (dto.discountType === 'percentage' && dto.discountValue !== undefined && dto.discountValue > 100) {
       throw new BadRequestException('Percentage discount cannot exceed 100%');

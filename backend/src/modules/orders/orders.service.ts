@@ -715,7 +715,9 @@ export class OrdersService implements OnModuleInit {
       await this.usersService.update(user._id.toString(), updates);
     }
 
-    // Reuse existing create logic so pricing, coupons, and stock handling stay consistent
+    // Reuse existing create logic so pricing, coupons, and stock handling stay consistent.
+    // adminDiscount is intentionally excluded — unauthenticated callers must not be able
+    // to self-grant a discount by including it in the guest order payload.
     const createDto: CreateOrderDto = {
       items: dto.items,
       shippingAddress: dto.shippingAddress,
@@ -726,7 +728,6 @@ export class OrdersService implements OnModuleInit {
       idempotencyKey: dto.idempotencyKey,
       source: dto.source,
       orderType: dto.orderType,
-      adminDiscount: dto.adminDiscount,
       scheduledFor: dto.scheduledFor,
     };
 
@@ -1220,19 +1221,22 @@ export class OrdersService implements OnModuleInit {
 
   async cancelOrder(id: string, dto: CancelOrderDto, cancelledBy?: string): Promise<Order> {
     const idObj = parseObjectId(id, 'id');
-    const order = await this.orderRepository.findById(idObj);
+
+    // Atomic guard: only succeeds if the order is not already in a terminal state.
+    // Concurrent cancel requests (e.g. network retry) both pass a non-atomic read-then-save,
+    // which would double-credit the wallet and double-restore stock. Using findOneAndUpdate
+    // here means only one request can win the race; the loser gets null and throws.
+    const order = await this.orderRepository.getModel().findOneAndUpdate(
+      { _id: idObj, status: { $nin: ['delivered', 'cancelled', 'refunded'] } },
+      { $set: { status: 'cancelled', cancelledAt: new Date(), cancelReason: dto.reason } },
+      { new: true },
+    ).exec();
 
     if (!order) {
-      throw new NotFoundException('Order not found');
-    }
-
-    if (['delivered', 'cancelled', 'refunded'].includes(order.status)) {
+      const existing = await this.orderRepository.findById(idObj);
+      if (!existing) throw new NotFoundException('Order not found');
       throw new BadRequestException('Order cannot be cancelled');
     }
-
-    order.status = 'cancelled';
-    order.cancelledAt = new Date();
-    order.cancelReason = dto.reason;
 
     // BUG 1 fix: restore stock for all items on cancellation
     let cancelMainStore: Awaited<ReturnType<typeof this.storesService.findMainStore>> | null = null;
@@ -1286,6 +1290,12 @@ export class OrdersService implements OnModuleInit {
     const savedOrder = await order.save();
 
     // Fire-and-forget: these don't affect the cancel outcome so don't block the response.
+    if (order.couponCode) {
+      this.couponsService.decrementUsageCount(order.couponCode).catch((err: Error) => {
+        this.logger.warn(`cancelOrder: failed to decrement coupon usage for ${order.couponCode}: ${err.message}`);
+      });
+    }
+
     this.storeSalesService.voidByLinkedOrder(id, 'order_cancelled').catch((voidErr: Error) => {
       this.logger.warn(`Failed to void store sale for cancelled order: ${voidErr.message}`);
     });
@@ -1706,6 +1716,10 @@ export class OrdersService implements OnModuleInit {
 
     if (!originalOrder) {
       throw new NotFoundException('Original order not found');
+    }
+
+    if (originalOrder.user.toString() !== userId) {
+      throw new ForbiddenException('You can only reorder your own orders');
     }
 
     const mainStore = await this.storesService.findMainStore();

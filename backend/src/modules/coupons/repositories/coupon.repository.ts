@@ -52,6 +52,13 @@ export class CouponRepository extends BaseRepository<CouponDocument> {
     return { modifiedCount: result.modifiedCount };
   }
 
+  async decrementUsageCount(code: string): Promise<void> {
+    await this.model.updateOne(
+      { code: code.toUpperCase(), usedCount: { $gt: 0 } },
+      { $inc: { usedCount: -1 } },
+    ).exec();
+  }
+
   async findActiveCoupons(): Promise<CouponDocument[]> {
     const now = new Date();
     // Compare validUntil against start-of-day (UTC) so a coupon expiring "today"

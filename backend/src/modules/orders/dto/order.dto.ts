@@ -388,9 +388,9 @@ export class GuestCreateOrderDto {
 }
 
 export class UpdateOrderDto {
-  @IsString()
+  @IsIn(ORDER_STATUS_LIST)
   @IsOptional()
-  status?: string;
+  status?: OrderStatus;
 
   @IsString()
   @IsOptional()
