@@ -78,7 +78,14 @@ export const useCartStore = create<CartState>()(
 
         // Attempt to sync with server; ignore 401 for guests
         try {
-          await api.addToCart(item.productId, quantity, item.variantSku);
+          const result = await api.addToCart(item.productId, quantity, item.variantSku);
+          // Server recomputes percentage-coupon discount on the new subtotal — sync it.
+          // Guests get 401 so this only runs for authenticated users.
+          set({
+            couponCode: result.couponCode || null,
+            discount: result.discount || 0,
+            discountType: result.discount ? 'fixed' : null,
+          });
         } catch (error) {
           console.error('Failed to sync cart with server:', error);
           // For authenticated users, try to resync full cart
@@ -177,6 +184,8 @@ export const useCartStore = create<CartState>()(
           await api.removeCartCoupon();
         } catch (error) {
           console.error('Failed to remove coupon from server:', error);
+          // Restore server state so local and server don't diverge silently
+          await get().syncWithServer().catch(() => {});
         }
       },
 
