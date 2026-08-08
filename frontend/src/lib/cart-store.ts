@@ -102,7 +102,12 @@ export const useCartStore = create<CartState>()(
         }));
 
         try {
-          await api.removeFromCart(productId, variantSku);
+          const result = await api.removeFromCart(productId, variantSku);
+          set({
+            couponCode: result.couponCode || null,
+            discount: result.discount || 0,
+            discountType: result.discount ? 'fixed' : null,
+          });
         } catch (error) {
           console.error('Failed to sync cart removal with server:', error);
           await get().syncWithServer();
@@ -125,7 +130,12 @@ export const useCartStore = create<CartState>()(
         }));
 
         try {
-          await api.updateCartItem(productId, quantity, variantSku);
+          const result = await api.updateCartItem(productId, quantity, variantSku);
+          set({
+            couponCode: result.couponCode || null,
+            discount: result.discount || 0,
+            discountType: result.discount ? 'fixed' : null,
+          });
         } catch (error) {
           console.error('Failed to sync cart update with server:', error);
           await get().syncWithServer();
