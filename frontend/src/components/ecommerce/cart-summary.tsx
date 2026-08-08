@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Tag, Truck, ShieldCheck, ArrowRight, X, PartyPopper, Info, MessageCircle, Percent } from 'lucide-react';
+import { Tag, Truck, ShieldCheck, ArrowRight, X, PartyPopper, Info, MessageCircle } from 'lucide-react';
 import { WhatsAppOrderModal } from './whatsapp-order-modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -209,8 +209,8 @@ export function CartSummary({
                       <div className="flex items-center gap-1.5 mb-0.5">
                         <span className="font-mono text-sm font-bold text-brand-charcoal tracking-wider">{c.code}</span>
                         {c.discountType === 'percentage' ? (
-                          <span className="text-[10px] bg-brand-mustard/20 text-brand-mustard font-semibold px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                            <Percent className="w-2.5 h-2.5" />{c.discountValue}% OFF
+                          <span className="text-[10px] bg-brand-mustard/20 text-brand-mustard font-semibold px-1.5 py-0.5 rounded-full">
+                            {c.discountValue}% OFF
                           </span>
                         ) : (
                           <span className="text-[10px] bg-brand-green/20 text-brand-green font-semibold px-1.5 py-0.5 rounded-full">

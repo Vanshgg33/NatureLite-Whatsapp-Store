@@ -8,7 +8,7 @@ import { motion } from 'framer-motion';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ArrowLeft, CreditCard, Banknote, Smartphone, ShieldCheck, Check, ShoppingBag, MapPin, Tag, X, ChevronDown, ChevronUp, Percent, Ticket } from 'lucide-react';
+import { ArrowLeft, CreditCard, Banknote, Smartphone, ShieldCheck, Check, ShoppingBag, MapPin, Tag, X, ChevronDown, ChevronUp, Ticket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CartItem } from '@/components/ecommerce/cart-item';
@@ -782,8 +782,7 @@ export default function CheckoutPage() {
                                         {c.code}
                                       </span>
                                       {c.discountType === 'percentage' ? (
-                                        <span className="text-[10px] bg-brand-mustard/20 text-brand-mustard font-semibold px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                                          <Percent className="w-2.5 h-2.5" />
+                                        <span className="text-[10px] bg-brand-mustard/20 text-brand-mustard font-semibold px-1.5 py-0.5 rounded-full">
                                           {c.discountValue}% OFF
                                         </span>
                                       ) : (
