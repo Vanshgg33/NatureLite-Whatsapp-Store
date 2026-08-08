@@ -110,7 +110,13 @@ export function CartSummary({
           setLocalCoupon(code, savedAmount, 'fixed');
           setCouponInput('');
           toast({ title: 'Coupon applied!', description: `You saved ${formatPrice(savedAmount)}` });
-          applyCoupon(code).catch(() => {});
+          applyCoupon(code).then((result) => {
+            // Guests get 401 — keep local coupon for guest checkout
+            if (!result.success && result.message !== 'Unauthorized') {
+              removeCoupon();
+              setCouponHint({ type: 'error', message: result.message || 'Coupon could not be applied' });
+            }
+          });
         }
       } else if (validationResult.minOrderAmount) {
         setCouponHint({
@@ -152,7 +158,12 @@ export function CartSummary({
     }
     setLocalCoupon(coupon.code, localDiscount, 'fixed');
     toast({ title: 'Coupon applied!', description: `You saved ${formatPrice(localDiscount)}` });
-    applyCoupon(coupon.code).catch(() => {});
+    applyCoupon(coupon.code).then((result) => {
+      if (!result.success && result.message !== 'Unauthorized') {
+        removeCoupon();
+        setCouponHint({ type: 'error', message: result.message || 'Coupon could not be applied' });
+      }
+    });
   };
 
   const handleRemoveCoupon = async () => {
