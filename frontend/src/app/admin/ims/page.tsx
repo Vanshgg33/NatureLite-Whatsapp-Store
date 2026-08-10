@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { useDebouncedValue } from '@/lib/utils';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Boxes, Search, AlertTriangle, Package, FileText,
-  TrendingDown, TrendingUp, CheckCircle2, Calendar,
+  TrendingDown, TrendingUp, CheckCircle2, Calendar, ChevronDown, ChevronRight,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
@@ -25,6 +25,9 @@ import { downloadReportPdf, generateReportPdfBase64 } from '@/lib/report-pdf';
 import { EmailReportButton } from '@/components/admin/email-report-button';
 import type { Store, StoreStockItem, StockSnapshotItem } from '@/types';
 
+/** Sentinel select value meaning "edit the base product stock", not a specific variant. */
+const BASE_STOCK_KEY = '__base__';
+
 export default function IMSPage() {
   const { user } = useAdminAuthStore();
   const queryClient = useQueryClient();
@@ -35,12 +38,32 @@ export default function IMSPage() {
   const [page, setPage] = useState(1);
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [editItem, setEditItem] = useState<StoreStockItem | null>(null);
+  const [editVariantKey, setEditVariantKey] = useState<string>(BASE_STOCK_KEY);
   const [editStockIn, setEditStockIn] = useState('');
   const [editReturned, setEditReturned] = useState('');
   const [editDamaged, setEditDamaged] = useState('');
   const [editSaleLog, setEditSaleLog] = useState('');
   const [editThreshold, setEditThreshold] = useState('');
   const [reportDate, setReportDate] = useState('');
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  function toggleExpand(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function openEditDialog(item: StoreStockItem, variantKey: string = BASE_STOCK_KEY) {
+    setEditItem(item);
+    setEditVariantKey(variantKey);
+    setEditStockIn('');
+    setEditReturned('');
+    setEditDamaged('');
+    setEditSaleLog('');
+    setEditThreshold((item.lowStockThreshold ?? 0).toString());
+  }
 
   const isSuperadmin = user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
   const canEditAnalytics = user?.role === 'superadmin' || (user?.role === 'admin' && !user?.departmentType);
@@ -85,7 +108,7 @@ export default function IMSPage() {
   }, [availableDates, reportDate]);
 
   const updateStockMutation = useMutation({
-    mutationFn: (data: { storeId: string; productId: string; stockInDelta?: number; returnedDelta?: number; damagedDelta?: number; saleLogDelta?: number; lowStockThreshold?: number; adminPassword?: string }) =>
+    mutationFn: (data: { storeId: string; productId: string; stockInDelta?: number; returnedDelta?: number; damagedDelta?: number; saleLogDelta?: number; variantSku?: string; lowStockThreshold?: number; adminPassword?: string }) =>
       api.setStoreStock(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['store-stock'] });
@@ -206,6 +229,17 @@ export default function IMSPage() {
       bg: 'bg-emerald-50',
     },
   ];
+
+  const editVariants = editItem?.productVariants ?? [];
+  const editHasVariants = editVariants.length > 0;
+  const editSelectionStock = editItem
+    ? (editVariantKey === BASE_STOCK_KEY
+        ? editItem.stock
+        : editItem.variantStocks?.find((v) => v.variantSku === editVariantKey)?.stock ?? 0)
+    : 0;
+  const editSelectionLabel = editVariantKey === BASE_STOCK_KEY
+    ? 'Base product'
+    : editVariants.find((v) => v.sku === editVariantKey)?.name ?? 'Variant';
 
   return (
     <div className="p-6 space-y-6">
@@ -340,59 +374,125 @@ export default function IMSPage() {
                   const totalStock = getStoreItemTotalStock(item);
                   const isLow = totalStock <= item.lowStockThreshold && totalStock > 0;
                   const isOut = totalStock <= 0;
+                  const variants = item.productVariants ?? [];
+                  const hasVariants = variants.length > 0;
+                  const isExpanded = expandedIds.has(item._id);
                   return (
-                    <tr key={item._id} className="hover:bg-gray-50/60 transition-colors group">
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-3">
-                          {item.productImages?.[0] ? (
-                            <img src={item.productImages[0] as string} alt="" className="h-9 w-9 rounded-lg object-cover" />
-                          ) : (
-                            <div className="h-9 w-9 rounded-lg bg-gray-100 flex items-center justify-center">
-                              <Package className="h-4 w-4 text-gray-400" />
+                    <Fragment key={item._id}>
+                      <tr className="hover:bg-gray-50/60 transition-colors group">
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center gap-2">
+                            {hasVariants ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleExpand(item._id)}
+                                className="text-gray-400 hover:text-gray-700 flex-shrink-0"
+                              >
+                                {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                              </button>
+                            ) : (
+                              <span className="w-4 flex-shrink-0" />
+                            )}
+                            {item.productImages?.[0] ? (
+                              <img src={item.productImages[0] as string} alt="" className="h-9 w-9 rounded-lg object-cover" />
+                            ) : (
+                              <div className="h-9 w-9 rounded-lg bg-gray-100 flex items-center justify-center">
+                                <Package className="h-4 w-4 text-gray-400" />
+                              </div>
+                            )}
+                            <div>
+                              <span className="font-medium text-gray-900">{item.productName}</span>
+                              {hasVariants && (
+                                <p className="text-[11px] text-gray-400">{variants.length} variant{variants.length > 1 ? 's' : ''}</p>
+                              )}
                             </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3.5 font-mono text-xs text-gray-500">{item.productSku}</td>
+                        <td className="px-4 py-3.5 font-medium text-gray-700">₹{item.productPrice?.toLocaleString()}</td>
+                        <td className="px-4 py-3.5 text-center">
+                          <span className={`text-base font-black ${isOut ? 'text-red-600' : isLow ? 'text-amber-600' : 'text-emerald-600'}`}>
+                            {totalStock}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 text-center text-gray-400 text-sm">{item.lowStockThreshold}</td>
+                        <td className="px-4 py-3.5 text-center">
+                          {isOut ? (
+                            <Badge className="bg-red-100 text-red-700 border-0">Out of Stock</Badge>
+                          ) : isLow ? (
+                            <Badge className="bg-amber-100 text-amber-700 border-0">Low Stock</Badge>
+                          ) : (
+                            <Badge className="bg-emerald-100 text-emerald-700 border-0">In Stock</Badge>
                           )}
-                          <span className="font-medium text-gray-900">{item.productName}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3.5 font-mono text-xs text-gray-500">{item.productSku}</td>
-                      <td className="px-4 py-3.5 font-medium text-gray-700">₹{item.productPrice?.toLocaleString()}</td>
-                      <td className="px-4 py-3.5 text-center">
-                        <span className={`text-base font-black ${isOut ? 'text-red-600' : isLow ? 'text-amber-600' : 'text-emerald-600'}`}>
-                          {totalStock}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5 text-center text-gray-400 text-sm">{item.lowStockThreshold}</td>
-                      <td className="px-4 py-3.5 text-center">
-                        {isOut ? (
-                          <Badge className="bg-red-100 text-red-700 border-0">Out of Stock</Badge>
-                        ) : isLow ? (
-                          <Badge className="bg-amber-100 text-amber-700 border-0">Low Stock</Badge>
-                        ) : (
-                          <Badge className="bg-emerald-100 text-emerald-700 border-0">In Stock</Badge>
-                        )}
-                      </td>
-                      <td className="px-5 py-3.5 text-right">
-                        {canEditAnalytics ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 text-xs opacity-70 group-hover:opacity-100"
-                            onClick={() => {
-                              setEditItem(item);
-                              setEditStockIn('');
-                              setEditReturned('');
-                              setEditDamaged('');
-                              setEditSaleLog('');
-                              setEditThreshold((item.lowStockThreshold ?? 0).toString());
-                            }}
-                          >
-                            Update
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-gray-400">View only</span>
-                        )}
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          {canEditAnalytics ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 text-xs opacity-70 group-hover:opacity-100"
+                              onClick={() => openEditDialog(item)}
+                            >
+                              Update
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-gray-400">View only</span>
+                          )}
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <>
+                          <tr className="bg-gray-50/40 text-sm">
+                            <td className="pl-14 pr-5 py-2 text-gray-500">Base product</td>
+                            <td className="px-4 py-2" />
+                            <td className="px-4 py-2" />
+                            <td className="px-4 py-2 text-center font-semibold text-gray-700">{item.stock}</td>
+                            <td className="px-4 py-2" />
+                            <td className="px-4 py-2" />
+                            <td className="px-5 py-2 text-right">
+                              {canEditAnalytics && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-xs text-gray-500"
+                                  onClick={() => openEditDialog(item, BASE_STOCK_KEY)}
+                                >
+                                  Update
+                                </Button>
+                              )}
+                            </td>
+                          </tr>
+                          {variants.map((v) => {
+                            const vStock = item.variantStocks?.find((vs) => vs.variantSku === v.sku)?.stock ?? 0;
+                            return (
+                              <tr key={`${item._id}-${v.sku}`} className="bg-gray-50/40 text-sm">
+                                <td className="pl-14 pr-5 py-2 text-gray-600">
+                                  {v.name}
+                                  <span className="text-gray-400 font-mono text-[11px] ml-1.5">{v.sku}</span>
+                                </td>
+                                <td className="px-4 py-2" />
+                                <td className="px-4 py-2" />
+                                <td className="px-4 py-2 text-center font-semibold text-gray-700">{vStock}</td>
+                                <td className="px-4 py-2" />
+                                <td className="px-4 py-2" />
+                                <td className="px-5 py-2 text-right">
+                                  {canEditAnalytics && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 text-xs text-gray-500"
+                                      onClick={() => openEditDialog(item, v.sku)}
+                                    >
+                                      Update
+                                    </Button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </>
+                      )}
+                    </Fragment>
                   );
                 })}
                 {(!stockData?.items || stockData.items.length === 0) && (
@@ -437,8 +537,36 @@ export default function IMSPage() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border">
-              <span className="text-sm font-medium text-gray-600">Current Stock</span>
+              <span className="text-sm font-medium text-gray-600">Total Stock (all variants)</span>
               <span className="text-xl font-black text-gray-900">{editItem ? getStoreItemTotalStock(editItem) : 0}</span>
+            </div>
+
+            {editHasVariants && (
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1.5 block">Editing</label>
+                <Select value={editVariantKey} onValueChange={setEditVariantKey}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={BASE_STOCK_KEY}>Base product — {editItem?.stock ?? 0} in stock</SelectItem>
+                    {editVariants.map((v) => {
+                      const vStock = editItem?.variantStocks?.find((vs) => vs.variantSku === v.sku)?.stock ?? 0;
+                      return (
+                        <SelectItem key={v.sku} value={v.sku}>
+                          {v.name} — {vStock} in stock
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-400 mt-1">Entries below apply only to the selected variant.</p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border">
+              <span className="text-sm font-medium text-gray-600">{editSelectionLabel} Stock</span>
+              <span className="text-xl font-black text-gray-900">{editSelectionStock}</span>
             </div>
             <div className="grid grid-cols-2 gap-3">
               {[
@@ -457,14 +585,16 @@ export default function IMSPage() {
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1.5 block">Low Stock Threshold</label>
               <Input type="number" min="0" value={editThreshold} onChange={(e) => setEditThreshold(e.target.value)} />
+              {editHasVariants && (
+                <p className="text-xs text-gray-400 mt-1">Applies to the product's total stock across all variants.</p>
+              )}
             </div>
             {(editStockIn || editReturned || editDamaged || editSaleLog) && (() => {
               const net = (parseInt(editStockIn) || 0) + (parseInt(editReturned) || 0) + (parseInt(editDamaged) || 0) - (parseInt(editSaleLog) || 0);
-              const current = editItem ? getStoreItemTotalStock(editItem) : 0;
-              const newTotal = Math.max(0, current + net);
+              const newSelectionStock = Math.max(0, editSelectionStock + net);
               return (
                 <div className={`text-sm font-medium px-3 py-2.5 rounded-xl ${net >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
-                  Net change: {net >= 0 ? '+' : ''}{net} → New total: <strong>{newTotal}</strong>
+                  Net change: {net >= 0 ? '+' : ''}{net} → New {editSelectionLabel.toLowerCase()} stock: <strong>{newSelectionStock}</strong>
                 </div>
               );
             })()}
@@ -480,7 +610,8 @@ export default function IMSPage() {
                 const sl = parseInt(editSaleLog) || 0;
                 const threshold = parseInt(editThreshold);
                 const thresholdChanged = !isNaN(threshold) && threshold !== editItem.lowStockThreshold;
-                if (!si && !re && !da && !sl && !thresholdChanged) { setEditItem(null); return; }
+                const hasDelta = si > 0 || re > 0 || da > 0 || sl > 0;
+                if (!hasDelta && !thresholdChanged) { setEditItem(null); return; }
                 updateStockMutation.mutate({
                   storeId: selectedStoreId,
                   productId: typeof editItem.product === 'string' ? editItem.product : (editItem.product as { _id: string })._id,
@@ -488,6 +619,10 @@ export default function IMSPage() {
                   ...(re > 0 && { returnedDelta: re }),
                   ...(da > 0 && { damagedDelta: da }),
                   ...(sl > 0 && { saleLogDelta: sl }),
+                  // Only tag the variant when there's an actual delta to apply — sending
+                  // variantSku with no delta hits the backend's absolute-set path and would
+                  // zero out that variant's stock (dto.stock defaults to 0 when unset).
+                  ...(editVariantKey !== BASE_STOCK_KEY && hasDelta && { variantSku: editVariantKey }),
                   ...(!isNaN(threshold) && { lowStockThreshold: threshold }),
                 });
               }}
