@@ -99,6 +99,7 @@ export class StoreStockService {
         );
         if (variantIdx >= 0) {
           storeStock.variantStocks[variantIdx].stock = variantStock;
+          storeStock.markModified('variantStocks');
         } else {
           storeStock.variantStocks.push({ variantSku: dto.variantSku, stock: variantStock });
         }

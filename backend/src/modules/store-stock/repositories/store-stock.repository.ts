@@ -252,6 +252,7 @@ export class StoreStockRepository extends BaseRepository<StoreStockDocument> {
     const variantIdx = doc.variantStocks.findIndex((v) => v.variantSku === variantSku);
     if (variantIdx >= 0) {
       doc.variantStocks[variantIdx].stock = Math.max(0, (doc.variantStocks[variantIdx].stock ?? 0) + deltas.netDelta);
+      doc.markModified('variantStocks');
     } else {
       doc.variantStocks.push({ variantSku, stock: Math.max(0, deltas.netDelta) });
     }
