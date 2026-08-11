@@ -1,7 +1,7 @@
 'use client';
 
-import { useRef, useEffect, useState } from 'react';
-import { motion, useInView, useAnimation, Variants } from 'framer-motion';
+import { useState } from 'react';
+import { motion, Variants } from 'framer-motion';
 
 interface StaggerChildrenProps {
   children: React.ReactNode;
@@ -47,26 +47,9 @@ export function StaggerChildren({
   once = true,
   threshold = 0.2,
 }: StaggerChildrenProps) {
-  const ref = useRef<HTMLDivElement>(null);
-  const isInView = useInView(ref, { once, amount: threshold });
-  const controls = useAnimation();
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setPrefersReducedMotion(
-        window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      );
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isInView) {
-      controls.start('visible');
-    } else if (!once) {
-      controls.start('hidden');
-    }
-  }, [isInView, controls, once]);
+  const [prefersReducedMotion] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  );
 
   const customContainerVariants: Variants = {
     hidden: {},
@@ -79,17 +62,11 @@ export function StaggerChildren({
   };
 
   const customItemVariants: Variants = {
-    hidden: {
-      opacity: 0,
-      y: 20,
-    },
+    hidden: { opacity: 0, y: 20 },
     visible: {
       opacity: 1,
       y: 0,
-      transition: {
-        duration,
-        ease: [0.22, 1, 0.36, 1],
-      },
+      transition: { duration, ease: [0.22, 1, 0.36, 1] },
     },
   };
 
@@ -99,10 +76,10 @@ export function StaggerChildren({
 
   return (
     <motion.div
-      ref={ref}
       className={className}
       initial="hidden"
-      animate={controls}
+      whileInView="visible"
+      viewport={{ once, amount: threshold }}
       variants={customContainerVariants}
     >
       {children}

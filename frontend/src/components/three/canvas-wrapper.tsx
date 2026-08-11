@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, ReactNode, useState, useEffect } from 'react';
+import { Suspense, ReactNode, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { detectPerformanceTier, PerformanceTier } from '@/lib/performance-tier';
 import { cn } from '@/lib/utils';
@@ -60,17 +60,10 @@ export function CanvasWrapper({
   fallback,
   minTier = 'medium',
 }: CanvasWrapperProps) {
-  const [tier, setTier] = useState<PerformanceTier | null>(null);
+  const [tier] = useState<PerformanceTier>(
+    () => typeof window !== 'undefined' ? detectPerformanceTier() : 'medium',
+  );
   const [error, setError] = useState(false);
-
-  useEffect(() => {
-    setTier(detectPerformanceTier());
-  }, []);
-
-  // While detecting performance tier
-  if (tier === null) {
-    return <LoadingFallback className={className} />;
-  }
 
   // If below minimum tier, show static fallback
   const tierOrder: PerformanceTier[] = ['low', 'medium', 'high'];

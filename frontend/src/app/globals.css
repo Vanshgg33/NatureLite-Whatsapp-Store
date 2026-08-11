@@ -204,12 +204,6 @@
     transition: transform 80ms ease-in !important;
   }
 
-  /* GPU compositing hint — applied only on hover to avoid persistent memory overhead */
-  button:not(:disabled):hover,
-  [role="button"]:not([aria-disabled="true"]):hover {
-    will-change: transform;
-  }
-
   /* Smooth focus ring on all form fields — catches inputs without explicit transition classes */
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
   select,

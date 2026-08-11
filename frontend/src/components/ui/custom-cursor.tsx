@@ -19,38 +19,51 @@ export function CustomCursor() {
 
     let mx = -100, my = -100;
     let rx = -100, ry = -100;
+    let targetScale = 1, currentScale = 1;
     let raf = 0;
+    let settled = false;
+
+    const ease = 0.12;
+
+    const startRaf = () => {
+      if (!settled) return;
+      settled = false;
+      raf = requestAnimationFrame(tick);
+    };
 
     const onMove = (e: MouseEvent) => {
       mx = e.clientX;
       my = e.clientY;
+      startRaf();
     };
 
     const onOver = (e: MouseEvent) => {
       const el = (e.target as HTMLElement).closest('a, button, [data-cursor]') as HTMLElement | null;
       if (!el) return;
-      ring.style.width  = '52px';
-      ring.style.height = '52px';
+      targetScale = 1.625;
       const label = el.dataset.cursor ?? '';
       ring.querySelector('span')!.textContent = label;
+      startRaf();
     };
 
     const onOut = (e: MouseEvent) => {
       const el = (e.target as HTMLElement).closest('a, button, [data-cursor]');
       if (!el) return;
-      ring.style.width  = '32px';
-      ring.style.height = '32px';
+      targetScale = 1;
       ring.querySelector('span')!.textContent = '';
+      startRaf();
     };
 
-    const ease = 0.12;
     const tick = () => {
-      // Dot: instant
-      dot.style.transform  = `translate(${mx - 4}px, ${my - 4}px)`;
-      // Ring: lerp
+      dot.style.transform = `translate(${mx - 4}px, ${my - 4}px)`;
       rx += (mx - rx) * ease;
       ry += (my - ry) * ease;
-      ring.style.transform = `translate(${rx - 16}px, ${ry - 16}px)`;
+      currentScale += (targetScale - currentScale) * ease;
+      ring.style.transform = `translate(${rx - 16}px, ${ry - 16}px) scale(${currentScale.toFixed(3)})`;
+
+      const posOk   = Math.abs(mx - rx) < 0.1 && Math.abs(my - ry) < 0.1;
+      const scaleOk = Math.abs(targetScale - currentScale) < 0.001;
+      if (posOk && scaleOk) { settled = true; return; }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -88,7 +101,6 @@ export function CustomCursor() {
           border: '1.5px solid #0d2b0a',
           opacity: 0,
           mixBlendMode: 'difference',
-          transition: 'width 0.2s ease, height 0.2s ease',
           willChange: 'transform',
         }}
       >

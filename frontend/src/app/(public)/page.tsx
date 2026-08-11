@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 
@@ -19,7 +19,7 @@ import { MarqueeTicker } from '@/components/ui/marquee-ticker';
 import WhatsAppStrip from '@/components/ecommerce/whatsapp-strip';
 import { MapPin } from 'lucide-react';
 
-const LOADER_DURATION = 600;
+const LOADER_DURATION = 300;
 
 // ─── Loading Screen ───────────────────────────────────────────────────────────
 
@@ -75,10 +75,11 @@ const MOTES = [
 ];
 
 function LoadingScreen({ onDone }: { onDone: () => void }) {
-  const [percent,    setPercent]   = useState(0);
   const [exiting,    setExiting]   = useState(false);
   const [phraseIdx,  setPhraseIdx] = useState(0);
   const [sceneScale, setSceneScale] = useState(1);
+  const barRef = useRef<HTMLDivElement>(null);
+  const pctRef = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
     setSceneScale(Math.min(1, (window.innerWidth * 0.88) / 360));
@@ -89,15 +90,15 @@ function LoadingScreen({ onDone }: { onDone: () => void }) {
     let raf = 0;
     const tick = (now: number) => {
       const p = Math.min(1, (now - start) / LOADER_DURATION);
-      setPercent(Math.round(p * 100));
-      if (p < 1) {
-        raf = requestAnimationFrame(tick);
-      }
+      const pct = Math.round(p * 100);
+      if (barRef.current) barRef.current.style.width = `${pct}%`;
+      if (pctRef.current) pctRef.current.textContent = `${pct}%`;
+      if (p < 1) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
 
     const t1 = setTimeout(() => setExiting(true), LOADER_DURATION + 100);
-    const t2 = setTimeout(onDone, LOADER_DURATION + 400);
+    const t2 = setTimeout(onDone, LOADER_DURATION + 200);
     return () => { cancelAnimationFrame(raf); clearTimeout(t1); clearTimeout(t2); };
   }, [onDone]);
 
@@ -421,9 +422,9 @@ function LoadingScreen({ onDone }: { onDone: () => void }) {
           borderRadius: 999, position: 'relative',
           marginBottom: 10,
         }}>
-          <div style={{
+          <div ref={barRef} style={{
             position: 'absolute', inset: '0 auto 0 0',
-            width: `${percent}%`,
+            width: '0%',
             background: 'linear-gradient(90deg, #7A5008 0%, #C8920A 55%, #FFD060 100%)',
             borderRadius: 999,
             transition: 'width 60ms linear',
@@ -432,12 +433,12 @@ function LoadingScreen({ onDone }: { onDone: () => void }) {
         </div>
 
         {/* Percentage */}
-        <p style={{
+        <p ref={pctRef} style={{
           fontFamily: 'monospace', fontSize: 10,
           letterSpacing: '0.14em',
           color: 'rgba(184,138,20,0.28)',
         }}>
-          {percent}%
+          0%
         </p>
       </div>
     </div>
@@ -448,12 +449,12 @@ function LoadingScreen({ onDone }: { onDone: () => void }) {
 
 const pageVariants = {
   hidden:  {},
-  visible: { transition: { staggerChildren: 0.10 } },
+  visible: { transition: { staggerChildren: 0.04 } },
 };
 
 const sectionVariants = {
   hidden:  { opacity: 0, y: 24 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.70, ease: [0.22, 1, 0.36, 1] } },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] } },
 };
 
 // ─── Home Page ────────────────────────────────────────────────────────────────
@@ -472,7 +473,7 @@ export default function HomePage() {
   const { data: categoriesData } = useQuery({
     queryKey: ['homepage-categories'],
     queryFn: () => api.getActiveCategories(),
-    staleTime: 0,
+    staleTime: 5 * 60 * 1000,
   });
 
   const products = productsData?.items ?? [];

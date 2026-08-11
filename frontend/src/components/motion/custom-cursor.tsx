@@ -27,27 +27,29 @@ export function CustomCursor({
   const trailY = useSpring(cursorY, springConfig);
 
   useEffect(() => {
-    // Check if device has touch
-    const isTouchDevice = 'ontouchstart' in window;
-    if (isTouchDevice) return;
+    if ('ontouchstart' in window) return;
 
-    // Single merged mousemove handler
     const handleMouseMove = (e: MouseEvent) => {
       cursorX.set(e.clientX - size / 2);
       cursorY.set(e.clientY - size / 2);
+    };
 
-      // Track hover states inline (avoids second listener)
+    const handleMouseOver = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       const isInteractive =
-        target.tagName === 'A' ||
-        target.tagName === 'BUTTON' ||
-        target.closest('a') ||
-        target.closest('button') ||
-        target.dataset.cursorHover;
+        target.tagName === 'A' || target.tagName === 'BUTTON' ||
+        target.closest('a') || target.closest('button') || target.dataset.cursorHover;
       const hoverText = target.dataset.cursorText || target.closest('[data-cursor-text]')?.getAttribute('data-cursor-text');
-
       setIsHovering(!!isInteractive);
       setCursorText(hoverText || '');
+    };
+
+    const handleMouseOut = (e: MouseEvent) => {
+      const rel = e.relatedTarget as HTMLElement | null;
+      if (!rel || !(rel.tagName === 'A' || rel.tagName === 'BUTTON' || rel.closest?.('a') || rel.closest?.('button') || rel.dataset?.cursorHover)) {
+        setIsHovering(false);
+        setCursorText('');
+      }
     };
 
     const handleMouseEnter = () => setIsVisible(true);
@@ -56,6 +58,8 @@ export function CustomCursor({
     const handleMouseUp = () => setIsClicking(false);
 
     window.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseover', handleMouseOver);
+    document.addEventListener('mouseout', handleMouseOut);
     document.body.addEventListener('mouseenter', handleMouseEnter);
     document.body.addEventListener('mouseleave', handleMouseLeave);
     window.addEventListener('mousedown', handleMouseDown);
@@ -63,17 +67,14 @@ export function CustomCursor({
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseover', handleMouseOver);
+      document.removeEventListener('mouseout', handleMouseOut);
       document.body.removeEventListener('mouseenter', handleMouseEnter);
       document.body.removeEventListener('mouseleave', handleMouseLeave);
       window.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [cursorX, cursorY, size]);
-
-  // Hide on touch devices
-  if (typeof window !== 'undefined' && 'ontouchstart' in window) {
-    return null;
-  }
 
   return (
     <>

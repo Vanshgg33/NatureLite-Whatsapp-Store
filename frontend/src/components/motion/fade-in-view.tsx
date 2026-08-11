@@ -1,7 +1,7 @@
 'use client';
 
-import { useRef, useEffect, useState } from 'react';
-import { motion, useInView, useAnimation, Variants } from 'framer-motion';
+import { useState } from 'react';
+import { motion, Variants } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 interface FadeInViewProps {
@@ -50,38 +50,20 @@ export function FadeInView({
   threshold = 0.2,
   distance = 30,
 }: FadeInViewProps) {
-  const ref = useRef<HTMLDivElement>(null);
-  const isInView = useInView(ref, { once, amount: threshold });
-  const controls = useAnimation();
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [prefersReducedMotion] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  );
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setPrefersReducedMotion(
-        window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      );
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isInView) {
-      controls.start('visible');
-    } else if (!once) {
-      controls.start('hidden');
-    }
-  }, [isInView, controls, once]);
-
-  // If reduced motion is preferred, render without animation
   if (prefersReducedMotion) {
     return <div className={className}>{children}</div>;
   }
 
   return (
     <motion.div
-      ref={ref}
-      className={className}
+      className={cn(className)}
       initial="hidden"
-      animate={controls}
+      whileInView="visible"
+      viewport={{ once, amount: threshold }}
       variants={getVariants(direction, distance)}
       transition={{
         duration,

@@ -28,11 +28,9 @@ export function WhatsAppFab() {
   if (dismissed) return null;
 
   return (
-    <motion.div
-      className="fixed z-[44] bottom-[90px] sm:bottom-7"
+    <div
+      className="fixed z-[44] bottom-[90px] sm:bottom-7 wa-fab-bob"
       style={{ right: 20 }}
-      animate={{ y: [0, -6, 0] }}
-      transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
     >
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
         {/* Label tooltip */}
@@ -105,6 +103,7 @@ export function WhatsAppFab() {
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             aria-label="Order on WhatsApp"
+            className="wa-fab-link"
             style={{
               position: 'relative',
               display: 'flex',
@@ -116,7 +115,6 @@ export function WhatsAppFab() {
               background: 'linear-gradient(135deg, #25d366 0%, #128c7e 100%)',
               boxShadow: '0 4px 20px -3px rgba(37,211,102,0.60)',
               transition: 'transform 0.18s ease, box-shadow 0.18s ease',
-              transform: hovered ? 'scale(1.10)' : 'scale(1)',
             }}
           >
             <WaIcon size={26} />
@@ -130,7 +128,13 @@ export function WhatsAppFab() {
           70%  { transform: scale(1.65); opacity: 0; }
           100% { transform: scale(1.65); opacity: 0; }
         }
+        @keyframes wa-fab-bob {
+          0%, 100% { transform: translateY(0); }
+          50%      { transform: translateY(-6px); }
+        }
+        .wa-fab-bob { animation: wa-fab-bob 3.2s ease-in-out infinite; }
+        .wa-fab-link:hover { transform: scale(1.10); }
       `}} />
-    </motion.div>
+    </div>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
-import { useRef, useEffect, useState } from 'react';
-import { motion, useScroll, useTransform, useSpring } from 'framer-motion';
+import { useRef, useState } from 'react';
+import { motion, useScroll, useTransform, useSpring, useMotionValue } from 'framer-motion';
 
 interface ParallaxWrapperProps {
   children: React.ReactNode;
@@ -23,28 +23,25 @@ export function ParallaxWrapper({
   springConfig = { stiffness: 100, damping: 30, mass: 1 },
 }: ParallaxWrapperProps) {
   const ref = useRef<HTMLDivElement>(null);
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setPrefersReducedMotion(
-        window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      );
-    }
-  }, []);
+  const [prefersReducedMotion] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  );
 
   const { scrollYProgress } = useScroll({
     target: ref,
     offset: ['start end', 'end start'],
   });
 
-  // Calculate the parallax distance based on speed
+  const zero = useMotionValue(0);
   const distance = 100 * speed;
 
-  const rawY = useTransform(scrollYProgress, [0, 1], [-distance, distance]);
-  const rawX = useTransform(scrollYProgress, [0, 1], [-distance, distance]);
+  // Only the active axis tracks scrollYProgress; the idle axis stays at 0
+  const activeScrollY = direction === 'vertical'   ? scrollYProgress : zero;
+  const activeScrollX = direction === 'horizontal' ? scrollYProgress : zero;
 
-  // Apply spring physics for smoother movement
+  const rawY = useTransform(activeScrollY, [0, 1], [-distance, distance]);
+  const rawX = useTransform(activeScrollX, [0, 1], [-distance, distance]);
+
   const y = useSpring(rawY, springConfig);
   const x = useSpring(rawX, springConfig);
 
@@ -53,14 +50,7 @@ export function ParallaxWrapper({
   }
 
   return (
-    <motion.div
-      ref={ref}
-      className={className}
-      style={{
-        y: direction === 'vertical' ? y : 0,
-        x: direction === 'horizontal' ? x : 0,
-      }}
-    >
+    <motion.div ref={ref} className={className} style={{ y, x }}>
       {children}
     </motion.div>
   );

@@ -196,8 +196,7 @@ export function ParallaxText({
     if (!containerRef.current) return;
 
     const element = containerRef.current;
-
-    gsap.fromTo(
+    const tween = gsap.fromTo(
       element,
       { y: 100 * speed },
       {
@@ -213,11 +212,8 @@ export function ParallaxText({
     );
 
     return () => {
-      ScrollTrigger.getAll().forEach((trigger) => {
-        if (trigger.vars.trigger === element) {
-          trigger.kill();
-        }
-      });
+      tween.scrollTrigger?.kill();
+      tween.kill();
     };
   }, [speed]);
 

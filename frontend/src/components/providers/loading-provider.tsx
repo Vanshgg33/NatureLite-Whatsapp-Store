@@ -174,16 +174,16 @@ export function LoadingProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Two-phase progress: sprint to 80%, stall, then complete — total ~3.5s
-    bar.start({ scaleX: 0.80, transition: { duration: 1.5, ease: [0.4, 0, 0.2, 1] } });
+    // Two-phase progress: sprint to 80%, then complete — total ~1s
+    bar.start({ scaleX: 0.80, transition: { duration: 0.45, ease: [0.4, 0, 0.2, 1] } });
     const t = setTimeout(() => {
-      bar.start({ scaleX: 1, transition: { duration: 0.3, ease: 'easeIn' } })
+      bar.start({ scaleX: 1, transition: { duration: 0.18, ease: 'easeIn' } })
          .then(() => setTimeout(() => {
            setIsInitialLoad(false);
            setHasLoadedOnce(true);
            sessionStorage.setItem('naturelite-loaded', 'true');
-         }, 200));
-    }, 2800);
+         }, 80));
+    }, 700);
 
     return () => clearTimeout(t);
   }, []);
