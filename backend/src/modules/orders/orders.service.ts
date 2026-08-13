@@ -1416,6 +1416,10 @@ export class OrdersService implements OnModuleInit {
       order.paymentProofUrl = dto.paymentProofUrl;
     }
 
+    if (dto.shippingCharge != null) {
+      order.shippingCharge = dto.shippingCharge;
+    }
+
     if (dto.shippingAddress) {
       order.shippingAddress = {
         ...((order.shippingAddress as any).toObject?.() || order.shippingAddress),
@@ -1587,6 +1591,11 @@ export class OrdersService implements OnModuleInit {
       const cappedDiscount = Math.min(dto.discount, order.subtotal || 0);
       order.discount = cappedDiscount;
       order.total = Math.max(0, (order.subtotal || 0) - cappedDiscount + (order.shippingCharge || 0));
+    }
+
+    // Standalone shippingCharge update (no item or discount changes) — recalculate total
+    if (dto.shippingCharge != null && !(dto.items && dto.items.length > 0) && dto.discount == null) {
+      order.total = Math.max(0, (order.subtotal || 0) - (order.discount || 0) + order.shippingCharge);
     }
 
     return order.save();

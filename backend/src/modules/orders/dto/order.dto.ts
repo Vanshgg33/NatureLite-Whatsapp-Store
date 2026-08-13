@@ -427,4 +427,9 @@ export class UpdateOrderDto {
   @IsOptional()
   @Min(0)
   discount?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  shippingCharge?: number;
 }

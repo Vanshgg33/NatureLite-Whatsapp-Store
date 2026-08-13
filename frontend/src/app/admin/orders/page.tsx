@@ -161,6 +161,7 @@ export default function OrdersPage() {
   const [editCart, setEditCart] = useState<CartItem[]>([]);
   const [editDiscount, setEditDiscount] = useState('0');
   const [editDiscountIsPercent, setEditDiscountIsPercent] = useState(false);
+  const [editShippingCharge, setEditShippingCharge] = useState('0');
   const [editProductSearch, setEditProductSearch] = useState('');
   const [editProductDropdownOpen, setEditProductDropdownOpen] = useState(false);
   const debouncedEditProductSearch = useDebouncedValue(editProductSearch, 300);
@@ -466,6 +467,7 @@ export default function OrdersPage() {
     setEditError('');
     setEditDiscount(String(order.discount ?? 0));
     setEditDiscountIsPercent(false);
+    setEditShippingCharge(String(order.shippingCharge ?? 0));
     setEditProductSearch('');
     setEditCart(
       (order.items || []).map((item) => ({
@@ -502,6 +504,7 @@ export default function OrdersPage() {
         discount: editDiscountIsPercent
           ? editCart.reduce((s, i) => s + i.price * i.quantity, 0) * (Math.min(parseFloat(editDiscount) || 0, 100) / 100)
           : (parseFloat(editDiscount) || 0),
+        shippingCharge: parseFloat(editShippingCharge) || 0,
       },
     });
   }
@@ -1404,7 +1407,8 @@ export default function OrdersPage() {
                     const editDiscountAmt = editDiscountIsPercent
                       ? editSubtotal * (Math.min(parseFloat(editDiscount) || 0, 100) / 100)
                       : (parseFloat(editDiscount) || 0);
-                    const editTotal = Math.max(0, editSubtotal - editDiscountAmt);
+                    const editShipping = parseFloat(editShippingCharge) || 0;
+                    const editTotal = Math.max(0, editSubtotal - editDiscountAmt + editShipping);
                     return (
                       <div className="space-y-1 px-3 py-2 bg-muted/30 text-sm">
                         <div className="flex justify-between text-muted-foreground">
@@ -1417,6 +1421,12 @@ export default function OrdersPage() {
                             <span>-₹{editDiscountAmt.toLocaleString()}</span>
                           </div>
                         )}
+                        {editShipping > 0 && (
+                          <div className="flex justify-between text-muted-foreground">
+                            <span>Shipping</span>
+                            <span>+₹{editShipping.toLocaleString()}</span>
+                          </div>
+                        )}
                         <div className="flex justify-between font-bold border-t pt-1">
                           <span>Total</span>
                           <span>₹{editTotal.toLocaleString()}</span>
@@ -1427,6 +1437,22 @@ export default function OrdersPage() {
                 </div>
               )}
 
+              {/* Shipping Charge + Discount */}
+              <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium block mb-1">Shipping Charge</label>
+                <div className="relative">
+                  <Input
+                    type="number"
+                    min="0"
+                    value={editShippingCharge}
+                    onChange={(e) => setEditShippingCharge(e.target.value)}
+                    placeholder="0"
+                    className="pr-7"
+                  />
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">₹</span>
+                </div>
+              </div>
               {/* Discount */}
               <div>
                 <div className="flex items-center justify-between mb-1">
@@ -1451,6 +1477,7 @@ export default function OrdersPage() {
                     {editDiscountIsPercent ? '%' : '₹'}
                   </span>
                 </div>
+              </div>
               </div>
             </div>
 

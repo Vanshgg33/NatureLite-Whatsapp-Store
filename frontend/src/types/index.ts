@@ -921,6 +921,9 @@ export interface UpdateOrderDto {
   adminNotes?: string;
   shippingAddress?: Partial<ShippingAddress>;
   paymentProofUrl?: string;
+  items?: { productId: string; variantSku?: string; quantity: number }[];
+  discount?: number;
+  shippingCharge?: number;
 }
 
 // ==================== ADDRESS DTO ====================
