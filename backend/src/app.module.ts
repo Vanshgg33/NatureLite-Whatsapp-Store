@@ -41,6 +41,7 @@ import { WishlistModule } from './modules/wishlist/wishlist.module';
 import { WalletModule } from './modules/wallet/wallet.module';
 import { RawMaterialModule } from './modules/raw-materials/raw-material.module';
 import { AdminChatbotModule } from './modules/admin-chatbot/admin-chatbot.module';
+import { PublicChatbotModule } from './modules/public-chatbot/public-chatbot.module';
 import { DeliveryCollectionsModule } from './modules/delivery-collections/delivery-collections.module';
 import { RedisModule } from './modules/redis/redis.module';
 import { HealthController } from './health.controller';
@@ -142,6 +143,7 @@ import { HealthController } from './health.controller';
     WalletModule,
     RawMaterialModule,
     AdminChatbotModule,
+    PublicChatbotModule,
     DeliveryCollectionsModule,
   ],
   providers: [
