@@ -283,10 +283,15 @@ export class PublicChatbotService {
       generationConfig: { temperature: 0.3, maxOutputTokens: 500 },
     });
 
-    const geminiHistory: Content[] = history.map((h) => ({
+    // Gemini requires history starts with 'user'. Drop any leading model turns
+    // (e.g. UI-only greeting leaking through from the client).
+    let geminiHistory: Content[] = history.map((h) => ({
       role: h.role === 'user' ? 'user' : 'model',
       parts: [{ text: h.text }],
     }));
+    while (geminiHistory.length > 0 && geminiHistory[0].role !== 'user') {
+      geminiHistory = geminiHistory.slice(1);
+    }
 
     const chat = model.startChat({ history: geminiHistory });
     let result = await chat.sendMessage(safe);

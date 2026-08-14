@@ -102,8 +102,9 @@ export function AiChatbotFab() {
     const timer = setTimeout(() => controller.abort(), 30_000);
 
     try {
-      // Snapshot messages + new user msg for context; slice matches backend limit of 6
-      const history = [...messages, userMsg].slice(-6);
+      // History = completed prior turns only, no greeting (index 0), no current msg.
+      // Gemini requires history alternates user→model starting with user.
+      const history = messages.slice(1).slice(-6);
       const reply = await fetchReply(text, history, controller.signal);
 
       if (!mountedRef.current) return;
