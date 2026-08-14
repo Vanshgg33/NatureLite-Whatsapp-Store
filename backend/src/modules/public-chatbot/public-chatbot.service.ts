@@ -316,7 +316,7 @@ export class PublicChatbotService {
   private async callGemini(safe: string, history: ChatMessage[], apiKey: string): Promise<string> {
     const genai = new GoogleGenerativeAI(apiKey);
     const model = genai.getGenerativeModel({
-      model: process.env.GEMINI_PUBLIC_BOT_MODEL ?? 'gemini-2.0-flash-lite',
+      model: process.env.GEMINI_PUBLIC_BOT_MODEL!,
       systemInstruction: SYSTEM_PROMPT,
       tools: [{ functionDeclarations: TOOLS }],
       toolConfig: { functionCallingConfig: { mode: FunctionCallingMode.AUTO } },

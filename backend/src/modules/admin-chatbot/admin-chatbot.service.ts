@@ -702,7 +702,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     if (!apiKey) return '⚠️ GEMINI_API_KEY not configured.';
 
     const genai = new GoogleGenerativeAI(apiKey);
-    const modelName = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash-lite';
+    const modelName = process.env.GEMINI_MODEL!;
     const generationConfig = { temperature: 0.2, maxOutputTokens: 800 };
     const toolConfig = { functionCallingConfig: { mode: FunctionCallingMode.AUTO } };
 
