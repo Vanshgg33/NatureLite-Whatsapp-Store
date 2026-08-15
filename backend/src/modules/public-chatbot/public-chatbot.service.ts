@@ -327,6 +327,12 @@ export class PublicChatbotService {
   }
 
   private async callGemini(safe: string, history: ChatMessage[], apiKey: string): Promise<string> {
+    const modelName = process.env.GEMINI_PUBLIC_BOT_MODEL ?? process.env.GEMINI_MODEL;
+    if (!modelName) {
+      this.logger.error('[PublicBot] GEMINI_PUBLIC_BOT_MODEL env var not set');
+      return 'AI assistant is temporarily unavailable. Please reach us on WhatsApp.';
+    }
+
     const ai = new GoogleGenAI({ apiKey });
 
     // Gemini requires history starts with 'user' — strip leading model turns defensively.
@@ -339,7 +345,7 @@ export class PublicChatbotService {
     }
 
     const chat = ai.chats.create({
-      model: process.env.GEMINI_PUBLIC_BOT_MODEL!,
+      model: modelName,
       history: geminiHistory,
       config: {
         systemInstruction: SYSTEM_PROMPT,
