@@ -131,7 +131,8 @@ function responseText(r: any): string {
 }
 
 // Strip null/undefined fields before returning to Gemini — null values waste tokens.
-function compact(obj: Record<string, unknown>): Record<string, unknown> {
+function compact(obj: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  if (obj == null) return {};
   return Object.fromEntries(
     Object.entries(obj).filter(([, v]) => v !== null && v !== undefined && v !== ''),
   );
@@ -320,7 +321,7 @@ export class PublicChatbotService {
         this.logger.warn(`[PublicBot] Gemini timeout: "${safe.slice(0, 60)}"`);
         return 'The assistant is taking too long to respond. Please try again in a moment.';
       }
-      this.logger.error(`[PublicBot] chat error: ${msg}`);
+      this.logger.error(`[PublicBot] chat error: ${msg}\n${(err as Error).stack ?? ''}`);
       return 'Something went wrong. Please try again or reach us on WhatsApp.';
     }
   }
@@ -352,7 +353,7 @@ export class PublicChatbotService {
     let response = await chat.sendMessage({ message: safe });
 
     for (let i = 0; i < 3; i++) {
-      const parts = response.candidates?.[0]?.content?.parts ?? [];
+      const parts = (response.candidates?.[0]?.content?.parts ?? []).filter((p: any) => p != null);
       const fnParts = parts.filter((p: any) => p.functionCall != null);
       if (!fnParts.length) break;
 
@@ -360,10 +361,11 @@ export class PublicChatbotService {
         fnParts.map(async (part: any) => {
           const { name, args } = part.functionCall as { name: string; args: Record<string, unknown> };
           this.logger.log(`[PublicBot] tool: ${name}(${JSON.stringify(args)})`);
-          const res = await this.runTool(name, args ?? {}).catch((err) => ({
-            error: (err as Error).message,
+          const res = await this.runTool(name, args ?? {}).catch((err: any) => ({
+            error: String(err?.message ?? err),
           }));
-          return { functionResponse: { name, response: res } };
+          // Gemini SDK serializer throws if response is null — ensure it's always an object.
+          return { functionResponse: { name, response: res ?? { error: 'empty result' } } };
         }),
       );
 
@@ -371,7 +373,7 @@ export class PublicChatbotService {
     }
 
     // Guard: if model still has pending tool calls after loop, force a text reply.
-    const finalParts = response.candidates?.[0]?.content?.parts ?? [];
+    const finalParts = (response.candidates?.[0]?.content?.parts ?? []).filter((p: any) => p != null);
     if (finalParts.some((p: any) => p.functionCall != null)) {
       response = await chat.sendMessage({ message: 'Please answer based on what you have found.' });
     }
