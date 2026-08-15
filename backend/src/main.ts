@@ -91,6 +91,20 @@ async function createApp() {
   // so the 100 MB limit (matching the old rawBody:true default) is always applied.
   const server = express();
 
+  // Fix 1: tell Express the real client IP comes from Render's load balancer via X-Forwarded-For.
+  // Without this, req.ip = Render LB internal IP → all users share one throttler bucket.
+  server.set('trust proxy', 1);
+
+  // Fix 2: chatbot body cap before the global 100 MB parser runs.
+  // Content-Length header check is enough — the body never gets parsed for oversized requests.
+  server.use('/api/v1/chatbot', (req: any, res: any, next: any) => {
+    const cl = parseInt(req.headers['content-length'] || '0', 10);
+    if (Number.isFinite(cl) && cl > 10_240) {
+      return res.status(413).json({ success: false, message: 'Request too large' });
+    }
+    next();
+  });
+
   server.use(
     bodyParser.json({
       limit: '100mb',

@@ -120,8 +120,20 @@ const INJECTION_PATTERNS = [
   /\bDAN\b/,
 ];
 
-function isInjectionAttempt(text: string): boolean {
+export function isInjectionAttempt(text: string): boolean {
   return INJECTION_PATTERNS.some((re) => re.test(text));
+}
+
+// Recursively sanitize tool results — blocks second-order prompt injection via product/coupon names.
+function sanitizeForGemini(val: unknown): unknown {
+  if (typeof val === 'string') return isInjectionAttempt(val) ? '[removed]' : val;
+  if (Array.isArray(val)) return val.map(sanitizeForGemini);
+  if (val && typeof val === 'object') {
+    return Object.fromEntries(
+      Object.entries(val as Record<string, unknown>).map(([k, v]) => [k, sanitizeForGemini(v)]),
+    );
+  }
+  return val;
 }
 
 // Gemini 3.x can return null parts (thinking tokens); SDK's .text getter throws on them.
@@ -169,13 +181,27 @@ export class PublicChatbotService {
   }
 
   private sanitize(s: string): string {
-    return s.trim().replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').slice(0, 400);
+    // 700 = 400 user msg max + ~300 for page/cart context prefix
+    return s.trim().replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').slice(0, 700);
   }
 
   private timeout<T>(ms: number): Promise<T> {
     return new Promise((_, reject) =>
       setTimeout(() => reject(new Error(`Gemini timed out after ${ms}ms`)), ms),
     );
+  }
+
+  // Fix 3: global hourly Gemini API budget — guards against distributed attacks draining quota.
+  // Falls back to allowing the request if Redis is unavailable.
+  private async withinGlobalBudget(): Promise<boolean> {
+    try {
+      const key = `pub:bot:budget:${new Date().getUTCHours()}`;
+      const count = await this.redisService.client.incr(key);
+      if (count === 1) await this.redisService.client.expire(key, 7200);
+      return count <= 300;
+    } catch {
+      return true;
+    }
   }
 
   // Stable cache key for a normalised message (no history context).
@@ -267,7 +293,7 @@ export class PublicChatbotService {
           orderNumber: o.orderNumber,
           status: statusLabel[o.status] ?? o.status,
           total: `₹${o.total}`,
-          paymentMethod: o.paymentMethod,
+          // paymentMethod omitted — not needed for status and leaks sensitive info to unauthenticated callers
           items: (o.items ?? []).map((i: any) => `${i.name}${i.variantName ? ` (${i.variantName})` : ''} ×${i.quantity}`),
           placedOn: o.createdAt
             ? new Date(o.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -329,9 +355,18 @@ export class PublicChatbotService {
       return "I'm here to help with NatureLite products and orders. How can I assist you?";
     }
 
+    // Fix 3: global hourly budget check
+    if (!await this.withinGlobalBudget()) {
+      this.logger.warn('[PublicBot] hourly Gemini budget exhausted');
+      return 'The assistant is temporarily busy. Please try again in a moment or reach us on WhatsApp.';
+    }
+
+    // Fix 4: strip history items containing injection attempts before sending to Gemini.
+    const cleanHistory = history.filter((h) => !isInjectionAttempt(h.text));
+
     // Stateless response cache: when history is empty the reply depends only on
     // the message text — cache it to skip redundant Gemini calls.
-    if (history.length === 0) {
+    if (cleanHistory.length === 0) {
       const cached = await this.redisService.getJson<string>(this.replyCacheKey(safe));
       if (cached) {
         this.logger.log(`[PublicBot] reply cache hit for "${safe.slice(0, 40)}"`);
@@ -341,12 +376,12 @@ export class PublicChatbotService {
 
     try {
       const reply = await Promise.race<string>([
-        this.callGemini(safe, history, apiKey),
+        this.callGemini(safe, cleanHistory, apiKey),
         this.timeout<string>(GEMINI_TIMEOUT_MS),
       ]);
 
       // Cache stateless replies for repeat questions
-      if (history.length === 0) {
+      if (cleanHistory.length === 0) {
         await this.redisService.setJson(this.replyCacheKey(safe), reply, REPLY_CACHE_TTL);
       }
 
@@ -406,8 +441,9 @@ export class PublicChatbotService {
           const res = await this.runTool(name, args ?? {}).catch((err: any) => ({
             error: String(err?.message ?? err),
           }));
-          // Gemini SDK serializer throws if response is null — ensure it's always an object.
-          return { functionResponse: { name, response: res ?? { error: 'empty result' } } };
+          // Fix 6: sanitize tool results against second-order prompt injection before returning to Gemini.
+          const safeRes = sanitizeForGemini(res ?? { error: 'empty result' }) as Record<string, unknown>;
+          return { functionResponse: { name, response: safeRes } };
         }),
       );
 

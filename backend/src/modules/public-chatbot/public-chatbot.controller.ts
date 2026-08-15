@@ -1,11 +1,12 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Req, Logger } from '@nestjs/common';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { Public } from '../../common/decorators/public.decorator';
-import { PublicChatbotService, ChatMessage } from './public-chatbot.service';
+import { PublicChatbotService, ChatMessage, isInjectionAttempt } from './public-chatbot.service';
 
 @Controller('chatbot')
 @Public()
 export class PublicChatbotController {
+  private readonly logger = new Logger(PublicChatbotController.name);
   constructor(private readonly chatbotService: PublicChatbotService) {}
 
   @Post('chat')
@@ -13,6 +14,7 @@ export class PublicChatbotController {
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   async chat(
+    @Req() req: any,
     @Body('message') message: string,
     @Body('history') history: unknown = [],
     @Body('page') page: unknown,
@@ -24,6 +26,12 @@ export class PublicChatbotController {
     }
     if (message.length > 400) {
       return { reply: 'Message is too long. Please keep it under 400 characters.' };
+    }
+
+    // Fix 8: log injection attempts with client IP for abuse tracking.
+    if (isInjectionAttempt(message)) {
+      this.logger.warn(`[PublicBot] injection attempt from ${req.ip ?? 'unknown'}: "${message.slice(0, 80)}"`);
+      return { reply: "I'm here to help with NatureLite products and orders. How can I assist you?" };
     }
 
     const safePage = typeof page === 'string' ? page.replace(/[^\w\-\/\[\]]/g, '').slice(0, 100) : '';
@@ -45,7 +53,8 @@ export class PublicChatbotController {
       const name = String((item as any).name ?? '').slice(0, 60).trim();
       const qty = Number((item as any).qty);
       const price = Number((item as any).price);
-      if (!name || !Number.isFinite(qty) || !Number.isFinite(price) || qty <= 0) continue;
+      // Fix 7: reject cart items whose names contain injection patterns.
+      if (!name || !Number.isFinite(qty) || !Number.isFinite(price) || qty <= 0 || isInjectionAttempt(name)) continue;
       const variant = (item as any).variant ? ` (${String((item as any).variant).slice(0, 30)})` : '';
       lines.push(`${name}${variant} ×${qty} ₹${price * qty}`);
       total += price * qty;
