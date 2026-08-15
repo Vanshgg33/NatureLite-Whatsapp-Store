@@ -41,7 +41,7 @@ import { parseDateRange } from '../../common/utils/date-parse.util';
 
 export type HistoryItem = { role: 'user' | 'assistant'; text: string };
 
-const MAX_TOOL_ITERATIONS = 4;
+const MAX_TOOL_ITERATIONS = 8;
 
 const UNCACHED_TOOLS = new Set(['send_email_report', 'preview_email_report']);
 
@@ -748,6 +748,12 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       }
 
       response = await chat.sendMessage({ message: toolResponseParts as any });
+    }
+
+    // If model still wants to call tools after exhausting the limit, force a text summary.
+    const finalParts = response.candidates?.[0]?.content?.parts ?? [];
+    if (finalParts.some((p: Part) => p.functionCall != null)) {
+      response = await chat.sendMessage({ message: 'Summarize what you found so far.' });
     }
 
     return (response.text ?? '').trim() || '⚠️ Could not generate a response.';
