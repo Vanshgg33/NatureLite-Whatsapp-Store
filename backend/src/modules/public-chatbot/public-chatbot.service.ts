@@ -339,7 +339,7 @@ export class PublicChatbotService {
 
     let response = await chat.sendMessage({ message: safe });
 
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 3; i++) {
       const parts = response.candidates?.[0]?.content?.parts ?? [];
       const fnParts = parts.filter((p: any) => p.functionCall != null);
       if (!fnParts.length) break;
@@ -356,6 +356,12 @@ export class PublicChatbotService {
       );
 
       response = await chat.sendMessage({ message: toolResponses as any });
+    }
+
+    // Guard: if model still has pending tool calls after loop, force a text reply.
+    const finalParts = response.candidates?.[0]?.content?.parts ?? [];
+    if (finalParts.some((p: any) => p.functionCall != null)) {
+      response = await chat.sendMessage({ message: 'Please answer based on what you have found.' });
     }
 
     return (response.text ?? '').trim() || "I couldn't find an answer right now. Please reach us on WhatsApp.";

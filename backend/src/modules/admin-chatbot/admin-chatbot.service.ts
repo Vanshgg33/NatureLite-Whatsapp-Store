@@ -599,10 +599,13 @@ export class AdminChatbotService implements OnApplicationBootstrap {
   }
 
   private historyToContent(history: HistoryItem[]): Content[] {
-    return history.map((h) => ({
+    const contents = history.map((h) => ({
       role: h.role === 'user' ? 'user' : 'model',
       parts: [{ text: h.text }],
     }));
+    // Gemini rejects history that starts with a model turn.
+    while (contents.length > 0 && contents[0].role !== 'user') contents.shift();
+    return contents;
   }
 
   private toIST(d: Date | string | null | undefined, dateOnly = false): string {
@@ -722,7 +725,10 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       },
     });
 
-    let response = await chat.sendMessage({ message: userMessage });
+    const withTimeout = <T>(p: Promise<T>) =>
+      Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error('gemini_timeout')), 30_000))]);
+
+    let response = await withTimeout(chat.sendMessage({ message: userMessage }));
 
     for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
       const candidate = response.candidates?.[0];
@@ -747,13 +753,13 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         }
       }
 
-      response = await chat.sendMessage({ message: toolResponseParts as any });
+      response = await withTimeout(chat.sendMessage({ message: toolResponseParts as any }));
     }
 
     // If model still wants to call tools after exhausting the limit, force a text summary.
     const finalParts = response.candidates?.[0]?.content?.parts ?? [];
     if (finalParts.some((p: Part) => p.functionCall != null)) {
-      response = await chat.sendMessage({ message: 'Summarize what you found so far.' });
+      response = await withTimeout(chat.sendMessage({ message: 'Summarize what you found so far.' }));
     }
 
     return (response.text ?? '').trim() || '⚠️ Could not generate a response.';
