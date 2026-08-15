@@ -5,15 +5,14 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import {
-  GoogleGenerativeAI,
+  GoogleGenAI,
   HarmCategory,
   HarmBlockThreshold,
+  FunctionCallingConfigMode,
   type Content,
   type FunctionDeclaration,
-  FunctionCallingMode,
   type Part,
-} from '@google/generative-ai';
-import { GoogleAICacheManager } from '@google/generative-ai/server';
+} from '@google/genai';
 import type { ChatSessionDocument } from './schemas/chat-session.schema';
 import { ChatSessionRepository } from './repositories/chat-session.repository';
 import { RedisService } from '../redis/redis.service';
@@ -402,7 +401,7 @@ const TOOL_DECLARATIONS: FunctionDeclaration[] = [
 @Injectable()
 export class ChatbotAiService {
   private readonly logger = new Logger(ChatbotAiService.name);
-  private readonly genai: GoogleGenerativeAI;
+  private readonly ai: GoogleGenAI;
 
   // Per-user lock: prevents parallel Gemini calls for the same phone number.
   // Without this, rapid double-taps cause race conditions on session.save()
@@ -445,7 +444,7 @@ export class ChatbotAiService {
     if (!apiKey) {
       this.logger.warn('GEMINI_API_KEY is not set — AI chatbot layer is disabled.');
     }
-    this.genai = new GoogleGenerativeAI(apiKey);
+    this.ai = new GoogleGenAI({ apiKey });
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -465,13 +464,13 @@ export class ChatbotAiService {
 
     this._cacheCreationPromise = (async () => {
       try {
-        const mgr = new GoogleAICacheManager(apiKey);
-        const cache = await mgr.create({
+        const cache = await this.ai.caches.create({
           model: modelName,
-          systemInstruction: CUSTOMER_SYSTEM_PROMPT,
-          tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
-          contents: [],
-          ttlSeconds: 3600,
+          config: {
+            systemInstruction: CUSTOMER_SYSTEM_PROMPT,
+            tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
+            ttl: '3600s',
+          },
         });
         this._geminiCache = cache;
         this._cacheExpiry = new Date(cache.expireTime as string);
@@ -579,14 +578,11 @@ export class ChatbotAiService {
     const releaseSlot = await this.acquireAiSlot();
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY!;
       const modelName = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
-      const generationConfig = { temperature: 0.3, maxOutputTokens: 500 };
-      const toolConfig = { functionCallingConfig: { mode: FunctionCallingMode.AUTO } };
 
       // Build the history from the session (Gemini Content[] format).
-      // Strip any functionCall/functionResponse entries — startChat only accepts
-      // text-bearing turns in history; tool exchange entries corrupt the next call.
+      // Strip any functionCall/functionResponse entries — history only accepts
+      // text-bearing turns; tool exchange entries corrupt the next call.
       const history: Content[] = (
         Array.isArray(session.conversationHistory)
           ? (session.conversationHistory as unknown as Content[])
@@ -594,23 +590,23 @@ export class ChatbotAiService {
       ).filter((c) => c.parts.some((p: any) => typeof p.text === 'string'));
 
       // Use cached system prompt + tools when available; fall back to uncached.
-      const cache = await this.getOrRefreshCache(apiKey, modelName);
-      const model = cache
-        ? this.genai.getGenerativeModelFromCachedContent(cache, {
-            generationConfig,
-            toolConfig,
-            safetySettings: SAFETY_SETTINGS,
-          } as any)
-        : this.genai.getGenerativeModel({
-            model: modelName,
-            systemInstruction: CUSTOMER_SYSTEM_PROMPT,
-            tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
-            toolConfig,
-            generationConfig,
-            safetySettings: SAFETY_SETTINGS,
-          });
-
-      const chat = model.startChat({ history });
+      const cache = await this.getOrRefreshCache(process.env.GEMINI_API_KEY!, modelName);
+      const chat = this.ai.chats.create({
+        model: modelName,
+        history,
+        config: {
+          ...(cache
+            ? { cachedContent: cache.name }
+            : {
+                systemInstruction: CUSTOMER_SYSTEM_PROMPT,
+                tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
+              }),
+          toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO } },
+          safetySettings: SAFETY_SETTINGS,
+          temperature: 0.3,
+          maxOutputTokens: 500,
+        },
+      });
 
       // Working accumulator for this turn's contents (used to persist history)
       const turnAdditions: Content[] = [];
@@ -621,7 +617,7 @@ export class ChatbotAiService {
       const messageToSend = contextPrefix + (userInput || 'hi');
 
       // First send: user message
-      let result = await this.geminiWithTimeout(chat.sendMessage(messageToSend));
+      let result = await this.geminiWithTimeout(chat.sendMessage({ message: messageToSend }));
       turnAdditions.push({ role: 'user', parts: [{ text: userInput || 'hi' }] });
 
       // Agentic loop: execute tool calls until Gemini returns plain text
@@ -630,18 +626,18 @@ export class ChatbotAiService {
       while (iterations < MAX_TOOL_ITERATIONS) {
         iterations++;
 
-        const candidate = result.response.candidates?.[0];
+        const candidate = result.candidates?.[0];
         if (!candidate) break;
 
-        const parts: Part[] = candidate.content.parts;
-        const hasFunctionCall = parts.some((p) => 'functionCall' in p);
+        const parts: Part[] = candidate.content?.parts ?? [];
+        const hasFunctionCall = parts.some((p: Part) => p.functionCall != null);
 
         // Record the model turn only after confirming a candidate exists
         turnAdditions.push({ role: 'model', parts });
 
         if (!hasFunctionCall) {
           // Gemini returned final text — send it
-          const text = result.response.text().trim();
+          const text = (result.text ?? '').trim();
           if (text) {
             await this.whatsappService.sendTextMessage({ phone, message: text });
             textSent = true;
@@ -695,7 +691,7 @@ export class ChatbotAiService {
         }
 
         // Feed tool results back to Gemini
-        result = await this.geminiWithTimeout(chat.sendMessage(toolResponseParts));
+        result = await this.geminiWithTimeout(chat.sendMessage({ message: toolResponseParts as any }));
         turnAdditions.push({ role: 'user', parts: toolResponseParts });
       }
 

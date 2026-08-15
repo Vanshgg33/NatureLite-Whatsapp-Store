@@ -4,13 +4,12 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Model } from 'mongoose';
 import {
-  GoogleGenerativeAI,
-  FunctionCallingMode,
+  GoogleGenAI,
+  FunctionCallingConfigMode,
   type FunctionDeclaration,
   type Content,
   type Part,
-} from '@google/generative-ai';
-import { GoogleAICacheManager } from '@google/generative-ai/server';
+} from '@google/genai';
 import { RedisService } from '../redis/redis.service';
 import { QUEUE_ADMIN, ADMIN_JOBS, QUEUE_CHATBOT, CHATBOT_JOBS, DEFAULT_JOB_OPTIONS } from '../queues/queues.constants';
 import { ProductRepository } from '../products/repositories/product.repository';
@@ -658,13 +657,14 @@ export class AdminChatbotService implements OnApplicationBootstrap {
 
     this._cacheCreationPromise = (async () => {
       try {
-        const mgr = new GoogleAICacheManager(apiKey);
-        const cache = await mgr.create({
+        const ai = new GoogleGenAI({ apiKey });
+        const cache = await ai.caches.create({
           model: modelName,
-          systemInstruction: ADMIN_SYSTEM_PROMPT,
-          tools: [{ functionDeclarations: ADMIN_TOOL_DECLARATIONS }],
-          contents: [],
-          ttlSeconds: 3600,
+          config: {
+            systemInstruction: ADMIN_SYSTEM_PROMPT,
+            tools: [{ functionDeclarations: ADMIN_TOOL_DECLARATIONS }],
+            ttl: '3600s',
+          },
         });
         this._geminiCache = cache;
         this._cacheExpiry = new Date(cache.expireTime as string);
@@ -701,34 +701,37 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) return '⚠️ GEMINI_API_KEY not configured.';
 
-    const genai = new GoogleGenerativeAI(apiKey);
+    const ai = new GoogleGenAI({ apiKey });
     const modelName = process.env.GEMINI_MODEL!;
-    const generationConfig = { temperature: 0.2, maxOutputTokens: 800 };
-    const toolConfig = { functionCallingConfig: { mode: FunctionCallingMode.AUTO } };
 
     const cache = await this.getOrRefreshCache(apiKey, modelName);
-    const model = cache
-      ? genai.getGenerativeModelFromCachedContent(cache, { generationConfig, toolConfig })
-      : genai.getGenerativeModel({
-          model: modelName,
-          systemInstruction: ADMIN_SYSTEM_PROMPT,
-          tools: [{ functionDeclarations: ADMIN_TOOL_DECLARATIONS }],
-          toolConfig,
-          generationConfig,
-        });
+    const chat = ai.chats.create({
+      model: modelName,
+      history: geminiHistory,
+      config: {
+        ...(cache
+          ? { cachedContent: cache.name }
+          : {
+              systemInstruction: ADMIN_SYSTEM_PROMPT,
+              tools: [{ functionDeclarations: ADMIN_TOOL_DECLARATIONS }],
+            }),
+        toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO } },
+        temperature: 0.2,
+        maxOutputTokens: 800,
+      },
+    });
 
-    const chat = model.startChat({ history: geminiHistory });
-    let result = await chat.sendMessage(userMessage);
+    let response = await chat.sendMessage({ message: userMessage });
 
     for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-      const candidate = result.response.candidates?.[0];
+      const candidate = response.candidates?.[0];
       if (!candidate) break;
 
-      const parts: Part[] = candidate.content.parts;
-      const fnParts = parts.filter((p) => 'functionCall' in p);
+      const parts = candidate.content?.parts ?? [];
+      const fnParts = parts.filter((p: Part) => p.functionCall != null);
 
       if (fnParts.length === 0) {
-        return result.response.text().trim();
+        return (response.text ?? '').trim();
       }
 
       const toolResponseParts: Part[] = [];
@@ -743,10 +746,10 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         }
       }
 
-      result = await chat.sendMessage(toolResponseParts);
+      response = await chat.sendMessage({ message: toolResponseParts as any });
     }
 
-    return result.response.text().trim() || '⚠️ Could not generate a response.';
+    return (response.text ?? '').trim() || '⚠️ Could not generate a response.';
   }
 
   // ─── Tool dispatcher ──────────────────────────────────────────────────────────

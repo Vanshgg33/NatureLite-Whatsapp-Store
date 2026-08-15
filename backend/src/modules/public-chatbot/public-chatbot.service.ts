@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
-  GoogleGenerativeAI,
-  FunctionCallingMode,
+  GoogleGenAI,
+  FunctionCallingConfigMode,
   type FunctionDeclaration,
   type Content,
-} from '@google/generative-ai';
+} from '@google/genai';
 import { ProductRepository } from '../products/repositories/product.repository';
 import { CategoryRepository } from '../categories/repositories/category.repository';
 import { OrderRepository } from '../orders/repositories/order.repository';
@@ -314,14 +314,7 @@ export class PublicChatbotService {
   }
 
   private async callGemini(safe: string, history: ChatMessage[], apiKey: string): Promise<string> {
-    const genai = new GoogleGenerativeAI(apiKey);
-    const model = genai.getGenerativeModel({
-      model: process.env.GEMINI_PUBLIC_BOT_MODEL!,
-      systemInstruction: SYSTEM_PROMPT,
-      tools: [{ functionDeclarations: TOOLS }],
-      toolConfig: { functionCallingConfig: { mode: FunctionCallingMode.AUTO } },
-      generationConfig: { temperature: 0.3, maxOutputTokens: 350 }, // 500→350: short answers sufficient
-    });
+    const ai = new GoogleGenAI({ apiKey });
 
     // Gemini requires history starts with 'user' — strip leading model turns defensively.
     let geminiHistory: Content[] = history.map((h) => ({
@@ -332,12 +325,23 @@ export class PublicChatbotService {
       geminiHistory = geminiHistory.slice(1);
     }
 
-    const chat = model.startChat({ history: geminiHistory });
-    let result = await chat.sendMessage(safe);
+    const chat = ai.chats.create({
+      model: process.env.GEMINI_PUBLIC_BOT_MODEL!,
+      history: geminiHistory,
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        tools: [{ functionDeclarations: TOOLS }],
+        toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO } },
+        temperature: 0.3,
+        maxOutputTokens: 350,
+      },
+    });
+
+    let response = await chat.sendMessage({ message: safe });
 
     for (let i = 0; i < 2; i++) {
-      const parts = result.response.candidates?.[0]?.content.parts ?? [];
-      const fnParts = parts.filter((p: any) => 'functionCall' in p);
+      const parts = response.candidates?.[0]?.content?.parts ?? [];
+      const fnParts = parts.filter((p: any) => p.functionCall != null);
       if (!fnParts.length) break;
 
       const toolResponses = await Promise.all(
@@ -351,9 +355,9 @@ export class PublicChatbotService {
         }),
       );
 
-      result = await chat.sendMessage(toolResponses as any);
+      response = await chat.sendMessage({ message: toolResponses as any });
     }
 
-    return result.response.text().trim() || "I couldn't find an answer right now. Please reach us on WhatsApp.";
+    return (response.text ?? '').trim() || "I couldn't find an answer right now. Please reach us on WhatsApp.";
   }
 }
