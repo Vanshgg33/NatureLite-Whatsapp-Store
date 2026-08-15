@@ -38,6 +38,18 @@ const MAX_HISTORY_ENTRIES = 60;
 /** Safety cap on sequential tool calls per user message. */
 const MAX_TOOL_ITERATIONS = 8;
 
+// Gemini 3.x can return null parts (thinking tokens); SDK's .text getter throws on them.
+function responseText(r: any): string {
+  try {
+    return (r.text ?? '').trim();
+  } catch {
+    return (r.candidates?.[0]?.content?.parts ?? [])
+      .filter((p: any) => p != null && typeof p.text === 'string' && !p.thought)
+      .map((p: any) => p.text as string)
+      .join('').trim();
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Static system prompt — no dynamic content so it can be Gemini-cached.
 // The customer's name is injected per-message via a [Customer: name="..."] prefix.
@@ -638,7 +650,7 @@ export class ChatbotAiService {
 
         if (!hasFunctionCall) {
           // Gemini returned final text — send it
-          const text = (result.text ?? '').trim();
+          const text = responseText(result);
           if (text) {
             await this.whatsappService.sendTextMessage({ phone, message: text });
             textSent = true;

@@ -43,6 +43,18 @@ export type HistoryItem = { role: 'user' | 'assistant'; text: string };
 
 const MAX_TOOL_ITERATIONS = 8;
 
+// Gemini 3.x can return null parts (thinking tokens); SDK's .text getter throws on them.
+function responseText(r: any): string {
+  try {
+    return (r.text ?? '').trim();
+  } catch {
+    return (r.candidates?.[0]?.content?.parts ?? [])
+      .filter((p: any) => p != null && typeof p.text === 'string' && !p.thought)
+      .map((p: any) => p.text as string)
+      .join('').trim();
+  }
+}
+
 const UNCACHED_TOOLS = new Set(['send_email_report', 'preview_email_report']);
 
 const TOOL_TTL: Record<string, number> = {
@@ -738,7 +750,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       const fnParts = parts.filter((p: Part) => p.functionCall != null);
 
       if (fnParts.length === 0) {
-        return (response.text ?? '').trim();
+        return responseText(response);
       }
 
       const toolResponseParts: Part[] = [];
@@ -762,7 +774,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       response = await withTimeout(chat.sendMessage({ message: 'Summarize what you found so far.' }));
     }
 
-    return (response.text ?? '').trim() || '⚠️ Could not generate a response.';
+    return responseText(response) || '⚠️ Could not generate a response.';
   }
 
   // ─── Tool dispatcher ──────────────────────────────────────────────────────────

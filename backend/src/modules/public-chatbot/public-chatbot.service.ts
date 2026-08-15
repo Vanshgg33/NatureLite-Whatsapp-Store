@@ -118,6 +118,18 @@ function isInjectionAttempt(text: string): boolean {
   return INJECTION_PATTERNS.some((re) => re.test(text));
 }
 
+// Gemini 3.x can return null parts (thinking tokens); SDK's .text getter throws on them.
+function responseText(r: any): string {
+  try {
+    return (r.text ?? '').trim();
+  } catch {
+    return (r.candidates?.[0]?.content?.parts ?? [])
+      .filter((p: any) => p != null && typeof p.text === 'string' && !p.thought)
+      .map((p: any) => p.text as string)
+      .join('').trim();
+  }
+}
+
 // Strip null/undefined fields before returning to Gemini — null values waste tokens.
 function compact(obj: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(
@@ -364,6 +376,6 @@ export class PublicChatbotService {
       response = await chat.sendMessage({ message: 'Please answer based on what you have found.' });
     }
 
-    return (response.text ?? '').trim() || "I couldn't find an answer right now. Please reach us on WhatsApp.";
+    return responseText(response) || "I couldn't find an answer right now. Please reach us on WhatsApp.";
   }
 }
