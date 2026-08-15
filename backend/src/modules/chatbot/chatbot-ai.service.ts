@@ -469,6 +469,7 @@ export class ChatbotAiService {
           config: {
             systemInstruction: CUSTOMER_SYSTEM_PROMPT,
             tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
+            toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO } },
             ttl: '3600s',
           },
         });
@@ -600,8 +601,8 @@ export class ChatbotAiService {
             : {
                 systemInstruction: CUSTOMER_SYSTEM_PROMPT,
                 tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
+                toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO } },
               }),
-          toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO } },
           safetySettings: SAFETY_SETTINGS,
           temperature: 0.3,
           maxOutputTokens: 500,

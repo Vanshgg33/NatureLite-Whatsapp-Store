@@ -663,6 +663,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
           config: {
             systemInstruction: ADMIN_SYSTEM_PROMPT,
             tools: [{ functionDeclarations: ADMIN_TOOL_DECLARATIONS }],
+            toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO } },
             ttl: '3600s',
           },
         });
@@ -714,8 +715,8 @@ export class AdminChatbotService implements OnApplicationBootstrap {
           : {
               systemInstruction: ADMIN_SYSTEM_PROMPT,
               tools: [{ functionDeclarations: ADMIN_TOOL_DECLARATIONS }],
+              toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO } },
             }),
-        toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO } },
         temperature: 0.2,
         maxOutputTokens: 800,
       },
