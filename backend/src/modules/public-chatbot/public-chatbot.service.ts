@@ -8,6 +8,7 @@ import {
 import { ProductRepository } from '../products/repositories/product.repository';
 import { CategoryRepository } from '../categories/repositories/category.repository';
 import { OrderRepository } from '../orders/repositories/order.repository';
+import { CouponRepository } from '../coupons/repositories/coupon.repository';
 import { RedisService } from '../redis/redis.service';
 
 const S = 'STRING' as any;
@@ -40,6 +41,11 @@ const TOOLS: FunctionDeclaration[] = [
       },
       required: ['orderNumber'],
     },
+  },
+  {
+    name: 'get_active_coupons',
+    description: 'List currently valid public discount coupons. Call when user asks about discounts, offers, or coupon codes.',
+    parameters: { type: O, properties: {} },
   },
 ];
 
@@ -154,6 +160,7 @@ export class PublicChatbotService {
     private readonly productRepository: ProductRepository,
     private readonly categoryRepository: CategoryRepository,
     private readonly orderRepository: OrderRepository,
+    private readonly couponRepository: CouponRepository,
     private readonly redisService: RedisService,
   ) {}
 
@@ -269,6 +276,35 @@ export class PublicChatbotService {
           deliveredOn: o.deliveredAt
             ? new Date(o.deliveredAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
             : null,
+        });
+      }
+
+      case 'get_active_coupons': {
+        return this.redisService.cached('pub:bot:coupons', 120, async () => {
+          const all = await this.couponRepository.findActiveCoupons();
+          // Only surface public coupons — skip those restricted to specific users.
+          const coupons = all
+            .filter((c) => !c.allowedUsers?.length)
+            .map((c) => {
+              const discount =
+                c.discountType === 'percentage'
+                  ? `${c.discountValue}% off${c.maxDiscount ? ` (max ₹${c.maxDiscount})` : ''}`
+                  : `₹${c.discountValue} off`;
+              const expiry = new Date(c.validUntil).toLocaleDateString('en-IN', {
+                day: '2-digit', month: 'short', year: 'numeric',
+              });
+              const row: Record<string, unknown> = {
+                code: c.code,
+                discount,
+                description: c.description,
+                validUntil: expiry,
+              };
+              if (c.minOrderAmount) row.minOrder = `₹${c.minOrderAmount}`;
+              if (c.isFirstOrderOnly) row.note = 'First order only';
+              return row;
+            });
+          if (!coupons.length) return { message: 'No public coupons are active right now.' };
+          return { count: coupons.length, coupons };
         });
       }
 

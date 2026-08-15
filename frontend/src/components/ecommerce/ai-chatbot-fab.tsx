@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Bot, Send, Loader2, Sparkles } from 'lucide-react';
+import { useCartStore } from '@/lib/cart-store';
 
 type Msg = { role: 'user' | 'assistant'; text: string };
 
@@ -15,16 +16,20 @@ const GREETING: Msg = {
 
 const QUICK_PROMPTS = ['What oils do you sell?', 'Check my order', 'Best ghee?'];
 
+type CartPayloadItem = { name: string; qty: number; price: number; variant?: string };
+
 async function fetchReply(
   message: string,
   history: Msg[],
   signal: AbortSignal,
   page: string,
+  cart: CartPayloadItem[],
+  appliedCoupon: { code: string; discount: number } | null,
 ): Promise<string> {
   const res = await fetch(`${API_BASE}/chatbot/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, history, page }),
+    body: JSON.stringify({ message, history, page, cart, appliedCoupon }),
     signal,
   });
   if (res.status === 429) throw new Error('RATE_LIMITED');
@@ -37,6 +42,9 @@ async function fetchReply(
 }
 
 export function AiChatbotFab({ page }: { page: string }) {
+  const cartItems = useCartStore((s) => s.items);
+  const couponCode = useCartStore((s) => s.couponCode);
+  const discount = useCartStore((s) => s.discount);
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([GREETING]);
   const [input, setInput] = useState('');
@@ -106,7 +114,11 @@ export function AiChatbotFab({ page }: { page: string }) {
       // History = completed prior turns only, no greeting (index 0), no current msg.
       // Gemini requires history alternates user→model starting with user.
       const history = messages.slice(1).slice(-6);
-      const reply = await fetchReply(text, history, controller.signal, page);
+      const cart: CartPayloadItem[] = cartItems
+        .filter((i) => i.name)
+        .map((i) => ({ name: i.name, qty: i.quantity, price: i.price, variant: i.variantName }));
+      const appliedCoupon = couponCode ? { code: couponCode, discount } : null;
+      const reply = await fetchReply(text, history, controller.signal, page, cart, appliedCoupon);
 
       if (!mountedRef.current) return;
       setMessages((prev) => [...prev, { role: 'assistant', text: reply }]);
