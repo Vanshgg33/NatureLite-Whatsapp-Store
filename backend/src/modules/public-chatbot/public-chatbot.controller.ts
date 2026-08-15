@@ -15,6 +15,7 @@ export class PublicChatbotController {
   async chat(
     @Body('message') message: string,
     @Body('history') history: unknown = [],
+    @Body('page') page: unknown,
   ): Promise<{ reply: string }> {
     if (!message || typeof message !== 'string' || !message.trim()) {
       return { reply: 'Please type a message.' };
@@ -23,8 +24,11 @@ export class PublicChatbotController {
       return { reply: 'Message is too long. Please keep it under 400 characters.' };
     }
 
+    const safePage = typeof page === 'string' ? page.replace(/[^\w\-\/\[\]]/g, '').slice(0, 100) : '';
+    const messageWithCtx = safePage ? `[Page: ${safePage}]\n${message}` : message;
+
     const safeHistory = this.validateHistory(history);
-    const reply = await this.chatbotService.chat(message, safeHistory);
+    const reply = await this.chatbotService.chat(messageWithCtx, safeHistory);
     return { reply };
   }
 

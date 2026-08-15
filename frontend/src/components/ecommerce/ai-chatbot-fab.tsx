@@ -19,11 +19,12 @@ async function fetchReply(
   message: string,
   history: Msg[],
   signal: AbortSignal,
+  page: string,
 ): Promise<string> {
   const res = await fetch(`${API_BASE}/chatbot/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, history }),
+    body: JSON.stringify({ message, history, page }),
     signal,
   });
   if (res.status === 429) throw new Error('RATE_LIMITED');
@@ -35,7 +36,7 @@ async function fetchReply(
   return reply;
 }
 
-export function AiChatbotFab() {
+export function AiChatbotFab({ page }: { page: string }) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([GREETING]);
   const [input, setInput] = useState('');
@@ -105,7 +106,7 @@ export function AiChatbotFab() {
       // History = completed prior turns only, no greeting (index 0), no current msg.
       // Gemini requires history alternates user→model starting with user.
       const history = messages.slice(1).slice(-6);
-      const reply = await fetchReply(text, history, controller.signal);
+      const reply = await fetchReply(text, history, controller.signal, page);
 
       if (!mountedRef.current) return;
       setMessages((prev) => [...prev, { role: 'assistant', text: reply }]);

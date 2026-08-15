@@ -14,6 +14,7 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { StickyCartBar } from '@/components/ecommerce/sticky-cart-bar';
 import { PincodeChecker } from '@/components/ecommerce/pincode-checker';
 import { WhatsAppFab } from '@/components/ecommerce/whatsapp-fab';
+import { AiChatbotFab } from '@/components/ecommerce/ai-chatbot-fab';
 import dynamic from 'next/dynamic';
 
 const ScrollProgress = dynamic(
@@ -52,6 +53,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
             <StickyCartBar />
           </div>
           <PincodeChecker />
+          <AiChatbotFab page={pathname} />
           <WhatsAppFab />
         </AddToCartAnimationProvider>
       </LoadingProvider>
