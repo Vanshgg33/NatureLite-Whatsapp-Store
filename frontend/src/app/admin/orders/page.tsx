@@ -304,16 +304,8 @@ export default function OrdersPage() {
     );
     if (!popup) {
       toast({ title: 'Popup blocked', description: 'Allow popups for this site and try again.', variant: 'destructive' });
-      setPrintLoadingId(null);
-      return;
     }
-    popup.addEventListener('load', () => {
-      popup.focus();
-      popup.print();
-      setPrintLoadingId(null);
-    });
-    // fallback if load event doesn't fire (some browsers)
-    setTimeout(() => setPrintLoadingId(null), 5000);
+    setTimeout(() => setPrintLoadingId(null), 1500);
   }
 
   async function handleSendBill(order: Order) {

@@ -28,7 +28,7 @@ function getProduct(item: OrderItem) {
   return typeof item.product === 'object' ? item.product : null;
 }
 
-const NIL_GST_KEYWORDS = ['seed', 'flour'];
+const NIL_GST_KEYWORDS = ['seed', 'flour', 'rice', 'pulse'];
 
 function itemGstRate(item: OrderItem): number {
   const prod = getProduct(item);
@@ -48,6 +48,7 @@ function OrderInvoiceInner() {
   const { orderId } = useParams<{ orderId: string }>();
   const searchParams = useSearchParams();
   const captureMode = searchParams.get('mode') === 'capture';
+  const printMode = searchParams.get('mode') === 'print';
   const invoiceRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
 
@@ -112,6 +113,13 @@ function OrderInvoiceInner() {
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [captureMode, order]);
+
+  useEffect(() => {
+    if (!printMode || !order) return;
+    const timer = setTimeout(() => window.print(), 800);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [printMode, order]);
 
   const G = '#1a6b3c';
 

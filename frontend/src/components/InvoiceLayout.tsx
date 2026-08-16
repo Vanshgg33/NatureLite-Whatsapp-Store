@@ -120,6 +120,7 @@ export default function InvoiceLayout({ data, invoiceRef, onPrint, onDownload, d
         body { background: #f0f2f5; }
         @keyframes spin { to { transform: rotate(360deg); } }
         @media print {
+          * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
           body { background: white; }
           .no-print { display: none !important; }
           .inv-page { box-shadow: none !important; margin: 0 !important; max-width: 100% !important; border-radius: 0 !important; }
