@@ -122,8 +122,14 @@ const ADMIN_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: 'get_orders_by_status',
-    description: 'Get all-time order counts grouped by status AND by payment method (cash/COD, UPI, online, wallet). Use this for any question about payment method breakdown: "how did customers pay", "how many cod orders", "cash vs online split", etc.',
-    parameters: { type: O, properties: {} },
+    description: 'Get order counts grouped by status AND by payment method (cash/COD, UPI, online, wallet). Omit from/to for all-time counts. Pass from/to for a specific period. Use for: "how did customers pay", "how many cod orders", "cash vs online split", "payment method breakdown this month".',
+    parameters: {
+      type: O,
+      properties: {
+        from: { type: S, description: 'ISO date start (optional, omit for all-time)' },
+        to: { type: S, description: 'ISO date end (optional, omit for all-time)' },
+      },
+    },
   },
   {
     name: 'compare_periods',
@@ -517,9 +523,12 @@ Call multiple tools in a single turn when a question spans domains — e.g., cus
 - delivery collections/history/pending → get_delivery_data with view=collections|history|pending
 - subscriptions → get_subscriptions (add phone/customerName for one customer's detail)
 - refunds → get_payments(status="refunded")
-- "how did customers pay / COD vs online / payment method breakdown / how many cash orders / how many cod orders / payment split" → get_orders_by_status (it includes byPaymentMethod breakdown)
+- "how did customers pay / COD vs online / payment method breakdown / how many cash orders / how many cod orders / payment split" → get_orders_by_status (it includes byPaymentMethod breakdown; add from/to for a specific period)
 - "show me COD orders / show cash orders" → search_orders with paymentMethod="cod" (the tool treats cash and cod as identical)
 - get_payments is for online gateway only — NEVER use it for COD or cash questions
+- "feedback / reviews for [product]" → get_feedback_list with productName=[product] (resolves by name in DB, no need to search first)
+- "delivery agents / how much cash collected / agent settlements" → get_delivery_data with view=collections|history|pending
+- "customers inactive for X days / churned customers" → get_customers_filtered(type="inactive", days=X) — days is the inactivity threshold, not a lookback window
 - email report → preview_email_report first, send only after user confirms
 - "price / stock / MRP / variants of X" → search_products (returns catalog data, NOT sales)
 - "how much X sold / X units sold / X sales / X revenue / how many X were ordered" → get_top_selling_products with searchTerm=X (returns actual sales from orders, not stock)
@@ -812,7 +821,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       case 'get_dashboard_summary':    return this.toolDashboard();
       case 'search_orders':            return this.toolSearchOrders(args);
       case 'get_order_detail':         return this.toolOrderDetail(args);
-      case 'get_orders_by_status':     return this.toolOrdersByStatus();
+      case 'get_orders_by_status':     return this.toolOrdersByStatus(args);
       case 'compare_periods':          return this.toolComparePeriods(args);
       case 'search_products':          return this.toolSearchProducts(args);
       case 'get_product_detail':       return this.toolProductDetail(args);
@@ -998,16 +1007,31 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     };
   }
 
-  private async toolOrdersByStatus() {
+  private async toolOrdersByStatus(args: Record<string, unknown> = {}) {
+    const dateMatch: any = {};
+    if (args.from && args.to) {
+      const fromD = new Date(args.from as string);
+      const toD = new Date(args.to as string);
+      if (!isNaN(fromD.getTime()) && !isNaN(toD.getTime()))
+        dateMatch.createdAt = { $gte: fromD, $lte: toD };
+    }
+    const hasPeriod = Object.keys(dateMatch).length > 0;
+
     const [statusCounts, paymentAgg] = await Promise.all([
-      this.orderRepository.getOrdersByStatus(),
+      hasPeriod
+        ? this.orderRepository.getModel().aggregate([
+            { $match: dateMatch },
+            { $group: { _id: '$status', count: { $sum: 1 } } },
+          ]).exec().then((rows: any[]) => Object.fromEntries(rows.map((r: any) => [r._id, r.count])))
+        : this.orderRepository.getOrdersByStatus(),
       this.orderRepository.getModel().aggregate([
+        ...(hasPeriod ? [{ $match: dateMatch }] : []),
         { $group: { _id: '$paymentMethod', orders: { $sum: 1 }, revenue: { $sum: '$total' } } },
         { $sort: { orders: -1 } },
       ]).exec(),
     ]);
-    const total = Object.values(statusCounts).reduce((s: number, n: any) => s + (n || 0), 0);
-    // Merge cash+cod into one line for clarity
+
+    const total = Object.values(statusCounts as Record<string, number>).reduce((s: number, n: any) => s + (n || 0), 0);
     const paymentMap = new Map<string, { orders: number; revenue: number }>();
     for (const r of paymentAgg as any[]) {
       const key = (r._id === 'cash' || r._id === 'cod') ? 'cash/cod' : (r._id ?? 'unknown');
@@ -1016,6 +1040,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       else paymentMap.set(key, { orders: r.orders, revenue: r.revenue });
     }
     return {
+      scope: hasPeriod ? `${this.toIST(new Date(args.from as string), true)} – ${this.toIST(new Date(args.to as string), true)}` : 'all-time',
       total,
       byStatus: statusCounts,
       byPaymentMethod: [...paymentMap.entries()].map(([method, v]) => ({ method, orders: v.orders, revenue: v.revenue })),
@@ -1451,7 +1476,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       orders: { total: o.totalOrders, revenue: o.totalRevenue, avgOrderValue: Math.round(o.avgOrderValue ?? 0), delivered: o.completedOrders, pending: o.pendingOrders, cancelled: o.cancelledOrders, cod: o.codOrders, prepaid: o.prepaidOrders },
       customers: { total: c.totalCustomers, newCustomers: c.newCustomers, returning: c.returningCustomers },
       inventory: { outOfStock: p.outOfStockProducts, lowStock: p.lowStockProducts },
-      topProducts: topSellers.slice(0, 5).map((s: any) => ({ name: s.name, unitsSold: s.quantitySold, revenue: s.revenue })),
+      topProducts: topSellers.map((s: any) => ({ name: s.name, unitsSold: s.quantitySold, revenue: s.revenue })),
       topCustomers: topCustomersAgg.map((tc: any) => ({ name: tc.u?.name ?? 'Unknown', phone: tc.u?.phone, revenueInPeriod: tc.revenue, ordersInPeriod: tc.orders })),
     };
   }
@@ -1530,7 +1555,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         phone: c.userInfo?.phone,
         cartTotal: c.total ?? 0,
         idleHours: Math.round((Date.now() - new Date(c.updatedAt).getTime()) / 3_600_000),
-        items: c.items.map((i: any) => `${i.name} x${i.quantity}`),
+        items: c.items.slice(0, 8).map((i: any) => `${i.name} x${i.quantity}`),
       })),
     };
   }
@@ -1936,13 +1961,19 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     }
     if (args.type) filter.type = { $regex: String(args.type), $options: 'i' };
     const productName = String(args.productName ?? '').trim();
+    if (productName) {
+      // Resolve product IDs in DB — don't post-filter in JS (would miss products outside top-N)
+      const products = await this.productRepository.getModel()
+        .find({ name: { $regex: this.escape(productName), $options: 'i' } }).select('_id').lean();
+      if (!products.length) return { count: 0, feedback: [], message: `No product found matching "${productName}"` };
+      filter.product = { $in: products.map((p: any) => p._id) };
+    }
     const feedbacks = await this.feedbackRepository.getModel()
       .find(filter).populate('user', 'name phone').populate('product', 'name')
-      .sort({ createdAt: -1 }).limit(productName ? limit * 3 : limit).lean();
-    const filtered = productName ? feedbacks.filter((f: any) => f.product?.name?.toLowerCase().includes(productName.toLowerCase())) : feedbacks;
+      .sort({ createdAt: -1 }).limit(limit).lean();
     return {
-      count: filtered.length,
-      feedback: filtered.slice(0, limit).map((f: any) => ({
+      count: feedbacks.length,
+      feedback: feedbacks.map((f: any) => ({
         customer: (f.user as any)?.name ?? 'Anonymous',
         product: (f.product as any)?.name ?? 'General',
         rating: f.rating,
