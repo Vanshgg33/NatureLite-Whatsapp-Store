@@ -137,7 +137,7 @@ const ADMIN_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: 'search_products',
-    description: 'Search products by name or SKU. Returns price, MRP, stock, active status, variants, last updated.',
+    description: 'Search the product catalog by name or SKU. Returns price, MRP, current stock, active status, variants, last updated. This is catalog/inventory data only — it has NO sales or order data. Do NOT use this to answer how much was sold.',
     parameters: {
       type: O,
       properties: {
@@ -288,14 +288,14 @@ const ADMIN_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: 'get_top_selling_products',
-    description: 'Get best-selling products by units sold and revenue for a period.',
+    description: 'Get actual sales data (units sold, revenue) from orders. Use this for ANY question about how much of a product was sold, sales volume, revenue per product, or best sellers. When searchTerm is provided, returns exact sales figures for that product regardless of its rank.',
     parameters: {
       type: O,
       properties: {
         from: { type: S, description: 'ISO date start' },
         to: { type: S, description: 'ISO date end' },
         limit: { type: N, description: 'Number of products, default 8' },
-        searchTerm: { type: S, description: 'Filter by product name' },
+        searchTerm: { type: S, description: 'Product name to look up sales for (e.g. "ghee", "coconut oil"). Always set this when the user asks about a specific product.' },
       },
     },
   },
@@ -518,6 +518,9 @@ Call multiple tools in a single turn when a question spans domains — e.g., cus
 - subscriptions → get_subscriptions (add phone/customerName for one customer's detail)
 - refunds → get_payments(status="refunded")
 - email report → preview_email_report first, send only after user confirms
+- "price / stock / MRP / variants of X" → search_products (returns catalog data, NOT sales)
+- "how much X sold / X units sold / X sales / X revenue / how many X were ordered" → get_top_selling_products with searchTerm=X (returns actual sales from orders, not stock)
+- NEVER use search_products to answer a sales question — it has no sales data
 
 ## Precision rules — read carefully
 
@@ -1427,15 +1430,46 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     const { from, to } = this.resolveRange(args);
     const limit = Number(args.limit ?? 8);
     const searchTerm = String(args.searchTerm ?? '').trim();
+
+    // When a product name is given, query the raw collections directly so we
+    // don't miss products that fall outside the top-N overall ranking.
+    if (searchTerm) {
+      const nameRegex = { $regex: this.escape(searchTerm), $options: 'i' };
+      const [onlineRows, storeRows] = await Promise.all([
+        this.orderRepository.getModel().aggregate([
+          { $match: { createdAt: { $gte: from, $lte: to }, status: { $ne: 'cancelled' } } },
+          { $unwind: '$items' },
+          { $match: { 'items.name': nameRegex } },
+          { $group: { _id: '$items.name', unitsSold: { $sum: '$items.quantity' }, revenue: { $sum: '$items.total' } } },
+          { $sort: { unitsSold: -1 } },
+        ]).exec(),
+        this.storeSaleRepository.getModel().aggregate([
+          { $addFields: { effectiveDate: { $ifNull: ['$dueDate', '$createdAt'] } } },
+          { $match: { effectiveDate: { $gte: from, $lte: to }, $or: [{ voidedAt: { $exists: false } }, { voidedAt: null }] } },
+          { $unwind: '$items' },
+          { $match: { 'items.name': nameRegex } },
+          { $group: { _id: '$items.name', unitsSold: { $sum: '$items.quantity' }, revenue: { $sum: '$items.total' } } },
+          { $sort: { unitsSold: -1 } },
+        ]).exec(),
+      ]);
+      const fmt = (r: any) => ({ name: r._id, unitsSold: r.unitsSold, revenue: r.revenue });
+      return {
+        period: { from: this.toIST(from, true), to: this.toIST(to, true) },
+        searchTerm,
+        online: onlineRows.map(fmt),
+        store: storeRows.map(fmt),
+        totalUnitsSold: [...onlineRows, ...storeRows].reduce((s: number, r: any) => s + r.unitsSold, 0),
+        totalRevenue: [...onlineRows, ...storeRows].reduce((s: number, r: any) => s + r.revenue, 0),
+      };
+    }
     const [onlineMetrics, storeTop] = await Promise.all([
       this.analyticsService.getProductMetrics(from, to),
       this.analyticsService.getTopSellingOverall(from, to, limit * 2),
     ]);
-    const filter = (name: string) => !searchTerm || name.toLowerCase().includes(searchTerm.toLowerCase());
     return {
       period: { from: this.toIST(from, true), to: this.toIST(to, true) },
-      online: ((onlineMetrics as any).topSellingProducts ?? []).filter((p: any) => filter(p.name)).slice(0, limit).map((p: any) => ({ name: p.name, unitsSold: p.quantitySold, revenue: p.revenue })),
-      store: storeTop.filter((p: any) => filter(p.name)).slice(0, limit).map((p: any) => ({ name: p.name, unitsSold: p.quantitySold, revenue: p.revenue })),
+      online: ((onlineMetrics as any).topSellingProducts ?? []).slice(0, limit).map((p: any) => ({ name: p.name, unitsSold: p.quantitySold, revenue: p.revenue })),
+      store: storeTop.slice(0, limit).map((p: any) => ({ name: p.name, unitsSold: p.quantitySold, revenue: p.revenue })),
     };
   }
 
