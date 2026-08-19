@@ -198,7 +198,6 @@ export class NotificationsService {
 
     const namePacked = order.shippingAddress?.name || 'there';
     const packedItemLines = (order.items || [])
-      .slice(0, 3)
       .map((item: any) => `• ${item.name}  ×${item.quantity}`)
       .join('\n');
 
@@ -253,6 +252,10 @@ export class NotificationsService {
     const deliveryBlock = deliveryLines.length > 0 ? `\n\n${deliveryLines.join('\n')}` : '';
 
     const nameOutForDelivery = order.shippingAddress?.name || 'there';
+    const ofdItemLines = (order.items || [])
+      .map((item: any) => `• ${item.name}  ×${item.quantity}`)
+      .join('\n');
+    const ofdItemBlock = ofdItemLines ? `\n\n*Items ordered:*\n${ofdItemLines}` : '';
 
     await this.whatsappService.sendInteractiveButtons({
       phone,
@@ -260,6 +263,7 @@ export class NotificationsService {
       bodyText:
         `Hi ${nameOutForDelivery}! Your order is on its way! 🎉\n\n` +
         `Your order will be delivered today or tomorrow.` +
+        ofdItemBlock +
         deliveryBlock +
         courierBlock,
       buttons: [{ id: `order_${order._id?.toString()}`, title: '📦 Track order' }],
