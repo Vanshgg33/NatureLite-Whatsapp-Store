@@ -733,7 +733,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
               toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO } },
             }),
         temperature: 0.2,
-        maxOutputTokens: 800,
+        maxOutputTokens: 2000,
       },
     });
 
@@ -759,7 +759,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
         this.logger.log(`[Admin AI] ${name}(${JSON.stringify(args)})`);
         try {
           const toolResult = await this.executeTool(name, args ?? {});
-          toolResponseParts.push({ functionResponse: { name, response: capArrays(toolResult, 10) } } as any);
+          toolResponseParts.push({ functionResponse: { name, response: capArrays(toolResult, 25) } } as any);
         } catch (err) {
           toolResponseParts.push({ functionResponse: { name, response: { error: (err as Error).message } } } as any);
         }
@@ -1008,7 +1008,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     const items = await this.productRepository.searchByText(term);
     return {
       total: items.length,
-      products: items.slice(0, 10).map((p: any) => ({
+      products: items.map((p: any) => ({
         name: p.name,
         sku: p.sku,
         price: p.price,
@@ -1048,7 +1048,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     const nameFilter = searchTerm ? { name: { $regex: this.escape(searchTerm), $options: 'i' } } : {};
     const THRESHOLD = 10;
     const items = await this.productRepository.getModel().aggregate([
-      { $match: { isActive: true, ...nameFilter } },
+      { $match: { isActive: true, trackStock: { $ne: false }, ...nameFilter } },
       { $addFields: {
         totalStock: { $add: ['$stock', { $ifNull: [{ $sum: '$variants.stock' }, 0] }] },
         effectiveThreshold: { $cond: [{ $and: [{ $eq: ['$trackStock', true] }, { $gt: ['$lowStockThreshold', 0] }] }, '$lowStockThreshold', THRESHOLD] },
@@ -1351,26 +1351,52 @@ export class AdminChatbotService implements OnApplicationBootstrap {
 
   private async toolRevenueTrend(args: Record<string, unknown>) {
     const { from, to } = this.resolveRange(args);
-    const days = Math.round((to.getTime() - from.getTime()) / 86_400_000);
-    const trend = await this.analyticsService.getRevenueByDay(days);
-    const totalRev = trend.reduce((s: number, d: any) => s + (d.revenue ?? 0), 0);
-    const totalOrd = trend.reduce((s: number, d: any) => s + (d.orders ?? 0), 0);
+
+    const [orderResult, storeResult] = await Promise.all([
+      this.orderRepository.getModel().aggregate([
+        { $match: { createdAt: { $gte: from, $lte: to }, status: { $ne: 'cancelled' } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, revenue: { $sum: '$total' }, orders: { $sum: 1 } } },
+      ]),
+      this.storeSaleRepository.getModel().aggregate([
+        { $addFields: { effectiveDate: { $ifNull: ['$dueDate', '$createdAt'] } } },
+        { $match: { effectiveDate: { $gte: from, $lte: to }, $or: [{ voidedAt: { $exists: false } }, { voidedAt: null }] } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$effectiveDate' } }, revenue: { $sum: '$total' }, orders: { $sum: 1 } } },
+      ]),
+    ]);
+
+    const dateMap = new Map<string, { revenue: number; orders: number }>();
+    for (const r of orderResult) dateMap.set(r._id, { revenue: r.revenue, orders: r.orders });
+    for (const r of storeResult) {
+      const ex = dateMap.get(r._id);
+      if (ex) { ex.revenue += r.revenue; ex.orders += r.orders; }
+      else dateMap.set(r._id, { revenue: r.revenue, orders: r.orders });
+    }
+
+    const days = [...dateMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, v]) => ({ date, revenue: v.revenue, orders: v.orders }));
     return {
       period: { from: this.toIST(from, true), to: this.toIST(to, true) },
-      totalRevenue: totalRev,
-      totalOrders: totalOrd,
-      days: trend.map((d: any) => ({ date: d.date, revenue: d.revenue, orders: d.orders })),
+      totalRevenue: days.reduce((s, d) => s + d.revenue, 0),
+      totalOrders: days.reduce((s, d) => s + d.orders, 0),
+      days,
     };
   }
 
   private async toolAnalyticsPeriod(args: Record<string, unknown>) {
     const { from, to } = this.resolveRange(args);
-    const [orders, customers, products, topSellers, topCustomers] = await Promise.all([
+    const [orders, customers, products, topSellers, topCustomersAgg] = await Promise.all([
       this.analyticsService.getOrderMetrics(from, to),
       this.analyticsService.getCustomerMetrics(from, to),
       this.analyticsService.getProductMetrics(from, to),
       this.analyticsService.getTopSellingOverall(from, to, 5),
-      this.userRepository.getModel().find({ totalOrders: { $gt: 0 } }).sort({ totalSpent: -1 }).limit(5).lean(),
+      this.orderRepository.getModel().aggregate([
+        { $match: { createdAt: { $gte: from, $lte: to }, status: { $ne: 'cancelled' } } },
+        { $group: { _id: '$user', revenue: { $sum: '$total' }, orders: { $sum: 1 } } },
+        { $sort: { revenue: -1 } }, { $limit: 5 },
+        { $lookup: { from: 'users', localField: '_id', foreignField: '_id', pipeline: [{ $project: { name: 1, phone: 1 } }], as: 'u' } },
+        { $unwind: { path: '$u', preserveNullAndEmptyArrays: true } },
+      ]).exec(),
     ]);
     const o = orders as any; const c = customers as any; const p = products as any;
     return {
@@ -1379,7 +1405,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
       customers: { total: c.totalCustomers, newCustomers: c.newCustomers, returning: c.returningCustomers },
       inventory: { outOfStock: p.outOfStockProducts, lowStock: p.lowStockProducts },
       topProducts: topSellers.slice(0, 5).map((s: any) => ({ name: s.name, unitsSold: s.quantitySold, revenue: s.revenue })),
-      topCustomers: (topCustomers as any[]).slice(0, 5).map((tc: any) => ({ name: tc.name, phone: tc.phone, totalSpent: tc.totalSpent, totalOrders: tc.totalOrders })),
+      topCustomers: topCustomersAgg.map((tc: any) => ({ name: tc.u?.name ?? 'Unknown', phone: tc.u?.phone, revenueInPeriod: tc.revenue, ordersInPeriod: tc.orders })),
     };
   }
 
@@ -1696,7 +1722,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     if (args.from && args.to) {
       const fromD = new Date(args.from as string);
       const toD = new Date(args.to as string);
-      if (!isNaN(fromD.getTime())) filter.createdAt = { $gte: fromD, $lte: toD };
+      if (!isNaN(fromD.getTime()) && !isNaN(toD.getTime())) filter.createdAt = { $gte: fromD, $lte: toD };
     }
     const payments = await this.paymentRepository.getModel()
       .find(filter).sort({ createdAt: -1 }).limit(limit)
@@ -1750,7 +1776,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     if (args.from && args.to) {
       const fromD = new Date(args.from as string);
       const toD = new Date(args.to as string);
-      if (!isNaN(fromD.getTime())) filter.createdAt = { $gte: fromD, $lte: toD };
+      if (!isNaN(fromD.getTime()) && !isNaN(toD.getTime())) filter.createdAt = { $gte: fromD, $lte: toD };
     }
     const [count, logs] = await Promise.all([
       this.auditLogRepository.getModel().countDocuments(filter),

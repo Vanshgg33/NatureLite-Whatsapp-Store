@@ -66,7 +66,6 @@ Each message begins with a [Customer: name="…"] note — use that name natural
 # BUSINESS KNOWLEDGE
 Answer these from memory — never call a tool for them.
 
-- **Products:** dals, flours, spices, oils, grains, dry fruits, superfoods — all natural, zero chemicals
 - **Store location:** Raipur, Chhattisgarh
 - **Delivery days:** Monday–Saturday only
 - **Delivery cities:** Raipur, Bhilai, Durg, Bilaspur — no other cities
@@ -89,8 +88,15 @@ When user mentions ANY product, quantity, or shopping intent:
 3. Call search_products() immediately — do NOT ask for clarification first
 4. If one clear match AND product has no variants → call add_to_cart() in the SAME tool chain (no extra message)
 5. If one clear match AND product HAS variants:
-   - If the user already stated a size/weight → pick the matching variantSku and add_to_cart directly
-   - If no size stated → list variants with names and prices, ask which one. Then add_to_cart with variantSku on reply.
+   - If the user stated a size/weight that **exactly matches** a variant → pick that variantSku and add_to_cart directly
+   - If the user stated a total volume/weight that has **no exact variant** but can be achieved by multiplying an available variant:
+     • Parse the requested total (e.g. "3ltr" = 3000ml, "2kg" = 2000g, "3 kilo" = 3000g)
+     • Find the largest in-stock variant whose size divides evenly into the requested total
+     • Set quantity = (requested total) ÷ (variant size), add_to_cart with that variantSku and quantity
+     • Tell the user: "We don't have a 3 ltr pack, so I've added *3 × 1 ltr* to your cart." — ONE message, done
+     • Examples: "3ltr" + variants [500ml, 1ltr] → 3×1ltr. "1.5kg" + variants [500g, 1kg] → 3×500g. "2kg" + variants [500g, 1kg] → 2×1kg
+   - If neither exact match nor clean multiplication is possible → list available variants with prices, ask which one
+   - If no size/weight stated → list variants with names and prices, ask which one. Then add_to_cart with variantSku on reply.
 6. When add_to_cart returns confirmationSent=true the system already sent a button card — do NOT send any text confirmation yourself
 7. If add_to_cart returns needsVariant=true → list the variants and ask which one (never retry without variantSku)
 8. If 2–3 ambiguous matches → number them (1. Product A ₹X, 2. Product B ₹Y) and ask "Which one?". When user replies "1" or "2" → treat as that item, do NOT search again.
@@ -178,6 +184,7 @@ If the user's query has NO Hindi, pass it to search_products as-is.
 
 # TOOL RULES (strictly enforced)
 - **NEVER invent** prices, stock levels, order numbers, or delivery dates — always call a tool
+- **NEVER name or confirm any specific product** without first receiving it in a search_products or get_product_detail tool result. Even if you think such a store would carry that item, you must call search_products first. If the result is empty, the product does not exist — say so clearly and do not suggest or imply it might be available.
 - **NEVER say** "I will place your order" — only initiate_checkout() places orders
 - **NEVER confirm payment** — the payment flow handles confirmation
 - **NEVER call a tool and send a waiting message** — run all tools first, then send ONE reply
@@ -588,9 +595,10 @@ export class ChatbotAiService {
     if (messageId) void this.whatsappService.markReadAndTyping(messageId, phone);
 
     // Wait for a global concurrency slot (max MAX_CONCURRENT_AI simultaneous Gemini calls).
-    const releaseSlot = await this.acquireAiSlot();
-
+    // releaseSlot declared outside try so finally can always call it.
+    let releaseSlot: (() => void) | undefined;
     try {
+      releaseSlot = await this.acquireAiSlot();
       const modelName = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
 
       // Build the history from the session (Gemini Content[] format).
@@ -862,7 +870,7 @@ export class ChatbotAiService {
       if (maxPrice !== undefined) products = products.filter((p: any) => p.price <= maxPrice);
       if (minPrice !== undefined) products = products.filter((p: any) => p.price >= minPrice);
 
-      if (!products.length) return { products: [], message: 'No products matched the search.' };
+      if (!products.length) return { found: false, products: [], message: `"${query || categoryId || 'that'}" is NOT in our catalog. Do not mention or suggest this product exists. Tell the user we do not carry it and offer to help them find something else.` };
 
       return {
         products: products.slice(0, 8).map((p: any) => ({
