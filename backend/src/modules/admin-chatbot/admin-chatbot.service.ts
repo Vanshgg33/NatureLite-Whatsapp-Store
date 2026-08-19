@@ -122,7 +122,7 @@ const ADMIN_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: 'get_orders_by_status',
-    description: 'Get all-time order count grouped by status (placed, confirmed, preparing, delivered, cancelled, etc.).',
+    description: 'Get all-time order counts grouped by status AND by payment method (cash/COD, UPI, online, wallet). Use this for any question about payment method breakdown: "how did customers pay", "how many cod orders", "cash vs online split", etc.',
     parameters: { type: O, properties: {} },
   },
   {
@@ -375,7 +375,7 @@ const ADMIN_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: 'get_payments',
-    description: 'Get payment records by status: failed | pending | success | refunded. When status=refunded, returns refund-specific details (refund amount, reason, refund date). Use for payment failures, successful payments, and refund queries.',
+    description: 'Get online/UPI payment gateway records by status: failed | pending | success | refunded. This is ONLY for prepaid gateway transactions — COD and cash orders do NOT appear here. Use for failed payments, payment gateway errors, and refunds. For COD/cash order counts use get_orders_by_status.',
     parameters: {
       type: O,
       properties: {
@@ -517,6 +517,9 @@ Call multiple tools in a single turn when a question spans domains — e.g., cus
 - delivery collections/history/pending → get_delivery_data with view=collections|history|pending
 - subscriptions → get_subscriptions (add phone/customerName for one customer's detail)
 - refunds → get_payments(status="refunded")
+- "how did customers pay / COD vs online / payment method breakdown / how many cash orders / how many cod orders / payment split" → get_orders_by_status (it includes byPaymentMethod breakdown)
+- "show me COD orders / show cash orders" → search_orders with paymentMethod="cod" (the tool treats cash and cod as identical)
+- get_payments is for online gateway only — NEVER use it for COD or cash questions
 - email report → preview_email_report first, send only after user confirms
 - "price / stock / MRP / variants of X" → search_products (returns catalog data, NOT sales)
 - "how much X sold / X units sold / X sales / X revenue / how many X were ordered" → get_top_selling_products with searchTerm=X (returns actual sales from orders, not stock)
@@ -895,16 +898,25 @@ export class AdminChatbotService implements OnApplicationBootstrap {
   private async toolSearchOrders(args: Record<string, unknown>) {
     const limit = Number(args.limit ?? 15);
     const STATUS_MAP: Record<string, string> = { shipped: 'out_for_delivery', pending: 'placed', processing: 'preparing', dispatched: 'out_for_delivery', completed: 'delivered', done: 'delivered' };
+    // cash and cod are used interchangeably in the DB; online orders may be stored as 'online' or 'prepaid'
+    const PAYMENT_ALIASES: Record<string, string[]> = {
+      cash: ['cash', 'cod'],
+      cod: ['cash', 'cod'],
+      'cash on delivery': ['cash', 'cod'],
+      online: ['online', 'prepaid'],
+      prepaid: ['online', 'prepaid'],
+    };
     const rawStatus = args.status as string | undefined;
     const status = rawStatus ? (STATUS_MAP[rawStatus.toLowerCase()] ?? rawStatus.toLowerCase()) : undefined;
     const customerName = String(args.customerName ?? '').trim();
-    const paymentMethod = String(args.paymentMethod ?? '').trim().toLowerCase();
+    const paymentRaw = String(args.paymentMethod ?? '').trim().toLowerCase();
+    const paymentValues = paymentRaw ? (PAYMENT_ALIASES[paymentRaw] ?? [paymentRaw]) : null;
     const orderNumber = String(args.orderNumber ?? '').trim();
 
     const filter: Record<string, unknown> = {};
     if (orderNumber) filter.orderNumber = { $regex: this.escape(orderNumber), $options: 'i' };
     if (status) filter.status = status;
-    if (paymentMethod) filter.paymentMethod = { $regex: paymentMethod, $options: 'i' };
+    if (paymentValues) filter.paymentMethod = { $in: paymentValues };
     if (args.from && args.to) {
       const fromD = new Date(args.from as string);
       const toD = new Date(args.to as string);
@@ -987,9 +999,27 @@ export class AdminChatbotService implements OnApplicationBootstrap {
   }
 
   private async toolOrdersByStatus() {
-    const counts = await this.orderRepository.getOrdersByStatus();
-    const total = Object.values(counts).reduce((s: number, n: any) => s + (n || 0), 0);
-    return { total, byStatus: counts };
+    const [statusCounts, paymentAgg] = await Promise.all([
+      this.orderRepository.getOrdersByStatus(),
+      this.orderRepository.getModel().aggregate([
+        { $group: { _id: '$paymentMethod', orders: { $sum: 1 }, revenue: { $sum: '$total' } } },
+        { $sort: { orders: -1 } },
+      ]).exec(),
+    ]);
+    const total = Object.values(statusCounts).reduce((s: number, n: any) => s + (n || 0), 0);
+    // Merge cash+cod into one line for clarity
+    const paymentMap = new Map<string, { orders: number; revenue: number }>();
+    for (const r of paymentAgg as any[]) {
+      const key = (r._id === 'cash' || r._id === 'cod') ? 'cash/cod' : (r._id ?? 'unknown');
+      const ex = paymentMap.get(key);
+      if (ex) { ex.orders += r.orders; ex.revenue += r.revenue; }
+      else paymentMap.set(key, { orders: r.orders, revenue: r.revenue });
+    }
+    return {
+      total,
+      byStatus: statusCounts,
+      byPaymentMethod: [...paymentMap.entries()].map(([method, v]) => ({ method, orders: v.orders, revenue: v.revenue })),
+    };
   }
 
   private async toolComparePeriods(args: Record<string, unknown>) {
