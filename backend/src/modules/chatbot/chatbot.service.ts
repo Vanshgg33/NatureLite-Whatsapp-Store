@@ -294,14 +294,10 @@ export class ChatbotService implements OnModuleInit {
     return `${preview}${more}`;
   }
 
-  /** Preview up to 4 items for the tracking message. */
   private formatOrderItemsPreview(items: Array<{ name: string; quantity: number }>): string {
-    const preview = items
-      .slice(0, 4)
+    return items
       .map((it) => `\u2022 ${it.name}  \u00D7${it.quantity}`)
       .join('\n');
-    const more = items.length > 4 ? `\n_\u2026 and ${items.length - 4} more_` : '';
-    return `${preview}${more}`;
   }
 
   /** Short date+time stamp (e.g. "Sat, 20 Apr · 2:14 PM") for tracking timeline. */
@@ -636,14 +632,13 @@ export class ChatbotService implements OnModuleInit {
           const order = await this.ordersService.findByOrderNumber(orderNumber);
           if (order) {
             const items = order.items as Array<{ name: string; quantity: number }>;
-            const itemLines = items.slice(0, 4).map((it) => `• ${it.name} ×${it.quantity}`).join('\n');
-            const more = items.length > 4 ? `\n_… and ${items.length - 4} more_` : '';
+            const itemLines = items.map((it) => `• ${it.name} ×${it.quantity}`).join('\n');
             await this.whatsappService.sendInteractiveButtons({
               phone: message.phone,
               headerText: `Order #${order.orderNumber} received ✅`,
               bodyText:
                 `*${order.shippingAddress?.name || 'Hi'}*, your order has been placed!\n\n` +
-                `${itemLines}${more}\n\n` +
+                `${itemLines}\n\n` +
                 `*Total: ${this.formatCurrency(order.total)}* · Cash on Delivery\n` +
                 `We'll confirm shortly. Track anytime by replying *orders*.`,
               buttons: [

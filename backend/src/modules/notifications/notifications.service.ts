@@ -157,17 +157,15 @@ export class NotificationsService {
 
     const name = order.shippingAddress?.name || 'there';
     const itemLines = order.items
-      .slice(0, 4)
       .map((item) => `• ${item.name}  ×${item.quantity}`)
       .join('\n');
-    const moreItems = order.items.length > 4 ? `\n_… and ${order.items.length - 4} more_` : '';
 
     await this.whatsappService.sendInteractiveButtons({
       phone,
       headerText: '✅ Order Confirmed',
       bodyText:
         `Hi ${name}! 👋\n\n` +
-        `📦 *Here are the items you ordered (${order.items.length})*\n${itemLines}${moreItems}\n\n` +
+        `📦 *Here are the items you ordered (${order.items.length})*\n${itemLines}\n\n` +
         `*Total:  ${this.formatMoneyInr(order.total)}*\n\n` +
         `We've confirmed your order and are preparing it now.`,
       footerText: order.paymentMethod === 'cod' ? 'Cash on delivery' : 'Prepaid',
@@ -347,10 +345,8 @@ export class NotificationsService {
 
     const namePayment = order.shippingAddress?.name || 'there';
     const itemLines = (order.items || [])
-      .slice(0, 4)
       .map((item: any) => `• ${item.name}  ×${item.quantity}`)
       .join('\n');
-    const moreItems = order.items.length > 4 ? `\n_… and ${order.items.length - 4} more_` : '';
 
     const billingLines: string[] = [];
     if (order.subtotal && order.subtotal !== order.total) {
@@ -363,7 +359,7 @@ export class NotificationsService {
 
     const body =
       `Hi ${namePayment}! 🎉 _payment confirmed_\n\n` +
-      `📦 *Here are the items you ordered (${order.items.length})*\n${itemLines}${moreItems}\n\n` +
+      `📦 *Here are the items you ordered (${order.items.length})*\n${itemLines}\n\n` +
       billingLines.join('\n') +
       `\n\nWe're now preparing your order. 🚀`;
 
