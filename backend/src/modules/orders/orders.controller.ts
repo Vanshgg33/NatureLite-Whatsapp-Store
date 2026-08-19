@@ -64,6 +64,13 @@ export class OrdersController {
     return this.ordersService.createGuestOrder(dto);
   }
 
+  @Post('admin-create')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  async createAdminOrder(@Body() dto: GuestCreateOrderDto): Promise<Order> {
+    return this.ordersService.createGuestOrder(dto, true);
+  }
+
   @Get()
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')

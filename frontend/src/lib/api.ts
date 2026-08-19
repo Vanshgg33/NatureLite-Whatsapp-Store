@@ -488,6 +488,11 @@ class ApiClient {
     return response.data.data;
   }
 
+  async adminCreateOrder(data: GuestCreateOrderDto): Promise<Order> {
+    const response = await this.client.post<ApiResponse<Order>>('/orders/admin-create', data);
+    return response.data.data;
+  }
+
   async getMyOrders(limit: number = 10): Promise<Order[]> {
     const response = await this.client.get<ApiResponse<Order[]>>(`/orders/my-orders?limit=${limit}`);
     return response.data.data;

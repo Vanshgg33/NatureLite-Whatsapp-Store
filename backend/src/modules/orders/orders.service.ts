@@ -703,7 +703,7 @@ export class OrdersService implements OnModuleInit {
     return this.orderRepository.findUserOrdersExcludingCancelled(userObjId, limit);
   }
 
-  async createGuestOrder(dto: GuestCreateOrderDto): Promise<Order> {
+  async createGuestOrder(dto: GuestCreateOrderDto, allowAdminDiscount = false): Promise<Order> {
     // Same phone = same user: find or create by phone (guest identity is tied to phone)
     const user = await this.usersService.findOrCreateByPhone(dto.phone);
 
@@ -716,8 +716,8 @@ export class OrdersService implements OnModuleInit {
     }
 
     // Reuse existing create logic so pricing, coupons, and stock handling stay consistent.
-    // adminDiscount is intentionally excluded — unauthenticated callers must not be able
-    // to self-grant a discount by including it in the guest order payload.
+    // adminDiscount is only forwarded when allowAdminDiscount=true (authenticated admin callers).
+    // The public guest endpoint passes false to prevent unauthenticated discount self-grants.
     const createDto: CreateOrderDto = {
       items: dto.items,
       shippingAddress: dto.shippingAddress,
@@ -728,6 +728,7 @@ export class OrdersService implements OnModuleInit {
       idempotencyKey: dto.idempotencyKey,
       source: dto.source,
       orderType: dto.orderType,
+      adminDiscount: allowAdminDiscount ? dto.adminDiscount : undefined,
       scheduledFor: dto.scheduledFor,
     };
 

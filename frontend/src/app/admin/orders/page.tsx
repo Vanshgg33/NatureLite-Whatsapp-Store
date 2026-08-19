@@ -66,9 +66,9 @@ type ProductRow = {
 function flattenProductRows(products: Product[]): ProductRow[] {
   const rows: ProductRow[] = [];
   for (const p of products) {
-    const activeVariants = (p.variants ?? []).filter((v) => v.isActive);
-    if (activeVariants.length > 0) {
-      for (const v of activeVariants) {
+    const allVariants = p.variants ?? [];
+    if (allVariants.length > 0) {
+      for (const v of allVariants) {
         rows.push({
           productId: p._id,
           name: p.name,
@@ -205,7 +205,7 @@ export default function OrdersPage() {
 
   const createOrderMutation = useMutation({
     mutationFn: () =>
-      api.createGuestOrder({
+      api.adminCreateOrder({
         items: cart.map((i) => ({ productId: i.productId, variantSku: i.variantSku, quantity: i.quantity })),
         shippingAddress: {
           name: custName.trim(),
