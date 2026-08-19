@@ -710,6 +710,20 @@ export class AdminChatbotService implements OnApplicationBootstrap {
 
   // ─── Core agentic loop ────────────────────────────────────────────────────────
 
+  private async loadSessionHistory(adminId: string): Promise<Content[]> {
+    try {
+      const session = await this.adminChatSessionRepository.getByAdminId(adminId);
+      const messages = (session?.messages ?? []).slice(-24); // last 12 exchanges
+      const items: HistoryItem[] = messages.map((m: any) => ({
+        role: m.sender === 'user' ? 'user' : 'assistant',
+        text: m.text as string,
+      }));
+      return this.historyToContent(items);
+    } catch {
+      return [];
+    }
+  }
+
   private async runAgenticLoop(
     userMessage: string,
     geminiHistory: Content[],
@@ -733,7 +747,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
               toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO } },
             }),
         temperature: 0.2,
-        maxOutputTokens: 2000,
+        maxOutputTokens: 4000,
       },
     });
 
@@ -1974,7 +1988,10 @@ export class AdminChatbotService implements OnApplicationBootstrap {
   ): Promise<{ reply: string }> {
     try {
       const safe = this.sanitize(message);
-      const reply = await this.runAgenticLoop(safe, this.historyToContent(history));
+      const geminiHistory = adminId
+        ? await this.loadSessionHistory(adminId)
+        : this.historyToContent(history);
+      const reply = await this.runAgenticLoop(safe, geminiHistory);
       if (adminId) await this.persistSession(adminId, safe, reply);
       return { reply };
     } catch (err) {
@@ -1991,7 +2008,10 @@ export class AdminChatbotService implements OnApplicationBootstrap {
   ): Promise<void> {
     try {
       const safe = this.sanitize(message);
-      const reply = await this.runAgenticLoop(safe, this.historyToContent(history));
+      const geminiHistory = adminId
+        ? await this.loadSessionHistory(adminId)
+        : this.historyToContent(history);
+      const reply = await this.runAgenticLoop(safe, geminiHistory);
       res.write(`data: ${JSON.stringify({ delta: reply })}\n\n`);
       if (adminId) await this.persistSession(adminId, safe, reply);
     } catch (err) {
@@ -2033,7 +2053,10 @@ export class AdminChatbotService implements OnApplicationBootstrap {
 
   async _executeChatQuery(data: { message: string; history: HistoryItem[]; adminId?: string }): Promise<{ reply: string }> {
     try {
-      const reply = await this.runAgenticLoop(data.message, this.historyToContent(data.history));
+      const geminiHistory = data.adminId
+        ? await this.loadSessionHistory(data.adminId)
+        : this.historyToContent(data.history);
+      const reply = await this.runAgenticLoop(data.message, geminiHistory);
       if (data.adminId) await this.persistSession(data.adminId, data.message, reply);
       return { reply };
     } catch (err) {
