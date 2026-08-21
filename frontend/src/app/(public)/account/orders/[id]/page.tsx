@@ -296,14 +296,26 @@ export default function OrderDetailPage() {
               Placed on {formatDate(order.createdAt)}
             </p>
           </div>
-          <span
-            className={cn(
-              'px-3 py-1 rounded-full text-sm font-body font-medium capitalize',
-              getStatusColor(statusDisplay.colorKey)
+          <div className="flex flex-col items-end gap-1.5">
+            <span
+              className={cn(
+                'px-3 py-1 rounded-full text-sm font-body font-medium capitalize',
+                getStatusColor(statusDisplay.colorKey)
+              )}
+            >
+              {statusDisplay.label}
+            </span>
+            {order.paymentMethod === 'prepaid' && (
+              <span
+                className={cn(
+                  'px-3 py-1 rounded-full text-xs font-body font-medium capitalize',
+                  getStatusColor(order.paymentStatus)
+                )}
+              >
+                {order.paymentStatus === 'paid' ? 'Paid' : order.paymentStatus}
+              </span>
             )}
-          >
-            {statusDisplay.label}
-          </span>
+          </div>
         </div>
 
         {canPayNow && (

@@ -205,6 +205,16 @@ export default function OrdersPage() {
                     >
                       {statusUi.label}
                     </span>
+                    {order.paymentMethod === 'prepaid' && (
+                      <span
+                        className={cn(
+                          'px-2.5 py-1 rounded-full text-xs font-body font-medium capitalize',
+                          getStatusColor(order.paymentStatus)
+                        )}
+                      >
+                        {order.paymentStatus === 'paid' ? 'Paid' : order.paymentStatus}
+                      </span>
+                    )}
                   </div>
                   <ChevronRight className="w-4 h-4 text-brand-muted/40 group-hover:text-brand-mustard group-hover:translate-x-0.5 transition-all duration-200" />
                 </div>
