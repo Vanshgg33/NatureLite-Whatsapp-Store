@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { motion } from 'framer-motion';
+import { useQuery } from '@tanstack/react-query';
 import { MapPin, Plus, Edit2, Trash2, Check, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,10 +33,22 @@ const addressSchema = z.object({
 });
 
 export default function AddressesPage() {
-  const { customer, addAddress, updateAddress, removeAddress, setDefaultAddress, setCustomer } =
+  const { customer, isAuthenticated, addAddress, updateAddress, removeAddress, setDefaultAddress, setCustomer, updateCustomer } =
     useCustomerStore();
   const defaultAddress = useDefaultAddress();
   const { toast } = useToast();
+
+  const { data: profile } = useQuery({
+    queryKey: ['customer-profile'],
+    queryFn: () => api.getMyProfile(),
+    enabled: isAuthenticated,
+    staleTime: 30 * 1000,
+  });
+
+  useEffect(() => {
+    if (!profile) return;
+    updateCustomer({ addresses: profile.addresses || [] });
+  }, [profile, updateCustomer]);
   const [isAdding, setIsAdding] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);

@@ -11,12 +11,12 @@ import { Order } from '@/types';
 import { cn, getCustomerOrderStatusDisplay, getStatusColor } from '@/lib/utils';
 
 export default function OrdersPage() {
-  const { isAuthenticated } = useCustomerStore();
+  const { isAuthenticated, customer } = useCustomerStore();
 
   const { data: orders = [], isLoading } = useQuery({
-    queryKey: ['my-orders'],
+    queryKey: ['my-orders', customer?.id],
     queryFn: () => api.getMyOrders(10),
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && !!customer?.id,
   });
 
   const formatPrice = (price: number) =>

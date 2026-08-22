@@ -103,6 +103,9 @@ function LoginPageInner() {
     try {
       const response = await api.customerEmailLogin(email, password);
 
+      // Set tokens first so the profile fetch below has auth
+      setTokens(response.accessToken, response.refreshToken);
+
       // Set initial customer data from auth response
       setCustomer({
         id: response.user.id,
@@ -113,8 +116,6 @@ function LoginPageInner() {
         totalOrders: 0,
         totalSpent: 0,
       });
-
-      setTokens(response.accessToken, response.refreshToken);
 
       // Fetch full profile (addresses, totalOrders, totalSpent)
       try {
@@ -167,6 +168,9 @@ function LoginPageInner() {
     try {
       const response = await api.customerLogin(phone, otp);
 
+      // Set tokens first so the profile fetch below has auth
+      setTokens(response.accessToken, response.refreshToken);
+
       // Set initial customer data from auth response
       setCustomer({
         id: response.user.id,
@@ -177,8 +181,6 @@ function LoginPageInner() {
         totalOrders: 0,
         totalSpent: 0,
       });
-
-      setTokens(response.accessToken, response.refreshToken);
 
       // Fetch full profile (addresses, totalOrders, totalSpent)
       try {

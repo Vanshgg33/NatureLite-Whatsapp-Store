@@ -40,9 +40,9 @@ export default function AccountDashboardPage() {
   });
 
   const { data: recentOrders = [], isLoading: isOrdersLoading } = useQuery({
-    queryKey: ['my-orders', 'dashboard'],
+    queryKey: ['my-orders', customer?.id],
     queryFn: () => api.getMyOrders(100),
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && !!customer?.id,
     staleTime: 30 * 1000,
   });
 
