@@ -4,17 +4,22 @@ import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { CreditCard, ArrowDownRight, ArrowUpRight, Clock } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useCustomerStore } from '@/lib/customer-store';
 import type { WalletBalance, WalletTransaction } from '@/types';
 
 export default function WalletPage() {
+  const { isAuthenticated, customer } = useCustomerStore();
+
   const { data: balance } = useQuery<WalletBalance>({
-    queryKey: ['wallet-balance'],
+    queryKey: ['wallet-balance', customer?.id],
     queryFn: () => api.getWallet(),
+    enabled: isAuthenticated && !!customer?.id,
   });
 
   const { data: transactions = [], isLoading } = useQuery<WalletTransaction[]>({
-    queryKey: ['wallet-transactions'],
+    queryKey: ['wallet-transactions', customer?.id],
     queryFn: () => api.getWalletTransactions(),
+    enabled: isAuthenticated && !!customer?.id,
   });
 
   const formatAmount = (amount: number) =>

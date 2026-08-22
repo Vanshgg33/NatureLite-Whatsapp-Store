@@ -69,7 +69,7 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { items, getSubtotal, getGstTotal, getDiscountAmount, getTotal, clearCart, couponCode, applyCoupon, removeCoupon, setLocalCoupon } = useCartStore();
   const syncCart = useSyncCartOnAuth();
-  const { customer, isAuthenticated } = useCustomerStore();
+  const { customer, isAuthenticated, updateCustomer } = useCustomerStore();
   const { toast } = useToast();
   const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>('cod');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -121,11 +121,26 @@ export default function CheckoutPage() {
   };
 
   const { data: wallet }: { data: WalletBalance | undefined } = useQuery({
-    queryKey: ['wallet-balance'],
+    queryKey: ['wallet-balance', customer?.id],
     queryFn: () => api.getWallet(),
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && !!customer?.id,
     staleTime: 0,
   });
+
+  // Sync addresses from server so the pre-fill works even if user navigates
+  // directly to /checkout without visiting /account or /addresses first.
+  const { data: checkoutProfile } = useQuery({
+    queryKey: ['customer-profile'],
+    queryFn: () => api.getMyProfile(),
+    enabled: isAuthenticated && !!customer?.id,
+    staleTime: 30 * 1000,
+  });
+
+  useEffect(() => {
+    if (checkoutProfile?.addresses?.length) {
+      updateCustomer({ addresses: checkoutProfile.addresses });
+    }
+  }, [checkoutProfile, updateCustomer]);
 
   const {
     register,
