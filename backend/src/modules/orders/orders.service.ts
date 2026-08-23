@@ -206,11 +206,13 @@ export class OrdersService implements OnModuleInit {
           // missing/zero we fall back to the cart-captured price (last-known
           // good) rather than billing zero.
           let livePrice = product.price;
+          let cartVariantName: string | undefined;
           if (item.variantSku) {
             const variant = product.variants.find((v) => v.sku === item.variantSku);
             if (variant && Number.isFinite(variant.price) && variant.price > 0) {
               livePrice = variant.price;
             }
+            cartVariantName = variant?.name;
           }
           const resolvedPrice =
             Number.isFinite(livePrice) && livePrice > 0 ? livePrice : item.price;
@@ -224,6 +226,7 @@ export class OrdersService implements OnModuleInit {
             product: new Types.ObjectId(productId),
             name: product.name,
             variantSku: item.variantSku,
+            variantName: cartVariantName,
             quantity: item.quantity,
             price: resolvedPrice,
             total: resolvedPrice * item.quantity,
@@ -1437,6 +1440,7 @@ export class OrdersService implements OnModuleInit {
         name: i.name,
         variantName: i.variantName,
         quantity: i.quantity,
+        price: i.price,
       }));
       const oldMap = new Map(oldItems.map((i) => [`${i.productId}|${i.variantSku}`, i]));
 
@@ -1452,21 +1456,26 @@ export class OrdersService implements OnModuleInit {
         const productIdObj = parseObjectId(item.productId, 'items[].productId');
         const product = productMap.get(item.productId)!;
 
-        let price = product.price;
-        if (item.variantSku) {
-          const variant = product.variants.find((v) => v.sku === item.variantSku);
-          if (variant) price = variant.price;
+        const existingItem = oldMap.get(`${item.productId}|${item.variantSku || ''}`);
+        let price: number;
+        if (existingItem != null) {
+          price = existingItem.price;
+        } else {
+          price = product.price;
+          if (item.variantSku) {
+            const variant = product.variants.find((v) => v.sku === item.variantSku);
+            if (variant) price = variant.price;
+          }
         }
 
         const lineTotal = price * item.quantity;
         const gstPct = (product.category as any)?.gstPercentage ?? 0;
-
         newItems.push({
           product: productIdObj,
-          name: product.name,
+          name: existingItem?.name ?? product.name,
           variantSku: item.variantSku,
           variantName: item.variantSku
-            ? product.variants.find((v) => v.sku === item.variantSku)?.name
+            ? (existingItem?.variantName ?? product.variants.find((v) => v.sku === item.variantSku)?.name)
             : undefined,
           quantity: item.quantity,
           price,
