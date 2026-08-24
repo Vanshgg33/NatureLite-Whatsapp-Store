@@ -100,7 +100,7 @@ const ADMIN_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       type: O,
       properties: {
         orderNumber: { type: S, description: 'Exact or partial order number e.g. ORD-2025-001' },
-        status: { type: S, description: 'placed | confirmed | preparing | out_for_delivery | delivered | cancelled' },
+        status: { type: S, description: 'placed | confirmed | preparing | out_for_delivery | delivered | cancelled | returned | refunded' },
         customerName: { type: S, description: 'Customer name or phone to filter' },
         paymentMethod: { type: S, description: 'cod | upi | online | wallet' },
         from: { type: S, description: 'ISO date start' },
@@ -122,7 +122,7 @@ const ADMIN_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: 'get_orders_by_status',
-    description: 'Get order counts grouped by status AND by payment method (cash/COD, UPI, online, wallet). Omit from/to for all-time counts. Pass from/to for a specific period. Use for: "how did customers pay", "how many cod orders", "cash vs online split", "payment method breakdown this month".',
+    description: 'Get order counts grouped by ALL statuses (placed, confirmed, preparing, out_for_delivery, delivered, cancelled, returned, refunded) AND by payment method. Omit from/to for all-time counts. Pass from/to for a specific period. Use for: "how many orders total", "how many returned", "how many refunded", "order status breakdown", "how did customers pay", "how many cod orders", "cash vs online split", "payment method breakdown this month".',
     parameters: {
       type: O,
       properties: {
@@ -341,22 +341,22 @@ const ADMIN_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: 'get_delivery_data',
-    description: 'Delivery agent data. view=collections: cash/UPI collected per agent for a period; view=history: delivered orders with amounts and settlement status; view=pending: unsettled cash for a specific agent.',
+    description: 'Delivery agent data. view=collections: per-agent summary with totalOrders delivered AND cash/UPI collected for a date range — use for "which delivery boy did most", "agent performance", "how much cash collected", "agent collection summary", "settlement report"; view=history: list of individual delivered orders with agent name, amount collected, settlement status — use for "show deliveries", "delivery history", "which orders were delivered today/this week"; view=pending: all unsettled COD cash across all agents or one agent — use for "pending settlements", "unsettled cash", "pending cash". Always pass from/to when user mentions a date or period. Default range is last 14 days when omitted.',
     parameters: {
       type: O,
       properties: {
         view: { type: S, description: 'collections | history | pending' },
-        agentName: { type: S, description: 'Filter by delivery agent name' },
-        from: { type: S, description: 'ISO date start' },
-        to: { type: S, description: 'ISO date end' },
-        limit: { type: N, description: 'Max results, default 20' },
+        agentName: { type: S, description: 'Filter by delivery agent name (optional)' },
+        from: { type: S, description: 'ISO date start — include whenever user specifies a date or period' },
+        to: { type: S, description: 'ISO date end — include whenever user specifies a date or period' },
+        limit: { type: N, description: 'Max results for history view, default 20' },
       },
       required: ['view'],
     },
   },
   {
     name: 'get_wallet',
-    description: 'Wallet data. type=balances: customers with unused wallet credit (amounts in paise ÷ 100 = rupees); type=transactions: credit/debit history for a specific customer (requires phone or customerName).',
+    description: 'Wallet data. type=balances: customers with unused wallet credit — amounts already in rupees (balanceRupees field, DO NOT divide further); type=transactions: credit/debit history for a customer — amounts already in rupees (amountRupees field). Requires phone or customerName for transactions.',
     parameters: {
       type: O,
       properties: {
@@ -513,26 +513,93 @@ ALWAYS call a tool before answering any data question. Never guess, estimate, or
 Call multiple tools in a single turn when a question spans domains — e.g., customer question: call search_customers + get_customer_orders together.
 
 ## Tool routing
-- "when was X updated / changed / edited" → search_audit_logs with action="product.update" and targetName=X
-- "who logged in / login history" → search_audit_logs with action="admin.login"
-- IMS / in-store stock → get_store_stock
-- PMS / RMS / raw materials / processing → get_raw_materials or get_raw_material_snapshots
-- low stock / out of stock / in stock → get_products_by_stock with status=low|out|in
-- wallet balance → get_wallet(type="balances"); wallet history → get_wallet(type="transactions", phone=...)
-- new/inactive/blocked customers → get_customers_filtered with type=new|inactive|blocked
-- delivery collections/history/pending → get_delivery_data with view=collections|history|pending
-- subscriptions → get_subscriptions (add phone/customerName for one customer's detail)
-- refunds → get_payments(status="refunded")
-- "how did customers pay / COD vs online / payment method breakdown / how many cash orders / how many cod orders / payment split" → get_orders_by_status (it includes byPaymentMethod breakdown; add from/to for a specific period)
-- "show me COD orders / show cash orders" → search_orders with paymentMethod="cod" (the tool treats cash and cod as identical)
-- get_payments is for online gateway only — NEVER use it for COD or cash questions
-- "feedback / reviews for [product]" → get_feedback_list with productName=[product] (resolves by name in DB, no need to search first)
-- "delivery agents / how much cash collected / agent settlements" → get_delivery_data with view=collections|history|pending
-- "customers inactive for X days / churned customers" → get_customers_filtered(type="inactive", days=X) — days is the inactivity threshold, not a lookback window
-- email report → preview_email_report first, send only after user confirms
-- "price / stock / MRP / variants of X" → search_products (returns catalog data, NOT sales)
-- "how much X sold / X units sold / X sales / X revenue / how many X were ordered" → get_top_selling_products with searchTerm=X (returns actual sales from orders, not stock)
+
+### Orders
+- "how many orders / total orders / orders today / orders this month / overview" → get_dashboard_summary (has todayOrders, monthOrders) or get_orders_by_status for full status breakdown
+- "list orders / find order / show orders for [customer] / orders by status/date/payment" → search_orders with appropriate filters
+- "order detail / full order info / ORD-XXXX" → get_order_detail with orderNumber
+- "order status breakdown / how many in each status / order counts" → get_orders_by_status
+- "returned orders / show returns / how many returns" → search_orders(status="returned") for list; get_orders_by_status for count
+- "refunded orders / orders marked refunded" → search_orders(status="refunded") for list; get_orders_by_status for count
+- "compare this week vs last / week-over-week / month-over-month" → compare_periods with days=7 or 30
+
+### Revenue & Analytics
+- "revenue trend / daily revenue / revenue graph / day-by-day" → get_revenue_trend with from/to or days
+- "analytics / full period report / monthly summary / comprehensive stats" → get_analytics_period with from/to or days
+- "best selling products / top products / what sells most" → get_top_selling_products (returns actual sales from orders)
+- "how much X sold / X units sold / X revenue / how many X were ordered" → get_top_selling_products with searchTerm=X
 - NEVER use search_products to answer a sales question — it has no sales data
+
+### Customers
+- "find customer / customer profile / search customer" → search_customers with name/phone/email
+- "orders for [customer] / customer order history" → get_customer_orders with name or phone
+- "best customer / top customer / who spends most / who orders most / VIP" → get_top_customers
+- "new customers / joined recently" → get_customers_filtered(type="new", days=7)
+- "inactive customers / churned / haven't ordered in X days" → get_customers_filtered(type="inactive", days=X) — days is inactivity threshold
+- "blocked customers / blocked accounts" → get_customers_filtered(type="blocked")
+- "wallet balance / wallet credits / who has wallet money" → get_wallet(type="balances")
+- "wallet history / wallet transactions for [customer]" → get_wallet(type="transactions", phone=...)
+
+### Delivery
+- "which delivery boy did most / top delivery agent / most deliveries / delivery count per agent / agent performance" → get_delivery_data(view="collections"); result has totalOrders per agent — pick the highest
+- "cash collected by agents / how much cash collected / agent cash / agent collections / settlement summary" → get_delivery_data(view="collections"); pass from/to if user gives a date
+- "delivery history / deliveries done / show deliveries today/this week / delivered orders with agent info" → get_delivery_data(view="history"); pass from/to if user gives a date
+- "pending settlements / unsettled cash / agents who haven't settled / pending cash" → get_delivery_data(view="pending")
+- "upcoming deliveries / next delivery date / subscription delivery schedule" → get_subscriptions (NEVER get_delivery_data)
+- "how many orders delivered / delivery count" → get_orders_by_status or search_orders(status="delivered"); use get_delivery_data(view="history") only when agent or cash data is also needed
+
+### Payments
+- "how did customers pay / COD vs online / payment method breakdown / how many cash orders / payment split" → get_orders_by_status (includes byPaymentMethod; add from/to for a period)
+- "show COD orders / show cash orders" → search_orders(paymentMethod="cod") — treats cash and cod as identical
+- "failed payments / pending online payments / payment gateway errors" → get_payments(status="failed" or "pending")
+- "payment refunds / gateway refund / refund initiated online" → get_payments(status="refunded") — online gateway only
+- get_payments is for online/UPI gateway ONLY — NEVER use it for COD, cash, or order status questions
+
+### Inventory & Products
+- "price / stock / MRP / variants / product info" → search_products (catalog data, NOT sales)
+- "full product detail / all variants and GST" → get_product_detail
+- "low stock / running low / need restock" → get_products_by_stock(status="low")
+- "out of stock / no stock / zero stock" → get_products_by_stock(status="out")
+- "in stock / available products" → get_products_by_stock(status="in")
+- "IMS / in-store stock / store-level stock" → get_store_stock
+- "PMS / RMS / raw materials / coconut / processing stock" → get_raw_materials or get_raw_material_snapshots
+- "categories / product categories" → get_categories
+- "stores / store list / store address / store info" → get_stores
+
+### Subscriptions
+- "subscriptions / active subscriptions / paused subscriptions / upcoming deliveries" → get_subscriptions
+- "subscription for [customer] / customer subscription detail" → get_subscriptions(customerName=... or phone=...)
+
+### Store Sales (offline/walk-in)
+- "store sales / walk-in sales / offline sales / physical store sales / billing" → get_store_sales with from/to
+- "sale detail / SALE-XXX" → get_sale_detail with saleNumber
+- "store reminders / overdue payments / payment reminders" → get_reminders
+
+### Coupons
+- "coupons / active coupons / coupon list / all coupons" → get_coupon_list (optionally with status=active|expired|upcoming|inactive)
+- "who used coupon X / coupon usage / coupon redemptions" → get_coupon_usage(couponCode=X)
+
+### Feedback & Reviews
+- "feedback / reviews / complaints / suggestions" → get_feedback_list
+- "feedback for [product] / reviews for [product]" → get_feedback_list(productName=product)
+- "low rated / bad reviews" → get_feedback_list(maxRating=2)
+
+### WhatsApp & Comms
+- "WhatsApp queue / support queue / pending support" → get_whatsapp_queue
+- "WhatsApp messages for [phone] / chat history for customer" → get_whatsapp_messages(phone=...)
+
+### Admin & Audit
+- "who logged in / login history / admin login" → search_audit_logs(action="admin.login")
+- "when was X updated/changed/edited" → search_audit_logs(action="product.update", targetName=X)
+- "audit log / who did X / what changed" → search_audit_logs with relevant action
+- "admin users / staff list / who are the admins / admin accounts" → get_admin_users
+- "admins by role/department" → get_admin_users(role=... or department=...)
+
+### Abandoned Carts
+- "abandoned carts / customers who left without ordering / cart abandonment / who has items in cart" → search_abandoned_carts
+
+### Emails
+- email report → preview_email_report first, then send_email_report only after user confirms
 
 ## Precision rules — read carefully
 
@@ -1427,12 +1494,12 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     const [orderResult, storeResult] = await Promise.all([
       this.orderRepository.getModel().aggregate([
         { $match: { createdAt: { $gte: from, $lte: to }, status: { $ne: 'cancelled' } } },
-        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, revenue: { $sum: '$total' }, orders: { $sum: 1 } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: '+05:30' } }, revenue: { $sum: '$total' }, orders: { $sum: 1 } } },
       ]),
       this.storeSaleRepository.getModel().aggregate([
         { $addFields: { effectiveDate: { $ifNull: ['$dueDate', '$createdAt'] } } },
         { $match: { effectiveDate: { $gte: from, $lte: to }, $or: [{ voidedAt: { $exists: false } }, { voidedAt: null }] } },
-        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$effectiveDate' } }, revenue: { $sum: '$total' }, orders: { $sum: 1 } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$effectiveDate', timezone: '+05:30' } }, revenue: { $sum: '$total' }, orders: { $sum: 1 } } },
       ]),
     ]);
 
@@ -1678,7 +1745,8 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     const filter: any = { status: 'delivered', deliveredAt: { $gte: from, $lte: to } };
     if (agentName) {
       const agents = await this.adminUserRepository.getModel().find({ name: { $regex: this.escape(agentName), $options: 'i' } }).select('_id').lean();
-      if (agents.length) filter.assignedDeliveryUserId = { $in: agents.map((a: any) => a._id.toString()) };
+      if (!agents.length) return { count: 0, orders: [], message: `No delivery agent found matching "${agentName}"` };
+      filter.assignedDeliveryUserId = { $in: agents.map((a: any) => a._id.toString()) };
     }
 
     const orders = await this.orderRepository.getModel()
