@@ -268,6 +268,11 @@ export class OrdersService implements OnModuleInit {
           const matchedVariant = item.variantSku
             ? product.variants.find((v) => v.sku === item.variantSku)
             : undefined;
+          if (item.variantSku && !matchedVariant) {
+            throw new BadRequestException(
+              `A variant of "${product.name}" is no longer available. Please remove it and try again.`,
+            );
+          }
           if (matchedVariant && Number.isFinite(matchedVariant.price) && matchedVariant.price > 0) {
             price = matchedVariant.price;
           }
@@ -1464,7 +1469,12 @@ export class OrdersService implements OnModuleInit {
           price = product.price;
           if (item.variantSku) {
             const variant = product.variants.find((v) => v.sku === item.variantSku);
-            if (variant) price = variant.price;
+            if (!variant) {
+              throw new BadRequestException(
+                `A variant of "${product.name}" is no longer available. Please remove it and try again.`,
+              );
+            }
+            price = variant.price;
           }
         }
 

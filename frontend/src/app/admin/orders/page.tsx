@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Eye, Plus, Trash2, ShoppingCart, MessageCircle, Globe, Download, Send, Loader2, Edit, Phone, Receipt, Building2, Truck, Bell, RotateCcw, Printer } from 'lucide-react';
 import Link from 'next/link';
@@ -242,6 +242,7 @@ export default function OrdersPage() {
         await api.createOrderReminder(order._id, msg, reminderDueAt).catch(() => {});
       }
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      toast({ title: 'Order created', description: `${order.orderNumber} has been created.` });
       resetCreateForm();
       setShowCreate(false);
     },
