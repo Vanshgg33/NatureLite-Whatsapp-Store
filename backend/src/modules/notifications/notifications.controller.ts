@@ -134,6 +134,13 @@ export class NotificationsController {
     return this.notificationsService.clearCampaignHistory();
   }
 
+  @Post('campaigns/:id/retry')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  async retryCampaign(@Param('id') id: string): Promise<{ campaignId: string }> {
+    return this.notificationsService.retryCampaign(id);
+  }
+
   @Get('template-presets')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')

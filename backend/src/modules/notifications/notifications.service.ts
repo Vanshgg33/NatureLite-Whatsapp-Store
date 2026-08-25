@@ -716,6 +716,26 @@ export class NotificationsService {
     return { deleted: result.deletedCount };
   }
 
+  async retryCampaign(campaignId: string): Promise<{ campaignId: string }> {
+    const campaign = await this.campaignModel.findById(campaignId).exec();
+    if (!campaign) throw new Error('Campaign not found');
+    if (campaign.skipped === 0) throw new Error('No failed recipients to retry');
+
+    await this.campaignModel.updateOne(
+      { _id: campaign._id },
+      { $set: { status: 'queued', sent: 0, skipped: 0, completedAt: null, errorSummary: null } },
+    ).exec();
+
+    const jobName = campaign.type === 'media' ? NOTIFICATION_JOBS.BROADCAST_MEDIA : NOTIFICATION_JOBS.BROADCAST_TEMPLATE;
+    await this.broadcastQueue.add(
+      jobName,
+      { campaignId: campaign._id.toString() },
+      { ...DEFAULT_JOB_OPTIONS, attempts: 1, jobId: `retry_${campaign._id}_${Date.now()}` },
+    );
+
+    return { campaignId: campaign._id.toString() };
+  }
+
   async upsertTemplatePreset(data: {
     templateName: string;
     languageCode: string;

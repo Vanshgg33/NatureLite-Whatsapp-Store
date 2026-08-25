@@ -453,6 +453,16 @@ export default function CampaignsPage() {
     onError: () => toast({ title: 'Failed to clear history', variant: 'destructive' }),
   });
 
+  const retryMutation = useMutation({
+    mutationFn: (campaignId: string) => api.retryCampaign(campaignId),
+    onSuccess: (_, campaignId) => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+      setSelectedCampaign(prev => prev?._id === campaignId ? { ...prev, status: 'queued' } : prev);
+      toast({ title: 'Retry queued', description: 'Resending to failed recipients.' });
+    },
+    onError: () => toast({ title: 'Retry failed', variant: 'destructive' }),
+  });
+
   const [fetchedTemplate, setFetchedTemplate] = useState<WaTemplate | null>(null);
   const [templateFetching, setTemplateFetching] = useState(false);
   const [templateFetchResult, setTemplateFetchResult] = useState<'idle' | 'found' | 'not_found'>('idle');
@@ -900,7 +910,22 @@ export default function CampaignsPage() {
               <ChevronRight className="h-5 w-5 rotate-180" />
             </button>
           }
-          action={<StatusBadge status={c.status} />}
+          action={
+            <div className="flex items-center gap-2">
+              {c.skipped > 0 && (c.status === 'done' || c.status === 'failed') && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={retryMutation.isPending}
+                  onClick={() => retryMutation.mutate(c._id)}
+                >
+                  {retryMutation.isPending ? <RefreshCw className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <RefreshCw className="h-3.5 w-3.5 mr-1.5" />}
+                  Retry {c.skipped} failed
+                </Button>
+              )}
+              <StatusBadge status={c.status} />
+            </div>
+          }
         />
 
         <div className="p-6 space-y-6 max-w-7xl">

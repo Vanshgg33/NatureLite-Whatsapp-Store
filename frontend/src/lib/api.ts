@@ -1355,6 +1355,11 @@ class ApiClient {
     return response.data.data;
   }
 
+  async retryCampaign(campaignId: string): Promise<{ campaignId: string }> {
+    const response = await this.client.post<ApiResponse<{ campaignId: string }>>(`/notifications/campaigns/${campaignId}/retry`);
+    return response.data.data;
+  }
+
   async getTemplatePresets(): Promise<TemplatePreset[]> {
     const response = await this.client.get<ApiResponse<TemplatePreset[]>>('/notifications/template-presets');
     return response.data.data;
