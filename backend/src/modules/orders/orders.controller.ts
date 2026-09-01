@@ -13,6 +13,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { OrdersService } from './orders.service';
+import { StoresService } from '../stores/stores.service';
 import {
   CreateOrderDto,
   UpdateOrderStatusDto,
@@ -46,7 +47,10 @@ function getOrderUserId(order: Order): string {
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly storesService: StoresService,
+  ) {}
 
   @Post()
   async create(
@@ -82,8 +86,11 @@ export class OrdersController {
       query.forDelivery = true;
       query.deliveryUserId = user.sub;
     }
-    if ((user.departmentType === 'packing' || user.departmentType === 'billing') && user.storeName && !query.city) {
-      query.city = user.storeName;
+    if ((user.departmentType === 'packing' || user.departmentType === 'billing') && user.storeName) {
+      const stores = await this.storesService.findAll();
+      const store = stores.find((s) => s.name === user.storeName);
+      query.cities = store?.cities ?? [];
+      delete query.city;
     }
     return this.ordersService.findAll(query);
   }

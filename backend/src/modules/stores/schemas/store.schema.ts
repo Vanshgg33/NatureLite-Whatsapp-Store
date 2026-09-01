@@ -28,6 +28,9 @@ export class Store {
   @Prop()
   adminEmail?: string;
 
+  @Prop({ type: [String], default: [] })
+  cities: string[];
+
   @Prop({ type: Object, default: {} })
   metadata: Record<string, unknown>;
 

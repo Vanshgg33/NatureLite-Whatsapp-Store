@@ -264,6 +264,9 @@ export class OrderQueryDto {
   @IsString()
   @IsOptional()
   city?: string;
+
+  // Set internally by controller from store.cities — never from HTTP params
+  cities?: string[];
 }
 
 export class AssignDeliveryDto {

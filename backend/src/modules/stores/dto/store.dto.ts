@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsBoolean, MinLength } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsArray, MinLength } from 'class-validator';
 
 export class CreateStoreDto {
   @IsString()
@@ -20,6 +20,11 @@ export class CreateStoreDto {
   @IsBoolean()
   @IsOptional()
   isMainStore?: boolean;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  cities?: string[];
 }
 
 export class UpdateStoreDto {
@@ -38,6 +43,11 @@ export class UpdateStoreDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  cities?: string[];
 }
 
 export class ResetStorePasswordDto {

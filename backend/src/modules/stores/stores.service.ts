@@ -27,6 +27,7 @@ export class StoresService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     await this.seedStores();
     await this.seedStoreAdmins();
+    await this.migrateStoreCities();
   }
 
   private async seedStores(): Promise<void> {
@@ -35,11 +36,23 @@ export class StoresService implements OnModuleInit {
 
     this.logger.log('Seeding default stores...');
     await this.storeRepository.insertMany([
-      { name: 'Bhilai', code: 'bhilai', isMainStore: false, isActive: true },
-      { name: 'Raipur', code: 'raipur', isMainStore: true, isActive: true },
-      { name: 'Store 3', code: 'store3', isMainStore: false, isActive: true },
+      { name: 'Bhilai', code: 'bhilai', isMainStore: false, isActive: true, cities: ['Bhilai'] },
+      { name: 'Raipur', code: 'raipur', isMainStore: true, isActive: true, cities: ['Raipur'] },
+      { name: 'Store 3', code: 'store3', isMainStore: false, isActive: true, cities: [] },
     ]);
     this.logger.log('Default stores seeded successfully');
+  }
+
+  private async migrateStoreCities(): Promise<void> {
+    for (const { name, cities } of [
+      { name: 'Bhilai', cities: ['Bhilai'] },
+      { name: 'Raipur', cities: ['Raipur'] },
+    ]) {
+      await this.storeRepository.updateOne(
+        { name, $or: [{ cities: { $exists: false } }, { cities: { $size: 0 } }] },
+        { $set: { cities } },
+      );
+    }
   }
 
   private async seedStoreAdmins(): Promise<void> {

@@ -69,12 +69,17 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
       forDelivery,
       deliveryUserId,
       city,
+      cities,
     } = query;
     const filter: Record<string, unknown> = {};
     if (isValidObjectIdString(userId)) {
       filter.user = parseObjectId(userId, 'userId');
     }
-    if (city?.trim()) {
+    if (cities !== undefined) {
+      filter['shippingAddress.city'] = cities.length
+        ? { $in: cities.map((c) => new RegExp(c.trim(), 'i')) }
+        : { $in: [] };
+    } else if (city?.trim()) {
       filter['shippingAddress.city'] = { $regex: city.trim(), $options: 'i' };
     }
     if (forPacking) {
