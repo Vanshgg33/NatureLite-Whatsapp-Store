@@ -32,6 +32,7 @@ export class AdminService {
     phone?: string;
     role?: 'admin' | 'superadmin';
     departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
+    purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver';
   }): Promise<AdminUser> {
     const existing = await this.adminUserRepository.findOneByEmail(data.email.toLowerCase());
     if (existing) {
@@ -53,6 +54,7 @@ export class AdminService {
       password: hashedPassword,
       role: data.role || 'admin',
       departmentType: data.departmentType,
+      purchaseRole: data.purchaseRole,
     };
     if (data.phone?.trim()) {
       payload.phone = data.phone.trim();
@@ -71,6 +73,7 @@ export class AdminService {
       isActive?: boolean;
       permissions?: string[];
       departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
+      purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver' | null;
     },
   ): Promise<AdminUser> {
     const idObj = parseObjectId(id, 'id');

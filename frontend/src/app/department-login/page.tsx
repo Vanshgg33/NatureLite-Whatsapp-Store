@@ -43,6 +43,7 @@ export default function DepartmentLoginPage() {
         storeId: response.user.storeId,
         storeName: response.user.storeName,
         departmentType: response.user.departmentType,
+        purchaseRole: response.user.purchaseRole,
       });
       setTokens(response.accessToken, response.refreshToken);
 

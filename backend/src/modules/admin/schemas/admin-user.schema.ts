@@ -30,6 +30,9 @@ export class AdminUser {
   @Prop({ enum: ['packing', 'billing', 'delivery', 'crm_head', 'crm_senior'], required: false })
   departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
 
+  @Prop({ enum: ['requester', 'po_creator', 'approver', 'receiver'], required: false })
+  purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver';
+
   @Prop({ default: true })
   isActive: boolean;
 

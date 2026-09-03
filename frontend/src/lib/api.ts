@@ -379,6 +379,7 @@ class ApiClient {
     phone?: string;
     role?: 'admin' | 'superadmin';
     departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
+    purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver';
   }): Promise<AdminUser> {
     const response = await this.client.post<ApiResponse<AdminUser>>('/admin/users', data);
     return response.data.data;
@@ -393,6 +394,7 @@ class ApiClient {
       isActive?: boolean;
       permissions?: string[];
       departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
+      purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver' | null;
     }
   ): Promise<AdminUser> {
     const response = await this.client.put<ApiResponse<AdminUser>>(`/admin/users/${id}`, data);
@@ -1777,6 +1779,71 @@ class ApiClient {
 
   async sendReportEmail(email: string, subject: string, filename: string, pdfBase64: string): Promise<void> {
     await this.client.post('/analytics/send-report-email', { email, subject, filename, pdfBase64 });
+  }
+
+  // ==================== PURCHASE FMS ====================
+
+  async getPurchaseMaterials(all = false): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>(`/purchase/materials${all ? '?all=true' : ''}`);
+    return res.data.data;
+  }
+
+  async createPurchaseMaterial(data: { name: string; category?: string }): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>('/purchase/materials', data);
+    return res.data.data;
+  }
+
+  async updatePurchaseMaterial(id: string, data: { name?: string; category?: string; isActive?: boolean }): Promise<any> {
+    const res = await this.client.patch<ApiResponse<any>>(`/purchase/materials/${id}`, data);
+    return res.data.data;
+  }
+
+  async getPurchaseStats(): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>('/purchase/stats');
+    return res.data.data;
+  }
+
+  async getPurchaseRequests(params?: { status?: string; mine?: boolean }): Promise<any[]> {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set('status', params.status);
+    if (params?.mine) qs.set('mine', 'true');
+    const res = await this.client.get<ApiResponse<any[]>>(`/purchase/requests?${qs}`);
+    return res.data.data;
+  }
+
+  async createPurchaseRequest(data: { items: any[]; note?: string }): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>('/purchase/requests', data);
+    return res.data.data;
+  }
+
+  async getPurchaseRequest(id: string): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>(`/purchase/requests/${id}`);
+    return res.data.data;
+  }
+
+  async createPurchasePO(id: string, data: any): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>(`/purchase/requests/${id}/po`, data);
+    return res.data.data;
+  }
+
+  async makePurchaseDecision(id: string, data: { action: 'APPROVED' | 'REJECTED'; reason?: string }): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>(`/purchase/requests/${id}/decision`, data);
+    return res.data.data;
+  }
+
+  async uploadPurchaseVendorBill(id: string, data: { url: string; name: string; mime: string; publicId: string }): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>(`/purchase/requests/${id}/vendor-bill`, data);
+    return res.data.data;
+  }
+
+  async receivePurchaseGoods(id: string, data: any): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>(`/purchase/requests/${id}/receive`, data);
+    return res.data.data;
+  }
+
+  async cancelPurchaseRequest(id: string, reason: string): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>(`/purchase/requests/${id}/cancel`, { reason });
+    return res.data.data;
   }
 }
 

@@ -26,6 +26,7 @@ export interface AdminUser {
   isActive: boolean;
   store?: string;
   departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
+  purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver';
   permissions: string[];
   plainPassword?: string;
   createdAt: string;
@@ -691,7 +692,8 @@ export interface AuthUser {
   role: 'admin' | 'superadmin' | 'customer';
   storeId?: string;
   storeName?: string;
-   departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
+  departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
+  purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver';
 }
 
 export interface UploadResult {

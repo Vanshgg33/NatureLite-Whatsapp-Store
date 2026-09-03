@@ -9,6 +9,7 @@ interface AdminUser {
   storeId?: string;
   storeName?: string;
   departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
+  purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver';
 }
 
 interface AdminAuthState {

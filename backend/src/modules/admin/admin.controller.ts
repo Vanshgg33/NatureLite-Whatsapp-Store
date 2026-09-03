@@ -55,6 +55,7 @@ export class AdminController {
       phone?: string;
       role?: 'admin' | 'superadmin';
       departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
+      purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver';
     },
   ): Promise<AdminUser> {
     return this.adminService.create(body);
@@ -71,6 +72,7 @@ export class AdminController {
       isActive?: boolean;
       permissions?: string[];
       departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
+      purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver' | null;
     },
   ): Promise<AdminUser> {
     return this.adminService.update(id, body);

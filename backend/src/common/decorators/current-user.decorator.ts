@@ -7,8 +7,11 @@ export interface JwtPayload {
   role: 'customer' | 'admin' | 'superadmin';
   storeId?: string;
   storeName?: string;
+  name?: string;
   /** Set for department staff (packing/billing/delivery) and CRM roles; they must not access admin-only routes */
   departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
+  /** Purchase FMS role — synced from DB on every request */
+  purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver';
   iat?: number;
   exp?: number;
 }

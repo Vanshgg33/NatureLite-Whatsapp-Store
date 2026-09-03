@@ -30,6 +30,7 @@ import {
   Sparkles,
   Banknote,
   Truck,
+  ShoppingBag,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -70,6 +71,7 @@ const BASE_NAV_GROUPS: NavGroup[] = [
       { name: 'IMS', href: '/admin/ims', icon: Boxes },
       { name: 'PMS', href: '/admin/pms', icon: Cog },
       { name: 'RMS', href: '/admin/rms', icon: FlaskConical },
+      { name: 'Purchase', href: '/admin/purchase', icon: ShoppingBag },
     ],
   },
   {

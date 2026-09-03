@@ -176,6 +176,7 @@ export class AuthService {
         name: admin.name,
         role: admin.role,
         departmentType: admin.departmentType,
+        purchaseRole: admin.purchaseRole,
         storeId,
         storeName,
       },
@@ -475,11 +476,12 @@ export class AuthService {
       if (!admin || !admin.isActive) {
         return null;
       }
-      // Always sync departmentType from DB so stale JWTs (issued before the field
-      // was set, or after it changed) still get the correct per-user order filter.
+      // Always sync from DB so stale JWTs still get correct per-user values.
       return {
         ...payload,
+        name: admin.name,
         departmentType: admin.departmentType,
+        purchaseRole: admin.purchaseRole,
         storeId: admin.store ? admin.store.toString() : payload.storeId,
       };
     }

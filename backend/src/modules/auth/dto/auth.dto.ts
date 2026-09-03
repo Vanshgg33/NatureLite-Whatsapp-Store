@@ -127,6 +127,7 @@ export interface AuthResponse {
     name?: string;
     role: string;
     departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
+    purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver';
     storeId?: string;
     storeName?: string;
   };

@@ -37,6 +37,7 @@ export default function AdminLoginsPage() {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'admin' | 'superadmin'>('admin');
   const [departmentType, setDepartmentType] = useState<'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior' | 'none'>('none');
+  const [purchaseRole, setPurchaseRole] = useState<'requester' | 'po_creator' | 'approver' | 'receiver' | 'none'>('none');
 
   // per-row password editing state
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
@@ -103,6 +104,7 @@ export default function AdminLoginsPage() {
         phone: phone || undefined,
         role,
         departmentType: departmentType === 'none' ? undefined : departmentType as 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior',
+        purchaseRole: purchaseRole === 'none' ? undefined : purchaseRole as 'requester' | 'po_creator' | 'approver' | 'receiver',
       }),
     onSuccess: () => {
       toast({
@@ -115,6 +117,7 @@ export default function AdminLoginsPage() {
       setPassword('');
       setRole('admin');
       setDepartmentType('none');
+      setPurchaseRole('none');
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
     },
     onError: (err: unknown) => {
@@ -134,6 +137,7 @@ export default function AdminLoginsPage() {
         role: payload.data.role as 'admin' | 'superadmin' | undefined,
         isActive: payload.data.isActive,
         departmentType: payload.data.departmentType,
+        purchaseRole: (payload.data as any).purchaseRole,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
@@ -244,6 +248,24 @@ export default function AdminLoginsPage() {
               </SelectContent>
             </Select>
           </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-700">Purchase role</label>
+            <Select
+              value={purchaseRole}
+              onValueChange={(v) => setPurchaseRole(v as typeof purchaseRole)}
+            >
+              <SelectTrigger className="h-9 text-xs">
+                <SelectValue placeholder="Purchase FMS role (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                <SelectItem value="requester">Requester (Production)</SelectItem>
+                <SelectItem value="po_creator">PO Creator (Procurement)</SelectItem>
+                <SelectItem value="approver">Approver (Management)</SelectItem>
+                <SelectItem value="receiver">Receiver (Gate)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <div className="flex flex-col justify-end gap-2">
             <Select
               value={role}
@@ -290,6 +312,7 @@ export default function AdminLoginsPage() {
                     <th className="px-4 py-2 text-left font-medium text-gray-700">Phone</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-700">Password</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-700">Department</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-700">Purchase Role</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-700">Role</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-700">Active</th>
                     <th className="px-4 py-2 text-right font-medium text-gray-700">Actions</th>
@@ -428,6 +451,28 @@ export default function AdminLoginsPage() {
                           : user.departmentType === 'crm_senior' ? 'CRM Senior'
                           : <span className="capitalize">{user.departmentType}</span>
                           : '-'}
+                      </td>
+                      <td className="px-4 py-2">
+                        <Select
+                          value={user.purchaseRole || 'none'}
+                          onValueChange={(v) =>
+                            updateUser.mutate({
+                              id: user._id,
+                              data: { purchaseRole: (v === 'none' ? null : v) as any },
+                            })
+                          }
+                        >
+                          <SelectTrigger className="h-7 text-xs w-36">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            <SelectItem value="requester">Requester</SelectItem>
+                            <SelectItem value="po_creator">PO Creator</SelectItem>
+                            <SelectItem value="approver">Approver</SelectItem>
+                            <SelectItem value="receiver">Receiver</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </td>
                       <td className="px-4 py-2 capitalize">{user.role}</td>
                       <td className="px-4 py-2">
