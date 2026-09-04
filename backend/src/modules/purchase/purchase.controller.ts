@@ -122,6 +122,15 @@ export class PurchaseController {
     return this.purchaseService.receiveGoods(id, user, body);
   }
 
+  @Post('requests/:id/deadline')
+  setDeadline(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { dueAt: string },
+  ) {
+    return this.purchaseService.setDeadline(id, user, body.dueAt);
+  }
+
   @Post('requests/:id/cancel')
   cancelRequest(
     @Param('id') id: string,

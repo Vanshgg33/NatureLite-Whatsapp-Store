@@ -5,9 +5,11 @@ import { PurchaseRequest, PurchaseRequestSchema } from './schemas/purchase-reque
 import { AdminUser, AdminUserSchema } from '../admin/schemas/admin-user.schema';
 import { PurchaseService } from './purchase.service';
 import { PurchaseController } from './purchase.controller';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
+    EmailModule,
     MongooseModule.forFeature([
       { name: PurchaseMaterial.name, schema: PurchaseMaterialSchema },
       { name: PurchaseRequest.name, schema: PurchaseRequestSchema },

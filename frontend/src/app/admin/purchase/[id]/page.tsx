@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ShoppingBag, CheckCircle2, XCircle, Upload, Package, ChevronLeft,
-  FileText, ExternalLink,
+  ExternalLink, Printer, Clock,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
@@ -17,6 +17,15 @@ import { useToast } from '@/components/ui/use-toast';
 import { getApiError } from '@/lib/api-error';
 import Link from 'next/link';
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmtIST(d: string | Date) {
+  return new Date(d).toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short',
+    year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
+  }) + ' IST';
+}
+
 const STATUS_COLORS: Record<string, string> = {
   REQUESTED: 'bg-slate-100 text-slate-700',
   PO_CREATED: 'bg-blue-100 text-blue-700',
@@ -27,6 +36,16 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: 'bg-gray-100 text-gray-500',
 };
 
+const STATUS_HOLDER: Record<string, string> = {
+  REQUESTED: 'PO Creator',
+  PO_CREATED: 'Approver',
+  APPROVED: 'Approver',
+  REJECTED: 'PO Creator',
+  VENDOR_BILL_UPLOADED: 'Receiver',
+};
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
 function StatusBadge({ status }: { status: string }) {
   return (
     <span className={`text-xs px-3 py-1 rounded-full font-semibold ${STATUS_COLORS[status] || 'bg-gray-100 text-gray-500'}`}>
@@ -35,8 +54,30 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function DeadlineChip({ deadline }: { deadline?: { dueAt: string; stage: string; setByName: string } }) {
+  if (!deadline?.dueAt) return null;
+  const diff = new Date(deadline.dueAt).getTime() - Date.now();
+  const hours = diff / 3_600_000;
+  const cls = hours <= 0
+    ? 'bg-red-100 text-red-700 border-red-200'
+    : hours < 24
+    ? 'bg-amber-100 text-amber-700 border-amber-200'
+    : 'bg-green-100 text-green-700 border-green-200';
+  const label = hours <= 0
+    ? `Overdue by ${Math.round(Math.abs(hours))}h`
+    : hours < 24
+    ? `Due in ${Math.round(hours)}h`
+    : `Due ${fmtIST(deadline.dueAt)}`;
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded border font-medium ${cls}`}>
+      <Clock className="h-3 w-3" />
+      {label}
+    </span>
+  );
+}
+
 function FileViewer({ file, label }: { file: { url: string; name: string; mime?: string }; label: string }) {
-  const isPdf = file.mime === 'application/pdf' || file.url?.includes('.pdf') || file.name?.endsWith('.pdf');
+  const isPdf = file.mime === 'application/pdf' || file.name?.endsWith('.pdf');
   return (
     <div className="border rounded-lg p-3 bg-gray-50">
       <p className="text-xs font-medium text-gray-500 mb-2">{label}</p>
@@ -58,7 +99,8 @@ function FileViewer({ file, label }: { file: { url: string; name: string; mime?:
   );
 }
 
-// PO Creator action panel
+// ── Stage-specific action panels ──────────────────────────────────────────────
+
 function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) {
   const { toast } = useToast();
   const [vendorName, setVendorName] = useState('');
@@ -66,9 +108,7 @@ function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void })
   const [vendorAddress, setVendorAddress] = useState('');
   const [expectedDelivery, setExpectedDelivery] = useState('');
   const [terms, setTerms] = useState('');
-  const [poItems, setPoItems] = useState(
-    req.items.map((i: any) => ({ ...i, ratePerKg: '' })),
-  );
+  const [poItems, setPoItems] = useState(req.items.map((i: any) => ({ ...i, ratePerKg: '' })));
 
   const mutation = useMutation({
     mutationFn: (data: any) => api.createPurchasePO(req._id, data),
@@ -83,8 +123,7 @@ function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void })
     if (!vendorName) { toast({ title: 'Vendor name required', variant: 'destructive' }); return; }
     for (const item of poItems) {
       if (!item.ratePerKg || parseFloat(item.ratePerKg) <= 0) {
-        toast({ title: 'Enter rate for all items', variant: 'destructive' });
-        return;
+        toast({ title: 'Enter rate for all items', variant: 'destructive' }); return;
       }
     }
     mutation.mutate({
@@ -125,9 +164,7 @@ function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void })
             <div className="flex items-center w-36">
               <span className="h-9 flex items-center px-2 border rounded-l-md bg-gray-50 text-xs text-gray-500">₹</span>
               <Input
-                type="number"
-                min="0"
-                step="0.01"
+                type="number" min="0" step="0.01"
                 value={item.ratePerKg}
                 onChange={(e) => setPoItems((prev: any[]) => prev.map((p, idx) => idx === i ? { ...p, ratePerKg: e.target.value } : p))}
                 className="h-9 text-sm rounded-l-none"
@@ -150,7 +187,6 @@ function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void })
   );
 }
 
-// Approver action panel
 function ApproverPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) {
   const { toast } = useToast();
   const [rejectionReason, setRejectionReason] = useState('');
@@ -174,12 +210,7 @@ function ApproverPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) 
     setUploading(true);
     try {
       const result = await api.uploadDocument(file, 'purchase-bills');
-      await billMutation.mutateAsync({
-        url: result.secureUrl || result.url,
-        name: file.name,
-        mime: file.type,
-        publicId: result.publicId,
-      });
+      await billMutation.mutateAsync({ url: result.secureUrl || result.url, name: file.name, mime: file.type, publicId: result.publicId });
     } catch (err) {
       toast({ title: 'Upload failed', description: getApiError(err), variant: 'destructive' });
     } finally {
@@ -194,43 +225,22 @@ function ApproverPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) 
           <p className="text-sm font-semibold text-blue-800 mb-1">PO Details</p>
           <p className="text-sm text-blue-700">Vendor: {req.po?.vendorName}</p>
           {req.po?.vendorPhone && <p className="text-xs text-blue-600">{req.po.vendorPhone}</p>}
-          <p className="text-sm font-bold text-blue-900 mt-2">
-            Total: ₹{req.po?.totalAmount?.toLocaleString('en-IN')}
-          </p>
+          <p className="text-sm font-bold text-blue-900 mt-2">Total: ₹{req.po?.totalAmount?.toLocaleString('en-IN')}</p>
         </div>
         {!showReject ? (
           <div className="flex gap-2">
-            <Button
-              onClick={() => decisionMutation.mutate({ action: 'APPROVED' })}
-              disabled={decisionMutation.isPending}
-              className="bg-emerald-600 hover:bg-emerald-700 flex-1"
-            >
-              <CheckCircle2 className="h-4 w-4 mr-2" />
-              Approve PO
+            <Button onClick={() => decisionMutation.mutate({ action: 'APPROVED' })} disabled={decisionMutation.isPending} className="bg-emerald-600 hover:bg-emerald-700 flex-1">
+              <CheckCircle2 className="h-4 w-4 mr-2" /> Approve PO
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => setShowReject(true)}
-              className="text-red-600 border-red-200 flex-1"
-            >
-              <XCircle className="h-4 w-4 mr-2" />
-              Reject
+            <Button variant="outline" onClick={() => setShowReject(true)} className="text-red-600 border-red-200 flex-1">
+              <XCircle className="h-4 w-4 mr-2" /> Reject
             </Button>
           </div>
         ) : (
           <div className="space-y-2">
-            <Input
-              placeholder="Rejection reason (required)"
-              value={rejectionReason}
-              onChange={(e) => setRejectionReason(e.target.value)}
-            />
+            <Input placeholder="Rejection reason (required)" value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} />
             <div className="flex gap-2">
-              <Button
-                variant="destructive"
-                onClick={() => decisionMutation.mutate({ action: 'REJECTED', reason: rejectionReason })}
-                disabled={!rejectionReason.trim() || decisionMutation.isPending}
-                className="flex-1"
-              >
+              <Button variant="destructive" onClick={() => decisionMutation.mutate({ action: 'REJECTED', reason: rejectionReason })} disabled={!rejectionReason.trim() || decisionMutation.isPending} className="flex-1">
                 Confirm Rejection
               </Button>
               <Button variant="outline" onClick={() => setShowReject(false)}>Cancel</Button>
@@ -245,19 +255,9 @@ function ApproverPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) 
     return (
       <div className="space-y-3">
         <p className="text-sm text-gray-600">PO approved. Upload vendor bill when received:</p>
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".jpg,.jpeg,.png,.pdf"
-          className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadBill(f); }}
-        />
-        <Button
-          onClick={() => fileRef.current?.click()}
-          disabled={uploading || billMutation.isPending}
-          variant="outline"
-          className="w-full border-dashed"
-        >
+        <input ref={fileRef} type="file" accept=".jpg,.jpeg,.png,.pdf" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadBill(f); }} />
+        <Button onClick={() => fileRef.current?.click()} disabled={uploading || billMutation.isPending} variant="outline" className="w-full border-dashed">
           <Upload className="h-4 w-4 mr-2" />
           {uploading ? 'Uploading…' : 'Upload Vendor Bill (JPG/PNG/PDF)'}
         </Button>
@@ -268,7 +268,6 @@ function ApproverPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) 
   return null;
 }
 
-// Receiver action panel
 function ReceiverPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) {
   const { toast } = useToast();
   const [uploading, setUploading] = useState(false);
@@ -304,8 +303,7 @@ function ReceiverPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) 
     if (!gateBillData) { toast({ title: 'Upload gate bill first', variant: 'destructive' }); return; }
     for (const item of receivedItems) {
       if (item.receivedKg === '' || isNaN(parseFloat(item.receivedKg))) {
-        toast({ title: 'Enter received KG for all items', variant: 'destructive' });
-        return;
+        toast({ title: 'Enter received KG for all items', variant: 'destructive' }); return;
       }
     }
     receiveMutation.mutate({
@@ -326,7 +324,6 @@ function ReceiverPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {req.vendorBill && <FileViewer file={req.vendorBill} label="Vendor Bill" />}
-
       <div>
         <p className="text-xs font-medium text-gray-700 mb-2">Received Quantities (KG)</p>
         {receivedItems.map((item: any, i: number) => (
@@ -334,13 +331,10 @@ function ReceiverPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) 
             <span className="text-sm text-gray-700 flex-1">{item.materialName}</span>
             <span className="text-xs text-gray-500 w-20">Ordered: {item.orderedKg}</span>
             <Input
-              type="number"
-              min="0"
-              step="0.1"
+              type="number" min="0" step="0.1"
               value={item.receivedKg}
               onChange={(e) => setReceivedItems((prev: any[]) => prev.map((p, idx) => idx === i ? { ...p, receivedKg: e.target.value } : p))}
-              className="h-9 text-sm w-28"
-              placeholder="Rcvd KG"
+              className="h-9 text-sm w-28" placeholder="Rcvd KG"
             />
             {item.receivedKg !== '' && (
               <span className={`text-xs font-medium w-20 text-right ${varianceColor(item.orderedKg, parseFloat(item.receivedKg))}`}>
@@ -351,38 +345,23 @@ function ReceiverPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) 
           </div>
         ))}
       </div>
-
       <div>
         <label className="text-xs font-medium text-gray-700">Gate Bill (image/PDF) *</label>
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".jpg,.jpeg,.png,.pdf"
-          className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadGateBill(f); }}
-        />
-        <Button
-          type="button"
-          variant="outline"
+        <input ref={fileRef} type="file" accept=".jpg,.jpeg,.png,.pdf" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadGateBill(f); }} />
+        <Button type="button" variant="outline"
           className={`w-full mt-1 border-dashed ${gateBillData ? 'border-emerald-400 text-emerald-700' : ''}`}
-          onClick={() => fileRef.current?.click()}
-          disabled={uploading}
+          onClick={() => fileRef.current?.click()} disabled={uploading}
         >
           <Upload className="h-4 w-4 mr-2" />
           {uploading ? 'Uploading…' : gateBillData ? `Uploaded: ${gateBillData.name}` : 'Upload Gate Bill'}
         </Button>
       </div>
-
       <div>
         <label className="text-xs font-medium text-gray-700">Remarks (optional)</label>
         <Input className="mt-1 text-sm h-9" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Any notes on the delivery" />
       </div>
-
-      <Button
-        type="submit"
-        disabled={receiveMutation.isPending || !gateBillData}
-        className="bg-emerald-600 hover:bg-emerald-700 w-full"
-      >
+      <Button type="submit" disabled={receiveMutation.isPending || !gateBillData} className="bg-emerald-600 hover:bg-emerald-700 w-full">
         <Package className="h-4 w-4 mr-2" />
         {receiveMutation.isPending ? 'Closing…' : 'Mark Goods Received & Close'}
       </Button>
@@ -390,9 +369,51 @@ function ReceiverPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) 
   );
 }
 
+// ── Deadline setter (for active stage holder) ─────────────────────────────────
+
+function DeadlineSetter({ reqId, currentDeadline, onSuccess }: { reqId: string; currentDeadline?: any; onSuccess: () => void }) {
+  const { toast } = useToast();
+  const [value, setValue] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: (dueAt: string) => api.setPurchaseDeadline(reqId, dueAt),
+    onSuccess: () => { toast({ title: 'Deadline set' }); setValue(''); onSuccess(); },
+    onError: (err) => toast({ title: 'Error', description: getApiError(err), variant: 'destructive' }),
+  });
+
+  return (
+    <div className="pt-3 border-t mt-3">
+      <label className="text-xs font-medium text-gray-600">Set Deadline (for this stage)</label>
+      <div className="flex gap-2 mt-1">
+        <Input
+          type="datetime-local"
+          className="h-8 text-xs flex-1"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 text-xs"
+          disabled={!value || mutation.isPending}
+          onClick={() => mutation.mutate(new Date(value).toISOString())}
+        >
+          Set
+        </Button>
+      </div>
+      {currentDeadline?.dueAt && (
+        <p className="text-xs text-gray-400 mt-1">
+          Current: {fmtIST(currentDeadline.dueAt)} (set by {currentDeadline.setByName})
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
 export default function PurchaseRequestDetailPage() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAdminAuthStore();
@@ -402,6 +423,7 @@ export default function PurchaseRequestDetailPage() {
   const { data: req, isLoading, refetch } = useQuery({
     queryKey: ['purchase-request', params.id],
     queryFn: () => api.getPurchaseRequest(params.id),
+    refetchInterval: 15000,
   });
 
   const cancelMutation = useMutation({
@@ -429,11 +451,10 @@ export default function PurchaseRequestDetailPage() {
 
   if (!req) return null;
 
-  const canCancel =
-    !['COMPLETED', 'CANCELLED'].includes(req.status) &&
-    (isSuperadmin || req.requestedById === user?.id);
+  const canCancel = !['COMPLETED', 'CANCELLED'].includes(req.status) && (isSuperadmin || req.requestedById === user?.id);
 
-  const showActionPanel = () => {
+  const holderRole = STATUS_HOLDER[req.status];
+  const isMyAction = () => {
     if (req.status === 'COMPLETED' || req.status === 'CANCELLED') return false;
     if (isSuperadmin) return true;
     if (purchaseRole === 'po_creator' && (req.status === 'REQUESTED' || req.status === 'REJECTED')) return true;
@@ -441,6 +462,9 @@ export default function PurchaseRequestDetailPage() {
     if (purchaseRole === 'receiver' && req.status === 'VENDOR_BILL_UPLOADED') return true;
     return false;
   };
+
+  const showAction = isMyAction();
+  const waitingSince = req.timeline?.length ? fmtIST(req.timeline[req.timeline.length - 1].at) : '';
 
   return (
     <div className="flex flex-col h-screen">
@@ -451,8 +475,7 @@ export default function PurchaseRequestDetailPage() {
         action={
           <Link href="/admin/purchase">
             <Button variant="outline" size="sm">
-              <ChevronLeft className="h-4 w-4 mr-1" />
-              Back
+              <ChevronLeft className="h-4 w-4 mr-1" /> Back
             </Button>
           </Link>
         }
@@ -460,16 +483,17 @@ export default function PurchaseRequestDetailPage() {
 
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-4xl grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left column: details + timeline */}
+          {/* ── Left column ── */}
           <div className="lg:col-span-2 space-y-4">
-            {/* Status + basic info */}
+            {/* Status + meta */}
             <Card>
               <CardContent className="pt-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <StatusBadge status={req.status} />
-                  <span className="text-xs text-gray-500">
-                    {new Date(req.createdAt).toLocaleString('en-IN')}
-                  </span>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <StatusBadge status={req.status} />
+                    {req.deadline && <DeadlineChip deadline={req.deadline} />}
+                  </div>
+                  <span className="text-xs text-gray-500">{fmtIST(req.createdAt)}</span>
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Requested by</p>
@@ -499,15 +523,22 @@ export default function PurchaseRequestDetailPage() {
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm flex items-center justify-between">
                     <span>Purchase Order — {req.po.poNo}</span>
-                    <span className="font-bold text-[#2F6B47]">
-                      ₹{req.po.totalAmount?.toLocaleString('en-IN')}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-[#2F6B47]">₹{req.po.totalAmount?.toLocaleString('en-IN')}</span>
+                      <button
+                        onClick={() => window.open(`/admin/purchase/${req._id}/po/print`, '_blank')}
+                        className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-[#2F6B47] border border-gray-200 rounded px-2 py-0.5"
+                      >
+                        <Printer className="h-3 w-3" /> Print PO
+                      </button>
+                    </div>
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-1 text-sm">
                   <p><span className="text-gray-500">Vendor:</span> {req.po.vendorName}</p>
                   {req.po.vendorPhone && <p><span className="text-gray-500">Phone:</span> {req.po.vendorPhone}</p>}
-                  {req.po.expectedDelivery && <p><span className="text-gray-500">Expected:</span> {new Date(req.po.expectedDelivery).toLocaleDateString('en-IN')}</p>}
+                  {req.po.vendorAddress && <p><span className="text-gray-500">Address:</span> {req.po.vendorAddress}</p>}
+                  {req.po.expectedDelivery && <p><span className="text-gray-500">Expected:</span> {fmtIST(req.po.expectedDelivery)}</p>}
                   {req.po.terms && <p><span className="text-gray-500">Terms:</span> {req.po.terms}</p>}
                   <div className="mt-2 pt-2 border-t">
                     {req.po.items?.map((i: any, idx: number) => (
@@ -522,14 +553,10 @@ export default function PurchaseRequestDetailPage() {
             )}
 
             {/* Files */}
-            {req.vendorBill && (
-              <FileViewer file={req.vendorBill} label="Vendor Bill" />
-            )}
-            {req.receipt?.gateBill && (
-              <FileViewer file={req.receipt.gateBill} label="Gate Bill" />
-            )}
+            {req.vendorBill && <FileViewer file={req.vendorBill} label="Vendor Bill" />}
+            {req.receipt?.gateBill && <FileViewer file={req.receipt.gateBill} label="Gate Bill" />}
 
-            {/* Receipt */}
+            {/* Goods Receipt */}
             {req.receipt && (
               <Card>
                 <CardHeader className="pb-2">
@@ -537,6 +564,7 @@ export default function PurchaseRequestDetailPage() {
                 </CardHeader>
                 <CardContent className="space-y-1 text-sm">
                   <p><span className="text-gray-500">Received by:</span> {req.receipt.byName}</p>
+                  <p><span className="text-gray-500">At:</span> {req.receipt.at ? fmtIST(req.receipt.at) : '—'}</p>
                   {req.receipt.remarks && <p><span className="text-gray-500">Remarks:</span> {req.receipt.remarks}</p>}
                   {req.receipt.receivedItems?.map((i: any, idx: number) => {
                     const variance = i.receivedKg - i.orderedKg;
@@ -560,10 +588,9 @@ export default function PurchaseRequestDetailPage() {
                 <CardContent className="pt-4 text-sm">
                   <p className={`font-semibold ${req.decision.action === 'REJECTED' ? 'text-red-700' : 'text-emerald-700'}`}>
                     {req.decision.action} by {req.decision.byName}
+                    {req.decision.at && <span className="font-normal text-xs ml-2">{fmtIST(req.decision.at)}</span>}
                   </p>
-                  {req.decision.reason && (
-                    <p className="text-red-600 mt-1">Reason: {req.decision.reason}</p>
-                  )}
+                  {req.decision.reason && <p className="text-red-600 mt-1">Reason: {req.decision.reason}</p>}
                 </CardContent>
               </Card>
             )}
@@ -578,16 +605,12 @@ export default function PurchaseRequestDetailPage() {
                   {(req.timeline || []).map((entry: any, idx: number) => (
                     <div key={idx} className="flex gap-3">
                       <div className="flex flex-col items-center">
-                        <div className="h-2.5 w-2.5 rounded-full bg-[#2F6B47] mt-1 flex-shrink-0" />
-                        {idx < req.timeline.length - 1 && (
-                          <div className="w-px flex-1 bg-gray-200 mt-1" />
-                        )}
+                        <div className={`h-2.5 w-2.5 rounded-full mt-1 flex-shrink-0 ${STATUS_COLORS[entry.status]?.includes('emerald') ? 'bg-emerald-500' : STATUS_COLORS[entry.status]?.includes('red') ? 'bg-red-500' : STATUS_COLORS[entry.status]?.includes('blue') ? 'bg-blue-500' : 'bg-[#2F6B47]'}`} />
+                        {idx < req.timeline.length - 1 && <div className="w-px flex-1 bg-gray-200 mt-1" />}
                       </div>
                       <div className="pb-3 flex-1">
                         <p className="text-sm font-medium text-gray-800">{entry.action}</p>
-                        <p className="text-xs text-gray-500">
-                          by {entry.byName} · {new Date(entry.at).toLocaleString('en-IN')}
-                        </p>
+                        <p className="text-xs text-gray-500">by {entry.byName} · {fmtIST(entry.at)}</p>
                       </div>
                     </div>
                   ))}
@@ -596,35 +619,46 @@ export default function PurchaseRequestDetailPage() {
             </Card>
           </div>
 
-          {/* Right column: action panel */}
+          {/* ── Right column ── */}
           <div className="space-y-4">
-            {showActionPanel() && (
+            {/* Action panel */}
+            {showAction && (
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm">Your Action</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {/* PO Creator: REQUESTED or REJECTED */}
                   {(isSuperadmin || purchaseRole === 'po_creator') && (req.status === 'REQUESTED' || req.status === 'REJECTED') && (
                     <POCreatorPanel req={req} onSuccess={onActionSuccess} />
                   )}
-                  {/* Approver: PO_CREATED or APPROVED */}
                   {(isSuperadmin || purchaseRole === 'approver') && (req.status === 'PO_CREATED' || req.status === 'APPROVED') && (
                     <ApproverPanel req={req} onSuccess={onActionSuccess} />
                   )}
-                  {/* Receiver: VENDOR_BILL_UPLOADED */}
                   {(isSuperadmin || purchaseRole === 'receiver') && req.status === 'VENDOR_BILL_UPLOADED' && (
                     <ReceiverPanel req={req} onSuccess={onActionSuccess} />
                   )}
+                  <DeadlineSetter reqId={req._id} currentDeadline={req.deadline} onSuccess={onActionSuccess} />
                 </CardContent>
               </Card>
             )}
 
-            {/* Waiting message for non-action roles */}
-            {!showActionPanel() && !['COMPLETED', 'CANCELLED'].includes(req.status) && (
+            {/* Waiting message */}
+            {!showAction && !['COMPLETED', 'CANCELLED'].includes(req.status) && holderRole && (
               <Card className="border-amber-200 bg-amber-50">
-                <CardContent className="pt-4 text-sm text-amber-700">
-                  Waiting on the responsible team to act.
+                <CardContent className="pt-4 text-sm text-amber-800">
+                  <p className="font-medium">Waiting on {holderRole}</p>
+                  {waitingSince && <p className="text-xs text-amber-600 mt-0.5">Since {waitingSince}</p>}
+                  {req.deadline && <div className="mt-2"><DeadlineChip deadline={req.deadline} /></div>}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Completed summary */}
+            {req.status === 'COMPLETED' && (
+              <Card className="border-emerald-200 bg-emerald-50">
+                <CardContent className="pt-4 text-sm text-emerald-800">
+                  <p className="font-semibold">Order Closed</p>
+                  {req.receipt?.at && <p className="text-xs mt-1">{fmtIST(req.receipt.at)}</p>}
                 </CardContent>
               </Card>
             )}
@@ -634,8 +668,7 @@ export default function PurchaseRequestDetailPage() {
               <Card className="border-red-100">
                 <CardContent className="pt-4">
                   <Button
-                    variant="outline"
-                    size="sm"
+                    variant="outline" size="sm"
                     className="w-full text-red-600 border-red-200"
                     onClick={() => {
                       const reason = prompt('Reason for cancellation:');

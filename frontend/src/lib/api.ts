@@ -1845,6 +1845,11 @@ class ApiClient {
     const res = await this.client.post<ApiResponse<any>>(`/purchase/requests/${id}/cancel`, { reason });
     return res.data.data;
   }
+
+  async setPurchaseDeadline(id: string, dueAt: string): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>(`/purchase/requests/${id}/deadline`, { dueAt });
+    return res.data.data;
+  }
 }
 
 export const api = new ApiClient();

@@ -1,15 +1,36 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { ShoppingBag, Plus, TrendingUp, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ShoppingBag, Plus, TrendingUp, Clock, CheckCircle2, AlertCircle, Timer } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+
+function fmtIST(d: string | Date) {
+  return new Date(d).toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short',
+    year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
+  }) + ' IST';
+}
+
+function DeadlineChip({ deadline }: { deadline?: { dueAt: string } }) {
+  if (!deadline?.dueAt) return null;
+  const hours = (new Date(deadline.dueAt).getTime() - Date.now()) / 3_600_000;
+  const cls = hours <= 0 ? 'text-red-600' : hours < 24 ? 'text-amber-600' : 'text-green-600';
+  const label = hours <= 0
+    ? `Overdue ${Math.round(Math.abs(hours))}h`
+    : hours < 24
+    ? `Due ${Math.round(hours)}h`
+    : fmtIST(deadline.dueAt);
+  return (
+    <span className={`text-xs font-medium ${cls} flex items-center gap-0.5`}>
+      <Timer className="h-3 w-3" />{label}
+    </span>
+  );
+}
 
 const STATUS_COLORS: Record<string, string> = {
   REQUESTED: 'bg-slate-100 text-slate-700',
@@ -35,19 +56,21 @@ export default function PurchasePage() {
   const { data: stats } = useQuery({
     queryKey: ['purchase-stats'],
     queryFn: () => api.getPurchaseStats(),
-    refetchInterval: 30000,
+    refetchInterval: 15000,
   });
 
   const { data: requests = [], isLoading } = useQuery({
     queryKey: ['purchase-requests'],
     queryFn: () => api.getPurchaseRequests(),
-    refetchInterval: 30000,
+    refetchInterval: 15000,
   });
 
   const myActionStatuses = isSuperadmin ? null : (purchaseRole ? ROLE_TO_STATUSES[purchaseRole] : null);
   const myQueue = myActionStatuses
     ? requests.filter((r: any) => myActionStatuses.includes(r.status))
-    : isSuperadmin ? requests.filter((r: any) => !['COMPLETED', 'CANCELLED'].includes(r.status)) : [];
+    : isSuperadmin
+    ? requests.filter((r: any) => !['COMPLETED', 'CANCELLED'].includes(r.status))
+    : [];
 
   const canCreate = purchaseRole === 'requester' || isSuperadmin;
 
@@ -139,15 +162,18 @@ export default function PurchasePage() {
                   href={`/admin/purchase/${req._id}`}
                   className="flex items-center justify-between px-4 py-3 border-b border-amber-100 last:border-0 hover:bg-amber-100/50 transition-colors"
                 >
-                  <div>
+                  <div className="min-w-0">
                     <span className="font-mono text-sm font-semibold text-gray-900">{req.reqNo}</span>
-                    <span className="ml-2 text-xs text-gray-500">
+                    <span className="ml-2 text-xs text-gray-500 truncate">
                       {req.items?.map((i: any) => `${i.materialName} ${i.qtyKg}KG`).join(', ')}
                     </span>
                   </div>
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[req.status]}`}>
-                    {req.status.replace(/_/g, ' ')}
-                  </span>
+                  <div className="flex items-center gap-2 shrink-0 ml-2">
+                    {req.deadline && <DeadlineChip deadline={req.deadline} />}
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[req.status]}`}>
+                      {req.status.replace(/_/g, ' ')}
+                    </span>
+                  </div>
                 </Link>
               ))}
             </div>
@@ -180,13 +206,17 @@ export default function PurchasePage() {
                       <th className="px-4 py-2 text-left font-medium text-gray-700">Materials</th>
                       <th className="px-4 py-2 text-left font-medium text-gray-700">Requested By</th>
                       <th className="px-4 py-2 text-left font-medium text-gray-700">Status</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-700">Deadline</th>
                       <th className="px-4 py-2 text-left font-medium text-gray-700">Date</th>
                       <th className="px-4 py-2" />
                     </tr>
                   </thead>
                   <tbody>
                     {requests.map((req: any) => (
-                      <tr key={req._id} className="border-b last:border-0 hover:bg-gray-50">
+                      <tr
+                        key={req._id}
+                        className={`border-b last:border-0 hover:bg-gray-50 ${req.deadline?.dueAt && new Date(req.deadline.dueAt) < new Date() ? 'border-l-2 border-l-red-400' : ''}`}
+                      >
                         <td className="px-4 py-2 font-mono font-semibold text-gray-900">{req.reqNo}</td>
                         <td className="px-4 py-2 text-gray-600 max-w-xs truncate">
                           {req.items?.map((i: any) => `${i.materialName} ${i.qtyKg}KG`).join(', ')}
@@ -197,9 +227,10 @@ export default function PurchasePage() {
                             {req.status.replace(/_/g, ' ')}
                           </span>
                         </td>
-                        <td className="px-4 py-2 text-gray-500 text-xs">
-                          {new Date(req.createdAt).toLocaleDateString('en-IN')}
+                        <td className="px-4 py-2">
+                          <DeadlineChip deadline={req.deadline} />
                         </td>
+                        <td className="px-4 py-2 text-gray-500 text-xs">{fmtIST(req.createdAt)}</td>
                         <td className="px-4 py-2 text-right">
                           <Link href={`/admin/purchase/${req._id}`}>
                             <Button variant="ghost" size="sm" className="text-xs">View</Button>

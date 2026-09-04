@@ -74,6 +74,14 @@ export class PurchaseRequest {
   })
   timeline: Array<{ action: string; status: string; byName: string; at: Date }>;
 
+  @Prop({ type: Object })
+  deadline: {
+    stage: string;
+    dueAt: Date;
+    setByName: string;
+    setAt: Date;
+  };
+
   createdAt: Date;
   updatedAt: Date;
 }
