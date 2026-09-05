@@ -410,6 +410,79 @@ function DeadlineSetter({ reqId, currentDeadline, onSuccess }: { reqId: string; 
   );
 }
 
+// ── Pipeline tracker ─────────────────────────────────────────────────────────
+
+const PIPELINE_STAGES = [
+  { n: 1, label: 'Requested',     role: 'Requester',     doneStatus: 'REQUESTED' },
+  { n: 2, label: 'PO Created',    role: 'Purchase Desk', doneStatus: 'PO_CREATED' },
+  { n: 3, label: 'Approved',      role: 'Approver',      doneStatus: 'APPROVED' },
+  { n: 4, label: 'Goods Received',role: 'Gate / Store',  doneStatus: 'COMPLETED' },
+];
+
+const ACTIVE_STAGE: Record<string, number> = {
+  REQUESTED: 2, PO_CREATED: 3, REJECTED: 2,
+  APPROVED: 4, VENDOR_BILL_UPLOADED: 4,
+};
+
+function PipelineTracker({ req }: { req: any }) {
+  const timeline: any[] = req.timeline || [];
+  const isCancelled = req.status === 'CANCELLED';
+  const isRejected  = req.status === 'REJECTED';
+  const activeN     = isCancelled ? 0 : (ACTIVE_STAGE[req.status] ?? 0);
+
+  return (
+    <Card>
+      <CardContent className="pt-6 pb-5">
+        <div className="relative">
+          <div className="absolute top-5 left-[14%] right-[14%] h-0.5 bg-gray-100" />
+          <div className="flex">
+            {PIPELINE_STAGES.map((stage) => {
+              const entry    = timeline.find((t: any) => t.status === stage.doneStatus);
+              const isDone   = !!entry && !isCancelled;
+              const isActive = !isDone && !isCancelled && stage.n === activeN;
+              const isRejHere = isRejected && stage.n === 3;
+
+              return (
+                <div key={stage.n} className="flex-1 flex flex-col items-center gap-1">
+                  <div className={`relative z-10 h-10 w-10 rounded-full border-2 flex items-center justify-center text-sm font-bold shrink-0
+                    ${isCancelled  ? 'bg-gray-50 border-gray-200 text-gray-300'
+                    : isRejHere   ? 'bg-red-50 border-red-400 text-red-600'
+                    : isDone      ? 'bg-[#2F6B47] border-[#2F6B47] text-white'
+                    : isActive    ? 'bg-amber-50 border-amber-400 text-amber-700'
+                    :               'bg-white border-gray-200 text-gray-300'}`}
+                  >
+                    {isDone ? <CheckCircle2 className="h-5 w-5" /> : <span>{stage.n}</span>}
+                  </div>
+
+                  <p className={`text-xs font-semibold text-center ${isDone || isActive ? 'text-gray-800' : 'text-gray-400'}`}>
+                    {stage.label}
+                  </p>
+
+                  {isRejHere ? (
+                    <p className="text-xs text-red-500 font-medium">Rejected</p>
+                  ) : entry ? (
+                    <div className="text-center">
+                      <p className="text-xs text-gray-500 leading-tight">{entry.byName}</p>
+                      <p className="text-[10px] text-gray-400 leading-tight">{fmtIST(entry.at)}</p>
+                    </div>
+                  ) : (
+                    <p className={`text-[11px] ${isActive ? 'text-amber-600 font-medium' : 'text-gray-300'}`}>
+                      {isActive ? 'Awaiting…' : stage.role}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {isCancelled && (
+            <p className="text-center text-xs text-gray-400 mt-2 font-medium">This request was cancelled</p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function PurchaseRequestDetailPage() {
@@ -482,7 +555,9 @@ export default function PurchaseRequestDetailPage() {
       />
 
       <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-4xl grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="max-w-4xl space-y-6">
+        <PipelineTracker req={req} />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* ── Left column ── */}
           <div className="lg:col-span-2 space-y-4">
             {/* Status + meta */}
@@ -682,6 +757,7 @@ export default function PurchaseRequestDetailPage() {
               </Card>
             )}
           </div>
+        </div>
         </div>
       </div>
     </div>
