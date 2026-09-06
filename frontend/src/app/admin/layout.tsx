@@ -62,9 +62,10 @@ export default function AdminLayout({
     }
 
     if (isFms) {
-      const fmsBlocked = pathname.startsWith('/admin/purchase/new') || pathname.startsWith('/admin/purchase/materials');
-      if (fmsBlocked || !pathname.startsWith('/admin/purchase')) {
-        router.replace('/admin/purchase');
+      // Only allow detail pages /admin/purchase/[id] (and print); everything else → FMS app
+      const isAllowedDetail = /^\/admin\/purchase\/.+/.test(pathname);
+      if (!isAllowedDetail) {
+        router.replace('/fms/purchase');
         return;
       }
     }

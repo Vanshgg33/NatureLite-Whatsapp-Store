@@ -113,7 +113,7 @@ const FMS_NAV_GROUPS: NavGroup[] = [
   {
     label: 'Purchase',
     items: [
-      { name: 'Purchase FMS', href: '/admin/purchase', icon: ShoppingBag },
+      { name: 'Purchase FMS', href: '/fms/purchase', icon: ShoppingBag },
     ],
   },
 ];
