@@ -61,9 +61,12 @@ export default function AdminLayout({
       return;
     }
 
-    if (isFms && !pathname.startsWith('/admin/purchase')) {
-      router.replace('/admin/purchase');
-      return;
+    if (isFms) {
+      const fmsBlocked = pathname.startsWith('/admin/purchase/new') || pathname.startsWith('/admin/purchase/materials');
+      if (fmsBlocked || !pathname.startsWith('/admin/purchase')) {
+        router.replace('/admin/purchase');
+        return;
+      }
     }
 
     if (isCrm) {
