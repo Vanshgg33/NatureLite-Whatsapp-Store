@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Package, Plus, Check, X } from 'lucide-react';
+import { Package, Plus, Check, X, Sparkles } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { Header } from '@/components/layout/header';
@@ -27,6 +27,16 @@ export default function PurchaseMaterialsPage() {
   const { data: materials = [], isLoading } = useQuery({
     queryKey: ['purchase-materials-all'],
     queryFn: () => api.getPurchaseMaterials(true),
+  });
+
+  const seedMutation = useMutation({
+    mutationFn: () => api.seedPurchaseMaterials(),
+    onSuccess: (res) => {
+      toast({ title: `${res.created} default materials added` });
+      queryClient.invalidateQueries({ queryKey: ['purchase-materials-all'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-materials'] });
+    },
+    onError: (err) => toast({ title: 'Seed failed', description: getApiError(err), variant: 'destructive' }),
   });
 
   const createMutation = useMutation({
@@ -125,7 +135,18 @@ export default function PurchaseMaterialsPage() {
               <div className="h-8 w-8 border-2 border-[#2F6B47] border-t-transparent rounded-full animate-spin" />
             </div>
           ) : materials.length === 0 ? (
-            <div className="px-4 py-6 text-sm text-gray-500">No materials yet.</div>
+            <div className="px-4 py-8 flex flex-col items-center gap-3 text-center">
+              <p className="text-sm text-gray-500">No materials yet.</p>
+              <Button
+                size="sm" variant="outline"
+                disabled={seedMutation.isPending}
+                onClick={() => seedMutation.mutate()}
+                className="text-[#2F6B47] border-[#2F6B47]"
+              >
+                <Sparkles className="h-4 w-4 mr-1" />
+                {seedMutation.isPending ? 'Loading…' : 'Load default NatureLite materials'}
+              </Button>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">

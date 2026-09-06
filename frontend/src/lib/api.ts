@@ -1783,6 +1783,11 @@ class ApiClient {
 
   // ==================== PURCHASE FMS ====================
 
+  async seedPurchaseMaterials(): Promise<{ created: number; total: number }> {
+    const res = await this.client.post<ApiResponse<{ created: number; total: number }>>('/purchase/materials/seed');
+    return res.data.data;
+  }
+
   async getPurchaseMaterials(all = false): Promise<any[]> {
     const res = await this.client.get<ApiResponse<any[]>>(`/purchase/materials${all ? '?all=true' : ''}`);
     return res.data.data;

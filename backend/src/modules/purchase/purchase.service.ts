@@ -42,6 +42,33 @@ export class PurchaseService {
 
   // ─── Materials ────────────────────────────────────────────────────────────
 
+  async seedDefaultMaterials() {
+    const defaults = [
+      { name: 'Groundnut (Bold)',   category: 'Oilseed' },
+      { name: 'Sesame White',       category: 'Oilseed' },
+      { name: 'Sesame Black',       category: 'Oilseed' },
+      { name: 'Coconut Copra',      category: 'Oilseed' },
+      { name: 'Mustard Seed',       category: 'Oilseed' },
+      { name: 'Wheat (Sharbati)',   category: 'Grain'   },
+      { name: 'Chana (Desi)',       category: 'Pulse'   },
+      { name: 'Toor Dal Raw',       category: 'Pulse'   },
+      { name: 'Jaggery Bulk',       category: 'General' },
+      { name: 'Turmeric Finger',    category: 'Spice'   },
+      { name: 'Sunflower Seeds',    category: 'Oilseed' },
+      { name: 'Flax Seeds',         category: 'Oilseed' },
+      { name: 'Packaging Pouches',  category: 'Packaging'},
+      { name: 'Packaging Boxes',    category: 'Packaging'},
+    ];
+    let created = 0;
+    for (const mat of defaults) {
+      try {
+        await this.materialModel.create(mat);
+        created++;
+      } catch { /* skip duplicates */ }
+    }
+    return { created, total: defaults.length };
+  }
+
   async getMaterials(activeOnly = true) {
     const filter = activeOnly ? { isActive: true } : {};
     return this.materialModel.find(filter).sort({ name: 1 }).lean();

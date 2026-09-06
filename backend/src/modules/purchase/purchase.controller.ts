@@ -14,6 +14,11 @@ export class PurchaseController {
 
   // ─── Materials ─────────────────────────────────────────────────────────
 
+  @Post('materials/seed')
+  seedMaterials() {
+    return this.purchaseService.seedDefaultMaterials();
+  }
+
   @Get('materials')
   getMaterials(@Query('all') all?: string) {
     return this.purchaseService.getMaterials(all !== 'true');
