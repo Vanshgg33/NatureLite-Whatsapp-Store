@@ -45,6 +45,7 @@ import { PublicChatbotModule } from './modules/public-chatbot/public-chatbot.mod
 import { DeliveryCollectionsModule } from './modules/delivery-collections/delivery-collections.module';
 import { RedisModule } from './modules/redis/redis.module';
 import { PurchaseModule } from './modules/purchase/purchase.module';
+import { BillingModule } from './modules/billing/billing.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -147,6 +148,7 @@ import { HealthController } from './health.controller';
     PublicChatbotModule,
     DeliveryCollectionsModule,
     PurchaseModule,
+    BillingModule,
   ],
   providers: [
     {

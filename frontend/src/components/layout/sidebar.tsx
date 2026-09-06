@@ -31,6 +31,7 @@ import {
   Banknote,
   Truck,
   ShoppingBag,
+  FileText,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -63,6 +64,13 @@ const BASE_NAV_GROUPS: NavGroup[] = [
       { name: 'Orders', href: '/admin/orders', icon: ShoppingCart },
       { name: 'Cash Ledger', href: '/admin/delivery-collections', icon: Banknote },
       { name: 'Delivery History', href: '/admin/delivery-history', icon: Truck },
+    ],
+  },
+  {
+    label: 'Billing',
+    items: [
+      { name: 'Customers', href: '/admin/billing/customers', icon: Users },
+      { name: 'Tag Pricing', href: '/admin/billing/pricing', icon: FileText },
     ],
   },
   {

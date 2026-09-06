@@ -1855,6 +1855,54 @@ class ApiClient {
     const res = await this.client.post<ApiResponse<any>>(`/purchase/requests/${id}/deadline`, { dueAt });
     return res.data.data;
   }
+
+  // ─── Billing ─────────────────────────────────────────────────────────────
+
+  async searchBillingCustomers(q = ''): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>(`/billing/customers?q=${encodeURIComponent(q)}`);
+    return res.data.data;
+  }
+
+  async getBillingCustomer(id: string): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>(`/billing/customers/${id}`);
+    return res.data.data;
+  }
+
+  async createBillingCustomer(data: any): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>('/billing/customers', data);
+    return res.data.data;
+  }
+
+  async updateBillingCustomer(id: string, data: any): Promise<any> {
+    const res = await this.client.patch<ApiResponse<any>>(`/billing/customers/${id}`, data);
+    return res.data.data;
+  }
+
+  async addBillingCustomerAddress(id: string, address: { label: string; line: string; isDefault?: boolean }): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>(`/billing/customers/${id}/addresses`, address);
+    return res.data.data;
+  }
+
+  async getBillingTagPrices(productId?: string): Promise<any[]> {
+    const qs = productId ? `?productId=${productId}` : '';
+    const res = await this.client.get<ApiResponse<any[]>>(`/billing/tag-prices${qs}`);
+    return res.data.data;
+  }
+
+  async upsertBillingTagPrice(data: { productId: string; tag: string; price: number }): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>('/billing/tag-prices', data);
+    return res.data.data;
+  }
+
+  async deleteBillingTagPrice(id: string): Promise<any> {
+    const res = await this.client.delete<ApiResponse<any>>(`/billing/tag-prices/${id}`);
+    return res.data.data;
+  }
+
+  async bulkUpsertBillingTagPrices(rows: Array<{ productId: string; tag: string; price: number }>): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>('/billing/tag-prices/bulk', rows);
+    return res.data.data;
+  }
 }
 
 export const api = new ApiClient();
