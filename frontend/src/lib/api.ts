@@ -1903,6 +1903,31 @@ class ApiClient {
     const res = await this.client.post<ApiResponse<any>>('/billing/tag-prices/bulk', rows);
     return res.data.data;
   }
+
+  async searchBillingProducts(q = ''): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>(`/billing/products/search?q=${encodeURIComponent(q)}`);
+    return res.data.data;
+  }
+
+  async createBillingBill(data: any): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>('/billing/bills', data);
+    return res.data.data;
+  }
+
+  async getBillingBills(params?: { customerId?: string; paymentStatus?: string; orderTag?: string; startDate?: string; endDate?: string; page?: number; limit?: number }): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>('/billing/bills', { params });
+    return res.data.data;
+  }
+
+  async getBillingBill(id: string): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>(`/billing/bills/${id}`);
+    return res.data.data;
+  }
+
+  async recordBillingPayment(id: string, amount: number): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>(`/billing/bills/${id}/payment`, { amount });
+    return res.data.data;
+  }
 }
 
 export const api = new ApiClient();

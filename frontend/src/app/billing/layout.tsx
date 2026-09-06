@@ -21,7 +21,7 @@ const BILLING_NAV: NavGroup[] = [
   {
     label: 'Billing',
     items: [
-      { name: 'New Bill', href: '/billing/new', icon: Plus, soon: true },
+      { name: 'New Bill', href: '/billing/new', icon: Plus },
       { name: 'Dashboard', href: '/billing/dashboard', icon: LayoutDashboard, soon: true },
     ],
   },

@@ -57,6 +57,13 @@ export class BillingController {
     return this.billingService.addAddress(id, body);
   }
 
+  // ─── Products (billing-enriched search) ───────────────────────────────────
+
+  @Get('products/search')
+  searchProducts(@Query('q') q: string) {
+    return this.billingService.searchProductsForBilling(q);
+  }
+
   // ─── Tag Prices ───────────────────────────────────────────────────────────
 
   @Get('tag-prices')
@@ -77,5 +84,54 @@ export class BillingController {
   @Post('tag-prices/bulk')
   bulkUpsert(@Body() body: Array<{ productId: string; tag: CustomerTag; price: number }>) {
     return this.billingService.bulkUpsertTagPrices(body);
+  }
+
+  // ─── Bills ────────────────────────────────────────────────────────────────
+
+  @Post('bills')
+  createBill(@Body() body: {
+    customerId: string;
+    billingAddress?: string;
+    orderTag: string;
+    items: Array<{
+      productId: string;
+      name: string;
+      sku: string;
+      hsnCode?: string;
+      qty: number;
+      unitPrice: number;
+      gstRate: number;
+    }>;
+    amountPaid: number;
+    notes?: string;
+  }) {
+    return this.billingService.createBill(body);
+  }
+
+  @Get('bills')
+  getBills(@Query() q: {
+    customerId?: string;
+    paymentStatus?: string;
+    orderTag?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: string;
+    limit?: string;
+  }) {
+    return this.billingService.getBills({
+      ...q,
+      page: q.page ? parseInt(q.page) : undefined,
+      limit: q.limit ? parseInt(q.limit) : undefined,
+    });
+  }
+
+  @Get('bills/:id')
+  getBill(@Param('id') id: string) {
+    return this.billingService.getBill(id);
+  }
+
+  @Post('bills/:id/payment')
+  recordPayment(@Param('id') id: string, @Body() body: { amount: number }) {
+    return this.billingService.recordPayment(id, body.amount);
   }
 }
