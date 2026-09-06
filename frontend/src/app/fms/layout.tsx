@@ -124,7 +124,7 @@ export default function FmsLayout({ children }: { children: React.ReactNode }) {
       return;
     }
     if (user?.departmentType !== 'fms') {
-      router.push('/admin');
+      router.push('/admin/dashboard');
     }
   }, [hasHydrated, isAuthenticated, user, router]);
 
