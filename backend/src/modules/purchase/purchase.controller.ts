@@ -20,13 +20,11 @@ export class PurchaseController {
   }
 
   @Post('materials')
-  @Roles('superadmin')
   createMaterial(@Body() body: { name: string; category?: string }) {
     return this.purchaseService.createMaterial(body);
   }
 
   @Patch('materials/:id')
-  @Roles('superadmin')
   updateMaterial(
     @Param('id') id: string,
     @Body() body: { name?: string; category?: string; isActive?: boolean },

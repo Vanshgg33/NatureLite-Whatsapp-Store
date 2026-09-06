@@ -18,7 +18,7 @@ export default function PurchaseMaterialsPage() {
   const { user } = useAdminAuthStore();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const isSuperadmin = user?.role === 'superadmin';
+  const isSuperadmin = user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
 
   const [name, setName] = useState('');
   const [category, setCategory] = useState('General');

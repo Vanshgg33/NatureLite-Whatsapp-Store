@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { ShoppingBag, Plus, TrendingUp, Clock, CheckCircle2, AlertCircle, Timer } from 'lucide-react';
+import { ShoppingBag, Plus, TrendingUp, Clock, CheckCircle2, AlertCircle, Timer, Package } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { Header } from '@/components/layout/header';
@@ -50,7 +50,7 @@ const ROLE_TO_STATUSES: Record<string, string[]> = {
 
 export default function PurchasePage() {
   const { user } = useAdminAuthStore();
-  const isSuperadmin = user?.role === 'superadmin';
+  const isSuperadmin = user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
   const purchaseRole = user?.purchaseRole;
 
   const { data: stats } = useQuery({
@@ -81,14 +81,24 @@ export default function PurchasePage() {
         description="Raw material procurement pipeline"
         icon={<ShoppingBag className="h-6 w-6 text-amber-600" />}
         action={
-          canCreate ? (
-            <Link href="/admin/purchase/new">
-              <Button size="sm" className="bg-[#2F6B47] hover:bg-[#2F6B47]/90">
-                <Plus className="h-4 w-4 mr-1" />
-                New Request
-              </Button>
-            </Link>
-          ) : undefined
+          <div className="flex items-center gap-2">
+            {isSuperadmin && (
+              <Link href="/admin/purchase/materials">
+                <Button size="sm" variant="outline">
+                  <Package className="h-4 w-4 mr-1" />
+                  Materials
+                </Button>
+              </Link>
+            )}
+            {canCreate && (
+              <Link href="/admin/purchase/new">
+                <Button size="sm" className="bg-[#2F6B47] hover:bg-[#2F6B47]/90">
+                  <Plus className="h-4 w-4 mr-1" />
+                  New Request
+                </Button>
+              </Link>
+            )}
+          </div>
         }
       />
 
