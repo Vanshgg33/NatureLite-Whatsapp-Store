@@ -8,7 +8,7 @@ interface AdminUser {
   role: 'admin' | 'superadmin' | 'customer';
   storeId?: string;
   storeName?: string;
-  departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
+  departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior' | 'fms';
   purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver';
 }
 

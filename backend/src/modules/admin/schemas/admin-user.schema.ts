@@ -27,8 +27,8 @@ export class AdminUser {
   @Prop({ default: 'admin' })
   role: AdminRole;
 
-  @Prop({ enum: ['packing', 'billing', 'delivery', 'crm_head', 'crm_senior'], required: false })
-  departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
+  @Prop({ enum: ['packing', 'billing', 'delivery', 'crm_head', 'crm_senior', 'fms'], required: false })
+  departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior' | 'fms';
 
   @Prop({ enum: ['requester', 'po_creator', 'approver', 'receiver'], required: false })
   purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver';

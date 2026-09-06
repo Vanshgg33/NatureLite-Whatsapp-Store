@@ -51,6 +51,7 @@ const ROLE_TO_STATUSES: Record<string, string[]> = {
 export default function PurchasePage() {
   const { user } = useAdminAuthStore();
   const isSuperadmin = user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
+  const isFms = user?.departmentType === 'fms';
   const purchaseRole = user?.purchaseRole;
 
   const { data: stats } = useQuery({
@@ -65,14 +66,14 @@ export default function PurchasePage() {
     refetchInterval: 15000,
   });
 
-  const myActionStatuses = isSuperadmin ? null : (purchaseRole ? ROLE_TO_STATUSES[purchaseRole] : null);
-  const myQueue = myActionStatuses
-    ? requests.filter((r: any) => myActionStatuses.includes(r.status))
-    : isSuperadmin
+  const myActionStatuses = (isSuperadmin && !isFms) ? null : (purchaseRole ? ROLE_TO_STATUSES[purchaseRole] : null);
+  const myQueue = (isSuperadmin || isFms)
     ? requests.filter((r: any) => !['COMPLETED', 'CANCELLED'].includes(r.status))
+    : myActionStatuses
+    ? requests.filter((r: any) => myActionStatuses.includes(r.status))
     : [];
 
-  const canCreate = purchaseRole === 'requester' || isSuperadmin;
+  const canCreate = !isFms && (purchaseRole === 'requester' || isSuperadmin);
 
   return (
     <div className="flex flex-col h-screen">
@@ -82,7 +83,7 @@ export default function PurchasePage() {
         icon={<ShoppingBag className="h-6 w-6 text-amber-600" />}
         action={
           <div className="flex items-center gap-2">
-            {isSuperadmin && (
+            {isSuperadmin && !isFms && (
               <Link href="/admin/purchase/materials">
                 <Button size="sm" variant="outline">
                   <Package className="h-4 w-4 mr-1" />

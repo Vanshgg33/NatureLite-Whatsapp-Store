@@ -102,6 +102,15 @@ const CRM_NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+const FMS_NAV_GROUPS: NavGroup[] = [
+  {
+    label: 'Purchase',
+    items: [
+      { name: 'Purchase FMS', href: '/admin/purchase', icon: ShoppingBag },
+    ],
+  },
+];
+
 const SUPERADMIN_NAV_GROUPS: NavGroup[] = [
   {
     label: 'Analytics',
@@ -139,8 +148,11 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
 
   const isSuperadmin = user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
   const isCrm = user?.departmentType === 'crm_head' || user?.departmentType === 'crm_senior';
+  const isFms = user?.departmentType === 'fms';
 
-  const navGroups: NavGroup[] = isCrm
+  const navGroups: NavGroup[] = isFms
+    ? FMS_NAV_GROUPS
+    : isCrm
     ? CRM_NAV_GROUPS
     : [...BASE_NAV_GROUPS, ...(isSuperadmin ? SUPERADMIN_NAV_GROUPS : [])];
 
@@ -157,6 +169,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const displayName = user?.name || 'Admin';
   const roleLabel = user?.role === 'superadmin'
     ? 'superadmin'
+    : user?.departmentType === 'fms'
+    ? 'FMS'
     : user?.departmentType === 'crm_head'
     ? 'CRM Head'
     : user?.departmentType === 'crm_senior'

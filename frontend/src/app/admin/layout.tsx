@@ -29,6 +29,8 @@ export default function AdminLayout({
     user?.departmentType === 'crm_head' ||
     user?.departmentType === 'crm_senior';
 
+  const isFms = user?.departmentType === 'fms';
+
   const CRM_ALLOWED = [
     '/admin/sales',
     '/admin/orders',
@@ -59,13 +61,18 @@ export default function AdminLayout({
       return;
     }
 
+    if (isFms && !pathname.startsWith('/admin/purchase')) {
+      router.replace('/admin/purchase');
+      return;
+    }
+
     if (isCrm) {
       const allowed = CRM_ALLOWED.some((p) => pathname.startsWith(p));
       if (!allowed) {
         router.replace('/admin/orders');
       }
     }
-  }, [hasHydrated, isAuthenticated, isFieldDept, isCrm, user, pathname, router]);
+  }, [hasHydrated, isAuthenticated, isFieldDept, isCrm, isFms, user, pathname, router]);
 
   if (!hasHydrated || !isAuthenticated || isFieldDept) {
     return null;
