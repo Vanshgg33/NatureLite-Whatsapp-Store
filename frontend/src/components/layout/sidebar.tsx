@@ -31,7 +31,7 @@ import {
   Banknote,
   Truck,
   ShoppingBag,
-  FileText,
+  ReceiptText,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -69,8 +69,7 @@ const BASE_NAV_GROUPS: NavGroup[] = [
   {
     label: 'Billing',
     items: [
-      { name: 'Customers', href: '/admin/billing/customers', icon: Users },
-      { name: 'Tag Pricing', href: '/admin/billing/pricing', icon: FileText },
+      { name: 'Billing System', href: '/billing/customers', icon: ReceiptText },
     ],
   },
   {
