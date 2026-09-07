@@ -96,6 +96,19 @@ export class User {
   @Prop()
   notes?: string;
 
+  // Billing-specific fields
+  @Prop()
+  gstNo?: string;
+
+  @Prop({ default: 0 })
+  outstanding: number;
+
+  @Prop({
+    type: [{ label: String, line: String, isDefault: Boolean }],
+    default: [],
+  })
+  billingAddresses: Array<{ label: string; line: string; isDefault: boolean }>;
+
   @Prop({ default: 0 })
   failedLoginAttempts: number;
 

@@ -23,7 +23,7 @@ export class BillingBill {
   @Prop({ required: true, unique: true, index: true })
   invoiceNo: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'BillingCustomer', required: true, index: true })
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
   customerId: Types.ObjectId;
 
   // Snapshot of customer info at billing time

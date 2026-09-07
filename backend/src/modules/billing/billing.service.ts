@@ -1,38 +1,69 @@
 import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { BillingCustomer, BillingCustomerDocument, CustomerTag, TAG_PRIORITY } from './schemas/billing-customer.schema';
+import { CustomerTag, TAG_PRIORITY } from './schemas/billing-customer.schema';
 import { BillingTagPrice, BillingTagPriceDocument } from './schemas/billing-tag-price.schema';
 import { BillingBill, BillingBillDocument, BillLineItem } from './schemas/billing-bill.schema';
 import { BillingCounter, BillingCounterDocument } from './schemas/billing-counter.schema';
+import { User } from '../users/schemas/user.schema';
 
 @Injectable()
 export class BillingService {
   constructor(
-    @InjectModel(BillingCustomer.name) private customerModel: Model<BillingCustomerDocument>,
+    @InjectModel(User.name) private userModel: Model<any>,
     @InjectModel(BillingTagPrice.name) private tagPriceModel: Model<BillingTagPriceDocument>,
     @InjectModel(BillingBill.name) private billModel: Model<BillingBillDocument>,
     @InjectModel(BillingCounter.name) private counterModel: Model<BillingCounterDocument>,
     @InjectModel('Product') private productModel: Model<any>,
   ) {}
 
+  // Map a User document to the billing customer shape the frontend expects
+  private mapUser(u: any) {
+    const phone = u.phone ?? '';
+    // Strip 91 country code for display (10-digit)
+    const displayPhone = /^91\d{10}$/.test(phone) ? phone.slice(2) : phone;
+
+    // Use billingAddresses if present; fall back to formatting delivery addresses
+    const addresses = (u.billingAddresses ?? []).length > 0
+      ? u.billingAddresses
+      : (u.addresses ?? []).map((a: any) => ({
+          label: a.label || 'Default',
+          line: [a.house, a.building, a.area, a.street, a.city, a.state, a.pincode]
+            .filter(Boolean).join(', '),
+          isDefault: a.isDefault ?? false,
+        }));
+
+    return {
+      _id: u._id,
+      name: u.name ?? '',
+      phone: displayPhone,
+      gstNo: u.gstNo,
+      tags: u.tags ?? [],
+      addresses,
+      orderCount: u.totalOrders ?? 0,
+      totalPurchase: u.totalSpent ?? 0,
+      outstanding: u.outstanding ?? 0,
+    };
+  }
+
   // ─── Customers ───────────────────────────────────────────────────────────
 
   async searchCustomers(q: string) {
-    if (!q?.trim()) return this.customerModel.find().sort({ name: 1 }).limit(50).lean();
-    return this.customerModel.find({
-      $or: [
-        { name: { $regex: q, $options: 'i' } },
-        { phone: { $regex: q, $options: 'i' } },
-        { canonicalName: { $regex: q, $options: 'i' } },
-      ],
-    }).limit(20).lean();
+    if (!q?.trim()) {
+      const users = await this.userModel.find({}).sort({ name: 1 }).limit(50).lean();
+      return users.map(u => this.mapUser(u));
+    }
+    const digits = q.replace(/[^\d]/g, '');
+    const orConds: any[] = [{ name: { $regex: q.trim(), $options: 'i' } }];
+    if (digits) orConds.push({ phone: { $regex: digits } });
+    const users = await this.userModel.find({ $or: orConds }).limit(20).lean();
+    return users.map(u => this.mapUser(u));
   }
 
   async getCustomer(id: string) {
-    const c = await this.customerModel.findById(id).lean();
-    if (!c) throw new NotFoundException('Customer not found');
-    return c;
+    const u = await this.userModel.findById(id).lean();
+    if (!u) throw new NotFoundException('Customer not found');
+    return this.mapUser(u);
   }
 
   async createCustomer(data: {
@@ -40,57 +71,63 @@ export class BillingService {
     phone: string;
     altPhone?: string;
     gstNo?: string;
-    tags?: CustomerTag[];
+    tags?: string[];
     addresses?: Array<{ label: string; line: string; isDefault?: boolean }>;
   }) {
-    const existing = await this.customerModel.findOne({ phone: data.phone }).lean();
+    // Normalize phone: 10-digit → 91XXXXXXXXXX
+    const digits = data.phone.replace(/[^\d]/g, '');
+    const normalizedPhone = digits.length === 10 ? '91' + digits : digits;
+
+    const existing = await this.userModel.findOne({ phone: normalizedPhone }).lean();
     if (existing) throw new ConflictException('Customer with this phone already exists');
 
-    const canonicalName = data.name.trim();
-    let displayName = canonicalName;
-
-    const nameTaken = await this.customerModel.findOne({ canonicalName }).lean();
-    if (nameTaken) displayName = `${canonicalName} (${data.phone.slice(-3)})`;
-
-    const addresses = (data.addresses ?? []).map((a, i) => ({
+    const billingAddresses = (data.addresses ?? []).map((a, i) => ({
       label: a.label,
       line: a.line,
       isDefault: a.isDefault ?? i === 0,
     }));
 
-    return this.customerModel.create({
-      name: displayName,
-      canonicalName,
-      phone: data.phone,
-      altPhone: data.altPhone,
+    const u = await this.userModel.create({
+      name: data.name.trim(),
+      phone: normalizedPhone,
       gstNo: data.gstNo,
       tags: data.tags ?? [],
-      addresses,
+      billingAddresses,
+      isActive: true,
     });
+    return this.mapUser(u);
   }
 
   async updateCustomer(id: string, data: Partial<{
     altPhone: string;
     gstNo: string;
-    tags: CustomerTag[];
+    tags: string[];
     addresses: Array<{ label: string; line: string; isDefault: boolean }>;
   }>) {
-    const c = await this.customerModel.findByIdAndUpdate(id, { $set: data }, { new: true }).lean();
-    if (!c) throw new NotFoundException('Customer not found');
-    return c;
+    const update: any = {};
+    if (data.gstNo !== undefined) update.gstNo = data.gstNo;
+    if (data.tags !== undefined) update.tags = data.tags;
+    if (data.addresses !== undefined) update.billingAddresses = data.addresses;
+
+    const u = await this.userModel.findByIdAndUpdate(id, { $set: update }, { new: true }).lean();
+    if (!u) throw new NotFoundException('Customer not found');
+    return this.mapUser(u);
   }
 
   async addAddress(id: string, address: { label: string; line: string; isDefault?: boolean }) {
-    const customer = await this.customerModel.findById(id);
-    if (!customer) throw new NotFoundException('Customer not found');
+    const u = await this.userModel.findById(id).lean() as any;
+    if (!u) throw new NotFoundException('Customer not found');
 
     const makeDefault = address.isDefault ?? false;
-    customer.addresses = customer.addresses.map(a => ({
-      label: a.label, line: a.line, isDefault: makeDefault ? false : a.isDefault,
+    const existing = (u.billingAddresses ?? []).map((a: any) => ({
+      ...a, isDefault: makeDefault ? false : a.isDefault,
     }));
-    customer.addresses.push({ label: address.label, line: address.line, isDefault: makeDefault });
-    customer.markModified('addresses');
-    return customer.save();
+    existing.push({ label: address.label, line: address.line, isDefault: makeDefault });
+
+    const updated = await this.userModel.findByIdAndUpdate(
+      id, { $set: { billingAddresses: existing } }, { new: true },
+    ).lean() as any;
+    return this.mapUser(updated);
   }
 
   // ─── Products (for billing search) ───────────────────────────────────────
@@ -200,11 +237,10 @@ export class BillingService {
     amountPaid: number;
     notes?: string;
   }) {
-    const customer = await this.customerModel.findById(data.customerId).lean();
+    const customer = await this.userModel.findById(data.customerId).lean() as any;
     if (!customer) throw new NotFoundException('Customer not found');
     if (!data.items?.length) throw new BadRequestException('Bill must have at least one item');
 
-    // Compute line items
     const items: BillLineItem[] = data.items.map(i => {
       const total = Math.round(i.unitPrice * i.qty * 100) / 100;
       const taxableAmount = Math.round(total / (1 + i.gstRate / 100) * 100) / 100;
@@ -232,18 +268,28 @@ export class BillingService {
 
     const invoiceNo = await this.nextInvoiceNo();
 
-    // Resolve billing address
-    const defaultAddr = customer.addresses.find(a => a.isDefault) ?? customer.addresses[0];
-    const billingAddress = data.billingAddress ?? defaultAddr?.line;
+    // Resolve billing address: billingAddresses first, fall back to formatted delivery address
+    const billingAddrs: any[] = customer.billingAddresses ?? [];
+    const deliveryAddrs: any[] = customer.addresses ?? [];
+    const defaultBillingLine =
+      (billingAddrs.find((a: any) => a.isDefault) ?? billingAddrs[0])?.line ??
+      [deliveryAddrs.find((a: any) => a.isDefault) ?? deliveryAddrs[0]]
+        .filter(Boolean)
+        .map((a: any) => [a.house, a.building, a.area, a.street, a.city, a.state, a.pincode].filter(Boolean).join(', '))[0];
+    const billingAddress = data.billingAddress ?? defaultBillingLine;
+
+    // Display phone: strip 91 prefix
+    const rawPhone = customer.phone ?? '';
+    const customerPhone = /^91\d{10}$/.test(rawPhone) ? rawPhone.slice(2) : rawPhone;
 
     const bill = await this.billModel.create({
       invoiceNo,
       customerId: new Types.ObjectId(data.customerId),
       customerName: customer.name,
-      customerPhone: customer.phone,
+      customerPhone,
       customerGstNo: customer.gstNo,
       billingAddress,
-      customerTags: customer.tags,
+      customerTags: customer.tags ?? [],
       orderTag: data.orderTag,
       items,
       subtotal,
@@ -255,9 +301,9 @@ export class BillingService {
       notes: data.notes,
     });
 
-    // Update customer stats
-    await this.customerModel.findByIdAndUpdate(data.customerId, {
-      $inc: { orderCount: 1, totalPurchase: grandTotal, outstanding: amountDue },
+    // Increment outstanding on User
+    await this.userModel.findByIdAndUpdate(data.customerId, {
+      $inc: { outstanding: amountDue },
     });
 
     return bill;
@@ -328,11 +374,23 @@ export class BillingService {
   // ─── Insights ─────────────────────────────────────────────────────────────
 
   async getTopCustomers(limit = 50) {
-    return this.customerModel
-      .find({ orderCount: { $gt: 0 } })
-      .sort({ totalPurchase: -1 })
-      .limit(limit)
-      .lean();
+    // Aggregate billing stats from BillingBill, then join User name/phone
+    const rows = await this.billModel.aggregate([
+      { $match: { status: 'active' } },
+      {
+        $group: {
+          _id: '$customerId',
+          customerName: { $first: '$customerName' },
+          customerPhone: { $first: '$customerPhone' },
+          totalPurchase: { $sum: '$grandTotal' },
+          orderCount: { $sum: 1 },
+          outstanding: { $sum: '$amountDue' },
+        },
+      },
+      { $sort: { totalPurchase: -1 } },
+      { $limit: limit },
+    ]);
+    return rows;
   }
 
   // ─── GSTR-1 ───────────────────────────────────────────────────────────────
@@ -427,10 +485,11 @@ export class BillingService {
         { $match: { status: 'active', createdAt: { $gte: startOfMonth } } },
         { $group: { _id: null, total: { $sum: '$grandTotal' }, count: { $sum: 1 }, collected: { $sum: '$amountPaid' }, due: { $sum: '$amountDue' } } },
       ]),
-      this.customerModel.aggregate([
-        { $group: { _id: null, totalOutstanding: { $sum: '$outstanding' } } },
+      this.billModel.aggregate([
+        { $match: { status: 'active', paymentStatus: { $in: ['unpaid', 'partial'] } } },
+        { $group: { _id: null, totalOutstanding: { $sum: '$amountDue' } } },
       ]),
-      this.customerModel.countDocuments({}),
+      this.userModel.countDocuments({}),
       this.billModel.find({ status: 'active' }).sort({ createdAt: -1 }).limit(5).lean(),
     ]);
 
@@ -559,10 +618,10 @@ export class BillingService {
     bill.paymentStatus = newStatus as any;
     await bill.save();
 
-    // Update customer outstanding
+    // Update outstanding on User
     const reduction = prevDue - newDue;
     if (reduction > 0) {
-      await this.customerModel.findByIdAndUpdate(bill.customerId, {
+      await this.userModel.findByIdAndUpdate(bill.customerId, {
         $inc: { outstanding: -reduction },
       });
     }
