@@ -299,6 +299,107 @@ export class BillingService {
     return bill;
   }
 
+  // ─── Reports ─────────────────────────────────────────────────────────────
+
+  async getProductReport(filters: {
+    startDate?: string;
+    endDate?: string;
+    orderTag?: string;
+    customerId?: string;
+  }) {
+    const match: any = { status: 'active' };
+    if (filters.startDate || filters.endDate) {
+      match.createdAt = {};
+      if (filters.startDate) match.createdAt.$gte = new Date(filters.startDate);
+      if (filters.endDate) match.createdAt.$lte = new Date(filters.endDate);
+    }
+    if (filters.orderTag) match.orderTag = filters.orderTag;
+    if (filters.customerId) match.customerId = new Types.ObjectId(filters.customerId);
+
+    return this.billModel.aggregate([
+      { $match: match },
+      { $unwind: '$items' },
+      {
+        $group: {
+          _id: { sku: '$items.sku', name: '$items.name', hsnCode: '$items.hsnCode' },
+          totalQty: { $sum: '$items.qty' },
+          totalValue: { $sum: '$items.total' },
+          uniqueCustomers: { $addToSet: '$customerId' },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          sku: '$_id.sku',
+          name: '$_id.name',
+          hsnCode: '$_id.hsnCode',
+          totalQty: 1,
+          totalValue: 1,
+          uniqueCustomerCount: { $size: '$uniqueCustomers' },
+          avgRate: { $cond: [{ $gt: ['$totalQty', 0] }, { $divide: ['$totalValue', '$totalQty'] }, 0] },
+        },
+      },
+      { $sort: { totalValue: -1 } },
+    ]);
+  }
+
+  async getCustomerReport(filters: {
+    startDate?: string;
+    endDate?: string;
+    orderTag?: string;
+    productSku?: string;
+  }) {
+    const match: any = { status: 'active' };
+    if (filters.startDate || filters.endDate) {
+      match.createdAt = {};
+      if (filters.startDate) match.createdAt.$gte = new Date(filters.startDate);
+      if (filters.endDate) match.createdAt.$lte = new Date(filters.endDate);
+    }
+    if (filters.orderTag) match.orderTag = filters.orderTag;
+
+    const pipeline: any[] = [{ $match: match }, { $unwind: '$items' }];
+    if (filters.productSku?.trim()) {
+      pipeline.push({ $match: { 'items.sku': { $regex: filters.productSku.trim(), $options: 'i' } } });
+    }
+
+    pipeline.push(
+      {
+        $group: {
+          _id: { customerId: '$customerId', sku: '$items.sku' },
+          customerName: { $first: '$customerName' },
+          customerPhone: { $first: '$customerPhone' },
+          billingAddress: { $first: '$billingAddress' },
+          productName: { $first: '$items.name' },
+          hsnCode: { $first: '$items.hsnCode' },
+          qty: { $sum: '$items.qty' },
+          value: { $sum: '$items.total' },
+        },
+      },
+      {
+        $group: {
+          _id: '$_id.customerId',
+          customerName: { $first: '$customerName' },
+          customerPhone: { $first: '$customerPhone' },
+          billingAddress: { $first: '$billingAddress' },
+          totalQty: { $sum: '$qty' },
+          totalValue: { $sum: '$value' },
+          products: {
+            $push: {
+              sku: '$_id.sku',
+              name: '$productName',
+              hsnCode: '$hsnCode',
+              qty: '$qty',
+              value: '$value',
+            },
+          },
+        },
+      },
+      { $sort: { totalValue: -1 } },
+    );
+
+    return this.billModel.aggregate(pipeline);
+  }
+
   async recordPayment(id: string, amount: number) {
     const bill = await this.billModel.findById(id);
     if (!bill) throw new NotFoundException('Bill not found');

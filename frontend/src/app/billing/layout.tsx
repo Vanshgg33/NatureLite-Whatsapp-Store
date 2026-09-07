@@ -36,7 +36,7 @@ const BILLING_NAV: NavGroup[] = [
     label: 'Finance',
     items: [
       { name: 'Unpaid Dues', href: '/billing/dues', icon: AlertCircle, soon: true },
-      { name: 'Sales Reports', href: '/billing/reports', icon: BarChart3, soon: true },
+      { name: 'Sales Reports', href: '/billing/reports', icon: BarChart3 },
     ],
   },
   {

@@ -1928,6 +1928,16 @@ class ApiClient {
     const res = await this.client.post<ApiResponse<any>>(`/billing/bills/${id}/payment`, { amount });
     return res.data.data;
   }
+
+  async getBillingProductReport(params: { startDate?: string; endDate?: string; orderTag?: string; customerId?: string }): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>('/billing/reports/products', { params });
+    return res.data.data;
+  }
+
+  async getBillingCustomerReport(params: { startDate?: string; endDate?: string; orderTag?: string; productSku?: string }): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>('/billing/reports/customers', { params });
+    return res.data.data;
+  }
 }
 
 export const api = new ApiClient();

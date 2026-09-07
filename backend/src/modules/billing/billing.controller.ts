@@ -134,4 +134,16 @@ export class BillingController {
   recordPayment(@Param('id') id: string, @Body() body: { amount: number }) {
     return this.billingService.recordPayment(id, body.amount);
   }
+
+  // ─── Reports ───────────────────────────────────────────────────────────────
+
+  @Get('reports/products')
+  getProductReport(@Query() q: { startDate?: string; endDate?: string; orderTag?: string; customerId?: string }) {
+    return this.billingService.getProductReport(q);
+  }
+
+  @Get('reports/customers')
+  getCustomerReport(@Query() q: { startDate?: string; endDate?: string; orderTag?: string; productSku?: string }) {
+    return this.billingService.getCustomerReport(q);
+  }
 }
