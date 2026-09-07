@@ -373,15 +373,14 @@ export class BillingService {
 
   // ─── Insights ─────────────────────────────────────────────────────────────
 
-  async getTopCustomers(limit = 50) {
-    // Aggregate billing stats from BillingBill, then join User name/phone
-    const rows = await this.billModel.aggregate([
+  async getTopCustomers(limit = 200) {
+    return this.billModel.aggregate([
       { $match: { status: 'active' } },
       {
         $group: {
           _id: '$customerId',
-          customerName: { $first: '$customerName' },
-          customerPhone: { $first: '$customerPhone' },
+          name: { $first: '$customerName' },
+          phone: { $first: '$customerPhone' },
           totalPurchase: { $sum: '$grandTotal' },
           orderCount: { $sum: 1 },
           outstanding: { $sum: '$amountDue' },
@@ -389,8 +388,19 @@ export class BillingService {
       },
       { $sort: { totalPurchase: -1 } },
       { $limit: limit },
+      // Join User to get current tags
+      { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: '_user' } },
+      {
+        $project: {
+          name: 1,
+          phone: 1,
+          totalPurchase: 1,
+          orderCount: 1,
+          outstanding: 1,
+          tags: { $ifNull: [{ $arrayElemAt: ['$_user.tags', 0] }, []] },
+        },
+      },
     ]);
-    return rows;
   }
 
   // ─── GSTR-1 ───────────────────────────────────────────────────────────────

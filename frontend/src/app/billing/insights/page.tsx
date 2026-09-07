@@ -21,7 +21,7 @@ const TAG_COLORS: Record<string, string> = {
 export default function InsightsPage() {
   const { data = [], isLoading } = useQuery({
     queryKey: ['billing-insights-customers'],
-    queryFn: () => api.getBillingTopCustomers(50),
+    queryFn: () => api.getBillingTopCustomers(200),
   });
 
   const totalRevenue = data.reduce((s: number, c: any) => s + c.totalPurchase, 0);
