@@ -30,10 +30,21 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function thirtyDaysAgo() {
+function daysAgo(n: number) {
   const d = new Date();
-  d.setDate(d.getDate() - 30);
+  d.setDate(d.getDate() - n);
   return d.toISOString().slice(0, 10);
+}
+
+function startOfWeek() {
+  const d = new Date();
+  d.setDate(d.getDate() - d.getDay());
+  return d.toISOString().slice(0, 10);
+}
+
+function startOfMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
 }
 
 function toISO(date: string, time: string, sec = '00') {
@@ -84,67 +95,97 @@ interface FilterState {
   productSku: string;
 }
 
+const PRESETS = [
+  { label: 'All time', start: '', end: '' },
+  { label: 'Today', start: today(), end: today() },
+  { label: 'This week', start: startOfWeek(), end: today() },
+  { label: 'This month', start: startOfMonth(), end: today() },
+  { label: 'Last 30 days', start: daysAgo(30), end: today() },
+];
+
 function FilterBar({ filters, onChange }: { filters: FilterState; onChange: (f: FilterState) => void }) {
   const set = (k: keyof FilterState, v: string) => onChange({ ...filters, [k]: v });
 
+  const activePreset = PRESETS.find(p => p.start === filters.startDate && p.end === filters.endDate)?.label;
+
   return (
-    <div className="bg-white rounded-2xl p-4 shadow-sm flex flex-wrap gap-3 items-end">
-      <div>
-        <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">From date</label>
-        <input
-          type="date"
-          value={filters.startDate}
-          onChange={e => set('startDate', e.target.value)}
-          className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f]"
-        />
+    <div className="bg-white rounded-2xl p-4 shadow-sm space-y-3">
+      {/* Quick presets */}
+      <div className="flex flex-wrap gap-2">
+        {PRESETS.map(p => (
+          <button
+            key={p.label}
+            onClick={() => onChange({ ...filters, startDate: p.start, endDate: p.end, startTime: '00:00', endTime: '23:59' })}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+              activePreset === p.label
+                ? 'bg-[#2d7a4f] text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
       </div>
-      <div>
-        <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Time from</label>
-        <input
-          type="time"
-          value={filters.startTime}
-          onChange={e => set('startTime', e.target.value)}
-          className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f]"
-        />
-      </div>
-      <div>
-        <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">To date</label>
-        <input
-          type="date"
-          value={filters.endDate}
-          onChange={e => set('endDate', e.target.value)}
-          className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f]"
-        />
-      </div>
-      <div>
-        <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Time to</label>
-        <input
-          type="time"
-          value={filters.endTime}
-          onChange={e => set('endTime', e.target.value)}
-          className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f]"
-        />
-      </div>
-      <div>
-        <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Order tag</label>
-        <select
-          value={filters.orderTag}
-          onChange={e => set('orderTag', e.target.value)}
-          className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f] bg-white"
-        >
-          <option value="">All tags</option>
-          {ORDER_TAGS.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
-      </div>
-      <div>
-        <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Filter by SKU</label>
-        <input
-          type="text"
-          value={filters.productSku}
-          onChange={e => set('productSku', e.target.value)}
-          placeholder="e.g. NL-001"
-          className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f] w-32"
-        />
+
+      {/* Custom date/filter row */}
+      <div className="flex flex-wrap gap-3 items-end">
+        <div>
+          <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">From date</label>
+          <input
+            type="date"
+            value={filters.startDate}
+            onChange={e => set('startDate', e.target.value)}
+            className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f]"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Time from</label>
+          <input
+            type="time"
+            value={filters.startTime}
+            onChange={e => set('startTime', e.target.value)}
+            className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f]"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">To date</label>
+          <input
+            type="date"
+            value={filters.endDate}
+            onChange={e => set('endDate', e.target.value)}
+            className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f]"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Time to</label>
+          <input
+            type="time"
+            value={filters.endTime}
+            onChange={e => set('endTime', e.target.value)}
+            className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f]"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Order tag</label>
+          <select
+            value={filters.orderTag}
+            onChange={e => set('orderTag', e.target.value)}
+            className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f] bg-white"
+          >
+            <option value="">All tags</option>
+            {ORDER_TAGS.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Filter by SKU</label>
+          <input
+            type="text"
+            value={filters.productSku}
+            onChange={e => set('productSku', e.target.value)}
+            placeholder="e.g. NL-001"
+            className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f] w-32"
+          />
+        </div>
       </div>
     </div>
   );
@@ -326,8 +367,8 @@ function Spinner() {
 export default function SalesReportsPage() {
   const [tab, setTab] = useState<'product' | 'customer'>('product');
   const [filters, setFilters] = useState<FilterState>({
-    startDate: thirtyDaysAgo(),
-    endDate: today(),
+    startDate: '',
+    endDate: '',
     startTime: '00:00',
     endTime: '23:59',
     orderTag: '',
