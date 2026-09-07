@@ -341,7 +341,11 @@ export class BillingService {
     const match: any = { status: 'active' };
     if (month) {
       const [y, m] = month.split('-').map(Number);
-      match.createdAt = { $gte: new Date(y, m - 1, 1), $lte: new Date(y, m, 0, 23, 59, 59) };
+      const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+      match.createdAt = {
+        $gte: new Date(Date.UTC(y, m - 1, 1) - IST_OFFSET_MS),
+        $lte: new Date(Date.UTC(y, m, 0, 23, 59, 59, 999) - IST_OFFSET_MS),
+      };
     }
     return this.billModel.aggregate([
       { $match: match },
@@ -409,9 +413,10 @@ export class BillingService {
   // ─── Dashboard ────────────────────────────────────────────────────────────
 
   async getDashboard() {
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+    const nowIST = new Date(Date.now() + IST_OFFSET_MS);
+    const startOfToday = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate()) - IST_OFFSET_MS);
+    const startOfMonth = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), 1) - IST_OFFSET_MS);
 
     const [todayStats, monthStats, outstandingAgg, customerCount, recentBills] = await Promise.all([
       this.billModel.aggregate([

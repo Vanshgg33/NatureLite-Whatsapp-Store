@@ -333,6 +333,7 @@ export default function NewBillPage() {
     mutationFn: async (print: boolean) => {
       if (!customer) throw new Error('Select a customer first');
       if (!items.length) throw new Error('Add at least one product');
+      if (!orderTag) throw new Error('Select an order tag');
       const address = customer.addresses?.[selectedAddrIdx]?.line;
       const bill = await api.createBillingBill({
         customerId: customer._id,

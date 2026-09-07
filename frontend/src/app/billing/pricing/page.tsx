@@ -101,9 +101,13 @@ export default function BillingPricingPage() {
         toast({ title: 'No valid rows found in CSV', variant: 'destructive' });
         return;
       }
-      await api.bulkUpsertBillingTagPrices(rows);
-      qc.invalidateQueries({ queryKey: ['billing-tag-prices'] });
-      toast({ title: `${rows.length} prices uploaded` });
+      try {
+        await api.bulkUpsertBillingTagPrices(rows);
+        qc.invalidateQueries({ queryKey: ['billing-tag-prices'] });
+        toast({ title: `${rows.length} prices uploaded` });
+      } catch {
+        toast({ title: 'Upload failed — check CSV format', variant: 'destructive' });
+      }
     };
     reader.readAsText(file);
     e.target.value = '';

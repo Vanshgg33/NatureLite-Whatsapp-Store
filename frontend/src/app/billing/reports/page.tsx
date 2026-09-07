@@ -37,7 +37,7 @@ function thirtyDaysAgo() {
 }
 
 function toISO(date: string, time: string, sec = '00') {
-  return date ? `${date}T${time}:${sec}` : undefined;
+  return date ? `${date}T${time}:${sec}+05:30` : undefined;
 }
 
 // ── CSV export ───────────────────────────────────────────────────────────────
