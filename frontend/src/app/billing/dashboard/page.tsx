@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { LayoutDashboard, Users, FileText, AlertCircle, TrendingUp, IndianRupee } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, AlertCircle, TrendingUp, IndianRupee, Globe } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Header } from '@/components/layout/header';
 
@@ -15,6 +15,7 @@ const ICON_BG: Record<string, string> = {
   'text-green-600': 'bg-green-100',
   'text-blue-600': 'bg-blue-100',
   'text-red-500': 'bg-red-100',
+  'text-violet-600': 'bg-violet-100',
 };
 
 function StatCard({ label, value, sub, icon: Icon, color }: { label: string; value: string; sub?: string; icon: any; color: string }) {
@@ -56,23 +57,34 @@ export default function DashboardPage() {
           </div>
         ) : (
           <>
+            {/* All time */}
+            <div>
+              <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-2">All Time</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <StatCard label="Total Revenue" value={fmt(data?.allTime?.total ?? 0)} sub={`${data?.allTime?.count ?? 0} bills`} icon={Globe} color="text-violet-600" />
+                <StatCard label="Total Collected" value={fmt(data?.allTime?.collected ?? 0)} icon={TrendingUp} color="text-green-600" />
+                <StatCard label="Outstanding Dues" value={fmt(data?.outstanding ?? 0)} icon={AlertCircle} color="text-red-500" />
+                <StatCard label="Total Customers" value={String(data?.customerCount ?? 0)} icon={Users} color="text-blue-600" />
+              </div>
+            </div>
+
             {/* Today */}
             <div>
               <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-2">Today</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <StatCard label="Today's Sales" value={fmt(data?.today?.total ?? 0)} sub={`${data?.today?.count ?? 0} bills`} icon={IndianRupee} color="text-[#2d7a4f]" />
                 <StatCard label="Collected Today" value={fmt(data?.today?.collected ?? 0)} icon={TrendingUp} color="text-green-600" />
-                <StatCard label="Total Customers" value={String(data?.customerCount ?? 0)} icon={Users} color="text-blue-600" />
+                <StatCard label="Pending Today" value={fmt((data?.today?.total ?? 0) - (data?.today?.collected ?? 0))} icon={AlertCircle} color="text-red-500" />
               </div>
             </div>
 
             {/* This month */}
             <div>
-              <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-2">This month</p>
+              <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-2">This Month</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <StatCard label="Month Sales" value={fmt(data?.month?.total ?? 0)} sub={`${data?.month?.count ?? 0} bills`} icon={FileText} color="text-[#2d7a4f]" />
                 <StatCard label="Month Collected" value={fmt(data?.month?.collected ?? 0)} icon={TrendingUp} color="text-green-600" />
-                <StatCard label="Outstanding Dues" value={fmt(data?.outstanding ?? 0)} icon={AlertCircle} color="text-red-500" />
+                <StatCard label="Month Due" value={fmt(data?.month?.due ?? 0)} icon={AlertCircle} color="text-red-500" />
               </div>
             </div>
 

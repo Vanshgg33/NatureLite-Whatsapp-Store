@@ -486,7 +486,7 @@ export class BillingService {
     const startOfToday = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate()) - IST_OFFSET_MS);
     const startOfMonth = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), 1) - IST_OFFSET_MS);
 
-    const [todayStats, monthStats, outstandingAgg, customerCount, recentBills] = await Promise.all([
+    const [todayStats, monthStats, allTimeStats, outstandingAgg, customerCount, recentBills] = await Promise.all([
       this.billModel.aggregate([
         { $match: { status: 'active', createdAt: { $gte: startOfToday } } },
         { $group: { _id: null, total: { $sum: '$grandTotal' }, count: { $sum: 1 }, collected: { $sum: '$amountPaid' } } },
@@ -496,16 +496,21 @@ export class BillingService {
         { $group: { _id: null, total: { $sum: '$grandTotal' }, count: { $sum: 1 }, collected: { $sum: '$amountPaid' }, due: { $sum: '$amountDue' } } },
       ]),
       this.billModel.aggregate([
+        { $match: { status: 'active' } },
+        { $group: { _id: null, total: { $sum: '$grandTotal' }, count: { $sum: 1 }, collected: { $sum: '$amountPaid' } } },
+      ]),
+      this.billModel.aggregate([
         { $match: { status: 'active', paymentStatus: { $in: ['unpaid', 'partial'] } } },
         { $group: { _id: null, totalOutstanding: { $sum: '$amountDue' } } },
       ]),
       this.userModel.countDocuments({}),
-      this.billModel.find({ status: 'active' }).sort({ createdAt: -1 }).limit(5).lean(),
+      this.billModel.find({ status: 'active' }).sort({ createdAt: -1 }).limit(10).lean(),
     ]);
 
     return {
       today: todayStats[0] ?? { total: 0, count: 0, collected: 0 },
       month: monthStats[0] ?? { total: 0, count: 0, collected: 0, due: 0 },
+      allTime: allTimeStats[0] ?? { total: 0, count: 0, collected: 0 },
       outstanding: outstandingAgg[0]?.totalOutstanding ?? 0,
       customerCount,
       recentBills,
