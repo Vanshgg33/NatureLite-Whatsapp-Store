@@ -117,18 +117,21 @@ export default function FmsLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user, hasHydrated } = useAdminAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const isSuperadmin = user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
+  const hasFmsAccess = user?.departmentType === 'fms' || isSuperadmin;
+
   useEffect(() => {
     if (!hasHydrated) return;
     if (!isAuthenticated) {
       router.push('/admin-login');
       return;
     }
-    if (user?.departmentType !== 'fms') {
+    if (!hasFmsAccess) {
       router.push('/admin/dashboard');
     }
-  }, [hasHydrated, isAuthenticated, user, router]);
+  }, [hasHydrated, isAuthenticated, hasFmsAccess, router]);
 
-  if (!hasHydrated || !isAuthenticated || user?.departmentType !== 'fms') return null;
+  if (!hasHydrated || !isAuthenticated || !hasFmsAccess) return null;
 
   return (
     <div className="flex h-screen bg-[#faf9f6]">

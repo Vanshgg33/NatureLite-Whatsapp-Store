@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { ShoppingBag, TrendingUp, Clock, CheckCircle2, AlertCircle, Timer } from 'lucide-react';
+import { ShoppingBag, TrendingUp, Clock, CheckCircle2, AlertCircle, Timer, Plus, Package } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { Header } from '@/components/layout/header';
@@ -65,6 +65,24 @@ export default function FmsPurchasePage() {
         title="Purchase FMS"
         description="Raw material procurement pipeline"
         icon={<ShoppingBag className="h-6 w-6 text-amber-600" />}
+        action={
+          <div className="flex items-center gap-2">
+            {(user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin')) && (
+              <Link href="/fms/purchase/materials">
+                <Button variant="outline" size="sm" className="text-xs">
+                  <Package className="h-3.5 w-3.5 mr-1" /> Materials
+                </Button>
+              </Link>
+            )}
+            {(user?.purchaseRole === 'requester' || user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin')) && (
+              <Link href="/fms/purchase/new">
+                <Button size="sm" className="text-xs bg-[#2F6B47] hover:bg-[#2F6B47]/90">
+                  <Plus className="h-3.5 w-3.5 mr-1" /> New Request
+                </Button>
+              </Link>
+            )}
+          </div>
+        }
       />
 
       <div className="flex-1 overflow-auto p-6 space-y-6">
@@ -132,7 +150,7 @@ export default function FmsPurchasePage() {
               {activeQueue.map((req: any) => (
                 <Link
                   key={req._id}
-                  href={`/admin/purchase/${req._id}`}
+                  href={`/fms/purchase/${req._id}`}
                   className="flex items-center justify-between px-4 py-3 border-b border-amber-100 last:border-0 hover:bg-amber-100/50 transition-colors"
                 >
                   <div className="min-w-0">
@@ -199,7 +217,7 @@ export default function FmsPurchasePage() {
                         </td>
                         <td className="px-4 py-2 text-gray-500 text-xs">{fmtIST(req.createdAt)}</td>
                         <td className="px-4 py-2 text-right">
-                          <Link href={`/admin/purchase/${req._id}`}>
+                          <Link href={`/fms/purchase/${req._id}`}>
                             <Button variant="ghost" size="sm" className="text-xs">View</Button>
                           </Link>
                         </td>

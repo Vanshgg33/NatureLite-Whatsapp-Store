@@ -62,12 +62,8 @@ export default function AdminLayout({
     }
 
     if (isFms) {
-      // Only allow detail pages /admin/purchase/[id] (and print); everything else → FMS app
-      const isAllowedDetail = /^\/admin\/purchase\/.+/.test(pathname);
-      if (!isAllowedDetail) {
-        router.replace('/fms/purchase');
-        return;
-      }
+      router.replace('/fms/purchase');
+      return;
     }
 
     if (isCrm) {
