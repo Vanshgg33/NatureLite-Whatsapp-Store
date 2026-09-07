@@ -22,7 +22,7 @@ const BILLING_NAV: NavGroup[] = [
     label: 'Billing',
     items: [
       { name: 'New Bill', href: '/billing/new', icon: Plus },
-      { name: 'Dashboard', href: '/billing/dashboard', icon: LayoutDashboard, soon: true },
+      { name: 'Dashboard', href: '/billing/dashboard', icon: LayoutDashboard },
     ],
   },
   {
@@ -35,15 +35,15 @@ const BILLING_NAV: NavGroup[] = [
   {
     label: 'Finance',
     items: [
-      { name: 'Unpaid Dues', href: '/billing/dues', icon: AlertCircle, soon: true },
+      { name: 'Unpaid Dues', href: '/billing/dues', icon: AlertCircle },
       { name: 'Sales Reports', href: '/billing/reports', icon: BarChart3 },
     ],
   },
   {
     label: 'Insights',
     items: [
-      { name: 'Customer Insights', href: '/billing/insights', icon: Trophy, soon: true },
-      { name: 'GSTR-1', href: '/billing/gstr1', icon: FileSpreadsheet, soon: true },
+      { name: 'Customer Insights', href: '/billing/insights', icon: Trophy },
+      { name: 'GSTR-1', href: '/billing/gstr1', icon: FileSpreadsheet },
     ],
   },
 ];

@@ -1938,6 +1938,26 @@ class ApiClient {
     const res = await this.client.get<ApiResponse<any[]>>('/billing/reports/customers', { params });
     return res.data.data;
   }
+
+  async getBillingDues(): Promise<{ bills: any[]; totalDue: number; count: number; unpaid: number; partial: number }> {
+    const res = await this.client.get<ApiResponse<any>>('/billing/dues');
+    return res.data.data;
+  }
+
+  async getBillingTopCustomers(limit = 50): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>('/billing/insights/customers', { params: { limit } });
+    return res.data.data;
+  }
+
+  async getBillingGstr1(month?: string): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>('/billing/gstr1', { params: { month } });
+    return res.data.data;
+  }
+
+  async getBillingDashboard(): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>('/billing/dashboard');
+    return res.data.data;
+  }
 }
 
 export const api = new ApiClient();

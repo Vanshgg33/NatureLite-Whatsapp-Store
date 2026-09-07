@@ -135,6 +135,34 @@ export class BillingController {
     return this.billingService.recordPayment(id, body.amount);
   }
 
+  // ─── Dues ──────────────────────────────────────────────────────────────────
+
+  @Get('dues')
+  getDues() {
+    return this.billingService.getDues();
+  }
+
+  // ─── Insights ──────────────────────────────────────────────────────────────
+
+  @Get('insights/customers')
+  getTopCustomers(@Query('limit') limit?: string) {
+    return this.billingService.getTopCustomers(limit ? parseInt(limit) : 50);
+  }
+
+  // ─── GSTR-1 ────────────────────────────────────────────────────────────────
+
+  @Get('gstr1')
+  getGstr1(@Query('month') month?: string) {
+    return this.billingService.getGstr1(month);
+  }
+
+  // ─── Dashboard ─────────────────────────────────────────────────────────────
+
+  @Get('dashboard')
+  getDashboard() {
+    return this.billingService.getDashboard();
+  }
+
   // ─── Reports ───────────────────────────────────────────────────────────────
 
   @Get('reports/products')
