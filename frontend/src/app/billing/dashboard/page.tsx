@@ -10,6 +10,13 @@ function fmt(n: number) {
   return '₹' + (n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+const ICON_BG: Record<string, string> = {
+  'text-[#2d7a4f]': 'bg-[#e8f5ee]',
+  'text-green-600': 'bg-green-100',
+  'text-blue-600': 'bg-blue-100',
+  'text-red-500': 'bg-red-100',
+};
+
 function StatCard({ label, value, sub, icon: Icon, color }: { label: string; value: string; sub?: string; icon: any; color: string }) {
   return (
     <div className="bg-white rounded-2xl shadow-sm p-5">
@@ -19,7 +26,7 @@ function StatCard({ label, value, sub, icon: Icon, color }: { label: string; val
           <p className={`text-2xl font-bold ${color}`}>{value}</p>
           {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
         </div>
-        <div className={`h-10 w-10 rounded-xl bg-opacity-10 flex items-center justify-center ${color.replace('text-', 'bg-').replace('-600', '-50').replace('-500', '-50')}`}>
+        <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${ICON_BG[color] ?? 'bg-gray-100'}`}>
           <Icon className={`h-5 w-5 ${color}`} />
         </div>
       </div>
