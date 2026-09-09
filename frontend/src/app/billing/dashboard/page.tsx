@@ -20,15 +20,15 @@ const ICON_BG: Record<string, string> = {
 
 function StatCard({ label, value, sub, icon: Icon, color }: { label: string; value: string; sub?: string; icon: any; color: string }) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm p-5">
+    <div className="bg-white border border-gray-200 rounded-lg p-4">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-[11px] text-gray-400 uppercase tracking-wide font-semibold mb-1">{label}</p>
-          <p className={`text-2xl font-bold ${color}`}>{value}</p>
-          {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+          <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold mb-1">{label}</p>
+          <p className={`text-xl font-bold tabular-nums ${color}`}>{value}</p>
+          {sub && <p className="text-[11px] text-gray-400 mt-0.5">{sub}</p>}
         </div>
-        <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${ICON_BG[color] ?? 'bg-gray-100'}`}>
-          <Icon className={`h-5 w-5 ${color}`} />
+        <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${ICON_BG[color] ?? 'bg-gray-100'}`}>
+          <Icon className={`h-4 w-4 ${color}`} />
         </div>
       </div>
     </div>
@@ -43,14 +43,14 @@ export default function DashboardPage() {
   });
 
   return (
-    <div className="min-h-screen bg-[#faf9f6]">
+    <div className="min-h-full">
       <Header
         title="Dashboard"
-        description="Billing overview and quick actions"
-        icon={<LayoutDashboard className="h-6 w-6 text-[#2d7a4f]" />}
+        description="Billing overview"
+        icon={<LayoutDashboard className="h-5 w-5 text-[#2d7a4f]" />}
       />
 
-      <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-5">
+      <div className="p-4 md:p-5 space-y-4">
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
             <div className="h-8 w-8 border-2 border-[#2d7a4f] border-t-transparent rounded-full animate-spin" />
@@ -92,12 +92,12 @@ export default function DashboardPage() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
                 { label: 'New Bill', href: '/billing/new', icon: FileText, color: 'bg-[#2d7a4f] text-white' },
-                { label: 'Customers', href: '/billing/customers', icon: Users, color: 'bg-blue-50 text-blue-700' },
-                { label: 'Unpaid Dues', href: '/billing/dues', icon: AlertCircle, color: 'bg-red-50 text-red-600' },
-                { label: 'Sales Reports', href: '/billing/reports', icon: TrendingUp, color: 'bg-amber-50 text-amber-700' },
+                { label: 'Customers', href: '/billing/customers', icon: Users, color: 'bg-blue-50 text-blue-700 border border-blue-200' },
+                { label: 'Unpaid Dues', href: '/billing/dues', icon: AlertCircle, color: 'bg-red-50 text-red-600 border border-red-200' },
+                { label: 'Sales Reports', href: '/billing/reports', icon: TrendingUp, color: 'bg-amber-50 text-amber-700 border border-amber-200' },
               ].map(q => (
-                <Link key={q.href} href={q.href} className={`${q.color} rounded-2xl p-4 flex items-center gap-3 shadow-sm hover:opacity-90 transition-opacity`}>
-                  <q.icon className="h-5 w-5 shrink-0" />
+                <Link key={q.href} href={q.href} className={`${q.color} rounded-lg p-3.5 flex items-center gap-2.5 hover:opacity-90 transition-opacity`}>
+                  <q.icon className="h-4 w-4 shrink-0" />
                   <span className="font-medium text-sm">{q.label}</span>
                 </Link>
               ))}
@@ -105,13 +105,13 @@ export default function DashboardPage() {
 
             {/* Recent bills */}
             {(data?.recentBills ?? []).length > 0 && (
-              <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-                <div className="px-5 py-3 border-b bg-gray-50 text-xs text-gray-500 uppercase tracking-wide font-semibold">
+              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-gray-200 bg-gray-50 text-[10px] text-gray-500 uppercase tracking-wide font-semibold">
                   Recent Bills
                 </div>
-                <div className="divide-y divide-gray-50">
+                <div className="divide-y divide-gray-100">
                   {data.recentBills.map((b: any) => (
-                    <div key={b._id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
+                    <div key={b._id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors">
                       <div className="h-8 w-8 rounded-full bg-[#e8f5ee] flex items-center justify-center text-[#2d7a4f] font-bold text-xs shrink-0">
                         {b.customerName?.[0]?.toUpperCase()}
                       </div>

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
 import {
-  Users, FileText, ReceiptText, AlertCircle, BarChart3, Trophy, FileSpreadsheet,
+  Users, FileText, AlertCircle, BarChart3, Trophy, FileSpreadsheet,
   LayoutDashboard, Plus, LogOut, Menu, X, type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -64,31 +64,26 @@ function BillingSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; on
   };
 
   const content = (
-    <div className="flex h-full w-64 flex-col bg-[#1E3D2B]">
+    <div className="flex h-full w-[220px] flex-col bg-[#1A3625]">
       {/* Logo */}
-      <div className="relative flex items-center gap-3 px-4 py-5 border-b border-white/10 flex-shrink-0">
-        {onMobileClose && (
-          <button
-            className="absolute right-3 top-3 md:hidden p-1 text-white/40 hover:text-white/70"
-            onClick={onMobileClose}
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
-        <Link href="/billing/customers" className="flex items-center gap-3" onClick={onMobileClose}>
-          <Image src="/images/logo.png" alt="NatureLite" width={36} height={36} className="object-contain rounded-full flex-shrink-0" />
-          <div className="flex flex-col leading-none">
-            <span className="text-white font-semibold text-[13px] tracking-tight">Nature Lite Foods</span>
-            <span className="text-[#4ade80]/70 text-[9px] tracking-[0.1em] uppercase font-mono mt-0.5">Billing System</span>
+      <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-white/10 flex-shrink-0">
+        <Link href="/billing/customers" className="flex items-center gap-2.5 min-w-0" onClick={onMobileClose}>
+          <Image src="/images/logo.png" alt="NatureLite" width={28} height={28} className="object-contain rounded-full flex-shrink-0" />
+          <div className="flex flex-col leading-none min-w-0">
+            <span className="text-white font-semibold text-[12.5px] tracking-tight truncate">Nature Lite</span>
+            <span className="text-[#4ade80]/50 text-[9px] tracking-[0.14em] uppercase font-mono mt-0.5">Billing</span>
           </div>
         </Link>
+        <button className="ml-auto md:hidden p-1 text-white/40 hover:text-white/70 shrink-0" onClick={onMobileClose}>
+          <X className="h-4 w-4" />
+        </button>
       </div>
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-2 scrollbar-thin">
         {BILLING_NAV.map((group, gi) => (
-          <div key={gi} className="mt-1">
-            <p className="px-4 pt-2.5 pb-1 text-[9px] font-mono text-white/30 uppercase tracking-[0.14em] select-none">
+          <div key={gi} className="mt-2 first:mt-1">
+            <p className="px-4 pt-2 pb-1 text-[9px] font-semibold text-white/25 uppercase tracking-[0.15em] select-none">
               {group.label}
             </p>
             {group.items.map((item) => {
@@ -96,26 +91,23 @@ function BillingSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; on
               return (
                 <div key={item.href}>
                   {item.soon ? (
-                    <span className={cn(
-                      'flex items-center gap-2.5 text-[13px] py-[7px] mx-2 px-3 rounded-lg text-white/30 cursor-not-allowed select-none',
-                    )}>
-                      <item.icon className="h-[15px] w-[15px] flex-shrink-0 opacity-40" />
+                    <span className="flex items-center gap-2.5 text-[12.5px] py-[7px] mx-2 px-3 rounded-md text-white/25 cursor-not-allowed select-none">
+                      <item.icon className="h-[13px] w-[13px] flex-shrink-0 opacity-40" />
                       {item.name}
-                      <span className="ml-auto text-[9px] bg-white/10 px-1.5 py-0.5 rounded font-mono text-white/40">soon</span>
+                      <span className="ml-auto text-[9px] bg-white/10 px-1.5 py-0.5 rounded font-mono text-white/25">soon</span>
                     </span>
                   ) : (
                     <Link
                       href={item.href}
                       onClick={onMobileClose}
                       className={cn(
-                        'flex items-center gap-2.5 text-[13px] py-[7px]',
+                        'flex items-center gap-2.5 text-[12.5px] py-[7px] mx-2 px-3 rounded-md transition-colors',
                         isActive
-                          ? 'ml-0 mr-2 pl-5 rounded-r-lg border-l-2 border-[#4ade80] bg-[rgba(74,222,128,0.1)] text-[#4ade80] font-medium'
-                          : 'mx-2 px-3 rounded-lg text-white/60 hover:text-white/90 hover:bg-white/[0.06]'
+                          ? 'bg-[#2d7a4f] text-white font-medium'
+                          : 'text-white/55 hover:text-white/85 hover:bg-white/[0.07]'
                       )}
-                      style={{ transition: 'background-color 0.1s, color 0.1s' }}
                     >
-                      <item.icon className={cn('h-[15px] w-[15px] flex-shrink-0', isActive ? 'opacity-100' : 'opacity-65')} />
+                      <item.icon className={cn('h-[13px] w-[13px] flex-shrink-0', isActive ? 'opacity-100' : 'opacity-60')} />
                       {item.name}
                     </Link>
                   )}
@@ -127,20 +119,19 @@ function BillingSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; on
       </nav>
 
       {/* Footer */}
-      <div className="border-t border-white/10 p-3 flex-shrink-0">
-        <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg bg-white/[0.06] mb-2">
-          <div className="h-7 w-7 rounded-md bg-[#2F6B47] flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
+      <div className="border-t border-white/10 p-2.5 flex-shrink-0">
+        <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-white/[0.06] mb-1.5">
+          <div className="h-6 w-6 rounded bg-[#2F6B47] flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0">
             {userInitial}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-white/80 text-[12.5px] font-medium truncate leading-tight">{user?.name ?? 'Admin'}</p>
+            <p className="text-white/80 text-[12px] font-medium truncate leading-tight">{user?.name ?? 'Admin'}</p>
             <p className="text-white/35 text-[10px] font-mono truncate leading-tight">{user?.role ?? 'admin'}</p>
           </div>
         </div>
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-white/45 hover:text-white/75 hover:bg-white/[0.06] text-[13px] cursor-pointer"
-          style={{ transition: 'color 0.1s, background-color 0.1s' }}
+          className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-white/40 hover:text-white/70 hover:bg-white/[0.06] text-[12px] cursor-pointer transition-colors"
         >
           <LogOut className="h-3.5 w-3.5" />
           Logout
@@ -151,14 +142,14 @@ function BillingSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; on
 
   return (
     <>
-      <aside className="hidden md:flex md:w-64 md:flex-shrink-0 md:flex-col">{content}</aside>
+      <aside className="hidden md:flex md:w-[220px] md:flex-shrink-0 md:flex-col">{content}</aside>
       {mounted && (
         <>
           {mobileOpen && (
             <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={onMobileClose} />
           )}
           <div className={cn(
-            'fixed inset-y-0 left-0 z-50 w-64 shadow-2xl transition-transform duration-200 ease-out md:hidden',
+            'fixed inset-y-0 left-0 z-50 w-[220px] shadow-2xl transition-transform duration-200 ease-out md:hidden',
             mobileOpen ? 'translate-x-0' : '-translate-x-full',
           )}>
             {content}
@@ -182,15 +173,15 @@ export default function BillingLayout({ children }: { children: React.ReactNode 
   if (!hasHydrated || !isAuthenticated) return null;
 
   return (
-    <div className="flex h-screen bg-[#faf9f6]">
+    <div className="flex h-screen bg-[#EDEEF2]">
       <BillingSidebar mobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)} />
       <div className="flex flex-1 flex-col min-w-0">
         {/* Mobile top bar */}
-        <div className="flex md:hidden h-14 items-center gap-3 border-b bg-[#faf9f6] px-4 shrink-0">
-          <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
-            <Menu className="h-5 w-5" />
+        <div className="flex md:hidden h-12 items-center gap-3 border-b bg-white px-4 shrink-0">
+          <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} aria-label="Open menu" className="h-8 w-8">
+            <Menu className="h-4 w-4" />
           </Button>
-          <span className="font-semibold text-gray-900">Billing</span>
+          <span className="font-semibold text-sm text-gray-800">Billing</span>
         </div>
         <main className="flex-1 overflow-auto">
           <ErrorBoundary>{children}</ErrorBoundary>

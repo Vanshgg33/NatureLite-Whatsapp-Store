@@ -2,14 +2,12 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Plus, Pencil, X, MapPin, Phone, Building2 } from 'lucide-react';
+import { Search, Plus, Pencil, X, MapPin } from 'lucide-react';
 import { api } from '@/lib/api';
-import { useDebouncedValue } from '@/lib/utils';
+import { useDebouncedValue, cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
-import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
@@ -18,17 +16,26 @@ const ALL_TAGS = ['B2B', 'Transport', 'Home Delivery', 'Store/Retail', 'Wholesal
 type CTag = typeof ALL_TAGS[number];
 
 const TAG_COLORS: Record<CTag, string> = {
-  B2B: 'bg-blue-100 text-blue-700 border-blue-200',
-  Transport: 'bg-orange-100 text-orange-700 border-orange-200',
-  'Home Delivery': 'bg-teal-100 text-teal-700 border-teal-200',
-  'Store/Retail': 'bg-purple-100 text-purple-700 border-purple-200',
-  Wholesale: 'bg-amber-100 text-amber-700 border-amber-200',
-  Retail: 'bg-pink-100 text-pink-700 border-pink-200',
+  B2B: 'bg-blue-50 text-blue-700',
+  Transport: 'bg-orange-50 text-orange-700',
+  'Home Delivery': 'bg-teal-50 text-teal-700',
+  'Store/Retail': 'bg-purple-50 text-purple-700',
+  Wholesale: 'bg-amber-50 text-amber-700',
+  Retail: 'bg-pink-50 text-pink-700',
+};
+
+const TAG_FILTER_ACTIVE: Record<CTag, string> = {
+  B2B: 'bg-blue-100 text-blue-700 border-blue-300',
+  Transport: 'bg-orange-100 text-orange-700 border-orange-300',
+  'Home Delivery': 'bg-teal-100 text-teal-700 border-teal-300',
+  'Store/Retail': 'bg-purple-100 text-purple-700 border-purple-300',
+  Wholesale: 'bg-amber-100 text-amber-700 border-amber-300',
+  Retail: 'bg-pink-100 text-pink-700 border-pink-300',
 };
 
 function TagBadge({ tag }: { tag: string }) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${TAG_COLORS[tag as CTag] ?? 'bg-gray-100 text-gray-700'}`}>
+    <span className={cn('inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium', TAG_COLORS[tag as CTag] ?? 'bg-gray-100 text-gray-600')}>
       {tag}
     </span>
   );
@@ -109,11 +116,12 @@ function CustomerForm({
               key={t}
               type="button"
               onClick={() => toggleTag(t)}
-              className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+              className={cn(
+                'px-3 py-1 rounded text-xs font-medium border transition-all',
                 form.tags.includes(t)
-                  ? TAG_COLORS[t] + ' ring-2 ring-offset-1 ring-current'
+                  ? TAG_FILTER_ACTIVE[t]
                   : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'
-              }`}
+              )}
             >
               {t}
             </button>
@@ -124,7 +132,7 @@ function CustomerForm({
       <div>
         <label className="text-xs font-medium text-gray-600 mb-1.5 block">Addresses</label>
         {form.addresses.map((a, i) => (
-          <div key={i} className="flex items-center gap-2 mb-1.5 bg-gray-50 px-3 py-2 rounded-lg text-sm">
+          <div key={i} className="flex items-center gap-2 mb-1.5 bg-gray-50 px-3 py-2 rounded text-sm">
             <MapPin className="h-3.5 w-3.5 text-gray-400 shrink-0" />
             <span className="font-medium text-gray-600 shrink-0">{a.label}:</span>
             <span className="flex-1 text-gray-700 truncate">{a.line}</span>
@@ -141,7 +149,7 @@ function CustomerForm({
           <select
             value={addrLabel}
             onChange={e => setAddrLabel(e.target.value)}
-            className="text-sm border rounded-md px-2 py-1.5 bg-white"
+            className="text-sm border rounded px-2 py-1.5 bg-white"
           >
             <option>Home</option>
             <option>Shop</option>
@@ -173,8 +181,9 @@ function CustomerForm({
 
 export default function BillingCustomersPage() {
   const [search, setSearch] = useState('');
+  const [tagFilter, setTagFilter] = useState<CTag | null>(null);
   const debouncedSearch = useDebouncedValue(search, 300);
-  const [editing, setEditing] = useState<any | null>(null); // null = closed, {} = new, {...} = edit
+  const [editing, setEditing] = useState<any | null>(null);
   const qc = useQueryClient();
   const { toast } = useToast();
 
@@ -205,7 +214,6 @@ export default function BillingCustomersPage() {
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: CustomerFormState }) =>
       api.updateBillingCustomer(id, {
-        // name excluded — display name is set by dedup logic at create time
         altPhone: data.altPhone || undefined,
         gstNo: data.gstNo || undefined,
         tags: data.tags,
@@ -245,88 +253,129 @@ export default function BillingCustomersPage() {
 
   const initialForEdit = (c: any): CustomerFormState => c?._formState ?? BLANK;
 
-  return (
-    <div className="min-h-screen bg-[#faf9f6]">
-      <Header title="Billing Customers" />
+  const filtered = tagFilter
+    ? customers.filter((c: any) => c.tags?.includes(tagFilter))
+    : customers;
 
-      <div className="p-6 max-w-5xl mx-auto space-y-5">
-        {/* Header bar */}
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              className="pl-9"
-              placeholder="Search by name or phone…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
-          <Button onClick={() => setEditing({})} className="bg-[#2d7a4f] hover:bg-[#245f3e] text-white">
-            <Plus className="h-4 w-4 mr-1.5" /> New Customer
-          </Button>
+  return (
+    <>
+      {/* Sticky toolbar */}
+      <div className="sticky top-0 z-10 flex items-center gap-3 px-4 h-12 bg-white border-b border-gray-200">
+        <div className="relative w-52 shrink-0">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+          <Input
+            className="pl-8 h-8 text-sm border-gray-200 rounded focus-visible:ring-[#2d7a4f]/30"
+            placeholder="Name or phone…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
         </div>
 
-        {/* Customer cards */}
-        {isLoading ? (
-          <div className="text-center text-gray-400 py-16">Loading…</div>
-        ) : customers.length === 0 ? (
-          <div className="text-center text-gray-400 py-16">
-            {search ? 'No customers match your search.' : 'No customers yet. Create one!'}
-          </div>
-        ) : (
-          <div className="grid gap-3">
-            {customers.map((c: any) => (
-              <Card key={c._id} className="shadow-sm border-0 bg-white rounded-xl">
-                <CardContent className="p-4 flex items-start gap-4">
-                  {/* Avatar */}
-                  <div className="h-10 w-10 rounded-full bg-[#e8f5ee] flex items-center justify-center shrink-0">
-                    <span className="text-[#2d7a4f] font-bold text-sm">
-                      {c.name.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
+        <div className="flex items-center gap-1.5 flex-1 overflow-x-auto scrollbar-none">
+          {ALL_TAGS.map(t => (
+            <button
+              key={t}
+              onClick={() => setTagFilter(tagFilter === t ? null : t)}
+              className={cn(
+                'px-2.5 py-1 rounded text-[11px] font-medium border whitespace-nowrap transition-colors shrink-0',
+                tagFilter === t
+                  ? TAG_FILTER_ACTIVE[t]
+                  : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+              )}
+            >
+              {t}
+            </button>
+          ))}
+          {tagFilter && (
+            <button
+              onClick={() => setTagFilter(null)}
+              className="px-2.5 py-1 rounded text-[11px] font-medium border bg-white text-gray-400 border-gray-200 hover:bg-gray-50 whitespace-nowrap shrink-0 flex items-center gap-1"
+            >
+              <X className="h-3 w-3" /> Clear
+            </button>
+          )}
+        </div>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-gray-900">{c.name}</span>
-                      {c.tags?.map((t: string) => <TagBadge key={t} tag={t} />)}
-                    </div>
-                    <div className="flex items-center gap-4 mt-1 text-sm text-gray-500 flex-wrap">
-                      <span className="flex items-center gap-1">
-                        <Phone className="h-3.5 w-3.5" />{c.phone}
-                      </span>
-                      {c.gstNo && (
-                        <span className="flex items-center gap-1">
-                          <Building2 className="h-3.5 w-3.5" />{c.gstNo}
-                        </span>
-                      )}
-                      {c.addresses?.[0] && (
-                        <span className="flex items-center gap-1">
-                          <MapPin className="h-3.5 w-3.5" />
-                          {c.addresses.find((a: Address) => a.isDefault)?.line ?? c.addresses[0].line}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex gap-4 mt-1.5 text-xs text-gray-400">
-                      <span>{c.orderCount} orders</span>
-                      <span>₹{(c.totalPurchase ?? 0).toLocaleString('en-IN')} total</span>
-                      {c.outstanding > 0 && (
-                        <span className="text-red-600 font-semibold">₹{c.outstanding.toLocaleString('en-IN')} due</span>
-                      )}
-                    </div>
-                  </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs text-gray-400 font-mono">{filtered.length} customers</span>
+          <Button
+            onClick={() => setEditing({})}
+            size="sm"
+            className="bg-[#2d7a4f] hover:bg-[#245f3e] text-white h-8 text-xs gap-1.5"
+          >
+            <Plus className="h-3.5 w-3.5" /> New Customer
+          </Button>
+        </div>
+      </div>
 
+      {/* Table */}
+      {isLoading ? (
+        <div className="flex justify-center py-20">
+          <div className="h-6 w-6 border-2 border-[#2d7a4f] border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : (
+        <table className="w-full text-sm">
+          <thead className="sticky top-12 z-10">
+            <tr className="bg-gray-50 border-b border-gray-200">
+              <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Customer</th>
+              <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Phone</th>
+              <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Tags</th>
+              <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">GST No</th>
+              <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Orders</th>
+              <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Total Billed</th>
+              <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Outstanding</th>
+              <th className="w-10 px-4 py-2.5" />
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-100">
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="px-4 py-16 text-center text-gray-400 text-sm">
+                  {search || tagFilter ? 'No customers match your filters.' : 'No customers yet — create one.'}
+                </td>
+              </tr>
+            ) : filtered.map((c: any) => (
+              <tr key={c._id} className="hover:bg-[#f7faf8] transition-colors">
+                <td className="px-4 py-2.5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-7 w-7 rounded-full bg-[#e8f5ee] flex items-center justify-center shrink-0">
+                      <span className="text-[#2d7a4f] font-bold text-xs">{c.name.charAt(0).toUpperCase()}</span>
+                    </div>
+                    <span className="font-medium text-gray-900 text-sm">{c.name}</span>
+                  </div>
+                </td>
+                <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">{c.phone}</td>
+                <td className="px-4 py-2.5">
+                  <div className="flex gap-1 flex-wrap max-w-[200px]">
+                    {c.tags?.map((t: string) => <TagBadge key={t} tag={t} />)}
+                  </div>
+                </td>
+                <td className="px-4 py-2.5 text-gray-400 font-mono text-xs">{c.gstNo || '—'}</td>
+                <td className="px-4 py-2.5 text-right text-gray-600 text-sm tabular-nums">{c.orderCount ?? 0}</td>
+                <td className="px-4 py-2.5 text-right text-gray-700 font-medium text-sm tabular-nums">
+                  ₹{(c.totalPurchase ?? 0).toLocaleString('en-IN')}
+                </td>
+                <td className="px-4 py-2.5 text-right tabular-nums">
+                  {(c.outstanding ?? 0) > 0 ? (
+                    <span className="text-red-600 font-semibold text-sm">₹{c.outstanding.toLocaleString('en-IN')}</span>
+                  ) : (
+                    <span className="text-gray-300 text-sm">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-2.5">
                   <button
                     onClick={() => openEdit(c)}
-                    className="text-gray-400 hover:text-[#2d7a4f] transition-colors shrink-0"
+                    className="text-gray-300 hover:text-[#2d7a4f] transition-colors p-0.5"
+                    title="Edit"
                   >
-                    <Pencil className="h-4 w-4" />
+                    <Pencil className="h-3.5 w-3.5" />
                   </button>
-                </CardContent>
-              </Card>
+                </td>
+              </tr>
             ))}
-          </div>
-        )}
-      </div>
+          </tbody>
+        </table>
+      )}
 
       {/* Create / Edit dialog */}
       <Dialog open={editing !== null} onOpenChange={open => !open && setEditing(null)}>
@@ -343,6 +392,6 @@ export default function BillingCustomersPage() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }
