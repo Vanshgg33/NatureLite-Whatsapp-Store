@@ -25,6 +25,7 @@ export default function AdminLoginPage() {
     if (dept === 'packing') router.replace('/department/packing');
     else if (dept === 'billing') router.replace('/department/billing');
     else if (dept === 'delivery') router.replace('/department/delivery');
+    else if (dept === 'fms') router.replace('/fms/purchase');
     else router.replace('/admin/dashboard');
   }, [hasHydrated, isAuthenticated, user, router]);
 
@@ -53,6 +54,8 @@ export default function AdminLoginPage() {
         router.push('/department/billing');
       } else if (response.user.departmentType === 'delivery') {
         router.push('/department/delivery');
+      } else if (response.user.departmentType === 'fms') {
+        router.push('/fms/purchase');
       } else {
         router.push('/admin/dashboard');
       }

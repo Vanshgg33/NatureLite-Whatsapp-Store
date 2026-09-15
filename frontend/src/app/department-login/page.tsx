@@ -6,6 +6,7 @@ import { Mail, Lock, ArrowRight, Package, FileText, Truck, Shield, Users } from 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
+import { getApiError } from '@/lib/api-error';
 import { useAdminAuthStore } from '@/lib/admin-store';
 
 type DepartmentTarget = 'packing' | 'billing' | 'delivery';
@@ -25,6 +26,7 @@ export default function DepartmentLoginPage() {
     if (dept === 'packing') router.replace('/department/packing');
     else if (dept === 'billing') router.replace('/department/billing');
     else if (dept === 'delivery') router.replace('/department/delivery');
+    else if (dept === 'fms') router.replace('/fms/purchase');
     else router.replace('/admin/dashboard');
   }, [hasHydrated, isAuthenticated, user, router]);
 
@@ -47,7 +49,7 @@ export default function DepartmentLoginPage() {
       });
       setTokens(response.accessToken, response.refreshToken);
 
-      const dept = response.user.departmentType as DepartmentTarget | 'crm_head' | 'crm_senior' | undefined;
+      const dept = response.user.departmentType as DepartmentTarget | 'crm_head' | 'crm_senior' | 'fms' | undefined;
 
       if (dept === 'packing') {
         router.push('/department/packing');
@@ -55,12 +57,13 @@ export default function DepartmentLoginPage() {
         router.push('/department/billing');
       } else if (dept === 'delivery') {
         router.push('/department/delivery');
+      } else if (dept === 'fms') {
+        router.push('/fms/purchase');
       } else {
-        // crm_head, crm_senior, and regular admins all use the admin panel
         router.push('/admin/dashboard');
       }
-    } catch {
-      setError('Invalid email or password');
+    } catch (err: unknown) {
+      setError(getApiError(err, 'Invalid email or password'));
     } finally {
       setLoading(false);
     }
