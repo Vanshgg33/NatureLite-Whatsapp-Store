@@ -1,4 +1,6 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
+import { useAdminAuthStore } from './admin-store';
+import { useCustomerStore } from './customer-store';
 import {
   ApiResponse,
   AuthResponse,
@@ -115,26 +117,16 @@ class ApiClient {
             || window.location.pathname.startsWith('/invoice');
 
           if (isAdminApiRoute || isAdminPage) {
-            const adminStorage = localStorage.getItem('admin-auth-storage');
-            if (adminStorage) {
-              const parsed = JSON.parse(adminStorage);
-              if (parsed?.state?.accessToken) {
-                config.headers.Authorization = `Bearer ${parsed.state.accessToken}`;
-              }
-            }
+            const token = useAdminAuthStore.getState().accessToken;
+            if (token) config.headers.Authorization = `Bearer ${token}`;
           } else {
             // Customer route: only attach customer token — never fall back to admin token.
             // An admin browsing the storefront must NOT send their admin JWT to customer
             // endpoints (e.g. /wallet) or the backend will look up the wrong user.
             // If no customer token exists, leave Authorization unset and rely on the
             // HttpOnly refresh-cookie path (withCredentials: true).
-            const customerStorage = localStorage.getItem('customer-auth-storage');
-            if (customerStorage) {
-              const parsed = JSON.parse(customerStorage);
-              if (parsed?.state?.accessToken) {
-                config.headers.Authorization = `Bearer ${parsed.state.accessToken}`;
-              }
-            }
+            const token = useCustomerStore.getState().accessToken;
+            if (token) config.headers.Authorization = `Bearer ${token}`;
           }
         } catch {
           // ignore parsing errors
@@ -180,21 +172,9 @@ class ApiClient {
               || currentPath.startsWith('/department')
               || currentPath.startsWith('/invoice');
 
-            let refreshTokenToSend: string | undefined;
-            if (typeof window !== 'undefined') {
-              try {
-                const storageKey = (failedRouteIsAdmin || isAdminRelatedPage) ? 'admin-auth-storage' : 'customer-auth-storage';
-                const storage = localStorage.getItem(storageKey);
-                if (storage) {
-                  const parsed = JSON.parse(storage);
-                  if (parsed?.state?.refreshToken) {
-                    refreshTokenToSend = parsed.state.refreshToken;
-                  }
-                }
-              } catch {
-                // ignore parsing errors
-              }
-            }
+            const refreshTokenToSend = (failedRouteIsAdmin || isAdminRelatedPage)
+              ? useAdminAuthStore.getState().refreshToken ?? undefined
+              : useCustomerStore.getState().refreshToken ?? undefined;
 
             const payload = refreshTokenToSend ? { refreshToken: refreshTokenToSend } : {};
 
@@ -205,17 +185,11 @@ class ApiClient {
               .post(`${API_URL}/auth/refresh`, payload, { withCredentials: true })
               .then(async (res) => {
                 const newTokens = res.data?.data;
-                if (newTokens && typeof window !== 'undefined') {
-                  try {
-                    if (newTokens.user?.role === 'customer') {
-                      const { useCustomerStore } = await import('./customer-store');
-                      useCustomerStore.getState().setTokens(newTokens.accessToken, newTokens.refreshToken);
-                    } else {
-                      const { useAdminAuthStore } = await import('./admin-store');
-                      useAdminAuthStore.getState().setTokens(newTokens.accessToken, newTokens.refreshToken);
-                    }
-                  } catch {
-                    // ignore module import or state update errors
+                if (newTokens) {
+                  if (newTokens.user?.role === 'customer') {
+                    useCustomerStore.getState().setTokens(newTokens.accessToken, newTokens.refreshToken);
+                  } else {
+                    useAdminAuthStore.getState().setTokens(newTokens.accessToken, newTokens.refreshToken);
                   }
                 }
                 return true as const;
@@ -243,13 +217,7 @@ class ApiClient {
           // cookie is present but the backend session is gone).
           if (typeof window !== 'undefined') {
             const path = window.location.pathname;
-            try {
-              // Dynamic import avoids a client/server circular init with Zustand persist.
-              const { useAdminAuthStore } = await import('./admin-store');
-              useAdminAuthStore.getState().logout();
-            } catch {
-              // store module unavailable — ignore
-            }
+            useAdminAuthStore.getState().logout();
             const onAdminLogin = path === '/admin-login' || path.startsWith('/admin-login');
             const onDeptLogin = path === '/department-login' || path.startsWith('/department-login');
             const onCustomerLogin = path === '/login' || path.startsWith('/login');
@@ -261,12 +229,7 @@ class ApiClient {
               !onCustomerLogin &&
               (path.startsWith('/account') || path.startsWith('/checkout') || path.startsWith('/pay'))
             ) {
-              try {
-                const { useCustomerStore } = await import('./customer-store');
-                useCustomerStore.getState().logout();
-              } catch {
-                // ignore
-              }
+              useCustomerStore.getState().logout();
               window.location.assign('/login?session=expired');
             }
           }

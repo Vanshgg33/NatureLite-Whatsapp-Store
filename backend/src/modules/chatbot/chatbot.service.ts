@@ -882,6 +882,14 @@ export class ChatbotService implements OnModuleInit {
         await this.handlePaymentSelection(session, message.phone, transitionKey, message);
         break;
 
+      case 'coupon_prompt':
+        await this.handleCouponPrompt(session, message.phone, transitionKey);
+        break;
+
+      case 'coupon_input':
+        await this.handleCouponInput(session, message.phone, inputText, transitionKey);
+        break;
+
       // ── All other states handled by AI ─────────────────────────────────
       default:
         await this.chatbotAiService.runAiTurn(message.phone, session, inputText, message.messageId);
@@ -5507,7 +5515,7 @@ export class ChatbotService implements OnModuleInit {
           key === 'back'
         );
       case 'checkout':
-        return key === 'new_address' || key === 'back' || key.startsWith('address_');
+        return key === 'new_address' || key === 'back' || key === 'another_yes' || key === 'another_no' || key.startsWith('address_');
       case 'payment_selection':
         return (
           key === 'cod' ||
