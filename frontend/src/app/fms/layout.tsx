@@ -118,7 +118,10 @@ export default function FmsLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const isSuperadmin = user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
-  const hasFmsAccess = user?.departmentType === 'fms' || user?.purchaseRole != null || isSuperadmin;
+  const hasFmsAccess =
+    user?.departmentType === 'fms' ||
+    (user?.purchaseRole != null && !user?.departmentType) ||
+    isSuperadmin;
 
   useEffect(() => {
     if (!hasHydrated) return;

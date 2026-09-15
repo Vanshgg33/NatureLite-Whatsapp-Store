@@ -2653,22 +2653,30 @@ export class ChatbotService implements OnModuleInit {
       // catch — that strands them with "type menu to start over" and no way to
       // retry. Surface a specific reason when we have one, a safe fallback otherwise.
       const msg = err instanceof Error ? err.message : '';
-      const isExpected =
+      const isKnownBadRequest =
         err instanceof BadRequestException && /stock|pincode|empty|deliver|coupon/i.test(msg);
+      const isConflict = err instanceof ConflictException;
+      const isNotFound = err instanceof NotFoundException;
 
-      if (!isExpected) {
+      if (!isKnownBadRequest && !isConflict && !isNotFound) {
         this.logger.error(
           `Order creation failed for ${session.user?.toString()}: ${msg || 'unknown'}`,
           err as Error,
         );
       }
 
+      const bodyText = isKnownBadRequest
+        ? msg
+        : isConflict
+        ? 'Your order may already be placed \u2014 type *orders* to check, or contact support.'
+        : isNotFound
+        ? 'One or more items in your cart are no longer available. Please review your cart and try again.'
+        : 'Couldn\u2019t place the order right now. Your cart is saved \u2014 try again or reach out to support.';
+
       await this.whatsappService.sendInteractiveButtons({
         phone,
         headerText: 'Order failed',
-        bodyText: isExpected
-          ? msg
-          : 'Couldn\u2019t place the order right now. Your cart is saved \u2014 try again or reach out to support.',
+        bodyText,
         buttons: [
           { id: BTN.CART, title: '\uD83D\uDED2 View cart' },
           { id: BTN.SUPPORT, title: '\uD83D\uDCAC Support' },
