@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, forwardRef, BadRequestException, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef, BadRequestException, ConflictException, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../redis/redis.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -871,11 +871,11 @@ export class ChatbotService implements OnModuleInit {
     switch (currentState) {
       // ── Critical hardcoded states ──────────────────────────────────────
       case 'checkout':
-        await this.handleCheckout(session, message.phone, transitionKey);
+        await this.handleCheckout(session, message.phone, transitionKey, message);
         break;
 
       case 'address_input':
-        await this.handleAddressInput(session, message.phone, inputText);
+        await this.handleAddressInput(session, message.phone, inputText, message);
         break;
 
       case 'payment_selection':
@@ -1141,17 +1141,13 @@ export class ChatbotService implements OnModuleInit {
                 italic("Remove from cart if you don't want it."),
             });
           } catch (err) {
-            // Auto-apply failed (e.g. cap hit since findApplicableCoupons
-            // ran). Fall back to the manual prompt rather than silently
-            // dropping the discount.
             this.logger.warn(
               `Auto-apply coupon ${best.code} failed: ${err instanceof Error ? err.message : 'unknown'}`,
             );
-            session.context = mergeChatContext(session.context, { couponFlowTarget: 'checkout' });
-            await this.saveSession(session);
-            await this.transitionToState(session, 'coupon_prompt');
-            await this.sendFlowResponse(phone, 'coupon_prompt', session);
-            return;
+            await this.whatsappService.sendTextMessage({
+              phone,
+              message: `_Couldn't apply ${bold(best.code)} automatically — proceeding without it._`,
+            });
           }
         }
       }
@@ -1953,6 +1949,7 @@ export class ChatbotService implements OnModuleInit {
     session: ChatSessionDocument,
     phone: string,
     input: string,
+    message: WhatsAppMessage,
   ): Promise<void> {
     // Back from checkout always lands on cart. Using previousState would loop
     // back through coupon_prompt when the user arrived from the suggested-coupon
@@ -1969,6 +1966,25 @@ export class ChatbotService implements OnModuleInit {
       return;
     }
 
+    // Cooldown confirmation buttons routed back here since state stays 'checkout'.
+    if (input === 'another_yes') {
+      session.context = mergeChatContext(session.context, { allowAnotherOrderOnce: true });
+      await this.saveSession(session);
+      await this.placeWhatsappOrderCod(session, phone, message);
+      return;
+    }
+    if (input === 'another_no') {
+      if (session.context.allowAnotherOrderOnce) {
+        session.context = mergeChatContext(session.context, { allowAnotherOrderOnce: false });
+        await this.saveSession(session);
+      }
+      await this.whatsappService.sendTextMessage({
+        phone,
+        message: 'No problem. Type *orders* to track, or *menu* to start over.',
+      });
+      return;
+    }
+
     const btn = parseButton(input);
     if (btn.kind === 'address') {
       if (!Number.isInteger(btn.idx) || btn.idx < 0) {
@@ -1981,8 +1997,7 @@ export class ChatbotService implements OnModuleInit {
         userId: session.user?.toString(),
         addressIdx: btn.idx,
       });
-      await this.transitionToState(session, 'payment_selection');
-      await this.sendFlowResponse(phone, 'payment_selection', session);
+      await this.placeWhatsappOrderCod(session, phone, message);
       return;
     }
 
@@ -2139,6 +2154,7 @@ export class ChatbotService implements OnModuleInit {
     session: ChatSessionDocument,
     phone: string,
     input: string,
+    message: WhatsAppMessage,
   ): Promise<void> {
     const sendRetry = async (reason: string) => {
       await this.whatsappService.sendTextMessage({
@@ -2221,13 +2237,193 @@ export class ChatbotService implements OnModuleInit {
       await this.transitionToState(session, 'account_addresses');
       await this.sendAddressList(phone, session);
     } else {
-      // Select the freshly-added address so the payment screen uses it.
+      // Select the freshly-added address, transition to checkout state so that
+      // any cooldown prompt's another_yes/another_no route to handleCheckout.
       const user = await this.usersService.findById(session.user.toString());
       const newIdx = Math.max(0, user.addresses.length - 1);
       session.context = mergeChatContext(session.context, { selectedAddressIndex: newIdx });
+      await this.transitionToState(session, 'checkout');
+      await this.placeWhatsappOrderCod(session, phone, message);
+    }
+  }
+
+  /** Place a COD order immediately — called after address is confirmed. */
+  private async placeWhatsappOrderCod(
+    session: ChatSessionDocument,
+    phone: string,
+    message: WhatsAppMessage,
+  ): Promise<void> {
+    if (!session.user) {
+      await this.whatsappService.sendTextMessage({ phone, message: 'Please register to complete your order.' });
+      return;
+    }
+
+    let cart = await this.cartService.getCart(session.user.toString());
+    if (cart.items.length === 0) {
+      await this.transitionToState(session, 'main_menu');
+      await this.sendFlowResponse(phone, 'main_menu', session, 'Your cart is empty. Browse products to get started.');
+      return;
+    }
+
+    if (cart.couponCode) {
+      try {
+        await this.cartService.applyCoupon(session.user.toString(), cart.couponCode);
+      } catch {
+        await this.cartService.removeCoupon(session.user.toString());
+        await this.whatsappService.sendTextMessage({ phone, message: '_Coupon is no longer valid and was removed from your cart._' });
+      }
+      cart = await this.cartService.getCart(session.user.toString());
+    }
+
+    if ((cart.total ?? 0) <= 0 && !cart.couponCode) {
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        headerText: "Cart can't be priced",
+        bodyText: 'Your cart total is ₹0. Some items may be unavailable — review your cart or reach out to support.',
+        buttons: [{ id: BTN.CART, title: '🛒 View cart' }, { id: BTN.SUPPORT, title: '💬 Support' }],
+      });
+      await this.transitionToState(session, 'cart');
+      return;
+    }
+
+    if ((cart.total ?? 0) <= 0) {
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        headerText: 'Cart total is ₹0',
+        bodyText: 'The discount exceeds your cart total. Remove the coupon or add more items to continue.',
+        buttons: [{ id: BTN.CART, title: '🛒 View cart' }, { id: BTN.BROWSE, title: '🛍 Add more' }],
+      });
+      await this.transitionToState(session, 'cart');
+      return;
+    }
+
+    const user = await this.usersService.findById(session.user.toString());
+    const selectedIndex = session.context.selectedAddressIndex;
+    const address =
+      selectedIndex != null && user.addresses[selectedIndex]
+        ? user.addresses[selectedIndex]
+        : user.addresses.find((a) => a.isDefault) || user.addresses[0];
+
+    if (!address) {
+      await this.transitionToState(session, 'address_input');
+      await this.sendFlowResponse(phone, 'address_input', session, 'Please add a delivery address first.');
+      return;
+    }
+
+    // Cooldown: prevent accidental double-orders within 8 s of a previous one.
+    const ctx = session.context;
+    const recent = await this.ordersService.findUserOrdersExcludingCancelled(session.user.toString(), 1);
+    if (recent.length > 0 && !ctx.allowAnotherOrderOnce) {
+      const createdRaw = recent[0].createdAt;
+      const createdMs =
+        createdRaw instanceof Date ? createdRaw.getTime() : new Date(createdRaw as string).getTime();
+      if (Number.isFinite(createdMs) && Date.now() - createdMs < WHATSAPP_RECENT_ORDER_COOLDOWN_MS) {
+        await this.whatsappService.sendInteractiveButtons({
+          phone,
+          headerText: 'Recent order detected',
+          bodyText: 'You placed an order moments ago. Place another?',
+          buttons: [
+            { id: 'another_yes', title: 'Yes, place order' },
+            { id: 'another_no', title: 'No' },
+          ],
+        });
+        return;
+      }
+    }
+    if (ctx.allowAnotherOrderOnce) {
+      session.context = mergeChatContext(session.context, { allowAnotherOrderOnce: false });
       await this.saveSession(session);
-      await this.transitionToState(session, 'payment_selection');
-      await this.sendFlowResponse(phone, 'payment_selection', session);
+    }
+
+    const checkoutLockAcquired = await this.chatSessionRepository.tryAcquireCheckoutLock(session._id, 60_000);
+    if (!checkoutLockAcquired) {
+      await this.whatsappService.sendTextMessage({ phone, message: "_We're already placing your order — please wait a moment..._" });
+      return;
+    }
+
+    // Single finally block guarantees lock release on both error and success paths.
+    try {
+      let order;
+      try {
+        await this.whatsappService.sendTextMessage({ phone, message: '_Placing your order..._' });
+        const finalCart = await this.cartService.getCart(session.user.toString());
+        order = await this.ordersService.create(session.user.toString(), {
+          cartId: finalCart.id,
+          shippingAddress: {
+            name: user.name || 'Customer',
+            phone,
+            street: address.street,
+            city: address.city,
+            state: address.state,
+            pincode: address.pincode,
+            landmark: address.landmark,
+          },
+          paymentMethod: 'cod',
+          idempotencyKey: this.whatsAppCheckoutIdempotencyKey(message.messageId),
+          source: 'whatsapp',
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : '';
+        const isKnownBadRequest =
+          err instanceof BadRequestException && /stock|pincode|empty|deliver|coupon/i.test(msg);
+        const isConflict = err instanceof ConflictException;
+        const isNotFound = err instanceof NotFoundException;
+        if (!isKnownBadRequest && !isConflict && !isNotFound) {
+          this.logger.error(`Order creation failed for ${session.user?.toString()}: ${msg || 'unknown'}`, err as Error);
+        }
+        const bodyText = isKnownBadRequest
+          ? msg
+          : isConflict
+          ? 'Your order may already be placed — type *orders* to check, or contact support.'
+          : isNotFound
+          ? 'One or more items in your cart are no longer available. Please review your cart and try again.'
+          : "Couldn't place the order right now. Your cart is saved — try again or reach out to support.";
+        await this.whatsappService.sendInteractiveButtons({
+          phone,
+          headerText: 'Order failed',
+          bodyText,
+          buttons: [
+            { id: BTN.CART, title: '🛒 View cart' },
+            { id: BTN.SUPPORT, title: '💬 Support' },
+            { id: BTN.MENU, title: '🏠 Menu' },
+          ],
+        });
+        await this.transitionToState(session, 'cart');
+        return;
+      }
+
+      void this.analytics.track('chatbot.order_completed', {
+        userId: session.user.toString(),
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        total: order.total,
+        paymentMethod: 'cod',
+      });
+
+      const placedWhen = this.formatStepTimestamp(order.createdAt);
+      const itemsPreview = this.formatOrderItemsPreview(order.items as any[]);
+      const billingLines: string[] = [];
+      if ((order as any).subtotal && (order as any).subtotal !== order.total) {
+        billingLines.push(`Subtotal:  ${this.formatCurrency((order as any).subtotal)}`);
+      }
+      if ((order as any).discount > 0) {
+        billingLines.push(`🏷 ${(order as any).couponCode || 'Discount'}:  −${this.formatCurrency((order as any).discount)}`);
+      }
+      billingLines.push(bold(`Total:  ${this.formatCurrency(order.total)}`));
+      const summary =
+        `*#${order.orderNumber}*  ·  _${placedWhen || 'Just now'}_\n\n` +
+        `📦 *Items (${order.items.length})*\n${itemsPreview}\n\n` +
+        billingLines.join('\n');
+      await this.whatsappService.sendInteractiveButtons({
+        phone,
+        headerText: '✅ Order Confirmed',
+        bodyText: `${summary}\n\nWe'll notify you when it ships. 🚚`,
+        footerText: 'Cash on delivery',
+        buttons: [{ id: BTN.BROWSE, title: '🛍 Keep shopping' }],
+      });
+      await this.transitionToState(session, 'main_menu');
+    } finally {
+      await this.chatSessionRepository.releaseCheckoutLock(session._id);
     }
   }
 
@@ -2458,7 +2654,7 @@ export class ChatbotService implements OnModuleInit {
       // retry. Surface a specific reason when we have one, a safe fallback otherwise.
       const msg = err instanceof Error ? err.message : '';
       const isExpected =
-        err instanceof BadRequestException && /stock|pincode|empty|deliver/i.test(msg);
+        err instanceof BadRequestException && /stock|pincode|empty|deliver|coupon/i.test(msg);
 
       if (!isExpected) {
         this.logger.error(

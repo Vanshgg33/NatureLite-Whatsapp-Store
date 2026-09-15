@@ -156,7 +156,7 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
       ],
     },
     transitions: {
-      address: 'payment_selection',
+      address: 'main_menu',
       new_address: 'address_input',
       back: 'cart',
     },
@@ -175,7 +175,7 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
         `_Landmark (optional)_`,
     },
     transitions: {
-      submit: 'payment_selection',
+      submit: 'main_menu',
       back: 'checkout',
     },
   },
