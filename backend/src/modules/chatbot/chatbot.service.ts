@@ -4987,7 +4987,13 @@ export class ChatbotService implements OnModuleInit {
       return;
     }
 
-    const user = await this.usersService.findById(session.user.toString());
+    const user = await this.usersService.findById(session.user.toString()).catch(async () => {
+      // session.user references a deleted user doc — re-link from phone
+      const recovered = await this.usersService.findOrCreateByPhone(phone);
+      session.user = recovered._id;
+      await this.saveSession(session);
+      return recovered;
+    });
 
     // For Meta Cloud API with a Flow configured, use WhatsApp Flows UI.
     const flowId = this.configService.get<string>('whatsapp.flowId');
