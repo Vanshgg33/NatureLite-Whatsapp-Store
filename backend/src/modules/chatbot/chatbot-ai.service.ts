@@ -681,7 +681,12 @@ export class ChatbotAiService {
           // Special tools that exit the loop and hand off to hardcoded flows
           if (name === 'initiate_checkout') {
             await this.saveHistory(session, history, turnAdditions, phone);
-            await this.chatbotService.initiateCheckoutForAi(phone, session);
+            try {
+              await this.chatbotService.initiateCheckoutForAi(phone, session);
+            } catch (checkoutErr) {
+              this.logger.error(`[AI] initiate_checkout failed: ${checkoutErr instanceof Error ? checkoutErr.message : 'unknown'}`);
+              await this.whatsappService.sendTextMessage({ phone, message: 'Unable to open checkout right now. Type *menu* and try again.' });
+            }
             return;
           }
           if (name === 'reorder_last') {

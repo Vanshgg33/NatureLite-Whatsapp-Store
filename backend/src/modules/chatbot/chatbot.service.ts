@@ -856,6 +856,13 @@ export class ChatbotService implements OnModuleInit {
       return;
     }
 
+    // Checkout is button-driven (address picker / WA Flow). Free text like "check out"
+    // or "pay" should re-show the address options, not call the AI.
+    if (!buttonId && currentState === 'checkout') {
+      await this.handleCheckout(session, message.phone, transitionKey, message);
+      return;
+    }
+
     // Unrecognized free text in any non-input, non-critical state → AI
     if (
       !buttonId &&
