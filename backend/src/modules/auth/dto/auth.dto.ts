@@ -97,7 +97,8 @@ export class SendOtpDto {
 export class RefreshTokenDto {
   @IsString()
   @IsNotEmpty()
-  refreshToken: string;
+  @IsOptional()
+  refreshToken?: string;
 }
 
 export class LogoutDto {

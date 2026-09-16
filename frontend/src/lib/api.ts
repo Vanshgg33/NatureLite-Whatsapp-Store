@@ -219,10 +219,17 @@ class ApiClient {
           // cookie is present but the backend session is gone).
           if (typeof window !== 'undefined') {
             const path = window.location.pathname;
-            useAdminAuthStore.getState().logout();
             const onAdminLogin = path === '/admin-login' || path.startsWith('/admin-login');
             const onDeptLogin = path === '/department-login' || path.startsWith('/department-login');
             const onCustomerLogin = path === '/login' || path.startsWith('/login');
+            const isAdminPath = path.startsWith('/admin') || path.startsWith('/fms')
+              || path.startsWith('/department') || path.startsWith('/invoice');
+            if (isAdminPath) {
+              // Only clear admin auth when the failing request was on an admin/fms/department page.
+              // Never clear it for customer-page 401s — that would log out FMS users who have
+              // the storefront open in another tab with no customer session.
+              useAdminAuthStore.getState().logout();
+            }
             if ((path.startsWith('/admin') || path.startsWith('/fms')) && !onAdminLogin) {
               window.location.assign('/admin-login');
             } else if (path.startsWith('/department') && !onDeptLogin) {

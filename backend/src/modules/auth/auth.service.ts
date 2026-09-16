@@ -64,7 +64,10 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  async refreshAccessToken(refreshToken: string): Promise<AuthResponse> {
+  async refreshAccessToken(refreshToken: string | undefined): Promise<AuthResponse> {
+    if (!refreshToken) {
+      throw new UnauthorizedException('No refresh token provided');
+    }
     const tokenDoc = await this.refreshTokenRepository.findOne({ token: this.hashToken(refreshToken) });
 
     if (!tokenDoc || tokenDoc.expiresAt < new Date()) {
