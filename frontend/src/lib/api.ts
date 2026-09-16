@@ -114,7 +114,8 @@ class ApiClient {
           // protected mutations get the admin Bearer token.
           const isAdminPage = window.location.pathname.startsWith('/admin')
             || window.location.pathname.startsWith('/department')
-            || window.location.pathname.startsWith('/invoice');
+            || window.location.pathname.startsWith('/invoice')
+            || window.location.pathname.startsWith('/fms');
 
           if (isAdminApiRoute || isAdminPage) {
             const token = useAdminAuthStore.getState().accessToken;
@@ -170,7 +171,8 @@ class ApiClient {
             const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
             const isAdminRelatedPage = currentPath.startsWith('/admin')
               || currentPath.startsWith('/department')
-              || currentPath.startsWith('/invoice');
+              || currentPath.startsWith('/invoice')
+              || currentPath.startsWith('/fms');
 
             const refreshTokenToSend = (failedRouteIsAdmin || isAdminRelatedPage)
               ? useAdminAuthStore.getState().refreshToken ?? undefined
@@ -221,7 +223,7 @@ class ApiClient {
             const onAdminLogin = path === '/admin-login' || path.startsWith('/admin-login');
             const onDeptLogin = path === '/department-login' || path.startsWith('/department-login');
             const onCustomerLogin = path === '/login' || path.startsWith('/login');
-            if (path.startsWith('/admin') && !onAdminLogin) {
+            if ((path.startsWith('/admin') || path.startsWith('/fms')) && !onAdminLogin) {
               window.location.assign('/admin-login');
             } else if (path.startsWith('/department') && !onDeptLogin) {
               window.location.assign('/department-login');
