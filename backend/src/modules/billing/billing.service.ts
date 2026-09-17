@@ -381,9 +381,15 @@ export class BillingService {
 
   // ─── Insights ─────────────────────────────────────────────────────────────
 
-  async getTopCustomers(limit = 200, sortBy: 'totalPurchase' | 'orderCount' = 'totalPurchase') {
+  async getTopCustomers(limit = 200, sortBy: 'totalPurchase' | 'orderCount' = 'totalPurchase', startDate?: string, endDate?: string) {
+    const match: any = { status: 'active' };
+    if (startDate || endDate) {
+      match.createdAt = {};
+      if (startDate) match.createdAt.$gte = new Date(startDate);
+      if (endDate) match.createdAt.$lte = new Date(endDate);
+    }
     return this.billModel.aggregate([
-      { $match: { status: 'active' } },
+      { $match: match },
       {
         $group: {
           _id: '$customerId',
@@ -411,9 +417,15 @@ export class BillingService {
     ]);
   }
 
-  async getTopProductPerCustomer() {
+  async getTopProductPerCustomer(startDate?: string, endDate?: string) {
+    const match: any = { status: 'active' };
+    if (startDate || endDate) {
+      match.createdAt = {};
+      if (startDate) match.createdAt.$gte = new Date(startDate);
+      if (endDate) match.createdAt.$lte = new Date(endDate);
+    }
     return this.billModel.aggregate([
-      { $match: { status: 'active' } },
+      { $match: match },
       { $unwind: '$items' },
       { $group: {
         _id: { customerId: '$customerId', sku: '$items.sku' },

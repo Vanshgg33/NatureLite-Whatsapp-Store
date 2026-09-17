@@ -4,6 +4,6 @@ import { useRouter } from 'next/navigation';
 
 export default function BillingRoot() {
   const router = useRouter();
-  useEffect(() => { router.replace('/billing/customers'); }, [router]);
+  useEffect(() => { router.replace('/billing/dashboard'); }, [router]);
   return null;
 }

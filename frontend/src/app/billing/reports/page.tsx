@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart3, Download, ChevronDown, ChevronRight, ArrowUpDown, X, User } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { api } from '@/lib/api';
 import { useDebouncedValue } from '@/lib/utils';
 import { Header } from '@/components/layout/header';
@@ -31,19 +32,16 @@ function startOfWeek() { const d = new Date(); d.setDate(d.getDate() - d.getDay(
 function startOfMonth() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; }
 function toISO(date: string, time: string, sec = '00') { return date ? `${date}T${time}:${sec}+05:30` : undefined; }
 
-// ── CSV export ────────────────────────────────────────────────────────────────
-
-function downloadCSV(filename: string, rows: (string | number)[][]) {
-  const csv = rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
-}
+// ── Excel export ──────────────────────────────────────────────────────────────
 
 function exportProducts(data: any[]) {
-  downloadCSV(`product-sales-${today()}.csv`, [
+  const rows = [
     ['SKU', 'Product Name', 'HSN', 'Qty Sold', 'Sale Value (₹)', 'Unique Customers', 'Avg Rate (₹)'],
     ...data.map(r => [r.sku, r.name, r.hsnCode || '', r.totalQty, r.totalValue, r.uniqueCustomerCount, Number((r.avgRate ?? 0).toFixed(2))]),
-  ]);
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Product Sales');
+  XLSX.writeFile(wb, `product-sales-${today()}.xlsx`);
 }
 
 function exportCustomers(data: any[]) {
@@ -59,7 +57,9 @@ function exportCustomers(data: any[]) {
       }
     }
   }
-  downloadCSV(`customer-sales-${today()}.csv`, rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Customer Sales');
+  XLSX.writeFile(wb, `customer-sales-${today()}.xlsx`);
 }
 
 // ── Customer search combobox (for filter bar) ─────────────────────────────────
@@ -484,7 +484,7 @@ export default function SalesReportsPage() {
             onClick={() => tab === 'product' ? exportProducts(productData) : exportCustomers(customerData)}
             disabled={activeData.length === 0}
           >
-            <Download className="h-3.5 w-3.5" /> Export CSV
+            <Download className="h-3.5 w-3.5" /> Export Excel
           </Button>
         }
       />

@@ -145,13 +145,18 @@ export class BillingController {
   // ─── Insights ──────────────────────────────────────────────────────────────
 
   @Get('insights/customers')
-  getTopCustomers(@Query('limit') limit?: string, @Query('sortBy') sortBy?: 'totalPurchase' | 'orderCount') {
-    return this.billingService.getTopCustomers(limit ? parseInt(limit) : 200, sortBy ?? 'totalPurchase');
+  getTopCustomers(
+    @Query('limit') limit?: string,
+    @Query('sortBy') sortBy?: 'totalPurchase' | 'orderCount',
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.billingService.getTopCustomers(limit ? parseInt(limit) : 200, sortBy ?? 'totalPurchase', startDate, endDate);
   }
 
   @Get('insights/top-products')
-  getTopProductPerCustomer() {
-    return this.billingService.getTopProductPerCustomer();
+  getTopProductPerCustomer(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
+    return this.billingService.getTopProductPerCustomer(startDate, endDate);
   }
 
   // ─── GSTR-1 ────────────────────────────────────────────────────────────────

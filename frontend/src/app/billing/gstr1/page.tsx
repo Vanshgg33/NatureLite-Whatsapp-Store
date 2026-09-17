@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { FileSpreadsheet, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { api } from '@/lib/api';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -19,10 +20,13 @@ function monthLabel(m: string) {
   return new Date(y, mo - 1, 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
 }
 
-function downloadCSV(filename: string, rows: (string | number)[][]) {
-  const csv = rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+function downloadXlsx(filename: string, sheets: { name: string; rows: (string | number)[][] }[]) {
+  const wb = XLSX.utils.book_new();
+  for (const s of sheets) {
+    const ws = XLSX.utils.aoa_to_sheet(s.rows);
+    XLSX.utils.book_append_sheet(wb, ws, s.name);
+  }
+  XLSX.writeFile(wb, filename);
 }
 
 type GstrTab = 'b2b' | 'b2c' | 'hsn' | 'doc';
@@ -62,31 +66,40 @@ export default function Gstr1Page() {
     totalValue: s.totalValue + r.totalValue,
   }), { taxableAmount: 0, gstAmount: 0, totalValue: 0 }), [b2cSummary]);
 
-  function exportCurrent() {
-    if (tab === 'hsn') {
-      downloadCSV(`gstr1-hsn-${month}.csv`, [
-        ['HSN Code', 'GST Rate (%)', 'Total Qty', 'Taxable Amount', 'GST Amount', 'Total Value', 'B2B Taxable', 'B2C Taxable'],
-        ...hsnSummary.map(r => [r.hsnCode || '', r.gstRate, r.qty, fmt(r.taxableAmount), fmt(r.gstAmount), fmt(r.totalValue), fmt(r.b2bTaxable), fmt(r.b2cTaxable)]),
-      ]);
-    } else if (tab === 'b2b') {
-      downloadCSV(`gstr1-b2b-${month}.csv`, [
-        ['Invoice No', 'Date', 'Customer GSTIN', 'Customer Name', 'Taxable Value', 'CGST', 'SGST', 'Invoice Value'],
-        ...b2b.map(r => [r.invoiceNo, new Date(r.createdAt).toLocaleDateString('en-IN'), r.customerGstNo, r.customerName, fmt(r.subtotal), fmt(r.totalGst / 2), fmt(r.totalGst / 2), fmt(r.grandTotal)]),
-      ]);
-    } else if (tab === 'b2c') {
-      downloadCSV(`gstr1-b2c-${month}.csv`, [
-        ['GST Rate (%)', 'Taxable Amount', 'CGST', 'SGST', 'Total Value'],
-        ...b2cSummary.map(r => [r.gstRate, fmt(r.taxableAmount), fmt(r.cgst), fmt(r.sgst), fmt(r.totalValue)]),
-      ]);
-    } else {
-      downloadCSV(`gstr1-doc-${month}.csv`, [
-        ['Description', 'Value'],
-        ['Total Invoices', doc.totalInvoices ?? 0],
-        ['Cancelled Invoices', doc.cancelledInvoices ?? 0],
-        ['First Invoice', doc.firstInvoiceNo ?? ''],
-        ['Last Invoice', doc.lastInvoiceNo ?? ''],
-      ]);
-    }
+  function exportAll() {
+    downloadXlsx(`gstr1-${month}.xlsx`, [
+      {
+        name: 'HSN Summary',
+        rows: [
+          ['HSN Code', 'GST Rate (%)', 'Total Qty', 'Taxable Amount', 'GST Amount', 'Total Value', 'B2B Taxable', 'B2C Taxable'],
+          ...hsnSummary.map(r => [r.hsnCode || '', r.gstRate, r.qty, fmt(r.taxableAmount), fmt(r.gstAmount), fmt(r.totalValue), fmt(r.b2bTaxable), fmt(r.b2cTaxable)]),
+        ],
+      },
+      {
+        name: 'B2B Invoices',
+        rows: [
+          ['Invoice No', 'Date', 'Customer GSTIN', 'Customer Name', 'Taxable Value', 'CGST', 'SGST', 'Invoice Value'],
+          ...b2b.map(r => [r.invoiceNo, new Date(r.createdAt).toLocaleDateString('en-IN'), r.customerGstNo, r.customerName, fmt(r.subtotal), fmt(r.totalGst / 2), fmt(r.totalGst / 2), fmt(r.grandTotal)]),
+        ],
+      },
+      {
+        name: 'B2C Summary',
+        rows: [
+          ['GST Rate (%)', 'Taxable Amount', 'CGST', 'SGST', 'Total Value'],
+          ...b2cSummary.map(r => [r.gstRate, fmt(r.taxableAmount), fmt(r.cgst), fmt(r.sgst), fmt(r.totalValue)]),
+        ],
+      },
+      {
+        name: 'Document Summary',
+        rows: [
+          ['Description', 'Value'],
+          ['Total Invoices', doc.totalInvoices ?? 0],
+          ['Cancelled Invoices', doc.cancelledInvoices ?? 0],
+          ['First Invoice', doc.firstInvoiceNo ?? ''],
+          ['Last Invoice', doc.lastInvoiceNo ?? ''],
+        ],
+      },
+    ]);
   }
 
   const TABS: { key: GstrTab; label: string }[] = [
@@ -103,8 +116,8 @@ export default function Gstr1Page() {
         description="GST return report for selected month"
         icon={<FileSpreadsheet className="h-6 w-6 text-[#2d7a4f]" />}
         action={
-          <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={exportCurrent} disabled={!data}>
-            <Download className="h-3.5 w-3.5" /> Export CSV
+          <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={exportAll} disabled={!data}>
+            <Download className="h-3.5 w-3.5" /> Export Excel
           </Button>
         }
       />

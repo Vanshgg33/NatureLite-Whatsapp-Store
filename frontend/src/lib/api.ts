@@ -1916,13 +1916,13 @@ class ApiClient {
     return res.data.data;
   }
 
-  async getBillingTopCustomers(limit = 200, sortBy?: 'totalPurchase' | 'orderCount'): Promise<any[]> {
-    const res = await this.client.get<ApiResponse<any[]>>('/billing/insights/customers', { params: { limit, sortBy } });
+  async getBillingTopCustomers(limit = 200, sortBy?: 'totalPurchase' | 'orderCount', startDate?: string, endDate?: string): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>('/billing/insights/customers', { params: { limit, sortBy, startDate, endDate } });
     return res.data.data;
   }
 
-  async getBillingTopProductPerCustomer(): Promise<any[]> {
-    const res = await this.client.get<ApiResponse<any[]>>('/billing/insights/top-products');
+  async getBillingTopProductPerCustomer(startDate?: string, endDate?: string): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>('/billing/insights/top-products', { params: { startDate, endDate } });
     return res.data.data;
   }
 

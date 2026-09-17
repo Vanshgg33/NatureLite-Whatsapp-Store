@@ -1,11 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Trophy, TrendingUp, AlertCircle, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Header } from '@/components/layout/header';
-import { Button } from '@/components/ui/button';
 
 function fmt(n: number) {
   return '₹' + (n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -22,6 +21,30 @@ const TAG_COLORS: Record<string, string> = {
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
+type DatePreset = 'all' | 'month' | 'last30' | 'week' | 'custom';
+
+function getRange(preset: DatePreset, customStart: string, customEnd: string): { startDate?: string; endDate?: string } {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (preset === 'all') return {};
+  if (preset === 'custom') return { startDate: customStart || undefined, endDate: customEnd ? customEnd + 'T23:59:59' : undefined };
+  if (preset === 'month') return { startDate: new Date(now.getFullYear(), now.getMonth(), 1).toISOString() };
+  if (preset === 'last30') { const d = new Date(today); d.setDate(d.getDate() - 30); return { startDate: d.toISOString() }; }
+  if (preset === 'week') {
+    const w = new Date(today); w.setDate(w.getDate() - w.getDay() + (w.getDay() === 0 ? -6 : 1));
+    return { startDate: w.toISOString() };
+  }
+  return {};
+}
+
+const DATE_PRESETS: { key: DatePreset; label: string }[] = [
+  { key: 'all', label: 'All Time' },
+  { key: 'month', label: 'This Month' },
+  { key: 'last30', label: 'Last 30 Days' },
+  { key: 'week', label: 'This Week' },
+  { key: 'custom', label: 'Custom' },
+];
+
 function Podium({ data, valueKey, fmtFn }: { data: any[]; valueKey: string; fmtFn: (v: number) => string }) {
   if (data.length < 3) return null;
   return (
@@ -32,7 +55,7 @@ function Podium({ data, valueKey, fmtFn }: { data: any[]; valueKey: string; fmtF
           <div key={c._id ?? c.customerId} className={`bg-white rounded-2xl shadow-sm p-4 text-center ${rank === 1 ? '' : rank === 2 ? 'mt-4' : 'mt-8'}`}>
             <div className="text-2xl mb-1">{MEDALS[rank - 1]}</div>
             <div className="h-10 w-10 rounded-full bg-[#e8f5ee] flex items-center justify-center text-[#2d7a4f] font-bold text-sm mx-auto mb-2">
-              {c.name?.[0]?.toUpperCase() ?? c.customerName?.[0]?.toUpperCase()}
+              {c.name?.[0]?.toUpperCase() ?? c.customerName?.[0]?.toUpperCase() ?? '?'}
             </div>
             <div className="font-semibold text-gray-800 text-sm truncate">{c.name ?? c.customerName}</div>
             <div className="text-xs text-gray-400 mt-0.5">{c.phone ?? c.customerPhone}</div>
@@ -102,30 +125,35 @@ function BillHistoryModal({ customer, onClose }: { customer: any; onClose: () =>
   );
 }
 
-type Tab = 'value' | 'orders' | 'product';
+type Tab = 'orders' | 'value' | 'product';
 
 export default function InsightsPage() {
-  const [tab, setTab] = useState<Tab>('value');
+  const [tab, setTab] = useState<Tab>('orders');
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [preset, setPreset] = useState<DatePreset>('all');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+
+  const range = useMemo(() => getRange(preset, customStart, customEnd), [preset, customStart, customEnd]);
 
   const { data: byValue = [], isLoading: loadingValue } = useQuery({
-    queryKey: ['billing-insights-value'],
-    queryFn: () => api.getBillingTopCustomers(200, 'totalPurchase'),
+    queryKey: ['billing-insights-value', range],
+    queryFn: () => api.getBillingTopCustomers(200, 'totalPurchase', range.startDate, range.endDate),
   });
 
   const { data: byOrders = [], isLoading: loadingOrders } = useQuery({
-    queryKey: ['billing-insights-orders'],
-    queryFn: () => api.getBillingTopCustomers(200, 'orderCount'),
+    queryKey: ['billing-insights-orders', range],
+    queryFn: () => api.getBillingTopCustomers(200, 'orderCount', range.startDate, range.endDate),
   });
 
   const { data: byProduct = [], isLoading: loadingProduct } = useQuery({
-    queryKey: ['billing-insights-products'],
-    queryFn: () => api.getBillingTopProductPerCustomer(),
+    queryKey: ['billing-insights-products', range],
+    queryFn: () => api.getBillingTopProductPerCustomer(range.startDate, range.endDate),
   });
 
   const TABS: { key: Tab; label: string }[] = [
-    { key: 'value', label: 'Highest Value' },
     { key: 'orders', label: 'Most Orders' },
+    { key: 'value', label: 'Highest Value' },
     { key: 'product', label: 'Top Product' },
   ];
 
@@ -140,6 +168,30 @@ export default function InsightsPage() {
       />
 
       <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4">
+        {/* Date filter */}
+        <div className="flex flex-wrap items-center gap-2">
+          {DATE_PRESETS.map(p => (
+            <button
+              key={p.key}
+              onClick={() => setPreset(p.key)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                preset === p.key
+                  ? 'bg-[#2d7a4f] text-white'
+                  : 'bg-white border border-gray-200 text-gray-600 hover:border-[#2d7a4f] hover:text-[#2d7a4f]'
+              }`}
+            >{p.label}</button>
+          ))}
+          {preset === 'custom' && (
+            <div className="flex items-center gap-2 ml-1">
+              <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
+                className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f]" />
+              <span className="text-gray-400 text-sm">to</span>
+              <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
+                className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f]" />
+            </div>
+          )}
+        </div>
+
         {/* Tabs */}
         <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1 w-fit">
           {TABS.map(t => (
@@ -185,12 +237,14 @@ export default function InsightsPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {byValue.map((c: any, i: number) => (
+                      {byValue.length === 0
+                        ? <tr><td colSpan={7} className="text-center py-12 text-gray-400">No data for this period</td></tr>
+                        : byValue.map((c: any, i: number) => (
                         <tr key={c._id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedCustomer(c)}>
                           <td className="px-4 py-3 text-gray-400 text-xs font-mono">{i + 1}</td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
-                              <div className="h-7 w-7 rounded-full bg-[#e8f5ee] flex items-center justify-center text-[#2d7a4f] font-bold text-xs shrink-0">{c.name?.[0]?.toUpperCase()}</div>
+                              <div className="h-7 w-7 rounded-full bg-[#e8f5ee] flex items-center justify-center text-[#2d7a4f] font-bold text-xs shrink-0">{c.name?.[0]?.toUpperCase() ?? '?'}</div>
                               <div>
                                 <div className="font-medium text-gray-800">{c.name}</div>
                                 <div className="text-xs text-gray-400">{c.phone}</div>
@@ -235,12 +289,14 @@ export default function InsightsPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {byOrders.map((c: any, i: number) => (
+                      {byOrders.length === 0
+                        ? <tr><td colSpan={5} className="text-center py-12 text-gray-400">No data for this period</td></tr>
+                        : byOrders.map((c: any, i: number) => (
                         <tr key={c._id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedCustomer(c)}>
                           <td className="px-4 py-3 text-gray-400 text-xs font-mono">{i + 1}</td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
-                              <div className="h-7 w-7 rounded-full bg-[#e8f5ee] flex items-center justify-center text-[#2d7a4f] font-bold text-xs shrink-0">{c.name?.[0]?.toUpperCase()}</div>
+                              <div className="h-7 w-7 rounded-full bg-[#e8f5ee] flex items-center justify-center text-[#2d7a4f] font-bold text-xs shrink-0">{c.name?.[0]?.toUpperCase() ?? '?'}</div>
                               <div>
                                 <div className="font-medium text-gray-800">{c.name}</div>
                                 <div className="text-xs text-gray-400">{c.phone}</div>
@@ -276,12 +332,14 @@ export default function InsightsPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {byProduct.map((c: any, i: number) => (
+                      {byProduct.length === 0
+                        ? <tr><td colSpan={5} className="text-center py-12 text-gray-400">No data for this period</td></tr>
+                        : byProduct.map((c: any, i: number) => (
                         <tr key={c.customerId} className="hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedCustomer({ _id: c.customerId, name: c.customerName, phone: c.customerPhone })}>
                           <td className="px-4 py-3 text-gray-400 text-xs font-mono">{i + 1}</td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
-                              <div className="h-7 w-7 rounded-full bg-[#e8f5ee] flex items-center justify-center text-[#2d7a4f] font-bold text-xs shrink-0">{c.customerName?.[0]?.toUpperCase()}</div>
+                              <div className="h-7 w-7 rounded-full bg-[#e8f5ee] flex items-center justify-center text-[#2d7a4f] font-bold text-xs shrink-0">{c.customerName?.[0]?.toUpperCase() ?? '?'}</div>
                               <div>
                                 <div className="font-medium text-gray-800">{c.customerName}</div>
                                 <div className="text-xs text-gray-400">{c.customerPhone}</div>
