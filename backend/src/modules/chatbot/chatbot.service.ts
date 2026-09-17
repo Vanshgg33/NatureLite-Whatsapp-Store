@@ -2113,6 +2113,52 @@ export class ChatbotService implements OnModuleInit {
       }
     }
     if (!state) {
+      // Fuzzy fallback: abbreviations, common misspellings, then Levenshtein
+      const STATE_ALIASES: Record<string, string> = {
+        up: 'Uttar Pradesh', mp: 'Madhya Pradesh', ap: 'Andhra Pradesh',
+        tn: 'Tamil Nadu', wb: 'West Bengal', hp: 'Himachal Pradesh',
+        cg: 'Chhattisgarh', jk: 'Jammu and Kashmir', uk: 'Uttarakhand',
+        mh: 'Maharashtra', ka: 'Karnataka', ts: 'Telangana', rj: 'Rajasthan',
+        jh: 'Jharkhand', od: 'Odisha', br: 'Bihar', dl: 'Delhi',
+        pb: 'Punjab', as: 'Assam', kl: 'Kerala', gj: 'Gujarat',
+        hr: 'Haryana', mn: 'Manipur', ml: 'Meghalaya', mz: 'Mizoram',
+        nl: 'Nagaland', tr: 'Tripura', sk: 'Sikkim', ga: 'Goa',
+        ar: 'Arunachal Pradesh', orissa: 'Odisha', uttaranchal: 'Uttarakhand',
+        pondicherry: 'Puducherry', uttrakhand: 'Uttarakhand',
+        chatisgarh: 'Chhattisgarh', chattisgarh: 'Chhattisgarh',
+        chhatisgarh: 'Chhattisgarh', himachal: 'Himachal Pradesh',
+      };
+      const lev = (a: string, b: string): number => {
+        const dp = Array.from({ length: b.length + 1 }, (_, j) => j);
+        for (let i = 1; i <= a.length; i++) {
+          let prev = dp[0]; dp[0] = i;
+          for (let j = 1; j <= b.length; j++) {
+            const tmp = dp[j];
+            dp[j] = a[i - 1] === b[j - 1] ? prev : 1 + Math.min(prev, dp[j], dp[j - 1]);
+            prev = tmp;
+          }
+        }
+        return dp[b.length];
+      };
+      const fuzzyState = (line: string): string | null => {
+        const words = line.toLowerCase().split(/[\s,]+/).filter(Boolean);
+        for (const word of words) {
+          if (STATE_ALIASES[word]) return STATE_ALIASES[word];
+        }
+        for (const word of words) {
+          if (word.length < 6) continue;
+          for (const s of STATES) {
+            if (lev(word, s.toLowerCase().replace(/\s+/g, '')) <= Math.max(2, Math.floor(word.length * 0.2))) return s;
+          }
+        }
+        return null;
+      };
+      for (let i = 0; i < lines.length; i++) {
+        const found = fuzzyState(lines[i]);
+        if (found) { stateLineIdx = i; state = found; break; }
+      }
+    }
+    if (!state) {
       return {
         ok: false,
         reason: 'Couldn\u2019t recognise the state. Please spell it fully (e.g. Maharashtra)',
@@ -2185,11 +2231,15 @@ export class ChatbotService implements OnModuleInit {
       });
     };
 
-    const parsed = this.parseCustomerAddress(input);
+    let parsed = this.parseCustomerAddress(input);
     if (parsed.ok !== true) {
-      const reason = parsed.reason;
-      await sendRetry(reason);
-      return;
+      const ai = await this.chatbotAiService.extractAddressWithAi(input);
+      if (ai) {
+        parsed = { ok: true, ...ai };
+      } else {
+        await sendRetry(parsed.reason);
+        return;
+      }
     }
     const { name, street, city, state, pincode, landmark } = parsed;
 

@@ -553,6 +553,33 @@ export class ChatbotAiService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
+  // ADDRESS EXTRACTION
+  // One-shot Gemini call used as fallback when regex/fuzzy parse fails.
+  // ─────────────────────────────────────────────────────────────────────────
+  async extractAddressWithAi(raw: string): Promise<{
+    name: string; street: string; city: string; state: string; pincode: string; landmark?: string;
+  } | null> {
+    if (!process.env.GEMINI_API_KEY) return null;
+    const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+    const prompt = `Extract the Indian shipping address fields from this text. Reply with ONLY a JSON object, no markdown, no explanation:
+{"name":"full name","street":"house/flat and street","city":"city name","state":"full Indian state name","pincode":"6-digit pincode","landmark":"optional or null"}
+
+Text: ${raw}`;
+    try {
+      const res = await this.ai.models.generateContent({ model, contents: prompt });
+      const text = (res.text ?? '').trim().replace(/^```[a-z]*\n?/, '').replace(/```$/, '').trim();
+      const obj = JSON.parse(text);
+      if (!obj.name || !obj.street || !obj.city || !obj.state || !/^\d{6}$/.test(obj.pincode ?? '')) return null;
+      return {
+        name: obj.name, street: obj.street, city: obj.city, state: obj.state,
+        pincode: obj.pincode, landmark: obj.landmark || undefined,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // MAIN ENTRY POINT
   // Called by ChatbotService for every message that is NOT a hardcoded
   // critical-path intercept (payment selection, checkout, address input).
