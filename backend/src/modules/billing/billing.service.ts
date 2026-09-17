@@ -35,7 +35,7 @@ export class BillingService {
 
     return {
       _id: u._id,
-      name: u.name ?? '',
+      name: u.name?.trim() || displayPhone || 'Unknown',
       phone: displayPhone,
       gstNo: u.gstNo,
       tags: u.tags ?? [],
