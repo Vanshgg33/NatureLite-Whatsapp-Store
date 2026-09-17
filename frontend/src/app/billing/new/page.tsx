@@ -270,6 +270,10 @@ export default function NewBillPage() {
   const [items, setItems] = useState<LineItem[]>([]);
   const [amountPaid, setAmountPaid] = useState(0);
   const [notes, setNotes] = useState('');
+  const [showAddAddress, setShowAddAddress] = useState(false);
+  const [newAddrLabel, setNewAddrLabel] = useState('');
+  const [newAddrLine, setNewAddrLine] = useState('');
+  const [addingAddr, setAddingAddr] = useState(false);
 
   const subtotal = Math.round(items.reduce((s, i) => s + i.taxableAmount, 0) * 100) / 100;
   const totalGst = Math.round(items.reduce((s, i) => s + i.gstAmount, 0) * 100) / 100;
@@ -309,9 +313,27 @@ export default function NewBillPage() {
 
   const removeItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx));
 
+  const handleAddAddress = async () => {
+    if (!newAddrLabel.trim() || !newAddrLine.trim() || !customer) return;
+    setAddingAddr(true);
+    try {
+      const updated = await api.addBillingCustomerAddress(customer._id, { label: newAddrLabel.trim(), line: newAddrLine.trim() });
+      setCustomer(updated);
+      setSelectedAddrIdx(updated.addresses.length - 1);
+      setShowAddAddress(false);
+      setNewAddrLabel('');
+      setNewAddrLine('');
+    } catch {
+      toast({ title: 'Failed to add address', variant: 'destructive' });
+    } finally {
+      setAddingAddr(false);
+    }
+  };
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'F2') { e.preventDefault(); document.getElementById('customer-search')?.focus(); }
+      if (e.key === 'F2') { e.preventDefault(); router.push('/billing/new'); }
+      if (e.key === 'F3') { e.preventDefault(); document.getElementById('customer-search')?.focus(); }
       if (e.key === 'Escape') router.push('/billing/customers');
       if (e.key === 'F8') { e.preventDefault(); saveMutation.mutate(false); }
       if (e.key === 'F9') { e.preventDefault(); saveMutation.mutate(true); }
@@ -371,7 +393,7 @@ export default function NewBillPage() {
         <div className="w-px h-4 bg-gray-200" />
         <span className="font-semibold text-gray-800 text-sm">New Bill</span>
         <span className="hidden lg:flex items-center gap-1 text-[11px] text-gray-400 ml-1">
-          <kbd className="px-1 py-0.5 bg-gray-100 rounded text-[10px] font-mono">F2</kbd> Customer ·
+          <kbd className="px-1 py-0.5 bg-gray-100 rounded text-[10px] font-mono">F3</kbd> Customer ·
           <kbd className="px-1 py-0.5 bg-gray-100 rounded text-[10px] font-mono">F8</kbd> Save ·
           <kbd className="px-1 py-0.5 bg-gray-100 rounded text-[10px] font-mono">F9</kbd> Print ·
           <kbd className="px-1 py-0.5 bg-gray-100 rounded text-[10px] font-mono">Esc</kbd> Cancel
@@ -410,7 +432,7 @@ export default function NewBillPage() {
                     {customer.gstNo && <span className="ml-2 text-gray-400">GST: {customer.gstNo}</span>}
                   </div>
                   {customer.addresses?.length > 0 && (
-                    <div className="mt-1.5">
+                    <div className="mt-1.5 space-y-1.5">
                       {customer.addresses.length === 1 ? (
                         <span className="text-xs text-gray-500">{customer.addresses[0].line}</span>
                       ) : (
@@ -423,6 +445,50 @@ export default function NewBillPage() {
                             <option key={i} value={i}>{a.label}: {a.line}</option>
                           ))}
                         </select>
+                      )}
+                      {!showAddAddress ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowAddAddress(true)}
+                          className="flex items-center gap-1 text-[11px] text-[#2d7a4f] hover:underline"
+                        >
+                          <Plus className="h-3 w-3" /> Add New Address
+                        </button>
+                      ) : (
+                        <div className="mt-1 space-y-1.5 p-2 bg-gray-50 rounded border border-gray-200">
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <Input
+                              placeholder="Label (e.g. Shop)"
+                              value={newAddrLabel}
+                              onChange={e => setNewAddrLabel(e.target.value)}
+                              className="text-xs h-7"
+                            />
+                            <Input
+                              placeholder="Full address"
+                              value={newAddrLine}
+                              onChange={e => setNewAddrLine(e.target.value)}
+                              className="text-xs h-7"
+                            />
+                          </div>
+                          <div className="flex gap-1.5">
+                            <Button
+                              size="sm"
+                              onClick={handleAddAddress}
+                              disabled={addingAddr || !newAddrLabel || !newAddrLine}
+                              className="bg-[#2d7a4f] hover:bg-[#245f3e] text-white text-xs h-6 px-2"
+                            >
+                              {addingAddr ? 'Saving…' : 'Save'}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => { setShowAddAddress(false); setNewAddrLabel(''); setNewAddrLine(''); }}
+                              className="text-xs h-6 px-2"
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   )}

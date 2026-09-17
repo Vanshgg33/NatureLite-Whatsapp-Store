@@ -1906,23 +1906,28 @@ class ApiClient {
     return res.data.data;
   }
 
-  async getBillingCustomerReport(params: { startDate?: string; endDate?: string; orderTag?: string; productSku?: string }): Promise<any[]> {
+  async getBillingCustomerReport(params: { startDate?: string; endDate?: string; orderTag?: string; productSku?: string; customerId?: string }): Promise<any[]> {
     const res = await this.client.get<ApiResponse<any[]>>('/billing/reports/customers', { params });
     return res.data.data;
   }
 
-  async getBillingDues(): Promise<{ bills: any[]; totalDue: number; count: number; unpaid: number; partial: number }> {
-    const res = await this.client.get<ApiResponse<any>>('/billing/dues');
+  async getBillingDues(params?: { startDate?: string; endDate?: string }): Promise<{ bills: any[]; totalDue: number; count: number; unpaid: number; partial: number }> {
+    const res = await this.client.get<ApiResponse<any>>('/billing/dues', { params });
     return res.data.data;
   }
 
-  async getBillingTopCustomers(limit = 50): Promise<any[]> {
-    const res = await this.client.get<ApiResponse<any[]>>('/billing/insights/customers', { params: { limit } });
+  async getBillingTopCustomers(limit = 200, sortBy?: 'totalPurchase' | 'orderCount'): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>('/billing/insights/customers', { params: { limit, sortBy } });
     return res.data.data;
   }
 
-  async getBillingGstr1(month?: string): Promise<any[]> {
-    const res = await this.client.get<ApiResponse<any[]>>('/billing/gstr1', { params: { month } });
+  async getBillingTopProductPerCustomer(): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>('/billing/insights/top-products');
+    return res.data.data;
+  }
+
+  async getBillingGstr1(month?: string): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>('/billing/gstr1', { params: { month } });
     return res.data.data;
   }
 

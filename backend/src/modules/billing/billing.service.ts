@@ -81,6 +81,12 @@ export class BillingService {
     const existing = await this.userModel.findOne({ phone: normalizedPhone }).lean();
     if (existing) throw new ConflictException('Customer with this phone already exists');
 
+    // Duplicate name: suffix with last 3 phone digits so both stay findable
+    const baseName = data.name.trim();
+    const escaped = baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const nameDup = await this.userModel.findOne({ name: new RegExp(`^${escaped}$`, 'i') }).lean();
+    const resolvedName = nameDup ? `${baseName} (${normalizedPhone.slice(-3)})` : baseName;
+
     const billingAddresses = (data.addresses ?? []).map((a, i) => ({
       label: a.label,
       line: a.line,
@@ -88,7 +94,7 @@ export class BillingService {
     }));
 
     const u = await this.userModel.create({
-      name: data.name.trim(),
+      name: resolvedName,
       phone: normalizedPhone,
       gstNo: data.gstNo,
       tags: data.tags ?? [],
@@ -347,15 +353,17 @@ export class BillingService {
 
   // ─── Dues ────────────────────────────────────────────────────────────────
 
-  async getDues() {
+  async getDues(filters?: { startDate?: string; endDate?: string }) {
+    const match: any = { status: 'active', paymentStatus: { $in: ['unpaid', 'partial'] } };
+    if (filters?.startDate || filters?.endDate) {
+      match.createdAt = {};
+      if (filters?.startDate) match.createdAt.$gte = new Date(filters.startDate);
+      if (filters?.endDate) match.createdAt.$lte = new Date(filters.endDate);
+    }
     const [bills, summary] = await Promise.all([
-      this.billModel
-        .find({ status: 'active', paymentStatus: { $in: ['unpaid', 'partial'] } })
-        .sort({ createdAt: 1 })
-        .limit(500)
-        .lean(),
+      this.billModel.find(match).sort({ amountDue: -1 }).limit(500).lean(),
       this.billModel.aggregate([
-        { $match: { status: 'active', paymentStatus: { $in: ['unpaid', 'partial'] } } },
+        { $match: match },
         {
           $group: {
             _id: null,
@@ -373,7 +381,7 @@ export class BillingService {
 
   // ─── Insights ─────────────────────────────────────────────────────────────
 
-  async getTopCustomers(limit = 200) {
+  async getTopCustomers(limit = 200, sortBy: 'totalPurchase' | 'orderCount' = 'totalPurchase') {
     return this.billModel.aggregate([
       { $match: { status: 'active' } },
       {
@@ -386,7 +394,7 @@ export class BillingService {
           outstanding: { $sum: '$amountDue' },
         },
       },
-      { $sort: { totalPurchase: -1 } },
+      { $sort: { [sortBy]: -1 } },
       { $limit: limit },
       // Join User to get current tags
       { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: '_user' } },
@@ -403,6 +411,42 @@ export class BillingService {
     ]);
   }
 
+  async getTopProductPerCustomer() {
+    return this.billModel.aggregate([
+      { $match: { status: 'active' } },
+      { $unwind: '$items' },
+      { $group: {
+        _id: { customerId: '$customerId', sku: '$items.sku' },
+        customerName: { $first: '$customerName' },
+        customerPhone: { $first: '$customerPhone' },
+        productName: { $first: '$items.name' },
+        productQty: { $sum: '$items.qty' },
+      }},
+      { $sort: { '_id.customerId': 1, productQty: -1 } },
+      { $group: {
+        _id: '$_id.customerId',
+        customerName: { $first: '$customerName' },
+        customerPhone: { $first: '$customerPhone' },
+        topSku: { $first: '$_id.sku' },
+        topProductName: { $first: '$productName' },
+        topProductQty: { $first: '$productQty' },
+        totalQty: { $sum: '$productQty' },
+      }},
+      { $project: {
+        _id: 0,
+        customerId: '$_id',
+        customerName: 1,
+        customerPhone: 1,
+        topSku: 1,
+        topProductName: 1,
+        topProductQty: 1,
+        totalQty: 1,
+        pct: { $cond: [{ $gt: ['$totalQty', 0] }, { $round: [{ $multiply: [{ $divide: ['$topProductQty', '$totalQty'] }, 100] }, 1] }, 0] },
+      }},
+      { $sort: { topProductQty: -1 } },
+    ]);
+  }
+
   // ─── GSTR-1 ───────────────────────────────────────────────────────────────
 
   async getGstr1(month?: string) {
@@ -415,55 +459,44 @@ export class BillingService {
         $lte: new Date(Date.UTC(y, m, 0, 23, 59, 59, 999) - IST_OFFSET_MS),
       };
     }
-    return this.billModel.aggregate([
-      { $match: match },
-      { $unwind: '$items' },
-      {
-        $group: {
+
+    const hasGst = { $and: [{ $ne: ['$customerGstNo', null] }, { $ne: ['$customerGstNo', ''] }] };
+    const noGst  = { $or:  [{ $eq:  ['$customerGstNo', null] }, { $eq:  ['$customerGstNo', ''] }] };
+
+    const [b2b, b2cAgg, hsnSummary, docAgg] = await Promise.all([
+      this.billModel.find(
+        { ...match, customerGstNo: { $exists: true, $nin: [null, ''] } },
+        'invoiceNo createdAt customerGstNo customerName subtotal totalGst grandTotal orderTag',
+      ).sort({ createdAt: 1 }).lean(),
+
+      this.billModel.aggregate([
+        { $match: { ...match, $or: [{ customerGstNo: { $exists: false } }, { customerGstNo: '' }, { customerGstNo: null }] } },
+        { $unwind: '$items' },
+        { $group: {
+          _id: '$items.gstRate',
+          taxableAmount: { $sum: '$items.taxableAmount' },
+          gstAmount: { $sum: '$items.gstAmount' },
+          totalValue: { $sum: '$items.total' },
+        }},
+        { $sort: { _id: 1 } },
+      ]),
+
+      this.billModel.aggregate([
+        { $match: match },
+        { $unwind: '$items' },
+        { $group: {
           _id: { hsnCode: '$items.hsnCode', gstRate: '$items.gstRate' },
           taxableAmount: { $sum: '$items.taxableAmount' },
           gstAmount: { $sum: '$items.gstAmount' },
           totalValue: { $sum: '$items.total' },
           qty: { $sum: '$items.qty' },
-          b2bTaxable: {
-            $sum: {
-              $cond: [
-                { $and: [{ $ne: ['$customerGstNo', null] }, { $ne: ['$customerGstNo', ''] }] },
-                '$items.taxableAmount', 0,
-              ],
-            },
-          },
-          b2cTaxable: {
-            $sum: {
-              $cond: [
-                { $or: [{ $eq: ['$customerGstNo', null] }, { $eq: ['$customerGstNo', ''] }] },
-                '$items.taxableAmount', 0,
-              ],
-            },
-          },
-          b2bGst: {
-            $sum: {
-              $cond: [
-                { $and: [{ $ne: ['$customerGstNo', null] }, { $ne: ['$customerGstNo', ''] }] },
-                '$items.gstAmount', 0,
-              ],
-            },
-          },
-          b2cGst: {
-            $sum: {
-              $cond: [
-                { $or: [{ $eq: ['$customerGstNo', null] }, { $eq: ['$customerGstNo', ''] }] },
-                '$items.gstAmount', 0,
-              ],
-            },
-          },
-        },
-      },
-      {
-        $project: {
-          _id: 0,
-          hsnCode: '$_id.hsnCode',
-          gstRate: '$_id.gstRate',
+          b2bTaxable: { $sum: { $cond: [hasGst, '$items.taxableAmount', 0] } },
+          b2cTaxable: { $sum: { $cond: [noGst,  '$items.taxableAmount', 0] } },
+          b2bGst:     { $sum: { $cond: [hasGst, '$items.gstAmount', 0] } },
+          b2cGst:     { $sum: { $cond: [noGst,  '$items.gstAmount', 0] } },
+        }},
+        { $project: {
+          _id: 0, hsnCode: '$_id.hsnCode', gstRate: '$_id.gstRate',
           taxableAmount: { $round: ['$taxableAmount', 2] },
           gstAmount: { $round: ['$gstAmount', 2] },
           totalValue: { $round: ['$totalValue', 2] },
@@ -472,10 +505,38 @@ export class BillingService {
           b2cTaxable: { $round: ['$b2cTaxable', 2] },
           b2bGst: { $round: ['$b2bGst', 2] },
           b2cGst: { $round: ['$b2cGst', 2] },
-        },
-      },
-      { $sort: { hsnCode: 1, gstRate: 1 } },
+        }},
+        { $sort: { hsnCode: 1, gstRate: 1 } },
+      ]),
+
+      this.billModel.aggregate([
+        // Drop status filter so cancelled bills are visible for doc summary
+        { $match: month ? { createdAt: match.createdAt } : {} },
+        { $group: {
+          _id: null,
+          totalInvoices: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } },
+          cancelledInvoices: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } },
+          firstInvoiceNo: { $min: '$invoiceNo' },
+          lastInvoiceNo: { $max: '$invoiceNo' },
+        }},
+      ]),
     ]);
+
+    const b2cSummary = b2cAgg.map((r: any) => ({
+      gstRate: r._id,
+      taxableAmount: Math.round(r.taxableAmount * 100) / 100,
+      cgst: Math.round(r.gstAmount / 2 * 100) / 100,
+      sgst: Math.round(r.gstAmount / 2 * 100) / 100,
+      gstAmount: Math.round(r.gstAmount * 100) / 100,
+      totalValue: Math.round(r.totalValue * 100) / 100,
+    }));
+
+    return {
+      b2b,
+      b2cSummary,
+      hsnSummary,
+      docSummary: docAgg[0] ?? { totalInvoices: 0, cancelledInvoices: 0, firstInvoiceNo: null, lastInvoiceNo: null },
+    };
   }
 
   // ─── Dashboard ────────────────────────────────────────────────────────────
@@ -486,7 +547,9 @@ export class BillingService {
     const startOfToday = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate()) - IST_OFFSET_MS);
     const startOfMonth = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), 1) - IST_OFFSET_MS);
 
-    const [todayStats, monthStats, allTimeStats, outstandingAgg, customerCount, recentBills] = await Promise.all([
+    const prevStartOfMonth = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth() - 1, 1) - IST_OFFSET_MS);
+
+    const [todayStats, monthStats, allTimeStats, outstandingAgg, customerCount, recentBills, thisMonthTags, prevMonthTags] = await Promise.all([
       this.billModel.aggregate([
         { $match: { status: 'active', createdAt: { $gte: startOfToday } } },
         { $group: { _id: null, total: { $sum: '$grandTotal' }, count: { $sum: 1 }, collected: { $sum: '$amountPaid' } } },
@@ -505,7 +568,29 @@ export class BillingService {
       ]),
       this.userModel.countDocuments({}),
       this.billModel.find({ status: 'active' }).sort({ createdAt: -1 }).limit(10).lean(),
+      this.billModel.aggregate([
+        { $match: { status: 'active', createdAt: { $gte: startOfMonth } } },
+        { $group: { _id: '$orderTag', total: { $sum: '$grandTotal' }, count: { $sum: 1 } } },
+      ]),
+      this.billModel.aggregate([
+        { $match: { status: 'active', createdAt: { $gte: prevStartOfMonth, $lt: startOfMonth } } },
+        { $group: { _id: '$orderTag', total: { $sum: '$grandTotal' }, count: { $sum: 1 } } },
+      ]),
     ]);
+
+    // Merge tag stats with prev-month for trend
+    const prevMap: Record<string, { total: number; count: number }> = {};
+    for (const t of prevMonthTags) prevMap[t._id] = { total: t.total, count: t.count };
+    const tagStats = thisMonthTags.map((t: any) => {
+      const prev = prevMap[t._id] ?? { total: 0, count: 0 };
+      return {
+        tag: t._id,
+        total: t.total,
+        count: t.count,
+        prevTotal: prev.total,
+        trend: prev.total > 0 ? Math.round((t.total - prev.total) / prev.total * 100) : null,
+      };
+    });
 
     return {
       today: todayStats[0] ?? { total: 0, count: 0, collected: 0 },
@@ -514,6 +599,7 @@ export class BillingService {
       outstanding: outstandingAgg[0]?.totalOutstanding ?? 0,
       customerCount,
       recentBills,
+      tagStats,
     };
   }
 
@@ -566,6 +652,7 @@ export class BillingService {
     endDate?: string;
     orderTag?: string;
     productSku?: string;
+    customerId?: string;
   }) {
     const match: any = { status: 'active' };
     if (filters.startDate || filters.endDate) {
@@ -574,6 +661,7 @@ export class BillingService {
       if (filters.endDate) match.createdAt.$lte = new Date(filters.endDate);
     }
     if (filters.orderTag) match.orderTag = filters.orderTag;
+    if (filters.customerId) match.customerId = new Types.ObjectId(filters.customerId);
 
     const pipeline: any[] = [{ $match: match }, { $unwind: '$items' }];
     if (filters.productSku?.trim()) {

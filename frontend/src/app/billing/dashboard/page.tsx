@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { LayoutDashboard, Users, FileText, AlertCircle, TrendingUp, IndianRupee, Globe } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, AlertCircle, TrendingUp, TrendingDown, IndianRupee, Globe } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Header } from '@/components/layout/header';
 
@@ -16,6 +16,15 @@ const ICON_BG: Record<string, string> = {
   'text-blue-600': 'bg-blue-100',
   'text-red-500': 'bg-red-100',
   'text-violet-600': 'bg-violet-100',
+};
+
+const TAG_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
+  B2B:            { bg: 'bg-blue-50',   text: 'text-blue-700',   dot: 'bg-blue-400' },
+  Transport:      { bg: 'bg-orange-50', text: 'text-orange-700', dot: 'bg-orange-400' },
+  'Home Delivery':{ bg: 'bg-teal-50',   text: 'text-teal-700',   dot: 'bg-teal-400' },
+  'Store/Retail': { bg: 'bg-purple-50', text: 'text-purple-700', dot: 'bg-purple-400' },
+  Wholesale:      { bg: 'bg-amber-50',  text: 'text-amber-700',  dot: 'bg-amber-400' },
+  Retail:         { bg: 'bg-pink-50',   text: 'text-pink-700',   dot: 'bg-pink-400' },
 };
 
 function StatCard({ label, value, sub, icon: Icon, color }: { label: string; value: string; sub?: string; icon: any; color: string }) {
@@ -87,6 +96,34 @@ export default function DashboardPage() {
                 <StatCard label="Month Due" value={fmt(data?.month?.due ?? 0)} icon={AlertCircle} color="text-red-500" />
               </div>
             </div>
+
+            {/* Tag breakdown — this month */}
+            {(data?.tagStats ?? []).length > 0 && (
+              <div>
+                <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-2">This Month — By Tag</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {(data.tagStats as any[]).map((t: any) => {
+                    const colors = TAG_COLORS[t.tag] ?? { bg: 'bg-gray-50', text: 'text-gray-700', dot: 'bg-gray-400' };
+                    return (
+                      <div key={t.tag} className={`${colors.bg} border border-white rounded-lg p-3`}>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className={`h-2 w-2 rounded-full ${colors.dot} shrink-0`} />
+                          <span className={`text-[10px] font-semibold truncate ${colors.text}`}>{t.tag}</span>
+                        </div>
+                        <p className={`text-base font-bold tabular-nums ${colors.text}`}>{fmt(t.total)}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{t.count} bills</p>
+                        {t.trend !== null && (
+                          <div className={`flex items-center gap-0.5 mt-1 text-[10px] font-medium ${t.trend >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            {t.trend >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                            {t.trend >= 0 ? '+' : ''}{t.trend}% vs last month
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Quick links */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

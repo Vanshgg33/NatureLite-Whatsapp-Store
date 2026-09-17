@@ -138,15 +138,20 @@ export class BillingController {
   // ─── Dues ──────────────────────────────────────────────────────────────────
 
   @Get('dues')
-  getDues() {
-    return this.billingService.getDues();
+  getDues(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
+    return this.billingService.getDues(startDate || endDate ? { startDate, endDate } : undefined);
   }
 
   // ─── Insights ──────────────────────────────────────────────────────────────
 
   @Get('insights/customers')
-  getTopCustomers(@Query('limit') limit?: string) {
-    return this.billingService.getTopCustomers(limit ? parseInt(limit) : 50);
+  getTopCustomers(@Query('limit') limit?: string, @Query('sortBy') sortBy?: 'totalPurchase' | 'orderCount') {
+    return this.billingService.getTopCustomers(limit ? parseInt(limit) : 200, sortBy ?? 'totalPurchase');
+  }
+
+  @Get('insights/top-products')
+  getTopProductPerCustomer() {
+    return this.billingService.getTopProductPerCustomer();
   }
 
   // ─── GSTR-1 ────────────────────────────────────────────────────────────────
@@ -171,7 +176,7 @@ export class BillingController {
   }
 
   @Get('reports/customers')
-  getCustomerReport(@Query() q: { startDate?: string; endDate?: string; orderTag?: string; productSku?: string }) {
+  getCustomerReport(@Query() q: { startDate?: string; endDate?: string; orderTag?: string; productSku?: string; customerId?: string }) {
     return this.billingService.getCustomerReport(q);
   }
 }
