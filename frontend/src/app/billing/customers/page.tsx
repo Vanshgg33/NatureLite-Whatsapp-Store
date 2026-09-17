@@ -8,9 +8,6 @@ import { useDebouncedValue, cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from '@/components/ui/dialog';
 
 const ALL_TAGS = ['B2B', 'Transport', 'Home Delivery', 'Store/Retail', 'Wholesale', 'Retail'] as const;
 type CTag = typeof ALL_TAGS[number];
@@ -170,11 +167,11 @@ function CustomerForm({
         </div>
       </div>
 
-      <DialogFooter>
-        <Button onClick={() => onSave(form)} disabled={saving || !form.name || !form.phone}>
+      <div className="pt-2">
+        <Button onClick={() => onSave(form)} disabled={saving || !form.name || !form.phone} className="w-full bg-[#2d7a4f] hover:bg-[#245f3e] text-white">
           {saving ? 'Saving…' : 'Save Customer'}
         </Button>
-      </DialogFooter>
+      </div>
     </div>
   );
 }
@@ -377,21 +374,29 @@ export default function BillingCustomersPage() {
         </table>
       )}
 
-      {/* Create / Edit dialog */}
-      <Dialog open={editing !== null} onOpenChange={open => !open && setEditing(null)}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editing?._id ? 'Edit Customer' : 'New Customer'}</DialogTitle>
-          </DialogHeader>
-          {editing !== null && (
-            <CustomerForm
-              initial={editing?._id ? initialForEdit(editing) : BLANK}
-              onSave={handleSave}
-              saving={saving}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* Full-page customer form panel */}
+      {editing !== null && (
+        <div className="fixed inset-0 z-50 flex">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setEditing(null)} />
+          <div className="relative ml-auto w-full max-w-xl h-full bg-white flex flex-col shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
+              <h2 className="text-base font-semibold text-gray-800">{editing?._id ? 'Edit Customer' : 'New Customer'}</h2>
+              <button onClick={() => setEditing(null)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {/* Scrollable body */}
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              <CustomerForm
+                initial={editing?._id ? initialForEdit(editing) : BLANK}
+                onSave={handleSave}
+                saving={saving}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
