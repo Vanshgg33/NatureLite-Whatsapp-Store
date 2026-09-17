@@ -17,6 +17,7 @@ import {
   ChevronDown,
   ExternalLink,
   Package,
+  FileDown,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -193,6 +194,39 @@ export default function DeliveryHistoryPage() {
   }, 0);
   const pendingCount = filtered.filter((o) => o.collectionStatus === 'pending').length;
 
+  const exportCSV = () => {
+    const headers = ['CUSTOMER NAME', 'PHONE NO.', 'ADDRESS', 'DELIVERY BOY NAME', 'ORDER VALUE', 'CASH', 'UPI'];
+    const rows = filtered.map((o) => {
+      const addr = o.shippingAddress;
+      const address = addr ? [addr.street, addr.city, addr.state, addr.pincode].filter(Boolean).join(', ') : '';
+      const deliveryBoy = deliveryBoyMap.get(o.assignedDeliveryUserId ?? '') ?? '—';
+      const cash = isPartialPayment(o)
+        ? (o.metadata?.deliveryWorkflow?.cashAmount ?? 0)
+        : effectivePM(o) !== 'upi' ? (o.amountCollected ?? 0) : 0;
+      const upi = isPartialPayment(o)
+        ? (o.metadata?.deliveryWorkflow?.upiAmount ?? 0)
+        : effectivePM(o) === 'upi' ? (o.amountCollected ?? 0) : 0;
+      return [
+        addr?.name ?? '—',
+        addr?.phone ?? '—',
+        address,
+        deliveryBoy,
+        o.total ?? 0,
+        cash,
+        upi,
+      ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',');
+    });
+    const csv = [headers.join(','), ...rows].join('\r\n');
+    // BOM ensures Google Sheets reads UTF-8 correctly (Indian names, special chars)
+    const blob = new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `delivery-history-${startDate}-to-${endDate}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Header */}
@@ -278,6 +312,15 @@ export default function DeliveryHistoryPage() {
               </span>
             )}
           </h2>
+          {filtered.length > 0 && (
+            <button
+              onClick={exportCSV}
+              className="inline-flex items-center gap-2 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <FileDown className="h-3.5 w-3.5" />
+              Export to Google Sheets
+            </button>
+          )}
         </div>
 
         {isLoading ? (
