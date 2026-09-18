@@ -4932,7 +4932,7 @@ export class ChatbotService implements OnModuleInit {
       billingLines.push(bold(`You pay: ${this.formatCurrency(cart.total)}`));
 
       const addressLine = address
-        ? `📍 ${address.street}, ${address.city} — ${address.pincode}`
+        ? `📍 *${address.label || 'Saved address'}* — ${address.street}, ${address.city}${address.pincode ? ` ${address.pincode}` : ''}`
         : '';
 
       const body =
@@ -5049,6 +5049,16 @@ export class ChatbotService implements OnModuleInit {
     const flowId = this.configService.get<string>('whatsapp.flowId');
     const provider = this.configService.get<string>('whatsapp.provider');
     if (flowId && provider === 'meta') {
+      // Express checkout: skip the flow picker if user has a saved address
+      if (!options.forceShowList && user.addresses.length > 0) {
+        const defaultIdx = user.addresses.findIndex((a) => a.isDefault);
+        const addrIdx = defaultIdx >= 0 ? defaultIdx : 0;
+        session.context = mergeChatContext(session.context, { selectedAddressIndex: addrIdx });
+        await this.transitionToState(session, 'payment_selection');
+        await this.sendFlowResponse(phone, 'payment_selection', session, notice);
+        return;
+      }
+
       await this.whatsappService.sendWhatsAppFlow({
         phone,
         flowId,
