@@ -47,7 +47,7 @@ export class CrmEngineService {
           as: '_product',
         },
       },
-      { $unwind: { path: '$_product', preserveNullAndEmpty: true } },
+      { $unwind: { path: '$_product', preserveNullAndEmptyArrays: true } },
       {
         $lookup: {
           from: 'categories',
@@ -56,7 +56,7 @@ export class CrmEngineService {
           as: '_category',
         },
       },
-      { $unwind: { path: '$_category', preserveNullAndEmpty: true } },
+      { $unwind: { path: '$_category', preserveNullAndEmptyArrays: true } },
       {
         $group: {
           _id: '$_id',

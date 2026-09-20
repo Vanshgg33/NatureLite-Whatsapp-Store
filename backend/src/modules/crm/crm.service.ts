@@ -207,7 +207,7 @@ export class CrmService {
     for (const user of users) {
       if (!user.phone) continue;
       try {
-        await this.whatsapp.sendTextMessage({ to: user.phone, text: campaign.waMessage });
+        await this.whatsapp.sendTextMessage({ phone: user.phone, message: campaign.waMessage });
         sent++;
       } catch {
         // ponytail: fire-and-forget per user, don't fail the whole campaign on one bad number
