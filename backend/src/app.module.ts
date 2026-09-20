@@ -46,6 +46,7 @@ import { DeliveryCollectionsModule } from './modules/delivery-collections/delive
 import { RedisModule } from './modules/redis/redis.module';
 import { PurchaseModule } from './modules/purchase/purchase.module';
 import { BillingModule } from './modules/billing/billing.module';
+import { CrmModule } from './modules/crm/crm.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -149,6 +150,7 @@ import { HealthController } from './health.controller';
     DeliveryCollectionsModule,
     PurchaseModule,
     BillingModule,
+    CrmModule,
   ],
   providers: [
     {

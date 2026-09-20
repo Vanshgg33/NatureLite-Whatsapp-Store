@@ -18,6 +18,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { UcmModule } from '../ucm/ucm.module';
 import { AdminModule } from '../admin/admin.module';
 import { MediaModule } from '../media/media.module';
+import { CrmModule } from '../crm/crm.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { MediaModule } from '../media/media.module';
     forwardRef(() => UcmModule),
     AdminModule,
     MediaModule,
+    CrmModule,
   ],
   controllers: [OrdersController],
   providers: [OrderRepository, OrdersService],

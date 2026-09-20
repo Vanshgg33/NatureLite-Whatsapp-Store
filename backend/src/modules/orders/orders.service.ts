@@ -29,6 +29,7 @@ import { AdminService } from '../admin/admin.service';
 import { MediaService } from '../media/media.service';
 import { UpdateUserDto } from '../users/dto/user.dto';
 import { RedisService } from '../redis/redis.service';
+import { CrmEngineService } from '../crm/crm-engine.service';
 import {
   CreateOrderDto,
   UpdateOrderStatusDto,
@@ -116,6 +117,7 @@ export class OrdersService implements OnModuleInit {
     private readonly adminService: AdminService,
     private readonly mediaService: MediaService,
     private readonly redisService: RedisService,
+    private readonly crmEngine: CrmEngineService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -938,6 +940,9 @@ export class OrdersService implements OnModuleInit {
       }
     } else if (dto.status === 'delivered') {
       setFields.deliveredAt = new Date();
+      this.crmEngine.refreshUser(order.user).catch(err =>
+        this.logger.warn(`CRM refresh failed for ${order.user}: ${err.message}`)
+      );
     }
 
     const savedOrder = await this.orderRepository.getModel().findOneAndUpdate(
