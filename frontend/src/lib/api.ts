@@ -1935,6 +1935,88 @@ class ApiClient {
     const res = await this.client.get<ApiResponse<any>>('/billing/dashboard');
     return res.data.data;
   }
+
+  // ─── CRM ─────────────────────────────────────────────────────────────────
+
+  async getCrmCustomers(params: { segment?: string; search?: string; page?: number } = {}): Promise<any> {
+    const qs = new URLSearchParams();
+    if (params.segment) qs.set('segment', params.segment);
+    if (params.search) qs.set('search', params.search);
+    if (params.page) qs.set('page', String(params.page));
+    const res = await this.client.get<ApiResponse<any>>(`/crm/customers?${qs}`);
+    return res.data.data;
+  }
+
+  async getCrmCustomer360(id: string): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>(`/crm/customers/${id}`);
+    return res.data.data;
+  }
+
+  async getCrmQueue(tab?: string): Promise<any[]> {
+    const qs = tab ? `?tab=${tab}` : '';
+    const res = await this.client.get<ApiResponse<any[]>>(`/crm/queue${qs}`);
+    return res.data.data;
+  }
+
+  async assignCrmCustomer(userId: string, agentId: string): Promise<any> {
+    const res = await this.client.patch<ApiResponse<any>>(`/crm/queue/${userId}/assign`, { agentId });
+    return res.data.data;
+  }
+
+  async logCrmCall(data: { customerId: string; outcome: string; notes?: string; callbackAt?: string }): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>('/crm/calls', data);
+    return res.data.data;
+  }
+
+  async getCrmCallLogs(customerId: string): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>(`/crm/calls/${customerId}`);
+    return res.data.data;
+  }
+
+  async getCrmCampaigns(): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>('/crm/campaigns');
+    return res.data.data;
+  }
+
+  async createCrmCampaign(data: { name: string; segmentFilter: string[]; waMessage: string }): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>('/crm/campaigns', data);
+    return res.data.data;
+  }
+
+  async approveCrmCampaign(id: string): Promise<any> {
+    const res = await this.client.patch<ApiResponse<any>>(`/crm/campaigns/${id}/approve`, {});
+    return res.data.data;
+  }
+
+  async sendCrmCampaign(id: string): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>(`/crm/campaigns/${id}/send`, {});
+    return res.data.data;
+  }
+
+  async getCrmLeaderboard(): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>('/crm/leaderboard');
+    return res.data.data;
+  }
+
+  async getCrmAnalytics(): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>('/crm/analytics');
+    return res.data.data;
+  }
+
+  async getCrmSettings(): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>('/crm/settings');
+    return res.data.data;
+  }
+
+  async updateCrmSettings(reorderCycles: Record<string, number>): Promise<any> {
+    const res = await this.client.put<ApiResponse<any>>('/crm/settings', { reorderCycles });
+    return res.data.data;
+  }
+
+  async triggerCrmRefresh(): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>('/crm/engine/refresh', {});
+    return res.data.data;
+  }
 }
 
 export const api = new ApiClient();
