@@ -72,14 +72,12 @@ function CustomerRow({ item, onLogCall }: { item: any; onLogCall: (id: string) =
           </a>
         )}
         {item.user?.phone && (
-          <a
-            href={`https://wa.me/91${item.user.phone}`}
-            target="_blank"
-            rel="noreferrer"
+          <Link
+            href={`/admin/whatsapp?phone=${item.user.phone}`}
             className="h-8 w-8 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 flex items-center justify-center transition-colors"
           >
             <MessageCircle className="h-3.5 w-3.5" />
-          </a>
+          </Link>
         )}
         <button
           onClick={() => onLogCall(item.userId)}

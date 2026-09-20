@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'next/navigation';
 import { Search, Send, User, Bot, Pencil, Check, X, MessageCircle } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent } from '@/components/ui/card';
@@ -40,7 +41,8 @@ function contactLabel(c: { phone: string; name: string | null }): string {
 export default function WhatsAppPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const [selectedPhone, setSelectedPhone] = useState<string | null>(searchParams.get('phone'));
   const [searchText, setSearchText] = useState('');
   const [newMessage, setNewMessage] = useState('');
   const [isEditingName, setIsEditingName] = useState(false);

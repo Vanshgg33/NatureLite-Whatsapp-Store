@@ -93,7 +93,7 @@ export default function Customer360Page() {
           </div>
           <div className="flex gap-2">
             {user?.phone && <a href={`tel:${user.phone}`} className="h-9 w-9 rounded-full bg-green-50 text-green-600 hover:bg-green-100 flex items-center justify-center"><Phone className="h-4 w-4" /></a>}
-            {user?.phone && <a href={`https://wa.me/91${user.phone}`} target="_blank" rel="noreferrer" className="h-9 w-9 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 flex items-center justify-center"><MessageCircle className="h-4 w-4" /></a>}
+            {user?.phone && <a href={`/admin/whatsapp?phone=${user.phone}`} className="h-9 w-9 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 flex items-center justify-center"><MessageCircle className="h-4 w-4" /></a>}
           </div>
         </div>
       </div>
