@@ -1,5 +1,5 @@
 // backend/src/modules/crm/crm-engine.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Cron } from '@nestjs/schedule';
 import { Model, Types } from 'mongoose';
@@ -7,7 +7,7 @@ import { CrmCustomerStats, CrmCustomerStatsDocument, CrmSegment } from './schema
 import { CrmSettings, CrmSettingsDocument, DEFAULT_REORDER_CYCLES } from './schemas/crm-settings.schema';
 
 @Injectable()
-export class CrmEngineService {
+export class CrmEngineService implements OnModuleInit {
   private readonly logger = new Logger(CrmEngineService.name);
 
   constructor(
@@ -16,6 +16,14 @@ export class CrmEngineService {
     @InjectModel('Order') private orderModel: Model<any>,
     @InjectModel('User') private userModel: Model<any>,
   ) {}
+
+  async onModuleInit() {
+    const count = await this.statsModel.countDocuments();
+    if (count === 0) {
+      this.logger.log('CRM engine: no stats found, seeding initial data...');
+      this.refreshAll().catch(err => this.logger.error(`Initial seed failed: ${err.message}`));
+    }
+  }
 
   private async getCycles(): Promise<Record<string, number>> {
     const s = await this.settingsModel.findOne().lean();

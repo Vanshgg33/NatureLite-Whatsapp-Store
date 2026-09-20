@@ -29,40 +29,71 @@ export class CrmService {
     search?: string;
     page?: number;
     limit?: number;
-    agentId?: string; // set for crm_senior to restrict to assigned
+    agentId?: string;
   }) {
     const { segment, search, agentId } = opts;
     const page = opts.page ?? 1;
     const limit = Math.min(opts.limit ?? 50, 100);
 
-    const statsFilter: any = {};
-    if (segment) statsFilter.segment = segment;
-    if (agentId) statsFilter.assignedAgentId = new Types.ObjectId(agentId);
+    // When filtering by agent, stats must exist — use stats-first path
+    if (agentId) {
+      const statsFilter: any = { assignedAgentId: new Types.ObjectId(agentId) };
+      if (segment) statsFilter.segment = segment;
+      let stats = await this.statsModel.find(statsFilter).sort({ priorityScore: -1 }).lean();
+      const userFilter: any = { _id: { $in: stats.map((s: any) => s.userId) } };
+      if (search?.trim()) {
+        const d = search.replace(/\D/g, '');
+        userFilter.$or = [
+          { name: { $regex: search.trim(), $options: 'i' } },
+          ...(d ? [{ phone: { $regex: d } }] : []),
+        ];
+      }
+      const users = await this.userModel.find(userFilter).select('_id name phone tags').lean();
+      const userMap = new Map(users.map((u: any) => [u._id.toString(), u]));
+      stats = stats.filter((s: any) => userMap.has(s.userId.toString()));
+      const total = stats.length;
+      return {
+        data: stats.slice((page - 1) * limit, page * limit).map((s: any) => ({ ...s, user: userMap.get(s.userId.toString()) })),
+        total, page, pages: Math.ceil(total / limit),
+      };
+    }
 
-    let stats = await this.statsModel.find(statsFilter).sort({ priorityScore: -1 }).lean();
-
-    // Apply search by joining user data
-    const userIds = stats.map((s: any) => s.userId);
-    const userFilter: any = { _id: { $in: userIds } };
+    // Default: users are the source of truth — left-join stats
+    const userFilter: any = {};
     if (search?.trim()) {
-      const digits = search.replace(/\D/g, '');
+      const d = search.replace(/\D/g, '');
       userFilter.$or = [
         { name: { $regex: search.trim(), $options: 'i' } },
-        ...(digits ? [{ phone: { $regex: digits } }] : []),
+        ...(d ? [{ phone: { $regex: d } }] : []),
       ];
     }
     const users = await this.userModel.find(userFilter).select('_id name phone tags').lean();
-    const userMap = new Map(users.map((u: any) => [u._id.toString(), u]));
 
-    stats = stats.filter((s: any) => userMap.has(s.userId.toString()));
-    const total = stats.length;
-    const slice = stats.slice((page - 1) * limit, page * limit);
+    const statsFilter: any = { userId: { $in: users.map((u: any) => u._id) } };
+    if (segment) statsFilter.segment = segment;
+    const allStats = await this.statsModel.find(statsFilter).lean();
+    const statsMap = new Map(allStats.map((s: any) => [s.userId.toString(), s]));
 
+    // If segment filter active, keep only users that have a matching stats doc
+    let filtered = segment ? users.filter((u: any) => statsMap.has(u._id.toString())) : users;
+
+    // Sort: stats users by priorityScore desc, unseen users at end
+    filtered.sort((a: any, b: any) => {
+      const sa = statsMap.get(a._id.toString());
+      const sb = statsMap.get(b._id.toString());
+      if (sa && sb) return (sb.priorityScore ?? 0) - (sa.priorityScore ?? 0);
+      if (sa) return -1;
+      if (sb) return 1;
+      return 0;
+    });
+
+    const total = filtered.length;
     return {
-      data: slice.map((s: any) => ({ ...s, user: userMap.get(s.userId.toString()) })),
-      total,
-      page,
-      pages: Math.ceil(total / limit),
+      data: filtered.slice((page - 1) * limit, page * limit).map((u: any) => ({
+        ...(statsMap.get(u._id.toString()) ?? { userId: u._id }),
+        user: u,
+      })),
+      total, page, pages: Math.ceil(total / limit),
     };
   }
 
