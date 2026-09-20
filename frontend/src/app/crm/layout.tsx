@@ -157,17 +157,18 @@ function CrmSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobi
 
 export default function CrmLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { user, isAuthenticated } = useAdminAuthStore();
+  const { user, isAuthenticated, hasHydrated } = useAdminAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
+    if (!hasHydrated) return;
     if (!isAuthenticated) { router.push('/admin-login'); return; }
     const allowed: string[] = ['crm_head', 'crm_senior'];
     const hasDept = !!user?.departmentType;
     if (hasDept && !allowed.includes(user.departmentType!)) router.push('/admin');
-  }, [isAuthenticated, user, router]);
+  }, [hasHydrated, isAuthenticated, user, router]);
 
-  if (!isAuthenticated) return null;
+  if (!hasHydrated || !isAuthenticated) return null;
 
   return (
     <div className="flex h-screen bg-[#FAF7F2]">
