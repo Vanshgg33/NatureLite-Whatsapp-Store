@@ -13,6 +13,7 @@ import { StoresService } from '../stores/stores.service';
 import { StoreStockService } from '../store-stock/store-stock.service';
 import { StoreSalesService } from '../store-sales/store-sales.service';
 import { WalletService } from '../wallet/wallet.service';
+import { CrmEngineService } from '../crm/crm-engine.service';
 import {
   CreateOrderDto,
   UpdateOrderStatusDto,
@@ -45,6 +46,7 @@ export class OrdersService {
     private storeStockService: StoreStockService,
     private storeSalesService: StoreSalesService,
     private walletService: WalletService,
+    private readonly crmEngine: CrmEngineService,
   ) {}
 
   async create(userId: string, dto: CreateOrderDto): Promise<Order> {
@@ -384,6 +386,9 @@ export class OrdersService {
       }
     } else if (dto.status === 'delivered') {
       order.deliveredAt = new Date();
+      this.crmEngine.refreshUser(order.user).catch(err =>
+        this.logger.warn(`CRM refresh failed for ${order.user}: ${err.message}`)
+      );
     }
 
     const savedOrder = await order.save();

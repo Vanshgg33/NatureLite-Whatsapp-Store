@@ -35,6 +35,7 @@ import { StoreSalesModule } from './modules/store-sales/store-sales.module';
 import { RemindersModule } from './modules/reminders/reminders.module';
 import { WishlistModule } from './modules/wishlist/wishlist.module';
 import { WalletModule } from './modules/wallet/wallet.module';
+import { CrmModule } from './modules/crm/crm.module';
 
 @Module({
   imports: [
@@ -86,6 +87,7 @@ import { WalletModule } from './modules/wallet/wallet.module';
     RemindersModule,
     WishlistModule,
     WalletModule,
+    CrmModule,
   ],
   providers: [
     {

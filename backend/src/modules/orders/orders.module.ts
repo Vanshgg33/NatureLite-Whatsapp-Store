@@ -14,6 +14,7 @@ import { StoresModule } from '../stores/stores.module';
 import { StoreStockModule } from '../store-stock/store-stock.module';
 import { StoreSalesModule } from '../store-sales/store-sales.module';
 import { WalletModule } from '../wallet/wallet.module';
+import { CrmModule } from '../crm/crm.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { WalletModule } from '../wallet/wallet.module';
     StoreStockModule,
     StoreSalesModule,
     WalletModule,
+    CrmModule,
   ],
   controllers: [OrdersController],
   providers: [OrderRepository, OrdersService],
