@@ -27,6 +27,9 @@ export class CrmCampaign {
   @Prop({ default: 0 })
   recipientCount: number;
 
+  @Prop({ default: 0 })
+  sentCount: number;
+
   @Prop({ default: null })
   sentAt: Date | null;
 

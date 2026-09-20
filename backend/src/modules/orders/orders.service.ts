@@ -1202,6 +1202,12 @@ export class OrdersService implements OnModuleInit {
 
     const saved = await order.save();
 
+    if (['delivery_done', 'unpaid', 'partial_payment'].includes(dto.status)) {
+      this.crmEngine.refreshUser(saved.user).catch(err =>
+        this.logger.warn(`CRM refresh failed for user ${saved.user}: ${err.message}`)
+      );
+    }
+
     // WhatsApp notifications — non-blocking, each wrapped individually.
     const phone = saved.shippingAddress?.phone?.trim();
     if (phone) {
@@ -1623,7 +1629,13 @@ export class OrdersService implements OnModuleInit {
       order.total = Math.max(0, (order.subtotal || 0) - (order.discount || 0) + order.shippingCharge);
     }
 
-    return order.save();
+    const saved = await order.save();
+    if (dto.status === 'delivered') {
+      this.crmEngine.refreshUser(saved.user).catch(err =>
+        this.logger.warn(`CRM refresh failed for user ${saved.user}: ${err.message}`)
+      );
+    }
+    return saved;
   }
 
   async setPriorityTags(id: string, tags: string[]): Promise<Order> {

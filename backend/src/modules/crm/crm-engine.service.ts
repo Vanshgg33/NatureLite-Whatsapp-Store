@@ -131,11 +131,11 @@ export class CrmEngineService {
 
     const now = new Date();
     const predictedReorderDate = new Date(lastOrderDate.getTime() + personalCycle * 86400000);
-    const daysOverdue = Math.round((now.getTime() - predictedReorderDate.getTime()) / 86400000);
+    const daysOverdue = Math.floor((now.getTime() - predictedReorderDate.getTime()) / 86400000);
 
     // Segment
     let segment: CrmSegment;
-    if (totalOrders === 1 && daysOverdue < 0) segment = 'New';
+    if (totalOrders === 1 && daysOverdue < -3) segment = 'New';
     else if (totalOrders >= 2 && daysOverdue < -3) segment = 'Active';
     else if (daysOverdue >= -3 && daysOverdue < 0) segment = 'Due Soon';
     else if (daysOverdue >= 0 && daysOverdue < 30) segment = 'Overdue';
@@ -178,7 +178,7 @@ export class CrmEngineService {
     )));
 
     // Recompute VIP: top 10% by LTV
-    const allStats = await this.statsModel.find().select('userId ltv').sort({ ltv: -1 }).lean();
+    const allStats = await this.statsModel.find({ ltv: { $gt: 0 } }).select('userId ltv').sort({ ltv: -1 }).lean();
     const vipCutoff = Math.max(1, Math.floor(allStats.length * 0.1));
     const vipIds = allStats.slice(0, vipCutoff).map((s: any) => s._id);
     await this.statsModel.updateMany({ _id: { $in: vipIds } }, { $set: { isVip: true } });
@@ -188,7 +188,7 @@ export class CrmEngineService {
     const allWithVip = await this.statsModel.find().lean();
     await Promise.all(allWithVip.map((s: any) => {
       const score = (s.predictedReorderDate
-        ? Math.round((Date.now() - new Date(s.predictedReorderDate).getTime()) / 86400000)
+        ? Math.floor((Date.now() - new Date(s.predictedReorderDate).getTime()) / 86400000)
         : 0)
         + s.ltv / 1000
         + (s.isVip ? 50 : 0)

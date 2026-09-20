@@ -1,5 +1,5 @@
 // backend/src/modules/crm/crm.service.ts
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { CrmCustomerStats, CrmCustomerStatsDocument, CrmSegment } from './schemas/crm-customer-stats.schema';
@@ -93,8 +93,8 @@ export class CrmService {
     const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
 
     if (tab === 'today') {
-      filter.segment = 'Overdue';
-      filter.predictedReorderDate = { $gte: todayStart, $lte: todayEnd };
+      filter.segment = { $in: ['Overdue', 'Due Soon'] };
+      filter.predictedReorderDate = { $lte: todayEnd };
     } else if (tab === 'overdue') {
       filter.segment = 'Overdue';
       filter.predictedReorderDate = { $lt: todayStart };
@@ -196,10 +196,19 @@ export class CrmService {
     if (!campaign) throw new NotFoundException('Campaign not found');
     if (campaign.status !== 'approved') throw new BadRequestException('Campaign must be approved before sending');
 
-    const stats = await this.statsModel
-      .find({ segment: { $in: campaign.segmentFilter } })
-      .select('userId')
-      .lean();
+    // Mark sent immediately so duplicate triggers are rejected before the loop starts
+    campaign.status = 'sent';
+    campaign.sentAt = new Date();
+    await campaign.save();
+
+    // Fire sends in background — don't block the HTTP response
+    this._doSendCampaign(campaign._id.toString(), campaign.segmentFilter, campaign.waMessage).catch(() => {});
+
+    return { accepted: true, recipientCount: campaign.recipientCount };
+  }
+
+  private async _doSendCampaign(id: string, segmentFilter: string[], waMessage: string) {
+    const stats = await this.statsModel.find({ segment: { $in: segmentFilter } }).select('userId').lean();
     const userIds = stats.map((s: any) => s.userId);
     const users = await this.userModel.find({ _id: { $in: userIds }, isBlocked: { $ne: true } }).select('phone').lean();
 
@@ -207,18 +216,14 @@ export class CrmService {
     for (const user of users) {
       if (!user.phone) continue;
       try {
-        await this.whatsapp.sendTextMessage({ phone: user.phone, message: campaign.waMessage });
+        await this.whatsapp.sendTextMessage({ phone: user.phone, message: waMessage });
         sent++;
       } catch {
-        // ponytail: fire-and-forget per user, don't fail the whole campaign on one bad number
+        // ponytail: per-user failure, continue campaign
       }
     }
 
-    campaign.status = 'sent';
-    campaign.sentAt = new Date();
-    campaign.recipientCount = sent;
-    await campaign.save();
-    return { sent };
+    await this.campaignModel.updateOne({ _id: id }, { $set: { sentCount: sent } });
   }
 
   // ─── Leaderboard ─────────────────────────────────────────────────────────
@@ -298,7 +303,7 @@ export class CrmService {
   // ─── Manual engine trigger ───────────────────────────────────────────────
 
   async triggerRefresh() {
-    this.engine.refreshAll(); // fire-and-forget
+    this.engine.refreshAll().catch(() => {}); // fire-and-forget
     return { ok: true, message: 'Refresh started' };
   }
 }

@@ -55,7 +55,7 @@ function CrmSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobi
   useEffect(() => setMounted(true), []);
 
   const isAgent = user?.departmentType === 'crm_senior';
-  const isAdmin = !user?.departmentType || user?.role === 'superadmin';
+  const isAdmin = !user?.departmentType || user?.role === 'superadmin' || user?.departmentType === 'crm_head';
   const userInitial = user?.name?.[0]?.toUpperCase() ?? user?.email?.[0]?.toUpperCase() ?? 'C';
 
   const handleLogout = () => {

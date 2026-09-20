@@ -122,7 +122,7 @@ export class CrmController {
 
   @Get('settings')
   getSettings(@CurrentUser() user: JwtPayload) {
-    if (user.departmentType) throw new ForbiddenException('Settings restricted to admin');
+    if (user.departmentType === 'crm_senior') throw new ForbiddenException('Settings restricted to managers and admins');
     return this.crm.getSettings();
   }
 
@@ -131,7 +131,7 @@ export class CrmController {
     @Body() body: { reorderCycles: Record<string, number> },
     @CurrentUser() user: JwtPayload,
   ) {
-    if (user.departmentType) throw new ForbiddenException('Settings restricted to admin');
+    if (user.departmentType === 'crm_senior') throw new ForbiddenException('Settings restricted to managers and admins');
     return this.crm.updateSettings(body.reorderCycles);
   }
 
@@ -139,7 +139,7 @@ export class CrmController {
 
   @Post('engine/refresh')
   triggerRefresh(@CurrentUser() user: JwtPayload) {
-    if (user.departmentType) throw new ForbiddenException();
+    if (user.departmentType === 'crm_senior') throw new ForbiddenException();
     return this.crm.triggerRefresh();
   }
 }

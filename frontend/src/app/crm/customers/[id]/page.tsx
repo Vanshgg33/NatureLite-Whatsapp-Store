@@ -40,7 +40,7 @@ export default function Customer360Page() {
   const [callOutcome, setCallOutcome] = useState('');
   const [callNotes, setCallNotes] = useState('');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['crm-customer360', id],
     queryFn: () => api.getCrmCustomer360(id),
   });
@@ -60,6 +60,9 @@ export default function Customer360Page() {
     <div className="flex justify-center py-24">
       <div className="h-7 w-7 border-2 border-[#D4A017] border-t-transparent rounded-full animate-spin" />
     </div>
+  );
+  if (isError) return (
+    <div className="flex justify-center py-24 text-sm text-red-500">Failed to load customer</div>
   );
 
   const { user, stats, calls = [], orders = [] } = data ?? {};
