@@ -3,7 +3,8 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Phone, MessageCircle, ListTodo, Clock, AlertTriangle, Flame } from 'lucide-react';
+import { Phone, MessageCircle, ListTodo, Clock, AlertTriangle, Flame, ChevronRight } from 'lucide-react';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
@@ -46,7 +47,7 @@ function CustomerRow({ item, onLogCall }: { item: any; onLogCall: (id: string) =
     <div className="bg-white border border-gray-200 rounded-lg p-4 flex items-center gap-4">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium text-sm text-gray-900">{item.user?.name ?? item.user?.phone ?? '—'}</span>
+          <Link href={`/crm/customers/${item.userId}`} className="font-medium text-sm text-gray-900 hover:text-[#7C5C1E] hover:underline underline-offset-2">{item.user?.name ?? item.user?.phone ?? '—'}</Link>
           {item.isVip && <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-semibold">VIP</span>}
           <span className={cn('text-[10px] px-1.5 py-0.5 rounded font-medium', SEGMENT_COLORS[item.segment] ?? 'bg-gray-100')}>{item.segment}</span>
         </div>
@@ -167,9 +168,14 @@ export default function QueuePage() {
 
   return (
     <div className="min-h-full">
-      <div className="border-b bg-white px-5 py-4">
-        <h1 className="text-lg font-semibold text-gray-900">Retarget Queue</h1>
-        <p className="text-sm text-gray-500 mt-0.5">{data.length} customers</p>
+      <div className="border-b bg-white px-5 py-4 flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-semibold text-gray-900">Retarget Queue</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{data.length} customers</p>
+        </div>
+        <Link href="/crm/campaigns" className="flex items-center gap-1 text-[12px] font-medium text-[#7C5C1E] hover:text-[#D4A017] transition-colors">
+          Campaigns <ChevronRight className="h-3.5 w-3.5" />
+        </Link>
       </div>
 
       {/* Tabs */}
