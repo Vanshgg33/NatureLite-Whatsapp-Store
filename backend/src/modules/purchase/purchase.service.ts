@@ -153,6 +153,7 @@ export class PurchaseService {
     const query: Record<string, unknown> = {};
     if (filters.status) query.status = filters.status;
     if (filters.mine && filters.userId) query.requestedById = filters.userId;
+    query.parentId = { $exists: false };
     return this.requestModel.find(query).sort({ createdAt: -1 }).lean();
   }
 
@@ -182,9 +183,13 @@ export class PurchaseService {
     return { open, myAction, completedThisMonth, total };
   }
 
-  async getRequest(id: string) {
+  async getRequest(id: string): Promise<any> {
     const req = await this.requestModel.findById(id).lean();
     if (!req) throw new NotFoundException('Request not found');
+    if (req.status === 'SPLIT') {
+      const children = await this.requestModel.find({ parentId: id }).sort({ reqNo: 1 }).lean();
+      return { ...req, children };
+    }
     return req;
   }
 
@@ -277,6 +282,104 @@ export class PurchaseService {
 
     this.sendStatusEmail(req.toObject(), 'PO_CREATED').catch(() => null);
     return req;
+  }
+
+  async splitPO(
+    id: string,
+    user: JwtPayload,
+    data: {
+      items: Array<{
+        materialId: string;
+        materialName: string;
+        qtyKg: number;
+        ratePerKg: number;
+        vendorName: string;
+        vendorPhone?: string;
+        vendorAddress?: string;
+        terms?: string;
+      }>;
+      expectedDelivery?: string;
+    },
+  ) {
+    const role = effectiveRole(user);
+    const req = await this.requestModel.findById(id);
+    if (!req) throw new NotFoundException('Request not found');
+    if (!canTransition(req.status, 'PO_CREATED', role)) {
+      throw new ForbiddenException(`Cannot create PO from status ${req.status} with role ${role}`);
+    }
+    if (!data.items?.length) throw new BadRequestException('Items required');
+    for (const item of data.items) {
+      if (!item.vendorName?.trim()) throw new BadRequestException(`Vendor required for ${item.materialName}`);
+      if (!item.ratePerKg || item.ratePerKg <= 0) throw new BadRequestException(`Rate required for ${item.materialName}`);
+    }
+
+    const vendorGroups = new Map<string, typeof data.items>();
+    for (const item of data.items) {
+      const key = item.vendorName.trim();
+      if (!vendorGroups.has(key)) vendorGroups.set(key, []);
+      vendorGroups.get(key)!.push(item);
+    }
+
+    const year = new Date().getFullYear();
+    let poCount = await this.requestModel.countDocuments({ 'po.poNo': { $exists: true } });
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const children: any[] = [];
+    let letterIdx = 0;
+
+    for (const [vendorName, vItems] of vendorGroups) {
+      const first = vItems[0];
+      const poItems = vItems.map((i) => ({
+        materialId: i.materialId,
+        materialName: i.materialName,
+        qtyKg: i.qtyKg,
+        ratePerKg: i.ratePerKg,
+        amount: i.qtyKg * i.ratePerKg,
+      }));
+      const totalAmount = poItems.reduce((s, i) => s + i.amount, 0);
+      poCount++;
+      const poNo = `PO-${year}-${String(poCount).padStart(4, '0')}`;
+      const childReqNo = `${req.reqNo}-${letters[letterIdx++]}`;
+
+      const child = await this.requestModel.create({
+        reqNo: childReqNo,
+        parentId: id,
+        items: vItems.map((i) => ({ materialId: i.materialId, materialName: i.materialName, qtyKg: i.qtyKg })),
+        note: req.note || '',
+        status: 'PO_CREATED',
+        requestedById: req.requestedById,
+        requestedByName: req.requestedByName,
+        requestedByEmail: req.requestedByEmail || '',
+        po: {
+          poNo,
+          vendorName,
+          vendorPhone: first.vendorPhone || '',
+          vendorAddress: first.vendorAddress || '',
+          items: poItems,
+          totalAmount,
+          expectedDelivery: data.expectedDelivery || '',
+          terms: first.terms || '',
+          createdByName: user.name || 'System',
+          createdAt: new Date(),
+        },
+        timeline: [
+          { action: `Derived from ${req.reqNo}`, status: 'REQUESTED', byName: user.name || 'System', at: new Date() },
+          { action: `PO ${poNo} created — ₹${totalAmount.toLocaleString('en-IN')}`, status: 'PO_CREATED', byName: user.name || 'System', at: new Date() },
+        ],
+      });
+      children.push(child.toObject());
+    }
+
+    req.status = 'SPLIT';
+    req.timeline.push({
+      action: `Split into ${children.length} vendor PO${children.length > 1 ? 's' : ''} (${children.map((c) => c.po.vendorName).join(', ')})`,
+      status: 'PO_CREATED',
+      byName: user.name || 'System',
+      at: new Date(),
+    });
+    await req.save();
+
+    this.sendStatusEmail(req.toObject(), 'SPLIT').catch(() => null);
+    return { parent: req.toObject(), children };
   }
 
   async makeDecision(
@@ -456,6 +559,7 @@ export class PurchaseService {
       VENDOR_BILL_UPLOADED: `[BILL] ${req.reqNo} — gate alert`,
       COMPLETED: `[DONE] ${req.reqNo} CLOSED`,
       CANCELLED: `[CANCELLED] ${req.reqNo}`,
+      SPLIT: `[SPLIT] ${req.reqNo} — vendor POs created, awaiting approval`,
     };
     return map[event] || `[FMS] ${req.reqNo} — ${event}`;
   }
@@ -493,6 +597,7 @@ export class PurchaseService {
       VENDOR_BILL_UPLOADED: 'Gate / Receiver must enter received quantities and close the order.',
       COMPLETED: 'Order is closed. No further action required.',
       CANCELLED: 'Order has been cancelled.',
+      SPLIT: 'Multiple vendor POs created. Each PO requires independent approval.',
     };
 
     const receiptRows = event === 'COMPLETED' && req.receipt?.receivedItems?.length

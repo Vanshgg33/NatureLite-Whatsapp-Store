@@ -1838,6 +1838,11 @@ class ApiClient {
     return res.data.data;
   }
 
+  async splitPurchasePO(id: string, data: any): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>(`/purchase/requests/${id}/split-po`, data);
+    return res.data.data;
+  }
+
   async makePurchaseDecision(id: string, data: { action: 'APPROVED' | 'REJECTED'; reason?: string }): Promise<any> {
     const res = await this.client.post<ApiResponse<any>>(`/purchase/requests/${id}/decision`, data);
     return res.data.data;

@@ -38,6 +38,7 @@ const STATUS_LABEL: Record<string, string> = {
   VENDOR_BILL_UPLOADED: 'Bill Uploaded',
   COMPLETED: 'Completed',
   CANCELLED: 'Cancelled',
+  SPLIT: 'Split',
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -48,6 +49,7 @@ const STATUS_COLORS: Record<string, string> = {
   VENDOR_BILL_UPLOADED: 'bg-purple-50 text-purple-700 border border-purple-200',
   COMPLETED: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
   CANCELLED: 'bg-gray-50 text-gray-500 border border-gray-200',
+  SPLIT: 'bg-indigo-50 text-indigo-700 border border-indigo-200',
 };
 
 const STATUS_HOLDER: Record<string, string> = {
@@ -115,6 +117,7 @@ const PIPELINE_STAGES = [
 const ACTIVE_STAGE: Record<string, number> = {
   REQUESTED: 2, PO_CREATED: 3, REJECTED: 2,
   APPROVED: 4, VENDOR_BILL_UPLOADED: 4,
+  SPLIT: 3,
 };
 
 function PipelineTracker({ req }: { req: any }) {
@@ -190,32 +193,28 @@ const RECEIVE_FORM_ID = 'receive-goods-form';
 
 function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) {
   const { toast } = useToast();
-  const [vendorName, setVendorName]     = useState('');
-  const [vendorPhone, setVendorPhone]   = useState('');
-  const [vendorAddress, setVendorAddress] = useState('');
   const [expectedDelivery, setExpectedDelivery] = useState('');
-  const [terms, setTerms]               = useState('');
-  const [poItems, setPoItems]           = useState(req.items.map((i: any) => ({ ...i, ratePerKg: '' })));
-  const [selectedVendorId, setSelectedVendorId] = useState('');
+  const [poItems, setPoItems] = useState(
+    req.items.map((i: any) => ({ ...i, ratePerKg: '', vendorId: '', vendorName: '', vendorPhone: '', vendorAddress: '', terms: '' }))
+  );
 
   const { data: vendors = [] } = useQuery({
     queryKey: ['purchase-vendors'],
     queryFn: () => api.getPurchaseVendors(),
   });
 
-  const applyVendor = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const v = vendors.find((x: any) => x._id === e.target.value);
+  const applyVendorToItem = (itemIdx: number, vendorId: string) => {
+    const v = vendors.find((x: any) => x._id === vendorId);
     if (!v) return;
-    setSelectedVendorId(e.target.value);
-    setVendorName(v.name);
-    setVendorPhone(v.phone || '');
-    setVendorAddress(v.address || '');
-    setTerms(v.paymentTerms || '');
+    setPoItems((prev: any[]) => prev.map((p, idx) => idx === itemIdx
+      ? { ...p, vendorId: v._id, vendorName: v.name, vendorPhone: v.phone || '', vendorAddress: v.address || '', terms: v.paymentTerms || '' }
+      : p
+    ));
   };
 
   const mutation = useMutation({
-    mutationFn: (data: any) => api.createPurchasePO(req._id, data),
-    onSuccess: () => { toast({ title: 'PO created' }); setSelectedVendorId(''); onSuccess(); },
+    mutationFn: (data: any) => api.splitPurchasePO(req._id, data),
+    onSuccess: () => { toast({ title: 'POs created' }); onSuccess(); },
     onError:   (err) => toast({ title: 'Error', description: getApiError(err), variant: 'destructive' }),
   });
 
@@ -223,106 +222,90 @@ function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!vendorName) { toast({ title: 'Vendor name required', variant: 'destructive' }); return; }
     for (const item of poItems) {
+      if (!item.vendorName) { toast({ title: `Select vendor for ${item.materialName}`, variant: 'destructive' }); return; }
       if (!item.ratePerKg || parseFloat(item.ratePerKg) <= 0) {
-        toast({ title: 'Enter rate for all items', variant: 'destructive' }); return;
+        toast({ title: `Enter rate for ${item.materialName}`, variant: 'destructive' }); return;
       }
     }
     mutation.mutate({
-      vendorName, vendorPhone, vendorAddress, expectedDelivery, terms,
-      items: poItems.map((i: any) => ({ ...i, ratePerKg: parseFloat(i.ratePerKg) })),
+      expectedDelivery,
+      items: poItems.map((i: any) => ({
+        materialId: i.materialId,
+        materialName: i.materialName,
+        qtyKg: i.qtyKg,
+        ratePerKg: parseFloat(i.ratePerKg),
+        vendorName: i.vendorName,
+        vendorPhone: i.vendorPhone,
+        vendorAddress: i.vendorAddress,
+        terms: i.terms,
+      })),
     });
   };
 
+  // group items by vendor for preview
+  const vendorCount = new Set(poItems.filter((i: any) => i.vendorName).map((i: any) => i.vendorName)).size;
+
   return (
     <form id={PO_FORM_ID} onSubmit={handleSubmit} className="space-y-5">
-      {vendors.length > 0 && (
-        <div>
-          <label className="text-xs font-medium text-gray-600 mb-1 block">Select Saved Vendor</label>
-          <select
-            className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
-            value={selectedVendorId}
-            onChange={applyVendor}
-          >
-            <option value="" disabled>— pick a vendor to auto-fill —</option>
-            {vendors.map((v: any) => (
-              <option key={v._id} value={v._id}>{v.name}{v.phone ? ` · ${v.phone}` : ''}</option>
-            ))}
-          </select>
-        </div>
-      )}
-      {/* Vendor Details */}
       <div>
-        <div className="flex items-center gap-2 mb-3">
-          <FileText className="h-4 w-4 text-[#2F6B47]" />
-          <h3 className="text-sm font-semibold text-gray-800">Purchase Order Details</h3>
-        </div>
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Vendor Name *</label>
-              <Input className="h-9 text-sm" value={vendorName} onChange={(e) => setVendorName(e.target.value)} placeholder="Search vendor..." />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Vendor Phone</label>
-              <Input className="h-9 text-sm" value={vendorPhone} onChange={(e) => setVendorPhone(e.target.value)} placeholder="Phone number" />
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-600 mb-1 block">Vendor Address</label>
-            <textarea
-              className="w-full text-sm border border-input rounded-md px-3 py-2 min-h-[72px] resize-none focus:outline-none focus:ring-2 focus:ring-[#2F6B47]/20 focus:border-[#2F6B47]/60 placeholder:text-gray-400"
-              value={vendorAddress}
-              onChange={(e) => setVendorAddress(e.target.value)}
-              placeholder="Enter vendor address..."
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Expected Delivery Date</label>
-              <Input type="date" className="h-9 text-sm" value={expectedDelivery} onChange={(e) => setExpectedDelivery(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Payment Terms</label>
-              <Input className="h-9 text-sm" value={terms} onChange={(e) => setTerms(e.target.value)} placeholder="e.g. 30 days credit" />
-            </div>
-          </div>
-        </div>
+        <label className="text-xs font-medium text-gray-600 mb-1 block">Expected Delivery Date</label>
+        <Input type="date" className="h-9 text-sm" value={expectedDelivery} onChange={(e) => setExpectedDelivery(e.target.value)} />
       </div>
 
-      {/* Rate Details */}
-      <div className="border-t pt-4">
+      {/* Per-item vendor + rate */}
+      <div>
         <div className="flex items-center gap-2 mb-3">
           <IndianRupee className="h-4 w-4 text-[#2F6B47]" />
-          <h3 className="text-sm font-semibold text-gray-800">Rate Details</h3>
+          <h3 className="text-sm font-semibold text-gray-800">Items — Vendor & Rate</h3>
         </div>
-        <p className="text-xs text-gray-500 mb-2">Rate per KG</p>
-        <div className="space-y-2">
+        <div className="space-y-3">
           {poItems.map((item: any, i: number) => (
-            <div key={i} className="flex items-center gap-2">
-              <div className="flex items-center flex-1 min-w-0">
-                <span className="h-9 flex items-center px-2.5 border border-r-0 rounded-l-md bg-gray-50 text-sm text-gray-500 flex-shrink-0">₹</span>
+            <div key={i} className="rounded-lg border border-gray-100 bg-gray-50 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-gray-700">{item.materialName}</span>
+                <span className="text-xs text-gray-400 font-mono">{item.qtyKg} KG</span>
+              </div>
+              <select
+                className="w-full h-8 rounded-md border border-input bg-white px-2 text-xs"
+                value={item.vendorId}
+                onChange={(e) => applyVendorToItem(i, e.target.value)}
+              >
+                <option value="">— select vendor —</option>
+                {vendors.map((v: any) => (
+                  <option key={v._id} value={v._id}>{v.name}{v.phone ? ` · ${v.phone}` : ''}</option>
+                ))}
+              </select>
+              <div className="flex items-center gap-1">
+                <span className="h-8 flex items-center px-2 border border-r-0 rounded-l-md bg-white text-xs text-gray-500 flex-shrink-0">₹/KG</span>
                 <Input
                   type="number" min="0" step="0.01"
                   value={item.ratePerKg}
                   onChange={(e) => setPoItems((prev: any[]) => prev.map((p, idx) => idx === i ? { ...p, ratePerKg: e.target.value } : p))}
-                  className="h-9 text-sm rounded-l-none"
-                  placeholder="0.00"
+                  className="h-8 text-xs rounded-l-none flex-1"
+                  placeholder="rate"
                 />
-              </div>
-              <div className="text-xs text-gray-500 text-right flex-shrink-0 w-20 leading-tight">
-                <div className="text-gray-700 truncate">{item.materialName}</div>
-                <div className="font-medium">{item.qtyKg} KG</div>
+                {item.ratePerKg && parseFloat(item.ratePerKg) > 0 && (
+                  <span className="text-xs text-[#2F6B47] font-medium w-20 text-right flex-shrink-0">
+                    ₹{(item.qtyKg * parseFloat(item.ratePerKg)).toLocaleString('en-IN')}
+                  </span>
+                )}
               </div>
             </div>
           ))}
         </div>
-        <div className="mt-3 rounded-lg bg-green-50 border border-green-100 px-4 py-3 flex items-center justify-between">
-          <span className="text-sm font-semibold text-green-800">Total Amount</span>
-          <span className="text-base font-bold text-[#2F6B47]">
-            ₹ {total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-          </span>
+        <div className="mt-3 rounded-lg bg-green-50 border border-green-100 px-4 py-3 space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-green-800">Total Amount</span>
+            <span className="text-base font-bold text-[#2F6B47]">
+              ₹ {total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+          {vendorCount > 0 && (
+            <p className="text-xs text-green-700">
+              Will create <strong>{vendorCount}</strong> vendor PO{vendorCount > 1 ? 's' : ''}
+            </p>
+          )}
         </div>
       </div>
     </form>
@@ -811,6 +794,24 @@ export default function FmsPurchaseRequestDetailPage() {
                     )}
                   </div>
                 )}
+                {req.status === 'SPLIT' && req.children?.length > 0 && (
+                  <div className="px-5 py-3 border-t border-gray-100 bg-indigo-50">
+                    <p className="text-xs font-semibold text-indigo-700 mb-2">Split into {req.children.length} vendor POs:</p>
+                    {req.children.map((child: any) => (
+                      <Link key={child._id} href={`/fms/purchase/${child._id}`}
+                        className="flex items-center justify-between py-1.5 hover:bg-indigo-100 rounded px-1 -mx-1 transition-colors">
+                        <div className="text-xs text-indigo-700">
+                          <span className="font-semibold">{child.reqNo}</span>
+                          <span className="ml-1 text-indigo-500">— {child.po?.vendorName}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <StatusBadge status={child.status} />
+                          <span className="text-xs font-semibold text-[#2F6B47]">₹{child.po?.totalAmount?.toLocaleString('en-IN')}</span>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
                 {req.receipt && (
                   <div className="px-5 py-3 border-t border-gray-100 bg-emerald-50">
                     <p className="text-xs font-semibold text-emerald-700 mb-1">Goods Received</p>
@@ -935,7 +936,19 @@ export default function FmsPurchaseRequestDetailPage() {
         {/* Right sidebar */}
         <div className="w-80 border-l border-gray-200 bg-white flex flex-col flex-shrink-0 overflow-hidden">
           <div className="flex-1 overflow-auto p-5 space-y-0">
-            {showAction ? (
+            {req.status === 'SPLIT' ? (
+              <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 space-y-2">
+                <p className="text-sm font-semibold text-indigo-800">Split into {req.children?.length ?? 0} vendor POs</p>
+                <p className="text-xs text-indigo-600">Each PO is proceeding through its own approval pipeline.</p>
+                {req.children?.map((child: any) => (
+                  <Link key={child._id} href={`/fms/purchase/${child._id}`}
+                    className="flex items-center justify-between py-1.5 px-2 rounded bg-white border border-indigo-100 hover:border-indigo-300 transition-colors">
+                    <span className="text-xs font-medium text-indigo-700">{child.reqNo}</span>
+                    <StatusBadge status={child.status} />
+                  </Link>
+                ))}
+              </div>
+            ) : showAction ? (
               <>
                 {(isSuperadmin || purchaseRole === 'po_creator') && (req.status === 'REQUESTED' || req.status === 'REJECTED') && (
                   <POCreatorPanel req={req} onSuccess={onActionSuccess} />

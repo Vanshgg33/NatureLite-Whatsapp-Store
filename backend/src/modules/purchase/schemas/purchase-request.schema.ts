@@ -29,6 +29,9 @@ export class PurchaseRequest {
   @Prop({ default: '' })
   requestedByEmail: string;
 
+  @Prop()
+  parentId: string;
+
   @Prop({ type: Object })
   po: {
     poNo: string;

@@ -40,6 +40,7 @@ const STATUS_COLORS: Record<string, string> = {
   VENDOR_BILL_UPLOADED: 'bg-purple-100 text-purple-700',
   COMPLETED: 'bg-emerald-100 text-emerald-700',
   CANCELLED: 'bg-gray-100 text-gray-500',
+  SPLIT: 'bg-indigo-100 text-indigo-700',
 };
 
 export default function FmsPurchasePage() {

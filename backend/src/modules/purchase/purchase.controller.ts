@@ -134,6 +134,27 @@ export class PurchaseController {
     return this.purchaseService.createPO(id, user, body);
   }
 
+  @Post('requests/:id/split-po')
+  splitPO(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: {
+      items: Array<{
+        materialId: string;
+        materialName: string;
+        qtyKg: number;
+        ratePerKg: number;
+        vendorName: string;
+        vendorPhone?: string;
+        vendorAddress?: string;
+        terms?: string;
+      }>;
+      expectedDelivery?: string;
+    },
+  ) {
+    return this.purchaseService.splitPO(id, user, body);
+  }
+
   @Post('requests/:id/decision')
   makeDecision(
     @Param('id') id: string,
