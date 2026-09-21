@@ -8,6 +8,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { PurchaseMaterial, PurchaseMaterialDocument } from './schemas/purchase-material.schema';
 import { PurchaseRequest, PurchaseRequestDocument } from './schemas/purchase-request.schema';
+import { PurchaseVendor, PurchaseVendorDocument } from './schemas/purchase-vendor.schema';
 import { AdminUser, AdminUserDocument } from '../admin/schemas/admin-user.schema';
 import { EmailService } from '../email/email.service';
 import { JwtPayload } from '../../common/decorators/current-user.decorator';
@@ -36,6 +37,7 @@ export class PurchaseService {
   constructor(
     @InjectModel(PurchaseMaterial.name) private materialModel: Model<PurchaseMaterialDocument>,
     @InjectModel(PurchaseRequest.name) private requestModel: Model<PurchaseRequestDocument>,
+    @InjectModel(PurchaseVendor.name) private vendorModel: Model<PurchaseVendorDocument>,
     @InjectModel(AdminUser.name) private adminModel: Model<AdminUserDocument>,
     private emailService: EmailService,
   ) {}
@@ -85,6 +87,51 @@ export class PurchaseService {
     const mat = await this.materialModel.findByIdAndUpdate(id, { $set: data }, { new: true });
     if (!mat) throw new NotFoundException('Material not found');
     return mat;
+  }
+
+  // ─── Vendors ──────────────────────────────────────────────────────────────
+
+  async getVendors(activeOnly = true) {
+    const filter = activeOnly ? { isActive: true } : {};
+    return this.vendorModel.find(filter).sort({ name: 1 }).lean();
+  }
+
+  async createVendor(data: {
+    name: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+    gstin?: string;
+    paymentTerms?: string;
+  }) {
+    return this.vendorModel.create({
+      name: data.name.trim(),
+      phone: data.phone || '',
+      email: data.email || '',
+      address: data.address || '',
+      gstin: data.gstin || '',
+      paymentTerms: data.paymentTerms || '',
+    });
+  }
+
+  async updateVendor(id: string, data: {
+    name?: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+    gstin?: string;
+    paymentTerms?: string;
+    isActive?: boolean;
+  }) {
+    const vendor = await this.vendorModel.findByIdAndUpdate(id, { $set: data }, { new: true });
+    if (!vendor) throw new NotFoundException('Vendor not found');
+    return vendor;
+  }
+
+  async deleteVendor(id: string) {
+    const vendor = await this.vendorModel.findByIdAndUpdate(id, { $set: { isActive: false } }, { new: true });
+    if (!vendor) throw new NotFoundException('Vendor not found');
+    return vendor;
   }
 
   // ─── Requests ─────────────────────────────────────────────────────────────

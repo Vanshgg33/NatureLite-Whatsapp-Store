@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Param, Body, Query, UseGuards,
+  Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards,
 } from '@nestjs/common';
 import { PurchaseService } from './purchase.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -35,6 +35,46 @@ export class PurchaseController {
     @Body() body: { name?: string; category?: string; isActive?: boolean },
   ) {
     return this.purchaseService.updateMaterial(id, body);
+  }
+
+  // ─── Vendors ─────────────────────────────────────────────────────────────
+
+  @Get('vendors')
+  getVendors(@Query('all') all?: string) {
+    return this.purchaseService.getVendors(all !== 'true');
+  }
+
+  @Post('vendors')
+  createVendor(@Body() body: {
+    name: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+    gstin?: string;
+    paymentTerms?: string;
+  }) {
+    return this.purchaseService.createVendor(body);
+  }
+
+  @Patch('vendors/:id')
+  updateVendor(
+    @Param('id') id: string,
+    @Body() body: {
+      name?: string;
+      phone?: string;
+      email?: string;
+      address?: string;
+      gstin?: string;
+      paymentTerms?: string;
+      isActive?: boolean;
+    },
+  ) {
+    return this.purchaseService.updateVendor(id, body);
+  }
+
+  @Delete('vendors/:id')
+  deleteVendor(@Param('id') id: string) {
+    return this.purchaseService.deleteVendor(id);
   }
 
   // ─── Stats ─────────────────────────────────────────────────────────────
