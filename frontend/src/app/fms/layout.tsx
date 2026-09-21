@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
-import { ShoppingBag, LogOut, Menu, X } from 'lucide-react';
+import { ShoppingBag, Building2, LogOut, Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { api } from '@/lib/api';
@@ -26,7 +26,20 @@ function FmsSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobi
     api.logout().catch(() => {});
   };
 
-  const isActive = pathname === '/fms/purchase' || pathname.startsWith('/fms/purchase/');
+  const NAV_LINKS = [
+    {
+      href: '/fms/purchase',
+      label: 'Purchase FMS',
+      Icon: ShoppingBag,
+      active: pathname === '/fms/purchase' || (pathname.startsWith('/fms/purchase/') && !pathname.startsWith('/fms/purchase/vendors')),
+    },
+    {
+      href: '/fms/purchase/vendors',
+      label: 'Vendors',
+      Icon: Building2,
+      active: pathname.startsWith('/fms/purchase/vendors'),
+    },
+  ];
 
   const content = (
     <div className="flex h-full w-64 flex-col bg-[#1E3D2B]">
@@ -53,20 +66,23 @@ function FmsSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobi
           <p className="px-4 pt-2.5 pb-1 text-[9px] font-mono text-white/30 uppercase tracking-[0.14em] select-none">
             Purchase
           </p>
-          <Link
-            href="/fms/purchase"
-            onClick={onMobileClose}
-            className={cn(
-              'flex items-center gap-2.5 text-[13px] py-[7px]',
-              isActive
-                ? 'ml-0 mr-2 pl-5 rounded-r-lg border-l-2 border-[#4ade80] bg-[rgba(74,222,128,0.1)] text-[#4ade80] font-medium'
-                : 'mx-2 px-3 rounded-lg text-white/60 hover:text-white/90 hover:bg-white/[0.06]',
-            )}
-            style={{ transition: 'background-color 0.1s, color 0.1s' }}
-          >
-            <ShoppingBag className={cn('h-[15px] w-[15px] flex-shrink-0', isActive ? 'opacity-100' : 'opacity-65')} />
-            Purchase FMS
-          </Link>
+          {NAV_LINKS.map(({ href, label, Icon, active }) => (
+            <Link
+              key={href}
+              href={href}
+              onClick={onMobileClose}
+              className={cn(
+                'flex items-center gap-2.5 text-[13px] py-[7px]',
+                active
+                  ? 'ml-0 mr-2 pl-5 rounded-r-lg border-l-2 border-[#4ade80] bg-[rgba(74,222,128,0.1)] text-[#4ade80] font-medium'
+                  : 'mx-2 px-3 rounded-lg text-white/60 hover:text-white/90 hover:bg-white/[0.06]',
+              )}
+              style={{ transition: 'background-color 0.1s, color 0.1s' }}
+            >
+              <Icon className={cn('h-[15px] w-[15px] flex-shrink-0', active ? 'opacity-100' : 'opacity-65')} />
+              {label}
+            </Link>
+          ))}
         </div>
       </nav>
 
@@ -117,7 +133,7 @@ export default function FmsLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user, hasHydrated } = useAdminAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const isSuperadmin = user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
+  const isSuperadmin = user?.role === 'superadmin';
   const hasFmsAccess =
     user?.departmentType === 'fms' ||
     (user?.purchaseRole != null && !user?.departmentType) ||
