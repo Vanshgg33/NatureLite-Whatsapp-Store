@@ -197,6 +197,20 @@ function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void })
   const [terms, setTerms]               = useState('');
   const [poItems, setPoItems]           = useState(req.items.map((i: any) => ({ ...i, ratePerKg: '' })));
 
+  const { data: vendors = [] } = useQuery({
+    queryKey: ['purchase-vendors'],
+    queryFn: () => api.getPurchaseVendors(),
+  });
+
+  const applyVendor = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const v = vendors.find((x: any) => x._id === e.target.value);
+    if (!v) return;
+    setVendorName(v.name);
+    setVendorPhone(v.phone || '');
+    setVendorAddress(v.address || '');
+    setTerms(v.paymentTerms || '');
+  };
+
   const mutation = useMutation({
     mutationFn: (data: any) => api.createPurchasePO(req._id, data),
     onSuccess: () => { toast({ title: 'PO created' }); onSuccess(); },
@@ -221,6 +235,21 @@ function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void })
 
   return (
     <form id={PO_FORM_ID} onSubmit={handleSubmit} className="space-y-5">
+      {vendors.length > 0 && (
+        <div>
+          <label className="text-xs font-medium text-gray-600 mb-1 block">Select Saved Vendor</label>
+          <select
+            className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+            defaultValue=""
+            onChange={applyVendor}
+          >
+            <option value="" disabled>— pick a vendor to auto-fill —</option>
+            {vendors.map((v: any) => (
+              <option key={v._id} value={v._id}>{v.name}{v.phone ? ` · ${v.phone}` : ''}</option>
+            ))}
+          </select>
+        </div>
+      )}
       {/* Vendor Details */}
       <div>
         <div className="flex items-center gap-2 mb-3">
@@ -560,7 +589,7 @@ export default function FmsPurchaseRequestDetailPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAdminAuthStore();
-  const isSuperadmin  = user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
+  const isSuperadmin  = user?.role === 'superadmin';
   const purchaseRole  = user?.purchaseRole;
 
   const [notesTab, setNotesTab] = useState<'notes' | 'attachments'>('notes');
