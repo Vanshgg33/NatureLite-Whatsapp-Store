@@ -1775,6 +1775,41 @@ class ApiClient {
     return res.data.data;
   }
 
+  async getPurchaseVendors(all = false): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>(`/purchase/vendors${all ? '?all=true' : ''}`);
+    return res.data.data;
+  }
+
+  async createPurchaseVendor(data: {
+    name: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+    gstin?: string;
+    paymentTerms?: string;
+  }): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>('/purchase/vendors', data);
+    return res.data.data;
+  }
+
+  async updatePurchaseVendor(id: string, data: {
+    name?: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+    gstin?: string;
+    paymentTerms?: string;
+    isActive?: boolean;
+  }): Promise<any> {
+    const res = await this.client.patch<ApiResponse<any>>(`/purchase/vendors/${id}`, data);
+    return res.data.data;
+  }
+
+  async deletePurchaseVendor(id: string): Promise<any> {
+    const res = await this.client.delete<ApiResponse<any>>(`/purchase/vendors/${id}`);
+    return res.data.data;
+  }
+
   async getPurchaseStats(): Promise<any> {
     const res = await this.client.get<ApiResponse<any>>('/purchase/stats');
     return res.data.data;
