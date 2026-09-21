@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Tag, Truck, ShieldCheck, ArrowRight, X, PartyPopper, Info, MessageCircle } from 'lucide-react';
+import { Tag, Truck, ShieldCheck, ArrowRight, X, PartyPopper, Info, MessageCircle, Gift } from 'lucide-react';
 import { WhatsAppOrderModal } from './whatsapp-order-modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -87,6 +87,11 @@ export function CartSummary({
   const freeShippingThreshold = shippingSettings.freeShippingThreshold;
   const shippingCost = subtotal >= freeShippingThreshold ? 0 : shippingSettings.defaultShippingCharge;
   const amountToFreeShipping = freeShippingThreshold - subtotal;
+
+  const allGiftTiers = publicSettings?.store?.freeGiftTiers ?? [];
+  const activeTiers = allGiftTiers.filter((t) => t.isActive).sort((a, b) => b.minAmount - a.minAmount);
+  const qualifyingTier = activeTiers.find((t) => subtotal >= t.minAmount) ?? null;
+  const nextGiftTier = activeTiers.filter((t) => subtotal < t.minAmount).sort((a, b) => a.minAmount - b.minAmount)[0] ?? null;
   // GST is inclusive in item prices — do not add it on top
   const orderTotal = baseTotal;
 
@@ -345,6 +350,52 @@ export function CartSummary({
             </span>
           </div>
         </motion.div>
+      ) : null}
+
+      {/* Free Gift Tiers */}
+      {qualifyingTier ? (
+        <motion.div
+          className="mb-6 p-4 bg-brand-green/10 rounded-xl border border-brand-green/20"
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+        >
+          <div className="flex items-start gap-2">
+            <Gift className="w-5 h-5 text-brand-green shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="font-body text-sm font-semibold text-brand-green">Free Gift Included!</p>
+              <p className="font-body text-xs text-brand-green/80 mt-0.5">
+                {qualifyingTier.gift}
+                {qualifyingTier.altGift ? <span className="text-brand-green/60"> or {qualifyingTier.altGift}</span> : null}
+              </p>
+              {nextGiftTier && (
+                <p className="font-body text-xs text-brand-green/60 mt-1">
+                  Add {formatPrice(nextGiftTier.minAmount - subtotal)} more to upgrade → <span className="font-medium">{nextGiftTier.gift}</span>
+                </p>
+              )}
+            </div>
+          </div>
+        </motion.div>
+      ) : nextGiftTier && subtotal > 0 ? (
+        <div className="mb-6 p-4 bg-brand-sand rounded-xl">
+          <div className="flex items-center gap-2 mb-2">
+            <Gift className="w-4 h-4 text-brand-green" />
+            <span className="font-body text-sm text-brand-text">
+              Add <span className="font-semibold text-brand-green">{formatPrice(nextGiftTier.minAmount - subtotal)}</span> more for a FREE gift!
+            </span>
+          </div>
+          <div className="relative h-2.5 bg-brand-cream rounded-full overflow-hidden">
+            <motion.div
+              className="h-full bg-brand-mustard rounded-full"
+              initial={{ width: 0 }}
+              animate={{ width: `${Math.min((subtotal / nextGiftTier.minAmount) * 100, 100)}%` }}
+              transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+            />
+          </div>
+          <p className="font-body text-xs text-brand-muted mt-1.5">
+            {nextGiftTier.gift}{nextGiftTier.altGift ? ` or ${nextGiftTier.altGift}` : ''} with orders ₹{nextGiftTier.minAmount}+
+          </p>
+        </div>
       ) : null}
 
       {/* Price Breakdown */}

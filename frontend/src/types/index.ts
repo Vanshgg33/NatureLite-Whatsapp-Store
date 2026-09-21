@@ -526,6 +526,13 @@ export interface CampaignRecord {
 }
 
 // ==================== SETTINGS TYPES ====================
+export interface FreeGiftTier {
+  minAmount: number;
+  gift: string;
+  altGift: string;
+  isActive: boolean;
+}
+
 export interface StoreSettings {
   name: string;
   currency: string;
@@ -533,6 +540,7 @@ export interface StoreSettings {
   minOrderAmount: number;
   freeShippingThreshold: number;
   defaultShippingCharge: number;
+  freeGiftTiers?: FreeGiftTier[];
 }
 
 export interface WhatsAppSettings {

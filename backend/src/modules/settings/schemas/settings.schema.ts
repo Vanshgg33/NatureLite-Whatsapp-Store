@@ -44,6 +44,12 @@ export const DEFAULT_SETTINGS = {
     maxOrderAmount: 100000,
     freeShippingThreshold: 300,
     defaultShippingCharge: 50,
+    freeGiftTiers: [
+      { minAmount: 1000, gift: '100ml Coconut Oil', altGift: '100ml Castor Oil', isActive: false },
+      { minAmount: 2000, gift: '250ml Coconut Oil', altGift: '250ml Castor Oil', isActive: false },
+      { minAmount: 3000, gift: '250ml Desi Ghee + 100ml Coconut Oil', altGift: '', isActive: false },
+      { minAmount: 4000, gift: '250ml Desi Ghee + 250ml Coconut Oil', altGift: '', isActive: false },
+    ],
   },
   whatsapp: {
     welcomeMessage: 'Welcome to our store! How can I help you today?',

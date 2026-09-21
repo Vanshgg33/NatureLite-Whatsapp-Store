@@ -38,6 +38,12 @@ export class SettingsService implements OnModuleInit {
         } as Partial<Settings>);
       }
     }
+
+    // Migrate: seed freeGiftTiers into existing store settings if missing
+    const storeSetting = await this.settingsRepository.findOneByKey('store');
+    if (storeSetting && !storeSetting.value.freeGiftTiers) {
+      await this.set('store', { ...storeSetting.value, freeGiftTiers: DEFAULT_SETTINGS.store.freeGiftTiers }, 'system');
+    }
   }
 
   async get(key: string): Promise<Record<string, unknown> | null> {

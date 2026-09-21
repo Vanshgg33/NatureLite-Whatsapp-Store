@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, Lock, RotateCcw, AlertTriangle, FlaskConical, Bot } from 'lucide-react';
+import { Save, Lock, RotateCcw, AlertTriangle, FlaskConical, Bot, Gift } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,7 @@ export default function SettingsPage() {
 
   const [mockDataEnabled, setMockDataEnabled] = useState(false);
   const [chatbotEnabled, setChatbotEnabled] = useState(false);
+  const [freeGiftTiers, setFreeGiftTiers] = useState<Array<{ minAmount: number; gift: string; altGift: string; isActive: boolean }>>([]);
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['settings'],
@@ -49,6 +50,10 @@ export default function SettingsPage() {
       }
       if (settings.chatbot) {
         setChatbotEnabled((settings.chatbot as { enabled?: boolean }).enabled !== false);
+      }
+      if (settings.store) {
+        const tiers = (settings.store as any).freeGiftTiers;
+        if (Array.isArray(tiers)) setFreeGiftTiers(tiers);
       }
     }
   }, [settings]);
@@ -84,6 +89,20 @@ export default function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
     },
   });
+
+  const giftTiersMutation = useMutation({
+    mutationFn: (tiers: typeof freeGiftTiers) => api.updateSettings('store', { freeGiftTiers: tiers } as any),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      queryClient.invalidateQueries({ queryKey: ['public-settings'] });
+    },
+  });
+
+  const toggleTier = (idx: number) => {
+    const updated = freeGiftTiers.map((t, i) => i === idx ? { ...t, isActive: !t.isActive } : t);
+    setFreeGiftTiers(updated);
+    giftTiersMutation.mutate(updated);
+  };
 
   if (isLoading) {
     return (
@@ -186,6 +205,39 @@ export default function SettingsPage() {
             </Button>
           </CardContent>
         </Card>
+
+        {freeGiftTiers.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Gift className="h-5 w-5 text-emerald-600" /> Free Gift Tiers</CardTitle>
+              <CardDescription>Activate tiers to show free gift banners at checkout. Toggle off = hidden from customers.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {freeGiftTiers.map((tier, idx) => (
+                <div key={idx} className={`flex items-center justify-between rounded-lg border p-4 ${tier.isActive ? 'border-emerald-200 bg-emerald-50' : 'border-gray-100 bg-gray-50'}`}>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">₹{tier.minAmount}+ order</p>
+                    <p className="text-xs text-gray-600 mt-0.5">
+                      {tier.gift}{tier.altGift ? <span className="text-gray-400"> or {tier.altGift}</span> : null}
+                    </p>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <span className={`text-xs font-medium ${tier.isActive ? 'text-emerald-700' : 'text-gray-400'}`}>
+                      {tier.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded accent-emerald-600 cursor-pointer"
+                      checked={tier.isActive}
+                      onChange={() => toggleTier(idx)}
+                      disabled={giftTiersMutation.isPending}
+                    />
+                  </label>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
