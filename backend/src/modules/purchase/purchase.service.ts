@@ -129,7 +129,14 @@ export class PurchaseService {
     paymentTerms?: string;
     isActive?: boolean;
   }) {
-    const vendor = await this.vendorModel.findByIdAndUpdate(id, { $set: data }, { new: true });
+    if (data.name !== undefined && !data.name.trim()) {
+      throw new BadRequestException('Vendor name cannot be empty');
+    }
+    const vendor = await this.vendorModel.findByIdAndUpdate(
+      id,
+      { $set: data },
+      { new: true, runValidators: true },
+    );
     if (!vendor) throw new NotFoundException('Vendor not found');
     return vendor;
   }

@@ -196,6 +196,7 @@ function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void })
   const [expectedDelivery, setExpectedDelivery] = useState('');
   const [terms, setTerms]               = useState('');
   const [poItems, setPoItems]           = useState(req.items.map((i: any) => ({ ...i, ratePerKg: '' })));
+  const [selectedVendorId, setSelectedVendorId] = useState('');
 
   const { data: vendors = [] } = useQuery({
     queryKey: ['purchase-vendors'],
@@ -205,6 +206,7 @@ function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void })
   const applyVendor = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const v = vendors.find((x: any) => x._id === e.target.value);
     if (!v) return;
+    setSelectedVendorId(e.target.value);
     setVendorName(v.name);
     setVendorPhone(v.phone || '');
     setVendorAddress(v.address || '');
@@ -213,7 +215,7 @@ function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void })
 
   const mutation = useMutation({
     mutationFn: (data: any) => api.createPurchasePO(req._id, data),
-    onSuccess: () => { toast({ title: 'PO created' }); onSuccess(); },
+    onSuccess: () => { toast({ title: 'PO created' }); setSelectedVendorId(''); onSuccess(); },
     onError:   (err) => toast({ title: 'Error', description: getApiError(err), variant: 'destructive' }),
   });
 
@@ -240,7 +242,7 @@ function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void })
           <label className="text-xs font-medium text-gray-600 mb-1 block">Select Saved Vendor</label>
           <select
             className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
-            defaultValue=""
+            value={selectedVendorId}
             onChange={applyVendor}
           >
             <option value="" disabled>— pick a vendor to auto-fill —</option>

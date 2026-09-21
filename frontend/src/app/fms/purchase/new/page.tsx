@@ -18,7 +18,7 @@ export default function FmsNewPurchaseRequestPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { user } = useAdminAuthStore();
-  const isSuperadmin = user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
+  const isSuperadmin = user?.role === 'superadmin';
   const canCreate = user?.purchaseRole === 'requester' || isSuperadmin;
 
   const [items, setItems] = useState([{ materialId: '', materialName: '', qtyKg: '' }]);

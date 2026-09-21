@@ -18,7 +18,7 @@ export default function FmsPurchaseMaterialsPage() {
   const { user } = useAdminAuthStore();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const isSuperadmin = user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
+  const isSuperadmin = user?.role === 'superadmin';
 
   const [name, setName] = useState('');
   const [category, setCategory] = useState('General');
