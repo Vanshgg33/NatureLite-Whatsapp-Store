@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -104,14 +105,19 @@ export class PurchaseService {
     gstin?: string;
     paymentTerms?: string;
   }) {
-    return this.vendorModel.create({
-      name: data.name.trim(),
-      phone: data.phone || '',
-      email: data.email || '',
-      address: data.address || '',
-      gstin: data.gstin || '',
-      paymentTerms: data.paymentTerms || '',
-    });
+    try {
+      return await this.vendorModel.create({
+        name: data.name.trim(),
+        phone: data.phone || '',
+        email: data.email || '',
+        address: data.address || '',
+        gstin: data.gstin || '',
+        paymentTerms: data.paymentTerms || '',
+      });
+    } catch (err: any) {
+      if (err?.code === 11000) throw new ConflictException('A vendor with this name already exists');
+      throw err;
+    }
   }
 
   async updateVendor(id: string, data: {
