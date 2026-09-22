@@ -1853,6 +1853,11 @@ class ApiClient {
     return res.data.data;
   }
 
+  async deletePurchaseVendorBill(id: string, publicId: string): Promise<any> {
+    const res = await this.client.delete<ApiResponse<any>>(`/purchase/requests/${id}/vendor-bill/${encodeURIComponent(publicId)}`);
+    return res.data.data;
+  }
+
   async receivePurchaseGoods(id: string, data: any): Promise<any> {
     const res = await this.client.post<ApiResponse<any>>(`/purchase/requests/${id}/receive`, data);
     return res.data.data;

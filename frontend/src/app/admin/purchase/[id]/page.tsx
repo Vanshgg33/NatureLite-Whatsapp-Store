@@ -192,6 +192,7 @@ function ApproverPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) 
   const [rejectionReason, setRejectionReason] = useState('');
   const [showReject, setShowReject] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const decisionMutation = useMutation({
@@ -215,6 +216,20 @@ function ApproverPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) 
       toast({ title: 'Upload failed', description: getApiError(err), variant: 'destructive' });
     } finally {
       setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const handleDeleteBill = async (publicId: string) => {
+    setDeletingId(publicId);
+    try {
+      await api.deletePurchaseVendorBill(req._id, publicId);
+      toast({ title: 'Bill removed' });
+      onSuccess();
+    } catch (err) {
+      toast({ title: 'Delete failed', description: getApiError(err), variant: 'destructive' });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -251,15 +266,40 @@ function ApproverPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) 
     );
   }
 
-  if (req.status === 'APPROVED') {
+  if (req.status === 'APPROVED' || req.status === 'VENDOR_BILL_UPLOADED') {
+    const bills: Array<{ url: string; name: string; mime: string; publicId: string }> =
+      req.vendorBills?.length ? req.vendorBills : req.vendorBill ? [req.vendorBill] : [];
     return (
       <div className="space-y-3">
-        <p className="text-sm text-gray-600">PO approved. Upload vendor bill when received:</p>
+        <div className="flex items-center gap-2">
+          <Upload className="h-4 w-4 text-[#2F6B47]" />
+          <h3 className="text-sm font-semibold text-gray-800">Vendor Bills</h3>
+        </div>
+        {bills.length > 0 && (
+          <div className="space-y-1.5">
+            {bills.map((bill) => (
+              <div key={bill.publicId} className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                <a href={bill.url} target="_blank" rel="noopener noreferrer"
+                  className="text-xs text-[#2F6B47] hover:underline truncate flex-1 min-w-0 mr-2">
+                  {bill.name}
+                </a>
+                <button
+                  onClick={() => handleDeleteBill(bill.publicId)}
+                  disabled={deletingId === bill.publicId}
+                  className="flex-shrink-0 text-red-400 hover:text-red-600 disabled:opacity-40 transition-colors text-sm font-medium px-1"
+                  title="Remove bill"
+                >
+                  {deletingId === bill.publicId ? '…' : '×'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <input ref={fileRef} type="file" accept=".jpg,.jpeg,.png,.pdf" className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadBill(f); }} />
         <Button onClick={() => fileRef.current?.click()} disabled={uploading || billMutation.isPending} variant="outline" className="w-full border-dashed">
           <Upload className="h-4 w-4 mr-2" />
-          {uploading ? 'Uploading…' : 'Upload Vendor Bill (JPG/PNG/PDF)'}
+          {uploading ? 'Uploading…' : bills.length > 0 ? 'Upload Another Bill' : 'Upload Vendor Bill (JPG/PNG/PDF)'}
         </Button>
       </div>
     );
@@ -323,7 +363,9 @@ function ReceiverPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) 
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {req.vendorBill && <FileViewer file={req.vendorBill} label="Vendor Bill" />}
+      {(req.vendorBills?.length ? req.vendorBills : req.vendorBill ? [req.vendorBill] : []).map((bill: any, i: number, arr: any[]) => (
+        <FileViewer key={bill.publicId || i} file={bill} label={arr.length > 1 ? `Vendor Bill ${i + 1}` : 'Vendor Bill'} />
+      ))}
       <div>
         <p className="text-xs font-medium text-gray-700 mb-2">Received Quantities (KG)</p>
         {receivedItems.map((item: any, i: number) => (
@@ -349,13 +391,25 @@ function ReceiverPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) 
         <label className="text-xs font-medium text-gray-700">Gate Bill (image/PDF) *</label>
         <input ref={fileRef} type="file" accept=".jpg,.jpeg,.png,.pdf" className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadGateBill(f); }} />
-        <Button type="button" variant="outline"
-          className={`w-full mt-1 border-dashed ${gateBillData ? 'border-emerald-400 text-emerald-700' : ''}`}
-          onClick={() => fileRef.current?.click()} disabled={uploading}
-        >
-          <Upload className="h-4 w-4 mr-2" />
-          {uploading ? 'Uploading…' : gateBillData ? `Uploaded: ${gateBillData.name}` : 'Upload Gate Bill'}
-        </Button>
+        {gateBillData ? (
+          <div className="flex items-center gap-2 mt-1 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2">
+            <span className="text-xs text-emerald-700 flex-1 truncate min-w-0">✓ {gateBillData.name}</span>
+            <button
+              type="button"
+              onClick={() => { setGateBillData(null); if (fileRef.current) fileRef.current.value = ''; }}
+              className="flex-shrink-0 text-red-400 hover:text-red-600 text-sm font-medium px-1"
+              title="Remove and re-upload"
+            >×</button>
+          </div>
+        ) : (
+          <Button type="button" variant="outline"
+            className="w-full mt-1 border-dashed"
+            onClick={() => fileRef.current?.click()} disabled={uploading}
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            {uploading ? 'Uploading…' : 'Upload Gate Bill'}
+          </Button>
+        )}
       </div>
       <div>
         <label className="text-xs font-medium text-gray-700">Remarks (optional)</label>
@@ -531,7 +585,7 @@ export default function PurchaseRequestDetailPage() {
     if (req.status === 'COMPLETED' || req.status === 'CANCELLED') return false;
     if (isSuperadmin) return true;
     if (purchaseRole === 'po_creator' && (req.status === 'REQUESTED' || req.status === 'REJECTED')) return true;
-    if (purchaseRole === 'approver' && (req.status === 'PO_CREATED' || req.status === 'APPROVED')) return true;
+    if (purchaseRole === 'approver' && (req.status === 'PO_CREATED' || req.status === 'APPROVED' || req.status === 'VENDOR_BILL_UPLOADED')) return true;
     if (purchaseRole === 'receiver' && req.status === 'VENDOR_BILL_UPLOADED') return true;
     return false;
   };
@@ -628,7 +682,9 @@ export default function PurchaseRequestDetailPage() {
             )}
 
             {/* Files */}
-            {req.vendorBill && <FileViewer file={req.vendorBill} label="Vendor Bill" />}
+            {(req.vendorBills?.length ? req.vendorBills : req.vendorBill ? [req.vendorBill] : []).map((bill: any, i: number, arr: any[]) => (
+              <FileViewer key={bill.publicId || i} file={bill} label={arr.length > 1 ? `Vendor Bill ${i + 1}` : 'Vendor Bill'} />
+            ))}
             {req.receipt?.gateBill && <FileViewer file={req.receipt.gateBill} label="Gate Bill" />}
 
             {/* Goods Receipt */}
@@ -706,7 +762,7 @@ export default function PurchaseRequestDetailPage() {
                   {(isSuperadmin || purchaseRole === 'po_creator') && (req.status === 'REQUESTED' || req.status === 'REJECTED') && (
                     <POCreatorPanel req={req} onSuccess={onActionSuccess} />
                   )}
-                  {(isSuperadmin || purchaseRole === 'approver') && (req.status === 'PO_CREATED' || req.status === 'APPROVED') && (
+                  {(isSuperadmin || purchaseRole === 'approver') && (req.status === 'PO_CREATED' || req.status === 'APPROVED' || req.status === 'VENDOR_BILL_UPLOADED') && (
                     <ApproverPanel req={req} onSuccess={onActionSuccess} />
                   )}
                   {(isSuperadmin || purchaseRole === 'receiver') && req.status === 'VENDOR_BILL_UPLOADED' && (

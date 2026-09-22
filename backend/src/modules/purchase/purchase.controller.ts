@@ -173,6 +173,15 @@ export class PurchaseController {
     return this.purchaseService.uploadVendorBill(id, user, body);
   }
 
+  @Delete('requests/:id/vendor-bill/:publicId')
+  deleteVendorBill(
+    @Param('id') id: string,
+    @Param('publicId') publicId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.purchaseService.deleteVendorBill(id, decodeURIComponent(publicId), user);
+  }
+
   @Post('requests/:id/receive')
   receiveGoods(
     @Param('id') id: string,

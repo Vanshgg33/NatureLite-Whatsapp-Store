@@ -424,21 +424,48 @@ export class PurchaseService {
     const role = effectiveRole(user);
     const req = await this.requestModel.findById(id);
     if (!req) throw new NotFoundException('Request not found');
-    if (!canTransition(req.status, 'VENDOR_BILL_UPLOADED', role)) {
+    if (!['APPROVED', 'VENDOR_BILL_UPLOADED'].includes(req.status) || !['approver', 'superadmin'].includes(role)) {
       throw new ForbiddenException(`Cannot upload vendor bill from status ${req.status} with role ${role}`);
     }
 
-    req.vendorBill = fileData;
-    req.status = 'VENDOR_BILL_UPLOADED';
-    req.timeline.push({
-      action: 'Vendor bill uploaded',
-      status: 'VENDOR_BILL_UPLOADED',
-      byName: user.name || 'System',
-      at: new Date(),
-    });
-    await req.save();
+    if (!req.vendorBills) req.vendorBills = [];
+    req.vendorBills.push(fileData);
+    req.markModified('vendorBills');
 
-    this.sendStatusEmail(req.toObject(), 'VENDOR_BILL_UPLOADED').catch(() => null);
+    if (req.status === 'APPROVED') {
+      req.status = 'VENDOR_BILL_UPLOADED';
+      req.timeline.push({
+        action: 'Vendor bill uploaded',
+        status: 'VENDOR_BILL_UPLOADED',
+        byName: user.name || 'System',
+        at: new Date(),
+      });
+      this.sendStatusEmail(req.toObject(), 'VENDOR_BILL_UPLOADED').catch(() => null);
+    }
+    await req.save();
+    return req;
+  }
+
+  async deleteVendorBill(id: string, publicId: string, user: JwtPayload) {
+    const role = effectiveRole(user);
+    const req = await this.requestModel.findById(id);
+    if (!req) throw new NotFoundException('Request not found');
+    if (!['approver', 'superadmin'].includes(role)) throw new ForbiddenException();
+    if (req.status !== 'VENDOR_BILL_UPLOADED') throw new ForbiddenException('Can only delete bills in VENDOR_BILL_UPLOADED status');
+
+    req.vendorBills = (req.vendorBills || []).filter((b) => b.publicId !== publicId);
+    req.markModified('vendorBills');
+
+    if (req.vendorBills.length === 0) {
+      req.status = 'APPROVED';
+      req.timeline.push({
+        action: 'Vendor bill removed — reverted to Approved',
+        status: 'APPROVED',
+        byName: user.name || 'System',
+        at: new Date(),
+      });
+    }
+    await req.save();
     return req;
   }
 

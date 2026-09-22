@@ -62,6 +62,9 @@ export class PurchaseRequest {
     publicId: string;
   };
 
+  @Prop({ type: [{ url: String, name: String, mime: String, publicId: String }], default: [] })
+  vendorBills: Array<{ url: string; name: string; mime: string; publicId: string }>;
+
   @Prop({ type: Object })
   receipt: {
     gateBill: { url: string; name: string; mime: string; publicId: string };
