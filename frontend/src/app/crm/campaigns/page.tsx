@@ -43,6 +43,7 @@ export default function CampaignsPage() {
   const { mutate: approve } = useMutation({
     mutationFn: (id: string) => api.approveCrmCampaign(id),
     onSuccess: () => { toast({ title: 'Approved' }); qc.invalidateQueries({ queryKey: ['crm-campaigns'] }); },
+    onError: () => toast({ title: 'Approve failed', variant: 'destructive' }),
   });
 
   const { mutate: send } = useMutation({

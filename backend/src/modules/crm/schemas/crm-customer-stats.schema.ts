@@ -46,6 +46,21 @@ export class CrmCustomerStats {
   @Prop({ enum: ['connected', 'no_answer', 'ordered', 'not_interested', 'callback', null], default: null })
   lastCallOutcome: string | null;
 
+  @Prop({ default: null })
+  snoozedUntil: Date | null;
+
+  @Prop({ default: false })
+  isDismissed: boolean;
+
+  @Prop({ default: false })
+  isEscalated: boolean;
+
+  @Prop({
+    type: [{ _id: { type: Types.ObjectId, auto: true }, agentId: Types.ObjectId, agentName: String, text: String, createdAt: Date }],
+    default: [],
+  })
+  notes: { _id: Types.ObjectId; agentId: Types.ObjectId; agentName: string; text: string; createdAt: Date }[];
+
   updatedAt: Date;
 }
 

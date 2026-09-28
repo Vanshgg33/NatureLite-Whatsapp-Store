@@ -13,14 +13,23 @@ export class CrmCallLog {
   @Prop({ type: Types.ObjectId, ref: 'AdminUser', required: true, index: true })
   agentId: Types.ObjectId;
 
-  @Prop({ required: true, enum: ['connected', 'no_answer', 'ordered', 'not_interested', 'callback'] })
-  outcome: CallOutcome;
+  @Prop({ enum: ['call', 'whatsapp'], default: 'call' })
+  type: 'call' | 'whatsapp';
+
+  @Prop({ enum: ['connected', 'no_answer', 'ordered', 'not_interested', 'callback', null], default: null })
+  outcome: CallOutcome | null;
 
   @Prop({ default: '' })
   notes: string;
 
   @Prop({ default: null })
   callbackAt: Date | null;
+
+  @Prop({ default: '' })
+  templateName: string;
+
+  @Prop({ default: '' })
+  messageText: string;
 
   createdAt: Date;
 }

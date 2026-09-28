@@ -115,7 +115,9 @@ class ApiClient {
           const isAdminPage = window.location.pathname.startsWith('/admin')
             || window.location.pathname.startsWith('/department')
             || window.location.pathname.startsWith('/invoice')
-            || window.location.pathname.startsWith('/fms');
+            || window.location.pathname.startsWith('/fms')
+            || window.location.pathname.startsWith('/crm')
+            || window.location.pathname.startsWith('/purchase');
 
           if (isAdminApiRoute || isAdminPage) {
             const token = useAdminAuthStore.getState().accessToken;
@@ -172,7 +174,9 @@ class ApiClient {
             const isAdminRelatedPage = currentPath.startsWith('/admin')
               || currentPath.startsWith('/department')
               || currentPath.startsWith('/invoice')
-              || currentPath.startsWith('/fms');
+              || currentPath.startsWith('/fms')
+              || currentPath.startsWith('/crm')
+              || currentPath.startsWith('/purchase');
 
             const refreshTokenToSend = (failedRouteIsAdmin || isAdminRelatedPage)
               ? useAdminAuthStore.getState().refreshToken ?? undefined
@@ -2009,6 +2013,21 @@ class ApiClient {
     return res.data.data;
   }
 
+  async snoozeCrmCustomer(userId: string, until: string): Promise<any> {
+    const res = await this.client.patch<ApiResponse<any>>(`/crm/queue/${userId}/snooze`, { until });
+    return res.data.data;
+  }
+
+  async dismissCrmCustomer(userId: string): Promise<any> {
+    const res = await this.client.patch<ApiResponse<any>>(`/crm/queue/${userId}/dismiss`, {});
+    return res.data.data;
+  }
+
+  async escalateCrmCustomer(userId: string): Promise<any> {
+    const res = await this.client.patch<ApiResponse<any>>(`/crm/queue/${userId}/escalate`, {});
+    return res.data.data;
+  }
+
   async assignCrmCustomer(userId: string, agentId: string): Promise<any> {
     const res = await this.client.patch<ApiResponse<any>>(`/crm/queue/${userId}/assign`, { agentId });
     return res.data.data;
@@ -2067,6 +2086,31 @@ class ApiClient {
   async triggerCrmRefresh(): Promise<any> {
     const res = await this.client.post<ApiResponse<any>>('/crm/engine/refresh', {});
     return res.data.data;
+  }
+
+  async addCrmNote(customerId: string, text: string): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>(`/crm/customers/${customerId}/notes`, { text });
+    return res.data.data;
+  }
+
+  async deleteCrmNote(customerId: string, noteId: string): Promise<any> {
+    const res = await this.client.patch<ApiResponse<any>>(`/crm/customers/${customerId}/notes/${noteId}/delete`, {});
+    return res.data.data;
+  }
+
+  async sendCrmNudge(data: { customerId: string; templateName: string; message: string }): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>('/crm/nudge', data);
+    return res.data.data;
+  }
+
+  async getCrmDashboard(): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>('/crm/dashboard');
+    return res.data.data;
+  }
+
+  async getCrmCalendar(): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>('/crm/calendar');
+    return res.data.data ?? [];
   }
 }
 

@@ -1,9 +1,10 @@
 // frontend/src/app/crm/queue/page.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Phone, MessageCircle, ListTodo, Clock, AlertTriangle, Flame, ChevronRight } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { Phone, ListTodo, Clock, AlertTriangle, Flame, ChevronRight, BellOff, X, ArrowUpCircle } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
@@ -34,57 +35,145 @@ const OUTCOME_OPTIONS = [
   { value: 'callback', label: 'Callback' },
 ];
 
-function fmt(n: number) {
-  return '₹' + (n ?? 0).toLocaleString('en-IN');
+function fmt(n: number) { return '₹' + (n ?? 0).toLocaleString('en-IN'); }
+
+// Min date for snooze: tomorrow
+function minSnoozeDate() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
 }
 
 function CustomerRow({ item, onLogCall }: { item: any; onLogCall: (id: string) => void }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [showSnooze, setShowSnooze] = useState(false);
+  const [snoozeDate, setSnoozeDate] = useState('');
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['crm-queue'] });
+
+  const { mutate: snooze, isPending: snoozing } = useMutation({
+    mutationFn: () => api.snoozeCrmCustomer(item.userId, snoozeDate),
+    onSuccess: () => { toast({ title: 'Snoozed' }); setShowSnooze(false); setSnoozeDate(''); invalidate(); },
+    onError: () => toast({ title: 'Failed to snooze', variant: 'destructive' }),
+  });
+
+  const { mutate: dismiss, isPending: dismissing } = useMutation({
+    mutationFn: () => api.dismissCrmCustomer(item.userId),
+    onSuccess: () => { toast({ title: 'Dismissed' }); invalidate(); },
+    onError: () => toast({ title: 'Failed to dismiss', variant: 'destructive' }),
+  });
+
+  const { mutate: escalate, isPending: escalating } = useMutation({
+    mutationFn: () => api.escalateCrmCustomer(item.userId),
+    onSuccess: () => { toast({ title: 'Escalated to manager' }); invalidate(); },
+    onError: () => toast({ title: 'Failed to escalate', variant: 'destructive' }),
+  });
+
   const daysOverdue = item.predictedReorderDate
     ? Math.round((Date.now() - new Date(item.predictedReorderDate).getTime()) / 86400000)
     : null;
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4 flex items-center gap-4">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Link href={`/crm/customers/${item.userId}`} className="font-medium text-sm text-gray-900 hover:text-[#7C5C1E] hover:underline underline-offset-2">{item.user?.name ?? item.user?.phone ?? '—'}</Link>
-          {item.isVip && <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-semibold">VIP</span>}
-          <span className={cn('text-[10px] px-1.5 py-0.5 rounded font-medium', SEGMENT_COLORS[item.segment] ?? 'bg-gray-100')}>{item.segment}</span>
+    <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+      {/* Main row */}
+      <div className="flex items-center gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link
+              href={`/crm/customers/${item.userId}`}
+              className="font-medium text-sm text-gray-900 hover:text-[#7C5C1E] hover:underline underline-offset-2"
+            >
+              {item.user?.name ?? item.user?.phone ?? '—'}
+            </Link>
+            {item.isVip && <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-semibold">VIP</span>}
+            <span className={cn('text-[10px] px-1.5 py-0.5 rounded font-medium', SEGMENT_COLORS[item.segment] ?? 'bg-gray-100')}>{item.segment}</span>
+            {item.isEscalated && (
+              <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-semibold flex items-center gap-0.5">
+                <ArrowUpCircle className="h-2.5 w-2.5" /> Escalated
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 mt-1 text-[11px] text-gray-500 flex-wrap">
+            <span>{item.user?.phone}</span>
+            <span>·</span>
+            <span>LTV {fmt(item.ltv)}</span>
+            <span>·</span>
+            <span>Top: {item.topProduct || item.topCategory || '—'}</span>
+            {daysOverdue !== null && daysOverdue >= 0 && (
+              <><span>·</span><span className="text-red-500 font-medium">{daysOverdue}d overdue</span></>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-3 mt-1 text-[11px] text-gray-500 flex-wrap">
-          <span>{item.user?.phone}</span>
-          <span>·</span>
-          <span>LTV {fmt(item.ltv)}</span>
-          <span>·</span>
-          <span>Top: {item.topProduct || item.topCategory || '—'}</span>
-          {daysOverdue !== null && daysOverdue >= 0 && (
-            <><span>·</span><span className="text-red-500 font-medium">{daysOverdue}d overdue</span></>
+        <div className="flex items-center gap-2 shrink-0">
+          {item.user?.phone && (
+            <a
+              href={`tel:${item.user.phone}`}
+              className="h-8 w-8 rounded-full bg-green-50 text-green-600 hover:bg-green-100 flex items-center justify-center transition-colors"
+            >
+              <Phone className="h-3.5 w-3.5" />
+            </a>
           )}
+          <button
+            onClick={() => onLogCall(item.userId)}
+            className="text-[11px] px-2.5 py-1.5 rounded-md bg-[#D4A017]/10 text-[#7C5C1E] hover:bg-[#D4A017]/20 font-medium transition-colors"
+          >
+            Log Call
+          </button>
         </div>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        {item.user?.phone && (
-          <a
-            href={`tel:${item.user.phone}`}
-            className="h-8 w-8 rounded-full bg-green-50 text-green-600 hover:bg-green-100 flex items-center justify-center transition-colors"
+
+      {/* Action strip */}
+      <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+        {/* Snooze */}
+        {!showSnooze ? (
+          <button
+            onClick={() => setShowSnooze(true)}
+            className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
           >
-            <Phone className="h-3.5 w-3.5" />
-          </a>
+            <BellOff className="h-3 w-3" /> Snooze
+          </button>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              min={minSnoozeDate()}
+              value={snoozeDate}
+              onChange={e => setSnoozeDate(e.target.value)}
+              className="border border-gray-200 rounded-md px-2 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-[#D4A017]"
+            />
+            <button
+              onClick={() => snoozeDate && snooze()}
+              disabled={!snoozeDate || snoozing}
+              className="text-[11px] px-2 py-1 rounded-md bg-[#1A3625] text-white disabled:opacity-40"
+            >
+              {snoozing ? '…' : 'Confirm'}
+            </button>
+            <button onClick={() => { setShowSnooze(false); setSnoozeDate(''); }} className="text-gray-400 hover:text-gray-600">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
         )}
-        {item.user?.phone && (
-          <Link
-            href={`/admin/whatsapp?phone=${item.user.phone}`}
-            className="h-8 w-8 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 flex items-center justify-center transition-colors"
-          >
-            <MessageCircle className="h-3.5 w-3.5" />
-          </Link>
-        )}
+
+        {/* Dismiss */}
         <button
-          onClick={() => onLogCall(item.userId)}
-          className="text-[11px] px-2.5 py-1.5 rounded-md bg-[#D4A017]/10 text-[#7C5C1E] hover:bg-[#D4A017]/20 font-medium transition-colors"
+          onClick={() => dismiss()}
+          disabled={dismissing}
+          className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md text-gray-500 hover:bg-red-50 hover:text-red-500 transition-colors disabled:opacity-40"
         >
-          Log Call
+          <X className="h-3 w-3" /> Dismiss
         </button>
+
+        {/* Escalate */}
+        {!item.isEscalated && (
+          <button
+            onClick={() => escalate()}
+            disabled={escalating}
+            className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md text-gray-500 hover:bg-orange-50 hover:text-orange-600 transition-colors disabled:opacity-40"
+          >
+            <ArrowUpCircle className="h-3 w-3" /> Escalate
+          </button>
+        )}
       </div>
     </div>
   );
@@ -156,8 +245,14 @@ function LogCallModal({ customerId, onClose }: { customerId: string; onClose: ()
 }
 
 export default function QueuePage() {
-  const [tab, setTab] = useState<string>('today');
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<string>(searchParams.get('tab') ?? 'today');
   const [logCallId, setLogCallId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t) setTab(t);
+  }, [searchParams]);
 
   const { data = [], isLoading } = useQuery({
     queryKey: ['crm-queue', tab],

@@ -78,7 +78,7 @@ export default function CustomersPage() {
           <div className="space-y-2">
             {(data?.data ?? []).map((item: any) => (
               <button
-                key={item._id}
+                key={String(item.userId ?? item._id)}
                 onClick={() => router.push(`/crm/customers/${item.userId}`)}
                 className="w-full bg-white border border-gray-200 rounded-lg p-4 flex items-center gap-4 hover:border-[#D4A017]/50 hover:bg-[#FAF7F2] transition-colors text-left"
               >
@@ -89,9 +89,9 @@ export default function CustomersPage() {
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm text-gray-900 truncate">{item.user?.name ?? item.user?.phone}</span>
                     {item.isVip && <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">VIP</span>}
-                    <span className={cn('text-[10px] px-1.5 py-0.5 rounded border font-medium', SEG_COLORS[item.segment] ?? 'bg-gray-100')}>{item.segment}</span>
+                    {item.segment && <span className={cn('text-[10px] px-1.5 py-0.5 rounded border font-medium', SEG_COLORS[item.segment] ?? 'bg-gray-100')}>{item.segment}</span>}
                   </div>
-                  <p className="text-[11px] text-gray-500 mt-0.5">{item.user?.phone} · LTV {fmt(item.ltv)} · {item.topCategory || '—'}</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">{item.user?.phone} · LTV {fmt(item.ltv ?? 0)} · {item.topCategory || '—'}</p>
                 </div>
               </button>
             ))}

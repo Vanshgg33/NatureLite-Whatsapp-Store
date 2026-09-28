@@ -18,6 +18,7 @@ export class CrmService {
     @InjectModel(CrmSettings.name) private settingsModel: Model<CrmSettingsDocument>,
     @InjectModel('User') private userModel: Model<any>,
     @InjectModel('AdminUser') private adminUserModel: Model<any>,
+    @InjectModel('Order') private orderModel: Model<any>,
     private readonly engine: CrmEngineService,
     private readonly whatsapp: WhatsAppService,
   ) {}
@@ -102,11 +103,8 @@ export class CrmService {
     const [user, stats, calls, orders] = await Promise.all([
       this.userModel.findById(uid).lean(),
       this.statsModel.findOne({ userId: uid }).lean(),
-      this.callLogModel.find({ customerId: uid }).sort({ createdAt: -1 }).limit(50).lean(),
-      (this.statsModel as any).db.collection('orders').find(
-        { user: uid, status: { $in: ['delivered', 'completed'] } },
-        { projection: { orderNumber: 1, total: 1, createdAt: 1, items: 1 } }
-      ).sort({ createdAt: -1 }).limit(20).toArray(),
+      this.callLogModel.find({ customerId: uid }).sort({ createdAt: -1 }).limit(50).populate('agentId', 'name').lean(),
+      this.orderModel.find({ user: uid, status: 'delivered' }).select('orderNumber total createdAt items').sort({ createdAt: -1 }).limit(20).lean(),
     ]);
     if (!user) throw new NotFoundException('Customer not found');
     return { user, stats, calls, orders };
@@ -137,6 +135,10 @@ export class CrmService {
       filter.segment = { $in: ['Due Soon', 'Overdue', 'At Risk'] };
     }
 
+    // Exclude dismissed and currently snoozed customers
+    filter.isDismissed = { $ne: true };
+    filter.snoozedUntil = { $not: { $gt: now } };
+
     const stats = await this.statsModel.find(filter).sort({ priorityScore: -1 }).limit(200).lean();
     const userIds = stats.map((s: any) => s.userId);
     const users = await this.userModel.find({ _id: { $in: userIds } }).select('name phone tags').lean();
@@ -151,6 +153,34 @@ export class CrmService {
     if (!agent) throw new NotFoundException('Agent not found');
     await this.statsModel.findOneAndUpdate({ userId: uid }, { $set: { assignedAgentId: aid } }, { upsert: false });
     return { ok: true };
+  }
+
+  // ─── Queue Actions ───────────────────────────────────────────────────────
+
+  async snoozeCustomer(userId: string, until: string) {
+    const date = new Date(until);
+    if (isNaN(date.getTime())) throw new BadRequestException('Invalid snooze date');
+    return this.statsModel.findOneAndUpdate(
+      { userId: new Types.ObjectId(userId) },
+      { $set: { snoozedUntil: date } },
+      { new: true },
+    );
+  }
+
+  async dismissCustomer(userId: string) {
+    return this.statsModel.findOneAndUpdate(
+      { userId: new Types.ObjectId(userId) },
+      { $set: { isDismissed: true } },
+      { new: true },
+    );
+  }
+
+  async escalateCustomer(userId: string) {
+    return this.statsModel.findOneAndUpdate(
+      { userId: new Types.ObjectId(userId) },
+      { $set: { isEscalated: true } },
+      { new: true },
+    );
   }
 
   // ─── Call Logs ───────────────────────────────────────────────────────────
@@ -269,7 +299,7 @@ export class CrmService {
     const since = new Date(); since.setDate(since.getDate() - 30);
 
     const callStats = await this.callLogModel.aggregate([
-      { $match: { agentId: { $in: agentIds }, createdAt: { $gte: since } } },
+      { $match: { agentId: { $in: agentIds }, createdAt: { $gte: since }, type: { $ne: 'whatsapp' } } },
       {
         $group: {
           _id: '$agentId',
@@ -300,7 +330,7 @@ export class CrmService {
         { $match: { segment: { $in: ['At Risk', 'Dormant'] } } },
         { $group: { _id: null, total: { $sum: '$ltv' } } },
       ]),
-      this.callLogModel.countDocuments({ createdAt: { $gte: new Date(Date.now() - 30 * 86400000) } }),
+      this.callLogModel.countDocuments({ createdAt: { $gte: new Date(Date.now() - 30 * 86400000) }, type: { $ne: 'whatsapp' } }),
     ]);
 
     const segMap = Object.fromEntries(segmentCounts.map((s: any) => [s._id, s.count]));
@@ -329,6 +359,106 @@ export class CrmService {
       { $set: { reorderCycles } },
       { upsert: true, new: true },
     );
+  }
+
+  // ─── Notes ───────────────────────────────────────────────────────────────
+
+  async addNote(customerId: string, agentId: string, text: string) {
+    const agent = await this.adminUserModel.findById(agentId).select('name').lean();
+    const updated = await this.statsModel.findOneAndUpdate(
+      { userId: new Types.ObjectId(customerId) },
+      { $push: { notes: { agentId: new Types.ObjectId(agentId), agentName: (agent as any)?.name ?? 'Agent', text, createdAt: new Date() } } },
+      { new: true },
+    );
+    if (!updated) throw new NotFoundException('Customer stats not found — trigger a CRM refresh first');
+    return updated;
+  }
+
+  async deleteNote(customerId: string, noteId: string) {
+    return this.statsModel.findOneAndUpdate(
+      { userId: new Types.ObjectId(customerId) },
+      { $pull: { notes: { _id: new Types.ObjectId(noteId) } } },
+      { new: true },
+    );
+  }
+
+  // ─── WhatsApp Nudge ──────────────────────────────────────────────────────
+
+  async logNudge(dto: {
+    customerId: string;
+    agentId: string;
+    templateName: string;
+    message: string;
+  }) {
+    const uid = new Types.ObjectId(dto.customerId);
+    const user = await this.userModel.findById(uid).select('phone').lean();
+    if (!user?.phone) throw new BadRequestException('Customer has no phone number');
+
+    await this.whatsapp.sendTextMessage({ phone: user.phone, message: dto.message });
+
+    return this.callLogModel.create({
+      customerId: uid,
+      agentId: new Types.ObjectId(dto.agentId),
+      type: 'whatsapp',
+      outcome: null,
+      templateName: dto.templateName,
+      messageText: dto.message,
+    });
+  }
+
+  // ─── Dashboard ───────────────────────────────────────────────────────────
+
+  async getDashboard() {
+    const now = new Date();
+    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+    const next7 = new Date(now.getTime() + 7 * 86400000);
+
+    const [dueTodayCount, overdueCount, upcomingCount, totalCustomers, revenueAtRisk, segmentCounts, callsToday, conversionsToday] =
+      await Promise.all([
+        this.statsModel.countDocuments({ segment: { $in: ['Due Soon', 'Overdue'] }, predictedReorderDate: { $lte: todayEnd } }),
+        this.statsModel.countDocuments({ segment: 'Overdue' }),
+        this.statsModel.countDocuments({ segment: 'Due Soon', predictedReorderDate: { $gte: now, $lte: next7 } }),
+        this.statsModel.countDocuments(),
+        this.statsModel.aggregate([{ $match: { segment: { $in: ['At Risk', 'Dormant'] } } }, { $group: { _id: null, total: { $sum: '$ltv' } } }]),
+        this.statsModel.aggregate([{ $group: { _id: '$segment', count: { $sum: 1 } } }]),
+        this.callLogModel.countDocuments({ createdAt: { $gte: todayStart, $lte: todayEnd }, type: { $ne: 'whatsapp' } }),
+        this.callLogModel.countDocuments({ createdAt: { $gte: todayStart, $lte: todayEnd }, type: { $ne: 'whatsapp' }, outcome: 'ordered' }),
+      ]);
+
+    const segMap = Object.fromEntries(segmentCounts.map((s: any) => [s._id, s.count]));
+    const repeatCustomers = (segMap['Active'] ?? 0) + (segMap['Overdue'] ?? 0) + (segMap['At Risk'] ?? 0);
+
+    return {
+      dueTodayCount,
+      overdueCount,
+      upcomingCount,
+      revenueAtRisk: revenueAtRisk[0]?.total ?? 0,
+      totalCustomers,
+      repeatRate: totalCustomers > 0 ? Math.round((repeatCustomers / totalCustomers) * 100) : 0,
+      callsToday,
+      conversionsToday,
+    };
+  }
+
+  // ─── Reorder Calendar ────────────────────────────────────────────────────
+
+  async getCalendar() {
+    const start = new Date(); start.setHours(0, 0, 0, 0);
+    const end = new Date(start.getTime() + 30 * 86400000);
+
+    const rows = await this.statsModel.aggregate([
+      { $match: { predictedReorderDate: { $gte: start, $lte: end } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$predictedReorderDate', timezone: 'Asia/Kolkata' } },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    return rows.map((r: any) => ({ date: r._id, count: r.count }));
   }
 
   // ─── Manual engine trigger ───────────────────────────────────────────────

@@ -44,7 +44,7 @@ export class CrmEngineService implements OnModuleInit {
 
     // One aggregation: orders → items → product → category
     const rows = await this.orderModel.aggregate([
-      { $match: { user: uid, status: { $in: ['delivered', 'completed'] } } },
+      { $match: { user: uid, status: 'delivered' } },
       { $sort: { createdAt: -1 } },
       { $unwind: '$items' },
       {

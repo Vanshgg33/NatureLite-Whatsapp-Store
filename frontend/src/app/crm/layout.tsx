@@ -7,7 +7,7 @@ import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   Users, ListTodo, Megaphone, Trophy, BarChart3, Settings,
-  LogOut, Menu, X, type LucideIcon,
+  LogOut, Menu, X, LayoutDashboard, type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAdminAuthStore } from '@/lib/admin-store';
@@ -22,6 +22,7 @@ const CRM_NAV: NavGroup[] = [
   {
     label: 'Work',
     items: [
+      { name: 'Dashboard', href: '/crm', icon: LayoutDashboard, managerOnly: true },
       { name: 'Queue', href: '/crm/queue', icon: ListTodo },
       { name: 'Customers', href: '/crm/customers', icon: Users },
     ],
@@ -93,7 +94,7 @@ function CrmSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobi
                 {group.label}
               </p>
               {visible.map((item) => {
-                const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+                const isActive = item.href === '/crm' ? pathname === '/crm' : pathname === item.href || pathname.startsWith(item.href + '/');
                 return (
                   <Link
                     key={item.href}

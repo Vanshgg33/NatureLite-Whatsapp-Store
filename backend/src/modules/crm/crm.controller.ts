@@ -49,6 +49,21 @@ export class CrmController {
     return this.crm.getQueue({ agentId, tab: (tab as any) ?? 'all' });
   }
 
+  @Patch('queue/:userId/snooze')
+  snoozeCustomer(@Param('userId') userId: string, @Body() body: { until: string }) {
+    return this.crm.snoozeCustomer(userId, body.until);
+  }
+
+  @Patch('queue/:userId/dismiss')
+  dismissCustomer(@Param('userId') userId: string) {
+    return this.crm.dismissCustomer(userId);
+  }
+
+  @Patch('queue/:userId/escalate')
+  escalateCustomer(@Param('userId') userId: string) {
+    return this.crm.escalateCustomer(userId);
+  }
+
   @Patch('queue/:userId/assign')
   assignCustomer(
     @Param('userId') userId: string,
@@ -133,6 +148,48 @@ export class CrmController {
   ) {
     if (user.departmentType === 'crm_senior') throw new ForbiddenException('Settings restricted to managers and admins');
     return this.crm.updateSettings(body.reorderCycles);
+  }
+
+  // ─── Notes ───────────────────────────────────────────────────────────────
+
+  @Post('customers/:id/notes')
+  addNote(
+    @Param('id') id: string,
+    @Body() body: { text: string },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.crm.addNote(id, user.sub, body.text);
+  }
+
+  @Patch('customers/:id/notes/:noteId/delete')
+  deleteNote(@Param('id') id: string, @Param('noteId') noteId: string) {
+    return this.crm.deleteNote(id, noteId);
+  }
+
+  // ─── WhatsApp Nudge ──────────────────────────────────────────────────────
+
+  @Post('nudge')
+  logNudge(
+    @Body() body: { customerId: string; templateName: string; message: string },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.crm.logNudge({ ...body, agentId: user.sub });
+  }
+
+  // ─── Dashboard ───────────────────────────────────────────────────────────
+
+  @Get('dashboard')
+  getDashboard(@CurrentUser() user: JwtPayload) {
+    if (user.departmentType === 'crm_senior') throw new ForbiddenException();
+    return this.crm.getDashboard();
+  }
+
+  // ─── Reorder Calendar ────────────────────────────────────────────────────
+
+  @Get('calendar')
+  getCalendar(@CurrentUser() user: JwtPayload) {
+    if (user.departmentType === 'crm_senior') throw new ForbiddenException();
+    return this.crm.getCalendar();
   }
 
   // ─── Engine ──────────────────────────────────────────────────────────────
