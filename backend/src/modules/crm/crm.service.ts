@@ -391,7 +391,7 @@ export class CrmService {
     message: string;
   }) {
     const uid = new Types.ObjectId(dto.customerId);
-    const user = await this.userModel.findById(uid).select('phone').lean();
+    const user = await this.userModel.findById(uid).select('phone').lean<{ phone?: string }>();
     if (!user?.phone) throw new BadRequestException('Customer has no phone number');
 
     await this.whatsapp.sendTextMessage({ phone: user.phone, message: dto.message });
