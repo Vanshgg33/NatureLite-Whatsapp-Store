@@ -27,6 +27,7 @@ import {
   GuestCreateOrderDto,
   AssignDeliveryDto,
   UpdateOrderDto,
+  AddPaymentProofDto,
 } from './dto/order.dto';
 import { Order } from './schemas/order.schema';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -83,7 +84,7 @@ export class OrdersController {
     @CurrentUser() user: JwtPayload,
   ): Promise<PaginatedResult<Order>> {
     if (user.departmentType === 'delivery') {
-      query.forDelivery = true;
+      if (!query.status) query.forDelivery = true;
       query.deliveryUserId = user.sub;
     }
     if ((user.departmentType === 'packing' || user.departmentType === 'billing') && user.storeName) {
@@ -214,6 +215,17 @@ export class OrdersController {
     @Body() dto: UpdatePaymentStatusDto,
   ): Promise<Order> {
     return this.ordersService.updatePaymentStatus(id, dto);
+  }
+
+  @Patch(':id/payment-proof')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  async addPaymentProof(
+    @Param('id') id: string,
+    @Body() dto: AddPaymentProofDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<Order> {
+    return this.ordersService.addPaymentProof(id, dto.paymentProofUrl, user.sub, user.departmentType);
   }
 
   @Put(':id/delivery-workflow')

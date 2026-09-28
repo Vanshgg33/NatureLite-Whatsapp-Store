@@ -110,6 +110,9 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
       }
     } else if (status) {
       filter.status = status;
+      if (deliveryUserId) {
+        filter.assignedDeliveryUserId = deliveryUserId.toString();
+      }
     }
     if (paymentStatus) filter.paymentStatus = paymentStatus;
     const searchOr = buildSearchOrFilter(search, ['orderNumber', 'shippingAddress.name', 'shippingAddress.phone', 'shippingAddress.alternatePhone']);

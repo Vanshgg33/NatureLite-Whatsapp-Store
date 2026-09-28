@@ -36,6 +36,7 @@ import { formatCurrency } from '@/lib/utils';
 import type { Order } from '@/types';
 
 type DeliveryStatus = 'delivery_done' | 'customer_ringing' | 'customer_cancelled' | 'customer_tomorrow' | 'unpaid' | 'partial_payment';
+type ActiveTab = 'active' | 'pending-proof';
 
 // ─── Photo upload box ─────────────────────────────────────────────────────────
 
@@ -361,6 +362,10 @@ export default function DeliveryDashboardPage() {
   const [uploadingDelivery, setUploadingDelivery] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [activeTab, setActiveTab] = useState<ActiveTab>('active');
+  const [pendingProofOrder, setPendingProofOrder] = useState<Order | null>(null);
+  const [pendingProofUrl, setPendingProofUrl] = useState<string | undefined>();
+  const [uploadingPendingProof, setUploadingPendingProof] = useState(false);
   // BUG 23 FIX: track which order IDs have an in-flight "mark delivered" mutation.
   // This closes the micro-gap between mutate() being called and isPending becoming
   // true, preventing a double-tap from firing two concurrent submissions.
@@ -373,6 +378,28 @@ export default function DeliveryDashboardPage() {
   });
 
   const billedOrders = useMemo(() => (billedData?.items ?? []) as Order[], [billedData]);
+
+  const { data: pendingProofData } = useQuery({
+    queryKey: ['department', 'delivery', 'pending-proof', user?.id],
+    queryFn: () => api.getOrders({ status: 'delivered', deliveryUserId: user?.id, page: 1, limit: 100, sortBy: 'deliveredAt', sortOrder: 'desc' }),
+    enabled: !!user?.id,
+    refetchInterval: 30_000,
+    select: (data) => (data.items as Order[]).filter((o) => !o.paymentProofUrl),
+  });
+  const pendingProofOrders = pendingProofData ?? [];
+
+  const addPaymentProofMutation = useMutation({
+    mutationFn: () => api.addPaymentProof(pendingProofOrder!._id, pendingProofUrl!),
+    onSuccess: () => {
+      toast({ title: 'Payment proof saved ✓' });
+      queryClient.invalidateQueries({ queryKey: ['department', 'delivery', 'pending-proof'] });
+      setPendingProofOrder(null);
+      setPendingProofUrl(undefined);
+    },
+    onError: (err) => {
+      toast({ title: 'Failed to save', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
+    },
+  });
 
   const filteredBilledOrders = useMemo(() => {
     if (!orderNumber.trim()) return billedOrders;
@@ -635,7 +662,33 @@ export default function DeliveryDashboardPage() {
           </div>
         )}
 
-        {/* Search bar */}
+        {/* Tab toggle — hidden while an order form is open */}
+        {!order && !pendingProofOrder && (
+          <div className="flex bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setActiveTab('active')}
+              className={`flex-1 h-10 text-sm font-medium transition-colors ${activeTab === 'active' ? 'bg-gray-900 text-white' : 'text-gray-600'}`}
+            >
+              Active deliveries
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('pending-proof')}
+              className={`flex-1 h-10 text-sm font-medium transition-colors relative ${activeTab === 'pending-proof' ? 'bg-gray-900 text-white' : 'text-gray-600'}`}
+            >
+              Pending payment proof
+              {pendingProofOrders.length > 0 && (
+                <span className={`absolute top-1.5 right-3 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === 'pending-proof' ? 'bg-white text-gray-900' : 'bg-red-500 text-white'}`}>
+                  {pendingProofOrders.length}
+                </span>
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* Search bar — only on active tab */}
+        {activeTab === 'active' && !order && (
         <div className="bg-white rounded-2xl border border-gray-100 p-3 flex gap-2 items-center shadow-sm">
           <Search className="h-4 w-4 text-gray-400 shrink-0" />
           <Input
@@ -649,9 +702,91 @@ export default function DeliveryDashboardPage() {
             Find
           </Button>
         </div>
+        )}
+
+        {/* Pending proof tab — add payment proof to already-delivered orders */}
+        {activeTab === 'pending-proof' && !pendingProofOrder && (
+          <div className="space-y-3">
+            {pendingProofOrders.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-8">No orders waiting for payment proof.</p>
+            ) : (
+              pendingProofOrders.map((o) => (
+                <Card key={o._id} className="border-gray-100 shadow-sm">
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-0.5 min-w-0">
+                        <p className="font-semibold text-gray-900 text-sm">{o.orderNumber}</p>
+                        <p className="text-sm text-gray-700 truncate">{o.shippingAddress.name}</p>
+                        <p className="text-xs text-gray-500">{o.shippingAddress.phone}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-semibold text-gray-900">{formatCurrency(o.total)}</p>
+                        <span className="inline-block bg-amber-50 text-amber-700 text-xs px-2 py-0.5 rounded-full border border-amber-100 mt-1">
+                          {o.paymentMethod?.toUpperCase()}
+                        </span>
+                      </div>
+                    </div>
+                    <Button size="sm" className="w-full h-9" onClick={() => { setPendingProofOrder(o); setPendingProofUrl(undefined); }}>
+                      <Camera className="h-3.5 w-3.5 mr-1.5" />
+                      Add payment proof
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* Add payment proof form */}
+        {activeTab === 'pending-proof' && pendingProofOrder && (
+          <div className="space-y-4">
+            <button type="button" className="flex items-center gap-1 text-sm text-gray-500 -mb-1" onClick={() => { setPendingProofOrder(null); setPendingProofUrl(undefined); }}>
+              ← Back to list
+            </button>
+            <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-1">
+              <p className="font-bold text-gray-900">{pendingProofOrder.orderNumber}</p>
+              <p className="text-sm text-gray-700">{pendingProofOrder.shippingAddress.name} · {pendingProofOrder.shippingAddress.phone}</p>
+              <p className="text-sm font-semibold text-gray-900">{formatCurrency(pendingProofOrder.total)}</p>
+            </div>
+            <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-4">
+              <div className="flex items-center gap-2">
+                <ImagePlus className="h-4 w-4 text-amber-600" />
+                <p className="text-sm font-semibold text-gray-800">Payment proof</p>
+              </div>
+              <PhotoUploadBox
+                label="Payment screenshot"
+                hint="Photo of cash received or UPI payment screen sent by customer"
+                required
+                url={pendingProofUrl}
+                uploading={uploadingPendingProof}
+                onFile={(f) => uploadPhoto(f, 'delivery-payments', setPendingProofUrl, setUploadingPendingProof)}
+                onClear={() => setPendingProofUrl(undefined)}
+                onBeforeOpen={() => api.refreshAccessToken().then(() => {})}
+              />
+            </div>
+            {uploadingPendingProof && (
+              <div className="flex items-center justify-center gap-2 py-2 text-sm text-amber-600">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                Uploading photo, please wait…
+              </div>
+            )}
+            <Button
+              size="lg"
+              className="w-full h-14 text-base font-semibold rounded-2xl bg-green-600 hover:bg-green-700"
+              disabled={!pendingProofUrl || uploadingPendingProof || addPaymentProofMutation.isPending}
+              onClick={() => addPaymentProofMutation.mutate()}
+            >
+              {addPaymentProofMutation.isPending ? (
+                <><RefreshCw className="h-5 w-5 mr-2 animate-spin" /> Saving…</>
+              ) : (
+                <><CheckCircle2 className="h-5 w-5 mr-2" /> Save payment proof</>
+              )}
+            </Button>
+          </div>
+        )}
 
         {/* Order list */}
-        {!order && (
+        {activeTab === 'active' && !order && (
           <>
             {loadingBilled && (
               <p className="text-sm text-gray-400 text-center py-8">Loading orders…</p>

@@ -436,3 +436,9 @@ export class UpdateOrderDto {
   @Min(0)
   shippingCharge?: number;
 }
+
+export class AddPaymentProofDto {
+  @IsString()
+  @IsNotEmpty()
+  paymentProofUrl: string;
+}

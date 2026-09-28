@@ -743,6 +743,7 @@ class ApiClient {
     forPacking?: boolean;
     forBilling?: boolean;
     forDelivery?: boolean;
+    deliveryUserId?: string;
     city?: string;
   }): Promise<PaginatedResponse<Order>> {
     const { customerId, userId, ...rest } = params;
@@ -841,6 +842,11 @@ class ApiClient {
 
   async updateOrderPriorityTags(id: string, tags: string[]): Promise<Order> {
     const response = await this.client.put<ApiResponse<Order>>(`/orders/${id}/priority-tags`, { tags });
+    return response.data.data;
+  }
+
+  async addPaymentProof(id: string, paymentProofUrl: string): Promise<Order> {
+    const response = await this.client.patch<ApiResponse<Order>>(`/orders/${id}/payment-proof`, { paymentProofUrl });
     return response.data.data;
   }
 

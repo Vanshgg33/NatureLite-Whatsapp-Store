@@ -44,6 +44,7 @@ export class RolesGuard implements CanActivate {
         'updateStatus',
         'markPacked',
         'updateDeliveryWorkflow',
+        'addPaymentProof',
         'assignDelivery',
         'findOne',
         'findByOrderNumber',

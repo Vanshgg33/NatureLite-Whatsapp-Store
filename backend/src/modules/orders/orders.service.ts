@@ -1239,6 +1239,23 @@ export class OrdersService implements OnModuleInit {
     return saved;
   }
 
+  async addPaymentProof(id: string, paymentProofUrl: string, callerId: string, departmentType?: string): Promise<Order> {
+    const order = await this.orderRepository.findById(parseObjectId(id, 'id'));
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== 'delivered') throw new BadRequestException('Order is not in delivered state.');
+    if (departmentType === 'delivery' && order.assignedDeliveryUserId?.toString() !== callerId) {
+      throw new ForbiddenException('This order is not assigned to you.');
+    }
+    order.paymentProofUrl = paymentProofUrl;
+    this.pushTimelineEntry(order, {
+      status: order.status,
+      message: 'Payment proof added',
+      updatedBy: callerId,
+      metadata: { paymentProofUrl },
+    });
+    return order.save();
+  }
+
   async cancelOrder(id: string, dto: CancelOrderDto, cancelledBy?: string): Promise<Order> {
     const idObj = parseObjectId(id, 'id');
 
