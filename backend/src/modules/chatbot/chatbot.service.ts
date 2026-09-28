@@ -4582,7 +4582,11 @@ export class ChatbotService implements OnModuleInit {
         `🏷 ${cart.couponCode || 'Discount'}:  −${this.formatCurrency(cart.discount)}`,
       );
     }
-    breakdown.push(bold(`You pay:  ${this.formatCurrency(cart.total)}`));
+    const deliveryCharge = await this.ordersService.calcShippingCharge(cart.subtotal);
+    if (deliveryCharge > 0) {
+      breakdown.push(`🚚 Delivery:  ${this.formatCurrency(deliveryCharge)}`);
+    }
+    breakdown.push(bold(`You pay:  ${this.formatCurrency(cart.total + deliveryCharge)}`));
 
     const FREE_SHIP_THRESHOLD = 300;
     const shippingLine =
@@ -4826,10 +4830,11 @@ export class ChatbotService implements OnModuleInit {
       cartTotal: cart.total,
     });
 
+    const delivery = await this.ordersService.calcShippingCharge(cart.subtotal);
     await this.whatsappService.sendInteractiveButtons({
       phone,
       bodyText:
-        `\u2713 Added \u00B7 ${bold(`${cart.itemCount} item${cart.itemCount === 1 ? '' : 's'}`)} \u00B7 ${this.formatCurrency(cart.total)}`,
+        `\u2713 Added \u00B7 ${bold(`${cart.itemCount} item${cart.itemCount === 1 ? '' : 's'}`)} \u00B7 ${this.formatCurrency(cart.total + delivery)}`,
       buttons: [
         { id: BTN.CHECKOUT, title: '\u2705 Checkout' },
         { id: BTN.KEEP_SHOPPING, title: '\u2795 Add more' },
@@ -4923,13 +4928,13 @@ export class ChatbotService implements OnModuleInit {
       if (cart.discount > 0) {
         billingLines.push(`🏷 ${cart.couponCode || 'Discount'}: −${this.formatCurrency(cart.discount)}`);
       }
-      const FREE_SHIP_THRESHOLD = 300;
+      const deliveryCharge = await this.ordersService.calcShippingCharge(cart.subtotal);
       billingLines.push(
-        cart.subtotal >= FREE_SHIP_THRESHOLD
+        deliveryCharge === 0
           ? `🎉 Free delivery included`
-          : `🚚 Delivery: ₹40`,
+          : `🚚 Delivery: ${this.formatCurrency(deliveryCharge)}`,
       );
-      billingLines.push(bold(`You pay: ${this.formatCurrency(cart.total)}`));
+      billingLines.push(bold(`You pay: ${this.formatCurrency(cart.total + deliveryCharge)}`));
 
       const addressLine = address
         ? `📍 *${address.label || 'Saved address'}* — ${address.street}, ${address.city}${address.pincode ? ` ${address.pincode}` : ''}`
@@ -4984,7 +4989,11 @@ export class ChatbotService implements OnModuleInit {
       if (cart.discount > 0) {
         lines.push(`🏷 ${cart.couponCode || 'Discount'}:  −${this.formatCurrency(cart.discount)}`);
       }
-      lines.push(bold(`You pay:  ${this.formatCurrency(cart.total)}`));
+      const deliveryCharge = await this.ordersService.calcShippingCharge(cart.subtotal);
+      if (deliveryCharge > 0) {
+        lines.push(`🚚 Delivery:  ${this.formatCurrency(deliveryCharge)}`);
+      }
+      lines.push(bold(`You pay:  ${this.formatCurrency(cart.total + deliveryCharge)}`));
 
       const FREE_SHIP_THRESHOLD = 300;
       const shippingLine = cart.subtotal >= FREE_SHIP_THRESHOLD

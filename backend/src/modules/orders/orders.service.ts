@@ -135,6 +135,25 @@ export class OrdersService implements OnModuleInit {
     }
   }
 
+  async calcShippingCharge(subtotal: number): Promise<number> {
+    let freeShippingThreshold = 300;
+    let defaultShippingCharge = 50;
+    try {
+      const storeSettings = await this.settingsService.get('store');
+      if (storeSettings?.value && typeof storeSettings.value === 'object') {
+        const v = storeSettings.value as {
+          freeShippingThreshold?: number;
+          defaultShippingCharge?: number;
+        };
+        freeShippingThreshold = v.freeShippingThreshold ?? 300;
+        defaultShippingCharge = v.defaultShippingCharge ?? 50;
+      }
+    } catch {
+      // Use defaults if settings unavailable
+    }
+    return subtotal >= freeShippingThreshold ? 0 : defaultShippingCharge;
+  }
+
   async create(userId: string, dto: CreateOrderDto): Promise<Order> {
     const userObjId = parseObjectId(userId, 'userId');
     let requestHashForIdem = '';
@@ -347,25 +366,8 @@ export class OrdersService implements OnModuleInit {
         }
       }
 
-      // Get shipping settings instead of hard-coded values
-      let freeShippingThreshold = 300;
-      let defaultShippingCharge = 50;
-      try {
-        const storeSettings = await this.settingsService.get('store');
-        if (storeSettings?.value && typeof storeSettings.value === 'object') {
-          const v = storeSettings.value as {
-            freeShippingThreshold?: number;
-            defaultShippingCharge?: number;
-          };
-          freeShippingThreshold = v.freeShippingThreshold ?? 300;
-          defaultShippingCharge = v.defaultShippingCharge ?? 50;
-        }
-      } catch {
-        // Use defaults if settings unavailable
-      }
-
       const gstTotal = orderItems.reduce((sum, item) => sum + item.gstAmount, 0);
-      const shippingCharge = subtotal >= freeShippingThreshold ? 0 : defaultShippingCharge;
+      const shippingCharge = await this.calcShippingCharge(subtotal);
 
       // GST is included in product prices (MRP pricing) — gstTotal is informational only
       const totalBeforeWallet = subtotal - discount + shippingCharge;

@@ -165,7 +165,7 @@ If the user's query has NO Hindi, pass it to search_products as-is.
 | search_products | Any product/shopping mention — call first, act on result |
 | get_categories | User asks "what do you sell" or wants to browse |
 | get_product_detail | Product tap from catalog (has productId) |
-| get_cart | User asks "what's in my cart" or before suggesting checkout |
+| get_cart | User asks "what's in my cart" or before suggesting checkout. Returns total already including delivery charge — never add delivery yourself |
 | add_to_cart | After finding a product — always include productId + quantity |
 | remove_from_cart | User says "remove X" or "hatao" |
 | update_cart_quantity | User says "change X to 2" or "+1 ghee" |
@@ -967,6 +967,7 @@ Text: ${raw}`;
     }
     const cart = await this.cartService.getCart(session.user.toString());
     if (!cart.items.length) return { empty: true, message: 'Cart is empty.' };
+    const deliveryCharge = await this.ordersService.calcShippingCharge(cart.subtotal ?? 0);
     return {
       items: cart.items.map((it: any) => ({
         productId: it.product.id,
@@ -979,8 +980,8 @@ Text: ${raw}`;
       subtotal: cart.subtotal,
       discount: cart.discount ?? 0,
       couponCode: cart.couponCode ?? null,
-      total: cart.total,
-      freeDelivery: cart.subtotal >= 300,
+      deliveryCharge,
+      total: (cart.total ?? 0) + deliveryCharge,
     };
   }
 
@@ -1012,7 +1013,8 @@ Text: ${raw}`;
     const cart = await this.cartService.getCart(session.user.toString());
 
     const itemLabel = `${cart.itemCount} item${cart.itemCount === 1 ? '' : 's'}`;
-    const total = `₹${Math.round((cart.total || 0) * 100) / 100}`;
+    const delivery = await this.ordersService.calcShippingCharge(cart.subtotal ?? 0);
+    const total = `₹${Math.round(((cart.total || 0) + delivery) * 100) / 100}`;
     await this.whatsappService.sendInteractiveButtons({
       phone,
       bodyText: `✓ Added · ${bold(itemLabel)} · ${total}`,
