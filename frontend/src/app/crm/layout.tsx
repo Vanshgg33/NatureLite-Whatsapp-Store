@@ -1,4 +1,3 @@
-// frontend/src/app/crm/layout.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -7,7 +6,7 @@ import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   Users, ListTodo, Megaphone, Trophy, BarChart3, Settings,
-  LogOut, Menu, X, LayoutDashboard, type LucideIcon,
+  LogOut, Menu, X, LayoutDashboard, ChevronRight, type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAdminAuthStore } from '@/lib/admin-store';
@@ -48,6 +47,13 @@ const CRM_NAV: NavGroup[] = [
   },
 ];
 
+const ROLE_LABELS: Record<string, string> = {
+  crm_head: 'CRM Manager',
+  crm_senior: 'Senior Agent',
+  superadmin: 'Super Admin',
+  admin: 'Admin',
+};
+
 function CrmSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobileClose: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -58,6 +64,7 @@ function CrmSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobi
   const isAgent = user?.departmentType === 'crm_senior';
   const isAdmin = !user?.departmentType || user?.role === 'superadmin' || user?.departmentType === 'crm_head';
   const userInitial = user?.name?.[0]?.toUpperCase() ?? user?.email?.[0]?.toUpperCase() ?? 'C';
+  const roleLabel = ROLE_LABELS[user?.departmentType ?? user?.role ?? ''] ?? 'Staff';
 
   const handleLogout = () => {
     logout();
@@ -66,21 +73,25 @@ function CrmSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobi
   };
 
   const content = (
-    <div className="flex h-full w-[220px] flex-col bg-[#1A3625]">
-      <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-white/10 flex-shrink-0">
-        <Link href="/crm/queue" className="flex items-center gap-2.5 min-w-0" onClick={onMobileClose}>
-          <Image src="/images/logo.png" alt="NatureLite" width={28} height={28} className="object-contain rounded-full flex-shrink-0" />
+    <div className="crm-root flex h-full w-[232px] flex-col" style={{ background: '#0D1F14' }}>
+      {/* Brand header */}
+      <div className="flex items-center gap-3 px-5 py-4 flex-shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        <Link href="/crm" className="flex items-center gap-3 min-w-0 flex-1" onClick={onMobileClose}>
+          <div className="h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden" style={{ background: 'rgba(212,160,23,0.15)', border: '1px solid rgba(212,160,23,0.25)' }}>
+            <Image src="/images/logo.png" alt="NL" width={22} height={22} className="object-contain" />
+          </div>
           <div className="flex flex-col leading-none min-w-0">
-            <span className="text-white font-semibold text-[12.5px] tracking-tight truncate">Nature Lite</span>
-            <span className="text-[#D4A017]/70 text-[9px] tracking-[0.14em] uppercase font-mono mt-0.5">CRM</span>
+            <span className="text-white font-semibold text-[13px] tracking-tight truncate" style={{ fontFamily: "'DM Sans', system-ui" }}>Nature Lite</span>
+            <span style={{ color: '#D4A017', fontSize: '9px', letterSpacing: '0.2em', fontFamily: 'monospace', marginTop: '2px' }}>CRM SUITE</span>
           </div>
         </Link>
-        <button className="ml-auto md:hidden p-1 text-white/40 hover:text-white/70 shrink-0" onClick={onMobileClose}>
+        <button className="md:hidden p-1 rounded-md shrink-0" style={{ color: 'rgba(255,255,255,0.4)' }} onClick={onMobileClose}>
           <X className="h-4 w-4" />
         </button>
       </div>
 
-      <nav className="flex-1 overflow-y-auto py-2 scrollbar-thin">
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto py-3 scrollbar-hide" style={{ scrollbarWidth: 'none' }}>
         {CRM_NAV.map((group, gi) => {
           const visible = group.items.filter(item => {
             if (item.adminOnly && !isAdmin) return false;
@@ -89,8 +100,8 @@ function CrmSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobi
           });
           if (!visible.length) return null;
           return (
-            <div key={gi} className="mt-2 first:mt-1">
-              <p className="px-4 pt-2 pb-1 text-[9px] font-semibold text-white/25 uppercase tracking-[0.15em] select-none">
+            <div key={gi} className="mb-1">
+              <p className="px-5 pt-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] select-none" style={{ color: 'rgba(255,255,255,0.22)' }}>
                 {group.label}
               </p>
               {visible.map((item) => {
@@ -101,14 +112,21 @@ function CrmSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobi
                     href={item.href}
                     onClick={onMobileClose}
                     className={cn(
-                      'flex items-center gap-2.5 text-[12.5px] py-[7px] mx-2 px-3 rounded-md transition-colors',
+                      'flex items-center gap-2.5 text-[13px] py-2 mx-2.5 px-3 rounded-lg transition-all duration-150 group relative',
                       isActive
-                        ? 'bg-[#7C5C1E] text-white font-medium'
-                        : 'text-white/55 hover:text-white/85 hover:bg-white/[0.07]',
+                        ? 'font-medium'
+                        : 'hover:bg-white/[0.05]',
                     )}
+                    style={isActive ? {
+                      background: 'rgba(212,160,23,0.12)',
+                      color: '#E8B930',
+                      borderLeft: '2px solid #D4A017',
+                      paddingLeft: '10px',
+                    } : { color: 'rgba(255,255,255,0.52)' }}
                   >
-                    <item.icon className={cn('h-[13px] w-[13px] flex-shrink-0', isActive ? 'opacity-100' : 'opacity-60')} />
-                    {item.name}
+                    <item.icon className="h-[14px] w-[14px] flex-shrink-0" style={{ opacity: isActive ? 1 : 0.65 }} />
+                    <span className="flex-1">{item.name}</span>
+                    {isActive && <ChevronRight className="h-3 w-3 opacity-60" />}
                   </Link>
                 );
               })}
@@ -117,35 +135,39 @@ function CrmSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobi
         })}
       </nav>
 
-      <div className="border-t border-white/10 p-2.5 flex-shrink-0">
-        <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-white/[0.06] mb-1.5">
-          <div className="h-6 w-6 rounded bg-[#7C5C1E] flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0">
+      {/* User footer */}
+      <div className="flex-shrink-0 px-2.5 py-3" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+        <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl mb-1" style={{ background: 'rgba(255,255,255,0.04)' }}>
+          <div className="h-7 w-7 rounded-lg flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0" style={{ background: 'rgba(212,160,23,0.25)', border: '1px solid rgba(212,160,23,0.3)' }}>
             {userInitial}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-white/80 text-[12px] font-medium truncate leading-tight">{user?.name ?? 'Agent'}</p>
-            <p className="text-white/35 text-[10px] font-mono truncate leading-tight">{user?.departmentType ?? user?.role}</p>
+            <p className="text-[12px] font-medium truncate leading-tight" style={{ color: 'rgba(255,255,255,0.82)' }}>{user?.name ?? 'Agent'}</p>
+            <p className="text-[10px] truncate leading-tight mt-0.5" style={{ color: '#D4A017', opacity: 0.75 }}>{roleLabel}</p>
           </div>
+          <button
+            onClick={handleLogout}
+            title="Logout"
+            className="p-1.5 rounded-md transition-colors shrink-0"
+            style={{ color: 'rgba(255,255,255,0.3)' }}
+            onMouseEnter={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.7)')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.3)')}
+          >
+            <LogOut className="h-3.5 w-3.5" />
+          </button>
         </div>
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-white/40 hover:text-white/70 hover:bg-white/[0.06] text-[12px] cursor-pointer transition-colors"
-        >
-          <LogOut className="h-3.5 w-3.5" />
-          Logout
-        </button>
       </div>
     </div>
   );
 
   return (
     <>
-      <aside className="hidden md:flex md:w-[220px] md:flex-shrink-0 md:flex-col">{content}</aside>
+      <aside className="hidden md:flex md:w-[232px] md:flex-shrink-0 md:flex-col">{content}</aside>
       {mounted && (
         <>
-          {mobileOpen && <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={onMobileClose} />}
+          {mobileOpen && <div className="fixed inset-0 z-40 bg-black/60 md:hidden backdrop-blur-sm" onClick={onMobileClose} />}
           <div className={cn(
-            'fixed inset-y-0 left-0 z-50 w-[220px] shadow-2xl transition-transform duration-200 ease-out md:hidden',
+            'fixed inset-y-0 left-0 z-50 w-[232px] shadow-2xl transition-transform duration-200 ease-out md:hidden',
             mobileOpen ? 'translate-x-0' : '-translate-x-full',
           )}>
             {content}
@@ -172,14 +194,15 @@ export default function CrmLayout({ children }: { children: React.ReactNode }) {
   if (!hasHydrated || !isAuthenticated) return null;
 
   return (
-    <div className="flex h-screen bg-[#FAF7F2]">
+    <div className="crm-root flex h-screen" style={{ background: '#F7F5F0' }}>
       <CrmSidebar mobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)} />
       <div className="flex flex-1 flex-col min-w-0">
-        <div className="flex md:hidden h-12 items-center gap-3 border-b bg-white px-4 shrink-0">
+        {/* Mobile topbar */}
+        <div className="flex md:hidden h-12 items-center gap-3 px-4 shrink-0 bg-white" style={{ borderBottom: '1px solid #E8E2D9' }}>
           <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} className="h-8 w-8">
             <Menu className="h-4 w-4" />
           </Button>
-          <span className="font-semibold text-sm text-gray-800">CRM</span>
+          <span className="font-semibold text-sm" style={{ color: '#1C1917' }}>CRM Suite</span>
         </div>
         <main className="flex-1 overflow-auto">
           <ErrorBoundary>{children}</ErrorBoundary>
