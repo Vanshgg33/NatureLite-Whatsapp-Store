@@ -300,6 +300,32 @@ export class ChatbotService implements OnModuleInit {
       .join('\n');
   }
 
+  private buildOrderConfirmationSummary(order: any): string {
+    const placedWhen = this.formatStepTimestamp(order.createdAt);
+    const itemsPreview = this.formatOrderItemsPreview(order.items as any[]);
+    // Display only the 4-digit sequence to keep the ID short and prevent
+    // WhatsApp from treating the full numeric string as a phone number.
+    const shortRef = `*#ORD-${order.orderNumber.slice(-4)}*`;
+    const addr = order.shippingAddress;
+    const addrLine = addr
+      ? `\uD83D\uDCCD ${addr.name}, ${addr.street}, ${addr.city}${addr.pincode ? ' - ' + addr.pincode : ''}\n\n`
+      : '';
+    const billingLines: string[] = [];
+    if (order.subtotal && order.subtotal !== order.total) {
+      billingLines.push(`Subtotal:  ${this.formatCurrency(order.subtotal)}`);
+    }
+    if (order.discount > 0) {
+      billingLines.push(`\uD83C\uDFF7 ${order.couponCode || 'Discount'}:  \u2212${this.formatCurrency(order.discount)}`);
+    }
+    billingLines.push(bold(`Total:  ${this.formatCurrency(order.total)}`));
+    return (
+      `${shortRef}  \u00B7  _${placedWhen || 'Just now'}_\n\n` +
+      `\uD83D\uDCE6 *Items (${order.items.length})*\n${itemsPreview}\n\n` +
+      addrLine +
+      billingLines.join('\n')
+    );
+  }
+
   /** Short date+time stamp (e.g. "Sat, 20 Apr · 2:14 PM") for tracking timeline. */
   private formatStepTimestamp(d?: Date | null): string {
     if (!d) return '';
@@ -1528,23 +1554,14 @@ export class ChatbotService implements OnModuleInit {
       session.context = mergeChatContext(session.context, { suggestedCoupon: suggestion.code });
       await this.saveSession(session);
 
-      const applyTitle = clip(`\u2705 Apply ${suggestion.code}`, WA.BUTTON_TITLE);
-      // Show "See all" when there's more than one choice; otherwise surface
-      // the manual-code entry instead so the 3-button budget isn't wasted.
-      const secondaryButton =
-        applicable.length > 1
-          ? { id: BTN.COUPON_LIST, title: `\uD83C\uDFF7 See all (${applicable.length})` }
-          : { id: BTN.COUPON_CUSTOM, title: '\uD83C\uDFF7 Use another' };
-
       await this.whatsappService.sendInteractiveButtons({
         phone,
         headerText: 'Save on this order',
         bodyText:
-          `${notice ? `${notice}\n\n` : ''}\uD83C\uDF81 ${bold(`${this.formatCurrency(suggestion.discount)} off`)} with ${bold(suggestion.code)} \u2014 we've lined it up for you.\n` +
-          italic(suggestion.description || 'Applied to your cart total.'),
+          `${notice ? `${notice}\n\n` : ''}\uD83C\uDF81 ${bold(`${this.formatCurrency(suggestion.discount)} off`)} with ${bold(suggestion.code)} \u2014 tap to browse all coupons.\n` +
+          italic(suggestion.description || 'Apply from the list below.'),
         buttons: [
-          { id: BTN.COUPON_APPLY_SUGGESTED, title: applyTitle },
-          secondaryButton,
+          { id: BTN.COUPON_LIST, title: '\uD83C\uDFF7 Choose coupon' },
           { id: BTN.COUPON_SKIP, title: 'Skip' },
         ],
       });
@@ -1978,6 +1995,11 @@ export class ChatbotService implements OnModuleInit {
     if (input === BTN.ADD_NEW_ADDRESS) {
       await this.transitionToState(session, 'address_input');
       await this.sendFlowResponse(phone, 'address_input', session);
+      return;
+    }
+
+    if (input === BTN.CHANGE_ADDRESS) {
+      await this.openAddressPickerFromPayment(phone, session);
       return;
     }
 
@@ -2465,20 +2487,7 @@ export class ChatbotService implements OnModuleInit {
         paymentMethod: 'cod',
       });
 
-      const placedWhen = this.formatStepTimestamp(order.createdAt);
-      const itemsPreview = this.formatOrderItemsPreview(order.items as any[]);
-      const billingLines: string[] = [];
-      if ((order as any).subtotal && (order as any).subtotal !== order.total) {
-        billingLines.push(`Subtotal:  ${this.formatCurrency((order as any).subtotal)}`);
-      }
-      if ((order as any).discount > 0) {
-        billingLines.push(`🏷 ${(order as any).couponCode || 'Discount'}:  −${this.formatCurrency((order as any).discount)}`);
-      }
-      billingLines.push(bold(`Total:  ${this.formatCurrency(order.total)}`));
-      const summary =
-        `*#${order.orderNumber}*  ·  _${placedWhen || 'Just now'}_\n\n` +
-        `📦 *Items (${order.items.length})*\n${itemsPreview}\n\n` +
-        billingLines.join('\n');
+      const summary = this.buildOrderConfirmationSummary(order);
       await this.whatsappService.sendInteractiveButtons({
         phone,
         headerText: '✅ Order Confirmed',
@@ -2762,21 +2771,7 @@ export class ChatbotService implements OnModuleInit {
     });
 
     try {
-      const placedWhen = this.formatStepTimestamp(order.createdAt);
-      const itemsPreview = this.formatOrderItemsPreview(order.items as any[]);
-      const billingLines: string[] = [];
-      if ((order as any).subtotal && (order as any).subtotal !== order.total) {
-        billingLines.push(`Subtotal:  ${this.formatCurrency((order as any).subtotal)}`);
-      }
-      if ((order as any).discount > 0) {
-        billingLines.push(`\uD83C\uDFF7 ${(order as any).couponCode || 'Discount'}:  \u2212${this.formatCurrency((order as any).discount)}`);
-      }
-      billingLines.push(bold(`Total:  ${this.formatCurrency(order.total)}`));
-
-      const summary =
-        `*#${order.orderNumber}*  \u00B7  _${placedWhen || 'Just now'}_\n\n` +
-        `\uD83D\uDCE6 *Items (${order.items.length})*\n${itemsPreview}\n\n` +
-        billingLines.join('\n');
+      const summary = this.buildOrderConfirmationSummary(order);
 
       if (paymentMethod === 'cod') {
         await this.whatsappService.sendInteractiveButtons({
@@ -5110,10 +5105,10 @@ export class ChatbotService implements OnModuleInit {
         phone,
         headerText: 'Deliver to',
         bodyText:
-          `${notice ? `${notice}\n\n` : ''}\uD83D\uDCCD *${addrLabel}*\n_${addrSummary}_\n\nConfirm to proceed to payment.`,
+          `${notice ? `${notice}\n\n` : ''}\uD83D\uDCCD *${addrLabel}*\n_${addrSummary}_\n\nTap below to place your order.`,
         buttons: [
-          { id: Btn.address(0), title: '\u2705 Confirm address' },
-          { id: BTN.ADD_NEW_ADDRESS, title: '\u270F\uFE0F Change address' },
+          { id: Btn.address(0), title: '\u2705 Confirm order' },
+          { id: BTN.CHANGE_ADDRESS, title: '\uD83D\uDCCB Choose / add address' },
         ],
       });
       return;
@@ -5597,7 +5592,7 @@ export class ChatbotService implements OnModuleInit {
           key === 'back'
         );
       case 'checkout':
-        return key === 'new_address' || key === 'back' || key === 'another_yes' || key === 'another_no' || key.startsWith('address_');
+        return key === 'new_address' || key === 'change_address' || key === 'back' || key === 'another_yes' || key === 'another_no' || key.startsWith('address_');
       case 'payment_selection':
         return (
           key === 'cod' ||
