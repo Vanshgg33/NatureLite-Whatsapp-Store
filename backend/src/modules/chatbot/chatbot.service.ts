@@ -294,9 +294,9 @@ export class ChatbotService implements OnModuleInit {
     return `${preview}${more}`;
   }
 
-  private formatOrderItemsPreview(items: Array<{ name: string; quantity: number }>): string {
+  private formatOrderItemsPreview(items: Array<{ name: string; quantity: number; variantName?: string }>): string {
     return items
-      .map((it) => `\u2022 ${it.name}  \u00D7${it.quantity}`)
+      .map((it) => `\u2022 ${it.name}${it.variantName ? ` (${it.variantName})` : ''}  \u00D7${it.quantity}`)
       .join('\n');
   }
 
@@ -657,8 +657,8 @@ export class ChatbotService implements OnModuleInit {
         try {
           const order = await this.ordersService.findByOrderNumber(orderNumber);
           if (order) {
-            const items = order.items as Array<{ name: string; quantity: number }>;
-            const itemLines = items.map((it) => `• ${it.name} ×${it.quantity}`).join('\n');
+            const items = order.items as Array<{ name: string; quantity: number; variantName?: string }>;
+            const itemLines = items.map((it) => `• ${it.name}${it.variantName ? ` (${it.variantName})` : ''} ×${it.quantity}`).join('\n');
             await this.whatsappService.sendInteractiveButtons({
               phone: message.phone,
               headerText: `Order #${order.orderNumber} received ✅`,
