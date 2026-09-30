@@ -29,6 +29,7 @@ export function CartSummary({
     couponCode,
     discount,
     discountType,
+    selectedGift,
     getSubtotal,
     getGstTotal,
     getDiscountAmount,
@@ -36,6 +37,7 @@ export function CartSummary({
     applyCoupon,
     removeCoupon,
     setLocalCoupon,
+    setSelectedGift,
   } = useCartStore();
   const items = useCartStore((state) => state.items);
 
@@ -92,6 +94,17 @@ export function CartSummary({
   const activeTiers = allGiftTiers.filter((t) => t.isActive).sort((a, b) => b.minAmount - a.minAmount);
   const qualifyingTier = activeTiers.find((t) => subtotal >= t.minAmount) ?? null;
   const nextGiftTier = activeTiers.filter((t) => subtotal < t.minAmount).sort((a, b) => a.minAmount - b.minAmount)[0] ?? null;
+
+  // Auto-select the main gift when tier first qualifies or tier changes; clear when no tier
+  useEffect(() => {
+    if (!qualifyingTier) {
+      setSelectedGift(null);
+    } else if (!selectedGift || ![qualifyingTier.gift, qualifyingTier.altGift].filter(Boolean).includes(selectedGift)) {
+      setSelectedGift(qualifyingTier.gift);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qualifyingTier?.gift, qualifyingTier?.altGift]);
+
   // GST is inclusive in item prices — do not add it on top
   const orderTotal = baseTotal;
 
@@ -364,12 +377,32 @@ export function CartSummary({
             <Gift className="w-5 h-5 text-brand-green shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
               <p className="font-body text-sm font-semibold text-brand-green">Free Gift Included!</p>
-              <p className="font-body text-xs text-brand-green/80 mt-0.5">
-                {qualifyingTier.gift}
-                {qualifyingTier.altGift ? <span className="text-brand-green/60"> or {qualifyingTier.altGift}</span> : null}
-              </p>
+              {qualifyingTier.altGift ? (
+                <div className="mt-2 space-y-1.5">
+                  <p className="font-body text-xs text-brand-green/70">Pick your free gift:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[qualifyingTier.gift, qualifyingTier.altGift].map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => setSelectedGift(option)}
+                        className={cn(
+                          'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors',
+                          selectedGift === option
+                            ? 'bg-brand-green text-white border-brand-green'
+                            : 'bg-white text-brand-green border-brand-green/40 hover:border-brand-green'
+                        )}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="font-body text-xs text-brand-green/80 mt-0.5">{qualifyingTier.gift}</p>
+              )}
               {nextGiftTier && (
-                <p className="font-body text-xs text-brand-green/60 mt-1">
+                <p className="font-body text-xs text-brand-green/60 mt-1.5">
                   Add {formatPrice(nextGiftTier.minAmount - subtotal)} more to upgrade → <span className="font-medium">{nextGiftTier.gift}</span>
                 </p>
               )}

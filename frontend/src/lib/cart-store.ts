@@ -20,6 +20,7 @@ interface CartState {
   couponCode: string | null;
   discount: number;
   discountType: 'percentage' | 'fixed' | null;
+  selectedGift: string | null;
   isLoading: boolean;
   isSynced: boolean;
 
@@ -32,6 +33,7 @@ interface CartState {
   clearCart: () => Promise<void>;
   syncWithServer: () => Promise<void>;
   setLocalCoupon: (code: string, discount: number, type: 'percentage' | 'fixed') => void;
+  setSelectedGift: (gift: string | null) => void;
 
   // Computed values (as functions for Zustand compatibility)
   getSubtotal: () => number;
@@ -49,6 +51,7 @@ export const useCartStore = create<CartState>()(
       couponCode: null,
       discount: 0,
       discountType: null,
+      selectedGift: null,
       isLoading: false,
       isSynced: false,
 
@@ -197,12 +200,15 @@ export const useCartStore = create<CartState>()(
         });
       },
 
+      setSelectedGift: (gift) => set({ selectedGift: gift }),
+
       clearCart: async () => {
         set({
           items: [],
           couponCode: null,
           discount: 0,
           discountType: null,
+          selectedGift: null,
         });
 
         // BUG 25 FIX: removed the redundant syncWithServer() call after api.clearCart().
@@ -346,6 +352,7 @@ export const useCartStore = create<CartState>()(
         couponCode: state.couponCode,
         discount: state.discount,
         discountType: state.discountType,
+        selectedGift: state.selectedGift,
       }),
     }
   )

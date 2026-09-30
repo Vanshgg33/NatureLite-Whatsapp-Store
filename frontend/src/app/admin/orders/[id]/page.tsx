@@ -146,6 +146,17 @@ export default function AdminOrderDetailPage() {
           </CardContent>
         </Card>
 
+        {order.notes && (
+          <Card className="border-amber-200 bg-amber-50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-amber-800">Customer Notes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-amber-900">{order.notes}</p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* UPI payment proof */}
         {order.paymentProofUrl && (
           <Card>

@@ -271,6 +271,8 @@ export default function CheckoutPage() {
         selectedPayment === 'cod' ? 'cod' : 'prepaid';
 
       const couponCode = useCartStore.getState().couponCode || undefined;
+      const selectedGift = useCartStore.getState().selectedGift || undefined;
+      const giftNotes = selectedGift ? `Free gift: ${selectedGift}` : undefined;
 
       let order;
 
@@ -285,6 +287,7 @@ export default function CheckoutPage() {
           shippingAddress: baseShipping,
           paymentMethod,
           couponCode,
+          notes: giftNotes,
           walletAmount: appliedWalletAmount > 0 ? appliedWalletAmount : undefined,
           idempotencyKey: idempotencyKeyRef.current || undefined,
         };
@@ -313,6 +316,7 @@ export default function CheckoutPage() {
           shippingAddress: baseShipping,
           paymentMethod,
           couponCode,
+          notes: giftNotes,
           phone: data.phone,
           email: data.email,
           name: data.name,

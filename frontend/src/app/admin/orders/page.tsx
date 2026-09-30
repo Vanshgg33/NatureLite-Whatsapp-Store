@@ -649,6 +649,11 @@ export default function OrdersPage() {
                               <p className="text-xs text-muted-foreground mt-0.5 leading-tight">
                                 {order.shippingAddress?.city}, {order.shippingAddress?.state} – {order.shippingAddress?.pincode}
                               </p>
+                              {order.notes && (
+                                <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 mt-0.5 leading-tight font-medium">
+                                  {order.notes}
+                                </p>
+                              )}
                               <p className="text-[10px] text-muted-foreground/60 mt-0.5 flex items-center gap-1.5">
                                 <span>{order.orderNumber}</span>
                                 {(() => {
