@@ -189,6 +189,12 @@ export class UsersService {
     );
   }
 
+  async bulkAssignDelivery(userIds: string[], deliveryUserId: string): Promise<{ modified: number }> {
+    if (!Array.isArray(userIds) || !userIds.length || !deliveryUserId) throw new BadRequestException('userIds and deliveryUserId are required');
+    const modified = await this.userRepository.bulkAssignDelivery(userIds, deliveryUserId);
+    return { modified };
+  }
+
   async delete(id: string): Promise<void> {
     const idObj = parseObjectId(id, 'id');
     const result = await this.userRepository.deleteOne({ _id: idObj });

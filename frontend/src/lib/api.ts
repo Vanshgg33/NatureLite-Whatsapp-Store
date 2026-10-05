@@ -906,6 +906,7 @@ class ApiClient {
     isBlocked?: boolean;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
+    deliveryUserId?: string;
   }): Promise<PaginatedResponse<User>> {
     const response = await this.client.get<ApiResponse<PaginatedResponse<User>>>('/users', { params });
     return response.data.data;
@@ -918,6 +919,11 @@ class ApiClient {
 
   async updateUser(id: string, data: Partial<User>): Promise<User> {
     const response = await this.client.put<ApiResponse<User>>(`/users/${id}`, data);
+    return response.data.data;
+  }
+
+  async bulkAssignDelivery(userIds: string[], deliveryUserId: string): Promise<{ modified: number }> {
+    const response = await this.client.put<ApiResponse<{ modified: number }>>('/users/bulk-assign-delivery', { userIds, deliveryUserId });
     return response.data.data;
   }
 

@@ -46,6 +46,15 @@ export class UsersController {
     return this.usersService.findById(userId);
   }
 
+  @Put('bulk-assign-delivery')
+  @Roles('admin', 'superadmin')
+  async bulkAssignDelivery(
+    @Body('userIds') userIds: string[],
+    @Body('deliveryUserId') deliveryUserId: string,
+  ): Promise<{ modified: number }> {
+    return this.usersService.bulkAssignDelivery(userIds, deliveryUserId);
+  }
+
   @Get(':id')
   @Roles('admin', 'superadmin')
   async findOne(@Param('id') id: string): Promise<User> {

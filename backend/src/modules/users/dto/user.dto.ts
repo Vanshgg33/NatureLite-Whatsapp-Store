@@ -113,6 +113,10 @@ export class UpdateUserDto {
   @IsString({ each: true })
   @IsOptional()
   tags?: string[];
+
+  @IsString()
+  @IsOptional()
+  assignedDeliveryUserId?: string;
 }
 
 export class AddAddressDto extends AddressDto {}
@@ -179,4 +183,8 @@ export class UserQueryDto {
   @IsString()
   @IsOptional()
   sortOrder?: 'asc' | 'desc' = 'desc';
+
+  @IsString()
+  @IsOptional()
+  deliveryUserId?: string;
 }

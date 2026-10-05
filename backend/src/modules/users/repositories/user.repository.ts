@@ -43,7 +43,7 @@ export class UserRepository extends BaseRepository<UserDocument> {
   }
 
   async findAllPaginated(query: UserQueryDto): Promise<PaginatedResult<User>> {
-    const { page = 1, limit = 20, search, isActive, isBlocked, sortBy = 'createdAt', sortOrder = 'desc' } = query;
+    const { page = 1, limit = 20, search, isActive, isBlocked, sortBy = 'createdAt', sortOrder = 'desc', deliveryUserId } = query;
     const filter: Record<string, unknown> = {};
     const searchOr = buildSearchOrFilter(search, ['phone', 'name', 'email']);
     if (searchOr.length) filter.$or = searchOr;
@@ -51,6 +51,7 @@ export class UserRepository extends BaseRepository<UserDocument> {
     // { isActive: true } would miss docs where isActive is null/undefined.
     if (isActive !== undefined) filter.isActive = isActive ? { $ne: false } : false;
     if (isBlocked !== undefined) filter.isBlocked = isBlocked ? true : { $ne: true };
+    if (deliveryUserId !== undefined) filter.assignedDeliveryUserId = deliveryUserId;
     const skip = (page - 1) * limit;
     const sort: Record<string, 1 | -1> = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
     const [users, total] = await Promise.all([
@@ -58,5 +59,13 @@ export class UserRepository extends BaseRepository<UserDocument> {
       this.model.countDocuments(filter),
     ]);
     return paginate(users, total, { page, limit });
+  }
+
+  async bulkAssignDelivery(userIds: string[], deliveryUserId: string): Promise<number> {
+    const result = await this.model.updateMany(
+      { _id: { $in: userIds } },
+      { $set: { assignedDeliveryUserId: deliveryUserId } },
+    ).exec();
+    return result.modifiedCount;
   }
 }

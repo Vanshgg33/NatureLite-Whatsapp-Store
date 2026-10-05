@@ -1880,7 +1880,13 @@ export class OrdersService implements OnModuleInit {
       updatedBy: assignedBy,
     });
 
-    return order.save();
+    const saved = await order.save();
+    if (order.user) {
+      this.usersService.update(order.user.toString(), { assignedDeliveryUserId: deliveryUserId }).catch(() => {
+        this.logger.warn(`Failed to sync delivery partner on user ${order.user}`);
+      });
+    }
+    return saved;
   }
 
   private async generateOrderNumber(): Promise<string> {

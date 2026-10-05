@@ -109,6 +109,9 @@ export class User {
   })
   billingAddresses: Array<{ label: string; line: string; isDefault: boolean }>;
 
+  @Prop()
+  assignedDeliveryUserId?: string;
+
   @Prop({ default: 0 })
   failedLoginAttempts: number;
 
@@ -126,3 +129,4 @@ UserSchema.index({ email: 1 }, { unique: true, sparse: true });
 UserSchema.index({ isActive: 1, isBlocked: 1 });
 UserSchema.index({ createdAt: -1 });
 UserSchema.index({ totalOrders: -1 });
+UserSchema.index({ assignedDeliveryUserId: 1 });

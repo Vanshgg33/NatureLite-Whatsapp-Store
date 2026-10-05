@@ -13,6 +13,7 @@ export interface User {
   role?: 'admin' | 'superadmin' | 'customer';
   notes?: string;
   tags?: string[];
+  assignedDeliveryUserId?: string;
   createdAt: string;
   updatedAt: string;
 }
