@@ -434,9 +434,13 @@ export class OrdersService implements OnModuleInit {
         }
       }
 
+      const existingUser = await this.usersService.findById(userId).catch(() => null);
+      const inheritedRiderId = (existingUser as any)?.assignedDeliveryUserId ?? undefined;
+
       const baseOrderData: Omit<Partial<Order>, 'orderNumber'> = {
         user: userObjId,
         items: orderItems,
+        ...(inheritedRiderId && { assignedDeliveryUserId: inheritedRiderId, assignedDeliveryAt: new Date() }),
         shippingAddress: dto.shippingAddress,
         source: dto.source || 'website',
         orderType: (dto as any).orderType,
