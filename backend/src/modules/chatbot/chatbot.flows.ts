@@ -363,7 +363,7 @@ export const FAQ_RESPONSES: Record<string, string> = {
     `\u2022 Small delivery charge applies on smaller orders`,
   faq_returns:
     `*Returns & Refunds*\n\n` +
-    `\u2022 Returns accepted within *24 hours* of delivery\n` +
+    `\u2022 Returns accepted within *7 days* of delivery\n` +
     `\u2022 Items must be unused & in original packaging\n` +
     `\u2022 Contact support to initiate a return`,
   faq_payment:

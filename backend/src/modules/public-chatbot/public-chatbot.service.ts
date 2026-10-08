@@ -72,7 +72,7 @@ Always call a tool before answering product or order questions. Never invent pri
 - Payment: UPI, credit/debit cards, net banking, COD
 
 **Returns & Refunds**
-- Damaged or wrong item: contact us on WhatsApp within 24 hours of delivery with photos
+- Damaged or wrong item: contact us on WhatsApp within 7 days of delivery with photos
 - Refunds: 3–5 business days after return is accepted
 
 **Bulk & Corporate Orders**

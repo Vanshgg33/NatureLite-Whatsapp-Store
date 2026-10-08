@@ -71,7 +71,7 @@ Answer these from memory — never call a tool for them.
 - **Delivery cities:** Raipur, Bhilai, Durg, Bilaspur — no other cities
 - **Delivery charges:** Shown in cart total — always call get_cart for the exact delivery fee, never quote a number from memory.
 - **Payment options:** Cash on Delivery (COD) or UPI/Card (online prepaid)
-- **Return policy:** Within 24 hours of delivery — contact support at 8962021112 or growth@naturelitefoods.com
+- **Return policy:** Within 7 days of delivery — contact support at 8962021112 or growth@naturelitefoods.com
 - **Catalogue link:** https://wa.me/c/918817200740
 - **Website:** naturelitefoods.com
 - **Store map:** https://maps.app.goo.gl/D8G3EQVRB5eckFcw7
@@ -175,8 +175,9 @@ If the user's query has NO Hindi, pass it to search_products as-is.
 | reorder_last | User wants to repeat their last order |
 | get_available_coupons | User asks about discounts/offers |
 | apply_coupon | User provides or accepts a coupon code |
-| get_account_info | User asks about profile, saved addresses |
-| get_wallet_balance | User asks about wallet or points |
+| get_account_info | User asks about profile, saved addresses, total spend |
+| get_wallet_balance | User asks about wallet balance or points |
+| get_wallet_transactions | User asks about wallet history, cashback earned, how points were used |
 | initiate_checkout | User is ready to order — launches full checkout flow |
 | request_human_support | User asks for human, is frustrated, or issue is unresolvable |
 
@@ -371,13 +372,23 @@ const TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: 'get_account_info',
-    description: "Get the user's profile: name, email, saved addresses.",
+    description: "Get the user's profile: name, email, phone, saved delivery addresses, total amount spent.",
     parameters: { type: 'OBJECT' as any, properties: {} },
   },
   {
     name: 'get_wallet_balance',
-    description: "Get the user's NatureLite wallet balance.",
+    description: "Get the user's NatureLite wallet balance in rupees.",
     parameters: { type: 'OBJECT' as any, properties: {} },
+  },
+  {
+    name: 'get_wallet_transactions',
+    description: "Get the user's recent wallet credit/debit history. Call when user asks about wallet activity, cashback earned, or how points were used.",
+    parameters: {
+      type: 'OBJECT' as any,
+      properties: {
+        limit: { type: 'NUMBER' as any, description: 'Number of transactions to return (default 5, max 10)' },
+      },
+    },
   },
   {
     name: 'cancel_order',
@@ -860,8 +871,9 @@ Text: ${raw}`;
         case 'cancel_order':       return this.toolCancelOrder(args.orderNumber as string | undefined, args.reason as string, session);
         case 'get_available_coupons': return this.toolGetAvailableCoupons(session);
         case 'apply_coupon':       return this.toolApplyCoupon(args.code as string, session);
-        case 'get_account_info':   return this.toolGetAccountInfo(session);
-        case 'get_wallet_balance': return this.toolGetWalletBalance(session);
+        case 'get_account_info':        return this.toolGetAccountInfo(session);
+        case 'get_wallet_balance':      return this.toolGetWalletBalance(session);
+        case 'get_wallet_transactions': return this.toolGetWalletTransactions(Number(args.limit) || 5, session);
         default:
           return { error: `Unknown tool: ${name}` };
       }
@@ -1093,11 +1105,18 @@ Text: ${raw}`;
       status: order.status,
       paymentMethod: order.paymentMethod,
       paymentStatus: order.paymentStatus,
+      subtotal: order.subtotal ?? null,
+      discount: order.discount ?? 0,
+      couponCode: order.couponCode ?? null,
+      shippingCharge: order.shippingCharge ?? 0,
       total: order.total,
-      items: (order.items as any[])
-        .slice(0, 5)
-        .map((i: any) => `${i.name} ×${i.quantity}`)
-        .join(', '),
+      items: (order.items as any[]).map((i: any) => ({
+        name: i.name,
+        variantName: i.variantName ?? null,
+        quantity: i.quantity,
+        price: i.price,
+        lineTotal: i.price * i.quantity,
+      })),
       courierName: order.courierName ?? null,
       awbNumber: order.awbNumber ?? null,
       trackingUrl: order.trackingUrl ?? null,
@@ -1214,17 +1233,49 @@ Text: ${raw}`;
       name: user.name || '',
       email: user.email || '',
       phone: user.phone,
-      addressCount: user.addresses?.length ?? 0,
+      totalSpent: user.totalSpent ?? 0,
+      addresses: (user.addresses ?? []).map((a: any) => ({
+        label: a.label,
+        street: [a.house, a.building, a.area, a.street].filter(Boolean).join(', '),
+        city: a.city,
+        state: a.state,
+        pincode: a.pincode,
+        landmark: a.landmark ?? null,
+        isDefault: a.isDefault ?? false,
+      })),
     };
   }
 
   private async toolGetWalletBalance(session: ChatSessionDocument) {
     if (!session.user) return { balance: 0, message: 'User not registered.' };
     try {
-      const balance = await this.walletService.getBalance(session.user.toString());
-      return { balance };
+      const balancePaise = await this.walletService.getBalance(session.user.toString());
+      return { balanceRupees: balancePaise / 100 };
     } catch {
       return { balance: 0, message: 'Wallet not available.' };
+    }
+  }
+
+  private async toolGetWalletTransactions(limit: number, session: ChatSessionDocument) {
+    if (!session.user) return { transactions: [], message: 'User not registered.' };
+    try {
+      const { wallet, transactions } = await this.walletService.getRecentTransactions(
+        session.user.toString(),
+        Math.min(limit, 10),
+      );
+      return {
+        balanceRupees: wallet.balance / 100,
+        transactions: transactions.map((t: any) => ({
+          type: t.type,
+          amountRupees: t.amount / 100,
+          reason: t.reason,
+          date: new Date(t.createdAt).toLocaleDateString('en-IN', {
+            day: '2-digit', month: 'short', year: 'numeric',
+          }),
+        })),
+      };
+    } catch {
+      return { transactions: [], message: 'Could not load wallet history.' };
     }
   }
 }
