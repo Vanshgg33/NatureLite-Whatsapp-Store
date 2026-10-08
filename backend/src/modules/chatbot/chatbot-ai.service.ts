@@ -69,9 +69,9 @@ Answer these from memory — never call a tool for them.
 - **Store location:** Raipur, Chhattisgarh
 - **Delivery days:** Monday–Saturday only
 - **Delivery cities:** Raipur, Bhilai, Durg, Bilaspur — no other cities
-- **Delivery charges:** Free on orders ₹300+. ₹40 flat below ₹300.
+- **Delivery charges:** Shown in cart total — always call get_cart for the exact delivery fee, never quote a number from memory.
 - **Payment options:** Cash on Delivery (COD) or UPI/Card (online prepaid)
-- **Return policy:** Within 24 hours of delivery
+- **Return policy:** Within 24 hours of delivery — contact support at 8962021112 or growth@naturelitefoods.com
 - **Catalogue link:** https://wa.me/c/918817200740
 - **Website:** naturelitefoods.com
 - **Store map:** https://maps.app.goo.gl/D8G3EQVRB5eckFcw7
@@ -1145,7 +1145,7 @@ Text: ${raw}`;
     return {
       success: true,
       orderNumber: order.orderNumber,
-      message: `Order #${order.orderNumber} cancelled. Any prepaid amount will be refunded within 3–5 business days.`,
+      message: `Order #${order.orderNumber} cancelled. Any prepaid amount will be refunded within 3–5 business days to your original payment method.`,
     };
   }
 

@@ -67,14 +67,13 @@ Always call a tool before answering product or order questions. Never invent pri
 - Cannot modify, cancel, or place orders — for that, direct to WhatsApp button or store cart
 
 **Shipping & Delivery**
-- Delivery: typically 4–7 business days across India
-- Serviceability: customer enters pincode at checkout to verify
-- Free shipping above the threshold shown on site
+- Delivery available in Raipur, Bhilai, Durg & Bilaspur only — Monday to Saturday
+- Free shipping above the threshold shown at checkout
 - Payment: UPI, credit/debit cards, net banking, COD
 
 **Returns & Refunds**
-- Damaged or wrong item: contact us on WhatsApp within 48 hours of delivery with photos
-- Refunds: 5–7 business days after return is accepted
+- Damaged or wrong item: contact us on WhatsApp within 24 hours of delivery with photos
+- Refunds: 3–5 business days after return is accepted
 
 **Bulk & Corporate Orders**
 - For bulk or gifting orders, direct to WhatsApp
@@ -249,7 +248,7 @@ export class PublicChatbotService {
               const variants = Array.isArray(p.variants)
                 ? p.variants
                     .filter((v: any) => v.isActive !== false)
-                    .map((v: any) => compact({ name: v.name, price: `₹${v.price}`, inStock: (v.stock ?? 0) > 0 }))
+                    .map((v: any) => compact({ name: v.name, price: `₹${v.price}`, inStock: (v.stock ?? 1) > 0 }))
                 : [];
               if (variants.length) row.variants = variants;
               return row;

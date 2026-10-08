@@ -357,15 +357,14 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
 export const FAQ_RESPONSES: Record<string, string> = {
   faq_shipping:
     `*Shipping & Delivery*\n\n` +
-    `\u2022 Free shipping on orders above *\u20B9300*\n` +
-    `\u2022 Standard delivery \u2014 *3\u20135 business days*\n` +
-    `\u2022 Express delivery \u2014 *1\u20132 business days*\n` +
-    `\u2022 Pan-India coverage`,
+    `\u2022 Delivery available in *Raipur, Bhilai, Durg & Bilaspur*\n` +
+    `\u2022 Delivery days \u2014 *Monday to Saturday*\n` +
+    `\u2022 Free delivery above a minimum order amount\n` +
+    `\u2022 Small delivery charge applies on smaller orders`,
   faq_returns:
     `*Returns & Refunds*\n\n` +
-    `\u2022 Returns accepted within *7 days* of delivery\n` +
+    `\u2022 Returns accepted within *24 hours* of delivery\n` +
     `\u2022 Items must be unused & in original packaging\n` +
-    `\u2022 Refunds processed within *5\u20137 business days*\n` +
     `\u2022 Contact support to initiate a return`,
   faq_payment:
     `*Payment Methods*\n\n` +
@@ -377,6 +376,6 @@ export const FAQ_RESPONSES: Record<string, string> = {
   faq_contact:
     `*Contact Us*\n\n` +
     `\u2022 Support \u2014 *8962021112*\n` +
-    `\u2022 Email \u2014 support@store.com\n` +
+    `\u2022 Email \u2014 growth@naturelitefoods.com\n` +
     `\u2022 Hours \u2014 Mon\u2013Sat, 9 AM \u2013 6 PM`,
 };

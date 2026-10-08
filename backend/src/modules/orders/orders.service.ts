@@ -135,7 +135,7 @@ export class OrdersService implements OnModuleInit {
     }
   }
 
-  async calcShippingCharge(subtotal: number): Promise<number> {
+  private async getShippingSettings(): Promise<{ freeShippingThreshold: number; defaultShippingCharge: number }> {
     let freeShippingThreshold = 300;
     let defaultShippingCharge = 50;
     try {
@@ -151,7 +151,16 @@ export class OrdersService implements OnModuleInit {
     } catch {
       // Use defaults if settings unavailable
     }
+    return { freeShippingThreshold, defaultShippingCharge };
+  }
+
+  async calcShippingCharge(subtotal: number): Promise<number> {
+    const { freeShippingThreshold, defaultShippingCharge } = await this.getShippingSettings();
     return subtotal >= freeShippingThreshold ? 0 : defaultShippingCharge;
+  }
+
+  async getFreeShippingThreshold(): Promise<number> {
+    return (await this.getShippingSettings()).freeShippingThreshold;
   }
 
   async create(userId: string, dto: CreateOrderDto): Promise<Order> {

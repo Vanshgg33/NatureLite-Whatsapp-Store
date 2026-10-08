@@ -665,7 +665,7 @@ export class ChatbotService implements OnModuleInit {
               bodyText:
                 `*${order.shippingAddress?.name || 'Hi'}*, your order has been placed!\n\n` +
                 `${itemLines}\n\n` +
-                `*Total: ${this.formatCurrency(order.total)}* · Cash on Delivery\n` +
+                `*Total: ${this.formatCurrency(order.total)}* · ${order.paymentMethod === 'cod' ? 'Cash on Delivery' : 'Online Payment'}\n` +
                 `We'll confirm shortly. Track anytime by replying *orders*.`,
               buttons: [
                 { id: BTN.BROWSE, title: '🛍 Shop more' },
@@ -4583,11 +4583,11 @@ export class ChatbotService implements OnModuleInit {
     }
     breakdown.push(bold(`You pay:  ${this.formatCurrency(cart.total + deliveryCharge)}`));
 
-    const FREE_SHIP_THRESHOLD = 300;
+    const freeThreshold = await this.ordersService.getFreeShippingThreshold();
     const shippingLine =
-      cart.subtotal >= FREE_SHIP_THRESHOLD
+      deliveryCharge === 0
         ? '\n🎉 Free delivery included'
-        : `\n${italic(`Add ${this.formatCurrency(FREE_SHIP_THRESHOLD - cart.subtotal)} more to unlock free delivery`)}`;
+        : `\n${italic(`Add ${this.formatCurrency(freeThreshold - cart.subtotal)} more to unlock free delivery`)}`;
 
     // Coupon nudge on the cart screen so customers can discover savings
     // before committing to checkout. Only shown when no coupon is yet
@@ -4990,10 +4990,10 @@ export class ChatbotService implements OnModuleInit {
       }
       lines.push(bold(`You pay:  ${this.formatCurrency(cart.total + deliveryCharge)}`));
 
-      const FREE_SHIP_THRESHOLD = 300;
-      const shippingLine = cart.subtotal >= FREE_SHIP_THRESHOLD
+      const freeThreshold = await this.ordersService.getFreeShippingThreshold();
+      const shippingLine = deliveryCharge === 0
         ? '\n🎉 Free delivery included'
-        : `\n${italic(`Add ${this.formatCurrency(FREE_SHIP_THRESHOLD - cart.subtotal)} more to unlock free delivery`)}`;
+        : `\n${italic(`Add ${this.formatCurrency(freeThreshold - cart.subtotal)} more to unlock free delivery`)}`;
 
       await this.whatsappService.sendTextMessage({
         phone,
@@ -5296,8 +5296,7 @@ export class ChatbotService implements OnModuleInit {
       `\u0906\u092A\u0915\u093E \u0938\u094D\u0935\u093E\u0917\u0924 \u0939\u0948 \u2014 *You\u2019re in the right place.*\n\n` +
       `We bring your kitchen the *purest, chemical-free* staples \u2014 made the *old way*, by hand, for your family\u2019s health. \uD83C\uDFBA\n\n` +
       `\uD83D\uDCCB *Our Menu \u2192* https://wa.me/c/918817200740\n\n` +
-      `\uD83D\uDE9A *Free home delivery* on orders above \u20B9300\n` +
-      `_(Below \u20B9300 \u2014 \u20B940 delivery charge applies)_\n\n` +
+      `\uD83D\uDE9A *Free home delivery* on orders above a minimum amount \u2014 delivery charges shown at checkout\n\n` +
       `\uD83C\uDF10 naturelitefoods.com\n` +
       `\uD83D\uDCCD Store \u2192 https://maps.app.goo.gl/D8G3EQVRB5eckFcw7\n\n` +
       `\uD83D\uDCAC *Questions?* Message or call us directly on this number.\n\n` +

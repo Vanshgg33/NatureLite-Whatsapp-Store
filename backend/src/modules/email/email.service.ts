@@ -646,7 +646,7 @@ export class EmailService {
           <p>Hi ${order.shippingAddress?.name || 'Customer'},</p>
           <p>Your order has been cancelled.</p>
           ${order.cancelReason ? `<p><strong>Reason:</strong> ${order.cancelReason}</p>` : ''}
-          ${order.paymentStatus === 'paid' ? '<p>Your refund will be processed within 5-7 business days.</p>' : ''}
+          ${order.paymentStatus === 'paid' ? '<p>Your refund will be processed within 3–5 business days to your original payment method.</p>' : ''}
           <p style="color:#666;font-size:12px">If you have any questions, reply to this email.</p>
         </div>
       </div>
