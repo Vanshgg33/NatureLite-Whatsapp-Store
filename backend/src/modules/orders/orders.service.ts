@@ -435,7 +435,7 @@ export class OrdersService implements OnModuleInit {
       }
 
       const existingUser = await this.usersService.findById(userId).catch(() => null);
-      const inheritedRiderId = (existingUser as any)?.assignedDeliveryUserId ?? undefined;
+      const inheritedRiderId = existingUser?.assignedDeliveryUserId;
 
       const baseOrderData: Omit<Partial<Order>, 'orderNumber'> = {
         user: userObjId,
@@ -943,6 +943,11 @@ export class OrdersService implements OnModuleInit {
       if (dto.assignedTo) {
         setFields.assignedDeliveryUserId = dto.assignedTo;
         setFields.assignedDeliveryAt = new Date();
+        if (order.user) {
+          this.usersService.update(order.user.toString(), { assignedDeliveryUserId: dto.assignedTo }).catch(() =>
+            this.logger.warn(`Failed to sync delivery partner on user ${order.user}`),
+          );
+        }
       }
     } else if (dto.status === 'delivered') {
       setFields.deliveredAt = new Date();
