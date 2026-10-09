@@ -51,6 +51,37 @@ const config: Config = {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+        // ── FMS Design System (warm-neutral, Direction B) ──────────────────
+        'fms-page':    '#F7F6F2',
+        'fms-surface': '#FFFFFF',
+        'fms-sunken':  '#EFEDE6',
+        'fms-subtle':  '#FAF9F5',
+        'fms-line':    '#ECE9E1',
+        'fms-line2':   '#DCD8CE',
+        'fms-ink':     '#18211C',
+        'fms-muted':   '#66706A',
+        'fms-brand': {
+          DEFAULT: '#1E5E3F',
+          hover:   '#174C33',
+          soft:    '#EAF3EE',
+          deep:    '#17382A',
+        },
+        'fms-amber': {
+          DEFAULT: '#D9902B',
+          text:    '#8A4B06',
+          soft:    '#FDF3E3',
+          line:    '#F0D3A1',
+        },
+        'fms-info': {
+          text: '#1F4F8A',
+          soft: '#EDF3FB',
+          line: '#C9DAF0',
+        },
+        'fms-danger': {
+          text: '#A3241A',
+          soft: '#FDECEA',
+          line: '#F3C7C2',
+        },
         // Brand Design System Colors (Premium Earthy Theme)
         brand: {
           // Text Hierarchy
@@ -133,6 +164,10 @@ const config: Config = {
         display: ['var(--font-playfair)', 'Georgia', 'serif'],
         body: ['var(--font-source-sans)', 'system-ui', 'sans-serif'],
         sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
+        // FMS-specific fonts
+        fraunces: ['var(--font-fraunces)', 'Georgia', 'serif'],
+        jakarta: ['var(--font-jakarta)', 'system-ui', 'sans-serif'],
+        jetbrains: ['var(--font-jetbrains)', 'monospace'],
       },
       fontSize: {
         // Premium Display Typography - Hero sections
@@ -161,6 +196,9 @@ const config: Config = {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
+        'fms-card':    '18px',
+        'fms-control': '12px',
+        'fms-chip':    '8px',
         'ds-sm': 'var(--ds-radius-sm)',
         'ds-md': 'var(--ds-radius-md)',
         'ds-lg': 'var(--ds-radius-lg)',

@@ -1831,6 +1831,11 @@ class ApiClient {
     return res.data.data;
   }
 
+  async getPurchaseSummary(): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>('/purchase/summary');
+    return res.data.data;
+  }
+
   async getPurchaseRequests(params?: { status?: string; mine?: boolean }): Promise<any[]> {
     const qs = new URLSearchParams();
     if (params?.status) qs.set('status', params.status);

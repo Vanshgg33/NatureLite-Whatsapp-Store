@@ -4,17 +4,20 @@ import { useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  ShoppingBag, CheckCircle2, XCircle, Upload, Package,
-  ExternalLink, Printer, Clock, FileText, Paperclip, Plus,
-  IndianRupee, CalendarDays, ChevronRight, MoreHorizontal, History,
+  CheckCircle2, XCircle, Upload, Package, ExternalLink, Printer,
+  FileText, Paperclip, ChevronRight, History, User, Building2,
+  Calendar, AlertCircle, ArrowRight,
 } from 'lucide-react';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { getApiError } from '@/lib/api-error';
-import Link from 'next/link';
+import { StageBadge, WaitChip } from '@/components/fms/purchase/chips';
+import { getStage, getOverdueMs } from '@/lib/fms/stage';
+import { fmtDate, shortPr } from '@/lib/fms/format';
 
 function fmtIST(d: string | Date) {
   return new Date(d).toLocaleString('en-IN', {
@@ -26,169 +29,160 @@ function fmtIST(d: string | Date) {
 function fmtShort(d: string | Date) {
   return new Date(d).toLocaleString('en-IN', {
     timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short',
-    year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
+    hour: '2-digit', minute: '2-digit', hour12: true,
   });
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  REQUESTED: 'Requested',
-  PO_CREATED: 'Pending PO',
-  APPROVED: 'Approved',
-  REJECTED: 'Rejected',
-  VENDOR_BILL_UPLOADED: 'Bill Uploaded',
-  COMPLETED: 'Completed',
-  CANCELLED: 'Cancelled',
-  SPLIT: 'Split',
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  REQUESTED: 'bg-blue-50 text-blue-700 border border-blue-200',
-  PO_CREATED: 'bg-amber-50 text-amber-700 border border-amber-200',
-  APPROVED: 'bg-green-50 text-green-700 border border-green-200',
-  REJECTED: 'bg-red-50 text-red-700 border border-red-200',
-  VENDOR_BILL_UPLOADED: 'bg-purple-50 text-purple-700 border border-purple-200',
-  COMPLETED: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-  CANCELLED: 'bg-gray-50 text-gray-500 border border-gray-200',
-  SPLIT: 'bg-indigo-50 text-indigo-700 border border-indigo-200',
-};
-
-const STATUS_HOLDER: Record<string, string> = {
-  REQUESTED: 'PO Creator',
-  PO_CREATED: 'Approver',
-  APPROVED: 'Approver',
-  REJECTED: 'PO Creator',
-  VENDOR_BILL_UPLOADED: 'Receiver',
-};
-
-function StatusBadge({ status }: { status: string }) {
-  return (
-    <span className={`text-xs px-2.5 py-0.5 rounded font-semibold ${STATUS_COLORS[status] || 'bg-gray-100 text-gray-500'}`}>
-      {STATUS_LABEL[status] || status.replace(/_/g, ' ')}
-    </span>
-  );
-}
-
-function DeadlineChip({ deadline }: { deadline?: { dueAt: string; stage: string; setByName: string } }) {
-  if (!deadline?.dueAt) return null;
-  const diff = new Date(deadline.dueAt).getTime() - Date.now();
-  const hours = diff / 3_600_000;
-  const cls = hours <= 0
-    ? 'bg-red-100 text-red-700 border-red-200'
-    : hours < 24
-    ? 'bg-amber-100 text-amber-700 border-amber-200'
-    : 'bg-green-100 text-green-700 border-green-200';
-  const label = hours <= 0
-    ? `Overdue by ${Math.round(Math.abs(hours))}h`
-    : hours < 24
-    ? `Due in ${Math.round(hours)}h`
-    : `Due ${fmtIST(deadline.dueAt)}`;
-  return (
-    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded border font-medium ${cls}`}>
-      <Clock className="h-3 w-3" /> {label}
-    </span>
-  );
 }
 
 function FileViewer({ file, label }: { file: { url: string; name: string; mime?: string }; label: string }) {
   const isPdf = file.mime === 'application/pdf' || file.name?.endsWith('.pdf');
   return (
-    <div className="border rounded-lg p-3 bg-gray-50 mt-3">
-      <p className="text-xs font-medium text-gray-500 mb-2">{label}</p>
-      {isPdf ? (
-        <iframe src={file.url} className="w-full h-48 border rounded" title={label} />
-      ) : (
-        <img src={file.url} alt={label} className="max-h-48 rounded border object-contain" />
-      )}
+    <div className="border border-[#ECE9E1] rounded-[12px] p-3 bg-[#F7F6F2] mt-3">
+      <p className="text-xs font-medium text-[#66706A] mb-2 font-jakarta">{label}</p>
+      {isPdf
+        ? <iframe src={file.url} className="w-full h-48 border rounded" title={label} />
+        : <img src={file.url} alt={label} className="max-h-48 rounded border object-contain" />}
       <a href={file.url} target="_blank" rel="noopener noreferrer"
-        className="mt-2 inline-flex items-center gap-1 text-xs text-[#2F6B47] hover:underline">
-        <ExternalLink className="h-3 w-3" /> Open in new tab
+        className="mt-2 inline-flex items-center gap-1 text-xs text-[#1E5E3F] hover:underline font-jakarta">
+        <ExternalLink className="h-3 w-3" /> Open
       </a>
     </div>
   );
 }
 
-const PIPELINE_STAGES = [
-  { n: 1, label: 'Requested',      role: 'Requester',     doneStatus: 'REQUESTED' },
-  { n: 2, label: 'PO Created',     role: 'Purchase Desk', doneStatus: 'PO_CREATED' },
-  { n: 3, label: 'Approved',       role: 'Approver',      doneStatus: 'APPROVED' },
-  { n: 4, label: 'Goods Received', role: 'Gate / Store',  doneStatus: 'COMPLETED' },
-];
+// ─── 5-step pipeline ──────────────────────────────────────────────────────────
 
-const ACTIVE_STAGE: Record<string, number> = {
-  REQUESTED: 2, PO_CREATED: 3, REJECTED: 2,
-  APPROVED: 4, VENDOR_BILL_UPLOADED: 4,
-  SPLIT: 3,
+const PIPELINE_STAGES = [
+  { n: 1, label: 'Requested',     doneStatus: 'REQUESTED' },
+  { n: 2, label: 'PO Created',    doneStatus: 'PO_CREATED' },
+  { n: 3, label: 'Approved',      doneStatus: 'APPROVED' },
+  { n: 4, label: 'Bill Uploaded', doneStatus: 'VENDOR_BILL_UPLOADED' },
+  { n: 5, label: 'Closed',        doneStatus: 'COMPLETED' },
+];
+const ACTIVE_STEP: Record<string, number> = {
+  REQUESTED: 2, REJECTED: 2, PO_CREATED: 3, SPLIT: 3, APPROVED: 4, VENDOR_BILL_UPLOADED: 5,
 };
 
 function PipelineTracker({ req }: { req: any }) {
   const timeline: any[] = req.timeline || [];
-  const isCancelled = req.status === 'CANCELLED';
-  const isRejected  = req.status === 'REJECTED';
-  const activeN     = isCancelled ? 0 : (ACTIVE_STAGE[req.status] ?? 0);
-
+  const cancelled = req.status === 'CANCELLED';
+  const rejected  = req.status === 'REJECTED';
+  const activeN   = cancelled ? 0 : (ACTIVE_STEP[req.status] ?? 0);
   const doneCount = PIPELINE_STAGES.filter(s =>
-    !!timeline.find(t => t.status === s.doneStatus) && !isCancelled,
+    !!timeline.find((t: any) => t.status === s.doneStatus) && !cancelled,
   ).length;
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 px-10 py-6">
+    <div className="bg-white rounded-[18px] border border-[#ECE9E1] px-8 py-5 shadow-[0_1px_2px_rgba(24,33,28,.06)]">
       <div className="relative">
-        {/* Background connector line */}
-        <div className="absolute top-5 left-[12.5%] right-[12.5%] h-0.5 bg-gray-100" />
-        {/* Progress fill */}
-        {!isCancelled && doneCount > 1 && (
-          <div
-            className="absolute top-5 h-0.5 bg-[#2F6B47] transition-all duration-500"
-            style={{ left: '12.5%', width: `${((doneCount - 1) / 3) * 75}%` }}
-          />
+        <div className="absolute top-[18px] left-[10%] right-[10%] h-px bg-[#ECE9E1]" />
+        {!cancelled && doneCount > 1 && (
+          <div className="absolute top-[18px] h-px bg-[#1E5E3F] transition-all duration-500"
+            style={{ left: '10%', width: `${((doneCount - 1) / 4) * 80}%` }} />
         )}
         <div className="flex">
-          {PIPELINE_STAGES.map((stage) => {
-            const entry    = timeline.find((t: any) => t.status === stage.doneStatus);
-            const isDone   = !!entry && !isCancelled;
-            const isActive = !isDone && !isCancelled && stage.n === activeN;
-            const isRejHere = isRejected && stage.n === 3;
-
+          {PIPELINE_STAGES.map(stage => {
+            const entry     = timeline.find((t: any) => t.status === stage.doneStatus);
+            const isDone    = !!entry && !cancelled;
+            const isActive  = !isDone && !cancelled && stage.n === activeN;
+            const isRejHere = rejected && stage.n === 3;
             return (
               <div key={stage.n} className="flex-1 flex flex-col items-center gap-1.5">
-                <div className={`relative z-10 h-10 w-10 rounded-full border-2 flex items-center justify-center text-sm font-bold
-                  ${isCancelled  ? 'bg-gray-50 border-gray-200 text-gray-300'
-                  : isRejHere   ? 'bg-red-50 border-red-400 text-red-600'
-                  : isDone      ? 'bg-[#2F6B47] border-[#2F6B47] text-white'
-                  : isActive    ? 'bg-white border-amber-400 text-amber-600 shadow-[0_0_0_4px_rgba(251,191,36,0.12)]'
-                  :               'bg-white border-gray-200 text-gray-300'}`}
-                >
-                  {isDone ? <CheckCircle2 className="h-5 w-5" /> : isRejHere ? <XCircle className="h-4 w-4" /> : stage.n}
+                <div className={[
+                  'relative z-10 h-9 w-9 rounded-full border-2 flex items-center justify-center text-xs font-semibold font-jakarta',
+                  cancelled  ? 'bg-[#F7F6F2] border-[#ECE9E1] text-[#B0B8B3]'
+                  : isRejHere? 'bg-[#FDECEA] border-[#E87171] text-[#A3241A]'
+                  : isDone   ? 'bg-[#1E5E3F] border-[#1E5E3F] text-white'
+                  : isActive ? 'bg-white border-[#D9902B] text-[#8A4B06] shadow-[0_0_0_3px_rgba(217,144,43,0.12)]'
+                  :            'bg-white border-[#ECE9E1] text-[#B0B8B3]',
+                ].join(' ')}>
+                  {isDone ? <CheckCircle2 className="h-4 w-4" /> : isRejHere ? <XCircle className="h-4 w-4" /> : stage.n}
                 </div>
-                <p className={`text-xs font-semibold text-center leading-tight
-                  ${isDone || isActive ? 'text-gray-800' : 'text-gray-400'}`}>
-                  {stage.n}. {stage.label}
+                <p className={`text-[11px] font-medium font-jakarta text-center leading-tight ${isDone || isActive ? 'text-[#18211C]' : 'text-[#8A9490]'}`}>
+                  {stage.label}
                 </p>
                 {isRejHere ? (
-                  <p className="text-xs text-red-500 font-medium">Rejected</p>
+                  <p className="text-[10px] text-[#A3241A] font-jakarta">Rejected</p>
                 ) : entry ? (
                   <div className="text-center">
-                    <p className="text-[11px] text-gray-400 leading-tight">{fmtShort(entry.at)}</p>
-                    <p className="text-[11px] text-gray-500 leading-tight">by <span className="font-medium">{entry.byName}</span></p>
+                    <p className="text-[10px] text-[#8A9490] font-jakarta leading-tight">{fmtShort(entry.at)}</p>
+                    <p className="text-[10px] text-[#66706A] font-jakarta leading-tight truncate max-w-[70px]">{entry.byName}</p>
                   </div>
-                ) : (
-                  <p className={`text-[11px] text-center leading-tight ${isActive ? 'text-amber-600 font-semibold' : 'text-gray-400'}`}>
-                    {isActive ? 'Awaiting...' : stage.role}
-                  </p>
-                )}
+                ) : isActive ? (
+                  <p className="text-[10px] text-[#8A4B06] font-jakarta font-medium">Awaiting…</p>
+                ) : null}
               </div>
             );
           })}
         </div>
-        {isCancelled && (
-          <p className="text-center text-xs text-gray-400 mt-3 font-medium">This request was cancelled</p>
-        )}
+        {cancelled && <p className="text-center text-xs text-[#8A9490] mt-3 font-jakarta">This request was cancelled</p>}
       </div>
     </div>
   );
 }
 
-const PO_FORM_ID = 'po-creator-form';
+// ─── Next-step banner ─────────────────────────────────────────────────────────
+
+function NextStepBanner({ req, purchaseRole, isSuperadmin }: { req: any; purchaseRole?: string; isSuperadmin: boolean }) {
+  const stage = getStage(req);
+  const overdueMs = getOverdueMs(req, stage);
+  const OPEN = ['NEEDS_PO','AWAITING_APPROVAL','AWAITING_DELIVERY','PARTLY_RECEIVED','READY_TO_CLOSE'];
+  if (!OPEN.includes(stage)) return null;
+
+  const myTurn = isSuperadmin ||
+    (purchaseRole === 'po_creator' && stage === 'NEEDS_PO') ||
+    (purchaseRole === 'approver'   && stage === 'AWAITING_APPROVAL') ||
+    (purchaseRole === 'receiver'   && (stage === 'AWAITING_DELIVERY' || stage === 'PARTLY_RECEIVED'));
+
+  const actionPath =
+    stage === 'NEEDS_PO'          ? `/fms/purchase/${req._id}/raise-po` :
+    stage === 'AWAITING_APPROVAL' ? `/fms/purchase/${req._id}/approve`  :
+    (stage === 'AWAITING_DELIVERY' || stage === 'PARTLY_RECEIVED') ? `/fms/purchase/${req._id}/receive` :
+    null;
+
+  const actionLabel =
+    stage === 'NEEDS_PO'          ? 'Create PO'       :
+    stage === 'AWAITING_APPROVAL' ? 'Review & Approve' :
+    (stage === 'AWAITING_DELIVERY' || stage === 'PARTLY_RECEIVED') ? 'Receive Goods' :
+    stage === 'READY_TO_CLOSE'    ? 'Ready to close'  : '';
+
+  const roleLabel =
+    stage === 'NEEDS_PO'          ? 'Purchase Desk' :
+    stage === 'AWAITING_APPROVAL' ? 'Approver'       : 'Receiver / Gate';
+
+  if (myTurn && actionPath) {
+    const isOD = overdueMs !== null;
+    return (
+      <div className="flex items-center gap-3 px-4 py-2.5 rounded-[12px] border font-jakarta text-sm"
+        style={{ background: isOD ? '#FDECEA' : '#EAF3EE', borderColor: isOD ? '#F3C7C2' : '#B8DFC8', color: isOD ? '#A3241A' : '#1E5E3F' }}>
+        <span className="flex-1 font-medium">{isOD ? '⏰ Overdue — ' : '→ Your turn — '}{actionLabel}</span>
+        <Link href={actionPath}>
+          <button className="text-xs font-semibold px-3 py-1.5 rounded-[10px] text-white font-jakarta"
+            style={{ background: isOD ? '#A3241A' : '#1E5E3F' }}>
+            {actionLabel} <ArrowRight className="inline h-3 w-3 ml-0.5" />
+          </button>
+        </Link>
+      </div>
+    );
+  }
+  if (stage === 'READY_TO_CLOSE') {
+    return (
+      <div className="flex items-center gap-2 px-4 py-2.5 rounded-[12px] border border-[#B8DFC8] bg-[#EAF3EE] text-[#1E5E3F] text-sm font-jakarta">
+        <CheckCircle2 className="h-4 w-4 shrink-0" />
+        <span className="font-medium">All goods received — close the request</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2 px-4 py-2.5 rounded-[12px] border border-[#ECE9E1] bg-[#FAF9F5] text-sm text-[#66706A] font-jakarta">
+      <span className="text-[#B0B8B3]">◷</span>
+      Waiting on <span className="font-medium text-[#3E4A43] ml-1">{roleLabel}</span>
+    </div>
+  );
+}
+
+// ─── Inline quick-action panels ───────────────────────────────────────────────
+
+const PO_FORM_ID      = 'po-creator-form';
 const RECEIVE_FORM_ID = 'receive-goods-form';
 
 function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) {
@@ -197,213 +191,143 @@ function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void })
   const [poItems, setPoItems] = useState(
     req.items.map((i: any) => ({ ...i, ratePerKg: '', vendorId: '', vendorName: '', vendorPhone: '', vendorAddress: '', terms: '' }))
   );
-
-  const { data: vendors = [] } = useQuery({
-    queryKey: ['purchase-vendors'],
-    queryFn: () => api.getPurchaseVendors(),
-  });
-
-  const applyVendorToItem = (itemIdx: number, vendorId: string) => {
-    const v = vendors.find((x: any) => x._id === vendorId);
+  const { data: vendors = [] } = useQuery({ queryKey: ['purchase-vendors'], queryFn: () => api.getPurchaseVendors() });
+  const applyVendor = (idx: number, vid: string) => {
+    const v = vendors.find((x: any) => x._id === vid);
     if (!v) return;
-    setPoItems((prev: any[]) => prev.map((p, idx) => idx === itemIdx
-      ? { ...p, vendorId: v._id, vendorName: v.name, vendorPhone: v.phone || '', vendorAddress: v.address || '', terms: v.paymentTerms || '' }
-      : p
+    setPoItems((prev: any[]) => prev.map((p, i) => i !== idx ? p :
+      { ...p, vendorId: v._id, vendorName: v.name, vendorPhone: v.phone || '', vendorAddress: v.address || '', terms: v.paymentTerms || '' }
     ));
   };
-
   const mutation = useMutation({
     mutationFn: (data: any) => api.splitPurchasePO(req._id, data),
     onSuccess: () => { toast({ title: 'POs created' }); onSuccess(); },
     onError:   (err) => toast({ title: 'Error', description: getApiError(err), variant: 'destructive' }),
   });
-
   const total = poItems.reduce((s: number, i: any) => s + (i.qtyKg * (parseFloat(i.ratePerKg) || 0)), 0);
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     for (const item of poItems) {
       if (!item.vendorName) { toast({ title: `Select vendor for ${item.materialName}`, variant: 'destructive' }); return; }
-      if (!item.ratePerKg || parseFloat(item.ratePerKg) <= 0) {
-        toast({ title: `Enter rate for ${item.materialName}`, variant: 'destructive' }); return;
-      }
+      if (!item.ratePerKg || parseFloat(item.ratePerKg) <= 0) { toast({ title: `Enter rate for ${item.materialName}`, variant: 'destructive' }); return; }
     }
     mutation.mutate({
       expectedDelivery,
       items: poItems.map((i: any) => ({
-        materialId: i.materialId,
-        materialName: i.materialName,
-        qtyKg: i.qtyKg,
-        ratePerKg: parseFloat(i.ratePerKg),
-        vendorName: i.vendorName,
-        vendorPhone: i.vendorPhone,
-        vendorAddress: i.vendorAddress,
-        terms: i.terms,
+        materialId: i.materialId, materialName: i.materialName, qtyKg: i.qtyKg,
+        ratePerKg: parseFloat(i.ratePerKg), vendorName: i.vendorName,
+        vendorPhone: i.vendorPhone, vendorAddress: i.vendorAddress, terms: i.terms,
       })),
     });
   };
-
-  // group items by vendor for preview
-  const vendorCount = new Set(poItems.filter((i: any) => i.vendorName).map((i: any) => i.vendorName)).size;
-
   return (
-    <form id={PO_FORM_ID} onSubmit={handleSubmit} className="space-y-5">
-      <div>
-        <label className="text-xs font-medium text-gray-600 mb-1 block">Expected Delivery Date</label>
-        <Input type="date" className="h-9 text-sm" value={expectedDelivery} onChange={(e) => setExpectedDelivery(e.target.value)} />
-      </div>
-
-      {/* Per-item vendor + rate */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <IndianRupee className="h-4 w-4 text-[#2F6B47]" />
-          <h3 className="text-sm font-semibold text-gray-800">Items — Vendor & Rate</h3>
-        </div>
-        <div className="space-y-3">
-          {poItems.map((item: any, i: number) => (
-            <div key={i} className="rounded-lg border border-gray-100 bg-gray-50 p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-gray-700">{item.materialName}</span>
-                <span className="text-xs text-gray-400 font-mono">{item.qtyKg} KG</span>
-              </div>
-              <select
-                className="w-full h-8 rounded-md border border-input bg-white px-2 text-xs"
-                value={item.vendorId}
-                onChange={(e) => applyVendorToItem(i, e.target.value)}
-              >
-                <option value="">— select vendor —</option>
-                {vendors.map((v: any) => (
-                  <option key={v._id} value={v._id}>{v.name}{v.phone ? ` · ${v.phone}` : ''}</option>
-                ))}
-              </select>
-              <div className="flex items-center gap-1">
-                <span className="h-8 flex items-center px-2 border border-r-0 rounded-l-md bg-white text-xs text-gray-500 flex-shrink-0">₹/KG</span>
-                <Input
-                  type="number" min="0" step="0.01"
-                  value={item.ratePerKg}
-                  onChange={(e) => setPoItems((prev: any[]) => prev.map((p, idx) => idx === i ? { ...p, ratePerKg: e.target.value } : p))}
-                  className="h-8 text-xs rounded-l-none flex-1"
-                  placeholder="rate"
-                />
-                {item.ratePerKg && parseFloat(item.ratePerKg) > 0 && (
-                  <span className="text-xs text-[#2F6B47] font-medium w-20 text-right flex-shrink-0">
-                    ₹{(item.qtyKg * parseFloat(item.ratePerKg)).toLocaleString('en-IN')}
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="mt-3 rounded-lg bg-green-50 border border-green-100 px-4 py-3 space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-green-800">Total Amount</span>
-            <span className="text-base font-bold text-[#2F6B47]">
-              ₹ {total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-            </span>
+    <form id={PO_FORM_ID} onSubmit={handleSubmit} className="space-y-3">
+      <Link href={`/fms/purchase/${req._id}/raise-po`}
+        className="block text-center text-xs text-[#1E5E3F] hover:underline font-jakarta">
+        Full PO creation →
+      </Link>
+      <Input type="date" className="h-8 text-xs font-jakarta" value={expectedDelivery}
+        onChange={e => setExpectedDelivery(e.target.value)} placeholder="Expected delivery" />
+      {poItems.map((item: any, i: number) => (
+        <div key={i} className="rounded-[12px] border border-[#ECE9E1] bg-[#FAF9F5] p-2.5 space-y-1.5">
+          <div className="flex justify-between">
+            <span className="text-xs font-semibold text-[#18211C] font-jakarta">{item.materialName}</span>
+            <span className="text-[11px] text-[#8A9490] font-jetbrains">{item.qtyKg} {item.uom || 'kg'}</span>
           </div>
-          {vendorCount > 0 && (
-            <p className="text-xs text-green-700">
-              Will create <strong>{vendorCount}</strong> vendor PO{vendorCount > 1 ? 's' : ''}
-            </p>
-          )}
+          <select className="w-full h-7 rounded-[8px] border border-[#ECE9E1] bg-white px-2 text-xs font-jakarta"
+            value={item.vendorId} onChange={e => applyVendor(i, e.target.value)}>
+            <option value="">— vendor —</option>
+            {vendors.map((v: any) => <option key={v._id} value={v._id}>{v.name}</option>)}
+          </select>
+          <div className="flex items-center gap-1">
+            <span className="h-7 flex items-center px-2 border border-r-0 rounded-l-[8px] bg-white text-xs text-[#66706A] shrink-0 font-jakarta">₹/kg</span>
+            <Input type="number" min="0" step="0.01" value={item.ratePerKg} placeholder="rate"
+              onChange={e => setPoItems((p: any[]) => p.map((x, idx) => idx !== i ? x : { ...x, ratePerKg: e.target.value }))}
+              className="h-7 text-xs rounded-l-none flex-1 font-jetbrains" />
+            {item.ratePerKg && parseFloat(item.ratePerKg) > 0 && (
+              <span className="text-xs text-[#1E5E3F] font-medium w-16 text-right shrink-0 font-jetbrains">
+                ₹{(item.qtyKg * parseFloat(item.ratePerKg)).toLocaleString('en-IN')}
+              </span>
+            )}
+          </div>
         </div>
-      </div>
+      ))}
+      {total > 0 && (
+        <div className="rounded-[12px] bg-[#EAF3EE] border border-[#B8DFC8] px-3 py-2 flex justify-between">
+          <span className="text-xs font-medium text-[#1E5E3F] font-jakarta">Total</span>
+          <span className="text-sm font-bold text-[#1E5E3F] font-jetbrains">₹{total.toLocaleString('en-IN')}</span>
+        </div>
+      )}
     </form>
   );
 }
 
 function ApproverPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) {
   const { toast } = useToast();
-  const [rejectionReason, setRejectionReason] = useState('');
-  const [showReject, setShowReject]   = useState(false);
-  const [uploading, setUploading]     = useState(false);
-  const [deletingId, setDeletingId]   = useState<string | null>(null);
+  const [rejReason, setRejReason] = useState('');
+  const [showReject, setShowReject] = useState(false);
+  const [uploading, setUploading]   = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const decisionMutation = useMutation({
+  const decisionMut = useMutation({
     mutationFn: (data: any) => api.makePurchaseDecision(req._id, data),
     onSuccess: () => { toast({ title: 'Decision recorded' }); onSuccess(); },
     onError:   (err) => toast({ title: 'Error', description: getApiError(err), variant: 'destructive' }),
   });
-
-  const billMutation = useMutation({
+  const billMut = useMutation({
     mutationFn: (data: any) => api.uploadPurchaseVendorBill(req._id, data),
-    onSuccess: () => { toast({ title: 'Vendor bill uploaded' }); onSuccess(); },
+    onSuccess: () => { toast({ title: 'Bill uploaded' }); onSuccess(); },
     onError:   (err) => toast({ title: 'Error', description: getApiError(err), variant: 'destructive' }),
   });
-
-  const handleUploadBill = async (file: File) => {
+  const handleBill = async (file: File) => {
     setUploading(true);
     try {
-      const result = await api.uploadDocument(file, 'purchase-bills');
-      await billMutation.mutateAsync({ url: result.secureUrl || result.url, name: file.name, mime: file.type, publicId: result.publicId });
-    } catch (err) {
-      toast({ title: 'Upload failed', description: getApiError(err), variant: 'destructive' });
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = '';
-    }
+      const r = await api.uploadDocument(file, 'purchase-bills');
+      await billMut.mutateAsync({ url: r.secureUrl || r.url, name: file.name, mime: file.type, publicId: r.publicId });
+    } catch (err) { toast({ title: 'Upload failed', description: getApiError(err), variant: 'destructive' });
+    } finally { setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
   };
-
-  const handleDeleteBill = async (publicId: string) => {
+  const handleDelBill = async (publicId: string) => {
     setDeletingId(publicId);
-    try {
-      await api.deletePurchaseVendorBill(req._id, publicId);
-      toast({ title: 'Bill removed' });
-      onSuccess();
-    } catch (err) {
-      toast({ title: 'Delete failed', description: getApiError(err), variant: 'destructive' });
-    } finally {
-      setDeletingId(null);
-    }
+    try { await api.deletePurchaseVendorBill(req._id, publicId); toast({ title: 'Removed' }); onSuccess(); }
+    catch (err) { toast({ title: 'Error', description: getApiError(err), variant: 'destructive' }); }
+    finally { setDeletingId(null); }
   };
 
   if (req.status === 'PO_CREATED') {
     return (
-      <div className="space-y-4">
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <FileText className="h-4 w-4 text-[#2F6B47]" />
-            <h3 className="text-sm font-semibold text-gray-800">Purchase Order Details</h3>
-          </div>
-          <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 space-y-1">
-            <p className="text-xs text-blue-600">PO No: <span className="font-semibold text-blue-800">{req.po?.poNo}</span></p>
-            <p className="text-sm text-blue-800">Vendor: <span className="font-semibold">{req.po?.vendorName}</span></p>
-            {req.po?.vendorPhone && <p className="text-xs text-blue-600">{req.po.vendorPhone}</p>}
-            {req.po?.expectedDelivery && <p className="text-xs text-blue-600">Expected: {fmtShort(req.po.expectedDelivery)}</p>}
-            <p className="text-sm font-bold text-[#2F6B47] pt-1">Total: ₹{req.po?.totalAmount?.toLocaleString('en-IN')}</p>
-          </div>
+      <div className="space-y-3">
+        <Link href={`/fms/purchase/${req._id}/approve`}
+          className="block text-center text-xs text-[#1E5E3F] hover:underline font-jakarta">
+          Full approval view →
+        </Link>
+        <div className="rounded-[12px] border border-[#C8D9F0] bg-[#EDF3FB] p-3 space-y-1">
+          <p className="text-xs text-[#1F4F8A] font-jakarta">PO: <span className="font-semibold">{req.po?.poNo}</span></p>
+          <p className="text-sm font-medium text-[#18211C] font-jakarta">{req.po?.vendorName}</p>
+          {req.po?.vendorPhone && <p className="text-xs text-[#3A5C8A] font-jakarta">{req.po.vendorPhone}</p>}
+          {req.po?.expectedDelivery && <p className="text-xs text-[#3A5C8A] font-jakarta">Delivery: {fmtShort(req.po.expectedDelivery)}</p>}
+          <p className="text-sm font-bold text-[#1E5E3F] font-jetbrains">₹{req.po?.totalAmount?.toLocaleString('en-IN')}</p>
         </div>
         {!showReject ? (
           <div className="flex gap-2">
-            <Button
-              onClick={() => decisionMutation.mutate({ action: 'APPROVED' })}
-              disabled={decisionMutation.isPending}
-              className="bg-emerald-600 hover:bg-emerald-700 flex-1 h-9"
-            >
-              <CheckCircle2 className="h-4 w-4 mr-1.5" /> Approve PO
+            <Button onClick={() => decisionMut.mutate({ action: 'APPROVED' })} disabled={decisionMut.isPending}
+              className="flex-1 h-8 text-xs bg-[#1E5E3F] hover:bg-[#17382A] font-jakarta rounded-[10px]">
+              <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Approve
             </Button>
-            <Button variant="outline" onClick={() => setShowReject(true)} className="text-red-600 border-red-200 flex-1 h-9">
-              <XCircle className="h-4 w-4 mr-1.5" /> Reject
+            <Button variant="outline" onClick={() => setShowReject(true)}
+              className="text-red-600 border-red-200 flex-1 h-8 text-xs font-jakarta rounded-[10px]">
+              <XCircle className="h-3.5 w-3.5 mr-1" /> Reject
             </Button>
           </div>
         ) : (
           <div className="space-y-2">
-            <Input
-              placeholder="Rejection reason (required)"
-              value={rejectionReason}
-              onChange={(e) => setRejectionReason(e.target.value)}
-            />
+            <Input placeholder="Rejection reason" value={rejReason} onChange={e => setRejReason(e.target.value)} className="h-8 text-xs font-jakarta" />
             <div className="flex gap-2">
-              <Button
-                variant="destructive"
-                onClick={() => decisionMutation.mutate({ action: 'REJECTED', reason: rejectionReason })}
-                disabled={!rejectionReason.trim() || decisionMutation.isPending}
-                className="flex-1 h-9"
-              >
-                Confirm Rejection
-              </Button>
-              <Button variant="outline" onClick={() => setShowReject(false)} className="h-9">Cancel</Button>
+              <Button variant="destructive" className="flex-1 h-8 text-xs font-jakarta rounded-[10px]"
+                onClick={() => decisionMut.mutate({ action: 'REJECTED', reason: rejReason })}
+                disabled={!rejReason.trim() || decisionMut.isPending}>Confirm</Button>
+              <Button variant="outline" className="h-8 text-xs font-jakarta rounded-[10px]" onClick={() => setShowReject(false)}>Cancel</Button>
             </div>
           </div>
         )}
@@ -412,164 +336,95 @@ function ApproverPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) 
   }
 
   if (req.status === 'APPROVED' || req.status === 'VENDOR_BILL_UPLOADED') {
-    const bills: Array<{ url: string; name: string; mime: string; publicId: string }> =
-      req.vendorBills?.length ? req.vendorBills : req.vendorBill ? [req.vendorBill] : [];
+    const bills: any[] = req.vendorBills?.length ? req.vendorBills : req.vendorBill ? [req.vendorBill] : [];
     return (
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Upload className="h-4 w-4 text-[#2F6B47]" />
-          <h3 className="text-sm font-semibold text-gray-800">Vendor Bills</h3>
-        </div>
-        {bills.length > 0 && (
-          <div className="space-y-1.5">
-            {bills.map((bill) => (
-              <div key={bill.publicId} className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
-                <a href={bill.url} target="_blank" rel="noopener noreferrer"
-                  className="text-xs text-[#2F6B47] hover:underline truncate flex-1 min-w-0 mr-2">
-                  {bill.name}
-                </a>
-                <button
-                  onClick={() => handleDeleteBill(bill.publicId)}
-                  disabled={deletingId === bill.publicId}
-                  className="flex-shrink-0 text-red-400 hover:text-red-600 disabled:opacity-40 transition-colors text-sm font-medium px-1"
-                  title="Remove bill"
-                >
-                  {deletingId === bill.publicId ? '…' : '×'}
-                </button>
-              </div>
-            ))}
+      <div className="space-y-2">
+        {bills.map(bill => (
+          <div key={bill.publicId} className="flex items-center justify-between rounded-[10px] border border-[#ECE9E1] bg-[#FAF9F5] px-3 py-2">
+            <a href={bill.url} target="_blank" rel="noopener noreferrer"
+              className="text-xs text-[#1E5E3F] hover:underline truncate flex-1 min-w-0 mr-2 font-jakarta">{bill.name}</a>
+            <button onClick={() => handleDelBill(bill.publicId)} disabled={deletingId === bill.publicId}
+              className="text-red-400 hover:text-red-600 text-sm font-medium px-1">
+              {deletingId === bill.publicId ? '…' : '×'}
+            </button>
           </div>
-        )}
+        ))}
         <input ref={fileRef} type="file" accept=".jpg,.jpeg,.png,.pdf" className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadBill(f); }} />
-        <Button
-          onClick={() => fileRef.current?.click()}
-          disabled={uploading || billMutation.isPending}
-          variant="outline"
-          className="w-full border-dashed h-9"
-        >
-          <Upload className="h-4 w-4 mr-2" />
-          {uploading ? 'Uploading…' : bills.length > 0 ? 'Upload Another Bill' : 'Upload Vendor Bill (JPG/PNG/PDF)'}
+          onChange={e => { const f = e.target.files?.[0]; if (f) handleBill(f); }} />
+        <Button onClick={() => fileRef.current?.click()} disabled={uploading || billMut.isPending}
+          variant="outline" className="w-full border-dashed h-8 text-xs font-jakarta rounded-[10px]">
+          <Upload className="h-3.5 w-3.5 mr-1.5" />
+          {uploading ? 'Uploading…' : bills.length ? 'Upload Another' : 'Upload Vendor Bill'}
         </Button>
       </div>
     );
   }
-
   return null;
 }
 
 function ReceiverPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) {
-  const { toast }   = useToast();
+  const { toast } = useToast();
   const [uploading, setUploading]   = useState(false);
-  const [gateBillData, setGateBillData] = useState<any>(null);
-  const [receivedItems, setReceivedItems] = useState(
-    req.po?.items?.map((i: any) => ({ materialName: i.materialName, orderedKg: i.qtyKg, receivedKg: '' })) ||
-    req.items.map((i: any) => ({ materialName: i.materialName, orderedKg: i.qtyKg, receivedKg: '' })),
+  const [gateBill, setGateBill]     = useState<any>(null);
+  const [items, setItems]           = useState(
+    (req.po?.items || req.items || []).map((i: any) => ({ materialName: i.materialName, orderedKg: i.qtyKg, receivedKg: '' }))
   );
-  const [remarks, setRemarks] = useState('');
+  const [remarks, setRemarks]       = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const receiveMutation = useMutation({
+  const receiveMut = useMutation({
     mutationFn: (data: any) => api.receivePurchaseGoods(req._id, data),
-    onSuccess: () => { toast({ title: 'Goods receipt recorded — order closed' }); onSuccess(); },
+    onSuccess: () => { toast({ title: 'Goods receipt recorded' }); onSuccess(); },
     onError:   (err) => toast({ title: 'Error', description: getApiError(err), variant: 'destructive' }),
   });
-
-  const handleUploadGateBill = async (file: File) => {
-    setUploading(true);
-    try {
-      const result = await api.uploadDocument(file, 'purchase-bills');
-      setGateBillData({ url: result.secureUrl || result.url, name: file.name, mime: file.type, publicId: result.publicId });
-      toast({ title: 'Gate bill uploaded', description: 'Enter received quantities and submit.' });
-    } catch (err) {
-      toast({ title: 'Upload failed', description: getApiError(err), variant: 'destructive' });
-    } finally {
-      setUploading(false);
-    }
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!gateBillData) { toast({ title: 'Upload gate bill first', variant: 'destructive' }); return; }
-    for (const item of receivedItems) {
+    if (!gateBill) { toast({ title: 'Upload gate bill first', variant: 'destructive' }); return; }
+    for (const item of items) {
       if (item.receivedKg === '' || isNaN(parseFloat(item.receivedKg))) {
-        toast({ title: 'Enter received KG for all items', variant: 'destructive' }); return;
+        toast({ title: 'Enter received qty for all items', variant: 'destructive' }); return;
       }
     }
-    receiveMutation.mutate({
-      gateBill: gateBillData,
-      receivedItems: receivedItems.map((i: any) => ({ ...i, receivedKg: parseFloat(i.receivedKg) })),
-      remarks,
-    });
+    receiveMut.mutate({ gateBill, receivedItems: items.map((i: any) => ({ ...i, receivedKg: parseFloat(i.receivedKg) })), remarks });
   };
-
-  const varianceColor = (ordered: number, received: number) => {
-    if (!received) return '';
-    const pct = Math.abs((received - ordered) / ordered);
-    if (pct > 0.05) return 'text-red-600';
-    if (received < ordered) return 'text-amber-600';
-    return 'text-emerald-600';
-  };
-
   return (
-    <form id={RECEIVE_FORM_ID} onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <Package className="h-4 w-4 text-[#2F6B47]" />
-          <h3 className="text-sm font-semibold text-gray-800">Goods Receipt</h3>
-        </div>
-        <p className="text-xs text-gray-500 mb-3">Received Quantities (KG)</p>
-        {receivedItems.map((item: any, i: number) => (
-          <div key={i} className="mb-3">
-            <div className="flex justify-between mb-1">
-              <span className="text-xs font-medium text-gray-700">{item.materialName}</span>
-              <span className="text-xs text-gray-400">Ordered: {item.orderedKg} KG</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Input
-                type="number" min="0" step="0.1"
-                value={item.receivedKg}
-                onChange={(e) => setReceivedItems((prev: any[]) => prev.map((p, idx) => idx === i ? { ...p, receivedKg: e.target.value } : p))}
-                className="h-9 text-sm flex-1" placeholder="Received KG"
-              />
-              {item.receivedKg !== '' && (
-                <span className={`text-xs font-medium w-16 text-right ${varianceColor(item.orderedKg, parseFloat(item.receivedKg))}`}>
-                  {(parseFloat(item.receivedKg) - item.orderedKg > 0 ? '+' : '')}
-                  {(parseFloat(item.receivedKg) - item.orderedKg).toFixed(1)} KG
-                </span>
-              )}
-            </div>
+    <form id={RECEIVE_FORM_ID} onSubmit={handleSubmit} className="space-y-3">
+      <Link href={`/fms/purchase/${req._id}/receive`}
+        className="block text-center text-xs text-[#1E5E3F] hover:underline font-jakarta">
+        Full receive view (mobile-friendly) →
+      </Link>
+      {items.map((item: any, i: number) => (
+        <div key={i} className="space-y-1">
+          <div className="flex justify-between">
+            <span className="text-xs font-medium text-[#18211C] font-jakarta">{item.materialName}</span>
+            <span className="text-[11px] text-[#8A9490] font-jetbrains">ordered {item.orderedKg}</span>
           </div>
-        ))}
-      </div>
+          <Input type="number" min="0" step="0.1" value={item.receivedKg} placeholder="Received qty"
+            onChange={e => setItems((p: any[]) => p.map((x, idx) => idx !== i ? x : { ...x, receivedKg: e.target.value }))}
+            className="h-8 text-xs font-jetbrains" />
+        </div>
+      ))}
       <div>
-        <label className="text-xs font-medium text-gray-600 mb-1 block">Gate Bill (image/PDF) *</label>
         <input ref={fileRef} type="file" accept=".jpg,.jpeg,.png,.pdf" className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadGateBill(f); }} />
-        {gateBillData ? (
-          <div className="flex items-center gap-2 mt-1 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2">
-            <span className="text-xs text-emerald-700 flex-1 truncate min-w-0">✓ {gateBillData.name}</span>
-            <button
-              type="button"
-              onClick={() => { setGateBillData(null); if (fileRef.current) fileRef.current.value = ''; }}
-              className="flex-shrink-0 text-red-400 hover:text-red-600 text-sm font-medium px-1"
-              title="Remove and re-upload"
-            >×</button>
+          onChange={e => {
+            const f = e.target.files?.[0]; if (!f) return;
+            setUploading(true);
+            api.uploadDocument(f, 'purchase-bills')
+              .then(r => setGateBill({ url: r.secureUrl || r.url, name: f.name, mime: f.type, publicId: r.publicId }))
+              .catch(() => toast({ title: 'Upload failed', variant: 'destructive' }))
+              .finally(() => setUploading(false));
+          }} />
+        {gateBill ? (
+          <div className="flex items-center gap-2 rounded-[10px] border border-[#B8DFC8] bg-[#EAF3EE] px-3 py-2">
+            <span className="text-xs text-[#1E5E3F] flex-1 truncate font-jakarta">✓ {gateBill.name}</span>
+            <button type="button" onClick={() => setGateBill(null)} className="text-red-400 hover:text-red-600 text-sm">×</button>
           </div>
         ) : (
-          <Button
-            type="button" variant="outline"
-            className="w-full mt-1 border-dashed h-9"
-            onClick={() => fileRef.current?.click()} disabled={uploading}
-          >
-            <Upload className="h-4 w-4 mr-2" />
-            {uploading ? 'Uploading…' : 'Upload Gate Bill'}
+          <Button type="button" variant="outline" className="w-full border-dashed h-8 text-xs font-jakarta rounded-[10px]"
+            onClick={() => fileRef.current?.click()} disabled={uploading}>
+            <Upload className="h-3.5 w-3.5 mr-1.5" />{uploading ? 'Uploading…' : 'Gate Bill'}
           </Button>
         )}
-      </div>
-      <div>
-        <label className="text-xs font-medium text-gray-600 mb-1 block">Remarks (optional)</label>
-        <Input className="h-9 text-sm" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Any notes on the delivery" />
       </div>
     </form>
   );
@@ -578,103 +433,75 @@ function ReceiverPanel({ req, onSuccess }: { req: any; onSuccess: () => void }) 
 function DeadlineSetter({ reqId, currentDeadline, onSuccess }: { reqId: string; currentDeadline?: any; onSuccess: () => void }) {
   const { toast } = useToast();
   const [value, setValue] = useState('');
-
-  const mutation = useMutation({
+  const mut = useMutation({
     mutationFn: (dueAt: string) => api.setPurchaseDeadline(reqId, dueAt),
     onSuccess: () => { toast({ title: 'Deadline set' }); setValue(''); onSuccess(); },
     onError:   (err) => toast({ title: 'Error', description: getApiError(err), variant: 'destructive' }),
   });
-
   return (
-    <div className="border-t pt-4">
-      <div className="flex items-center gap-2 mb-3">
-        <CalendarDays className="h-4 w-4 text-[#2F6B47]" />
-        <h3 className="text-sm font-semibold text-gray-800">Set Deadline (for this stage)</h3>
-      </div>
+    <div className="border-t border-[#ECE9E1] pt-3 mt-3">
+      <p className="text-[11px] font-semibold text-[#8A9490] uppercase tracking-[0.07em] font-jakarta mb-2">Set Deadline</p>
       <div className="flex gap-2">
-        <Input
-          type="datetime-local"
-          className="h-9 text-xs flex-1"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-        />
-        <Button
-          size="sm" variant="outline" className="h-9 text-xs px-4"
-          disabled={!value || mutation.isPending}
-          onClick={() => mutation.mutate(new Date(value).toISOString())}
-        >
-          Set
-        </Button>
+        <Input type="datetime-local" className="h-7 text-xs flex-1 font-jakarta" value={value} onChange={e => setValue(e.target.value)} />
+        <Button size="sm" variant="outline" className="h-7 text-xs font-jakarta px-3 rounded-[8px]"
+          disabled={!value || mut.isPending} onClick={() => mut.mutate(new Date(value).toISOString())}>Set</Button>
       </div>
       {currentDeadline?.dueAt && (
-        <p className="text-xs text-gray-400 mt-1.5">
-          Current: {fmtIST(currentDeadline.dueAt)} (set by {currentDeadline.setByName})
-        </p>
+        <p className="text-[10px] text-[#8A9490] mt-1 font-jakarta">Current: {fmtIST(currentDeadline.dueAt)}</p>
       )}
     </div>
   );
 }
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function FmsPurchaseRequestDetailPage() {
   const params = useParams<{ id: string }>();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAdminAuthStore();
-  const isSuperadmin  = user?.role === 'superadmin';
-  const purchaseRole  = user?.purchaseRole;
+  const isSuperadmin = user?.role === 'superadmin';
+  const purchaseRole = user?.purchaseRole;
 
   const [notesTab, setNotesTab] = useState<'notes' | 'attachments'>('notes');
-  const [noteText, setNoteText] = useState('');
 
   const { data: req, isLoading, refetch } = useQuery({
     queryKey: ['purchase-request', params.id],
     queryFn:  () => api.getPurchaseRequest(params.id),
     refetchInterval: 15000,
   });
-
-  const cancelMutation = useMutation({
+  const cancelMut = useMutation({
     mutationFn: (reason: string) => api.cancelPurchaseRequest(params.id, reason),
     onSuccess: () => { toast({ title: 'Request cancelled' }); refetch(); },
     onError:   (err) => toast({ title: 'Error', description: getApiError(err), variant: 'destructive' }),
   });
-
   const onActionSuccess = () => {
     refetch();
     queryClient.invalidateQueries({ queryKey: ['purchase-requests'] });
-    queryClient.invalidateQueries({ queryKey: ['purchase-stats'] });
+    queryClient.invalidateQueries({ queryKey: ['purchase-summary'] });
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-[#F7F5F0]">
-        <div className="h-8 w-8 border-2 border-[#2F6B47] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
+  if (isLoading) return (
+    <div className="flex h-screen items-center justify-center" style={{ background: '#F7F6F2' }}>
+      <div className="h-8 w-8 border-2 border-[#1E5E3F] border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
   if (!req) return null;
 
-  const canCancel  = !['COMPLETED', 'CANCELLED'].includes(req.status) && (isSuperadmin || req.requestedById === user?.id);
-  const holderRole = STATUS_HOLDER[req.status];
+  const canCancel   = !['COMPLETED','CANCELLED'].includes(req.status) && (isSuperadmin || req.requestedById === user?.id);
+  const showPOPanel = (isSuperadmin || purchaseRole === 'po_creator') && (req.status === 'REQUESTED' || req.status === 'REJECTED');
+  const showAppPanel= (isSuperadmin || purchaseRole === 'approver') && (req.status === 'PO_CREATED' || req.status === 'APPROVED' || req.status === 'VENDOR_BILL_UPLOADED');
+  const showRcvPanel= (isSuperadmin || purchaseRole === 'receiver') && req.status === 'VENDOR_BILL_UPLOADED';
 
-  const isMyAction = () => {
-    if (req.status === 'COMPLETED' || req.status === 'CANCELLED') return false;
-    if (isSuperadmin) return true;
-    if (purchaseRole === 'po_creator' && (req.status === 'REQUESTED' || req.status === 'REJECTED')) return true;
-    if (purchaseRole === 'approver'   && (req.status === 'PO_CREATED' || req.status === 'APPROVED' || req.status === 'VENDOR_BILL_UPLOADED')) return true;
-    if (purchaseRole === 'receiver'   && req.status === 'VENDOR_BILL_UPLOADED') return true;
-    return false;
-  };
-  const showAction = isMyAction();
+  const description = req.items?.map((i: any) => `${i.materialName} ${i.qtyKg} ${i.uom || 'kg'}`).join(', ');
 
-  const description = req.items?.map((i: any) => `${i.materialName} ${i.qtyKg}KG`).join(', ');
+  // Primary header CTA → dedicated page
+  const primaryCTA =
+    showPOPanel  ? { label: 'Create PO',       href: `/fms/purchase/${req._id}/raise-po` } :
+    (showAppPanel && req.status === 'PO_CREATED') ? { label: 'Review & Approve', href: `/fms/purchase/${req._id}/approve` } :
+    showRcvPanel ? { label: 'Receive Goods',   href: `/fms/purchase/${req._id}/receive` } :
+    null;
 
-  const isPoCreator = showAction && (isSuperadmin || purchaseRole === 'po_creator') &&
-    (req.status === 'REQUESTED' || req.status === 'REJECTED');
-  const isReceiver  = showAction && (isSuperadmin || purchaseRole === 'receiver') &&
-    req.status === 'VENDOR_BILL_UPLOADED';
-
-  // All 4 stages shown in timeline with pending states
   const allStages = [
     { label: 'Purchase request created', doneStatus: 'REQUESTED' },
     { label: 'PO created',               doneStatus: 'PO_CREATED' },
@@ -683,234 +510,165 @@ export default function FmsPurchaseRequestDetailPage() {
   ];
 
   return (
-    <div className="flex flex-col h-screen bg-[#F7F5F0]">
-      {/* Page header */}
-      <div className="bg-[#F7F5F0] border-b border-gray-200 px-6 py-3 flex-shrink-0">
-        {/* Breadcrumb */}
-        <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-2">
-          <Link href="/fms/purchase" className="hover:text-[#2F6B47] transition-colors font-medium text-[#2F6B47]">
-            Purchase FMS
-          </Link>
-          <ChevronRight className="h-3 w-3 text-gray-400" />
-          <span className="text-gray-600">{req.reqNo}</span>
+    <div className="flex flex-col h-screen" style={{ background: '#F7F6F2' }}>
+      {/* ── Header ── */}
+      <div className="bg-white border-b border-[#ECE9E1] px-6 py-3 shrink-0">
+        <div className="flex items-center gap-1.5 text-xs text-[#8A9490] mb-1.5 font-jakarta">
+          <Link href="/fms/purchase" className="text-[#1E5E3F] font-medium hover:underline">Purchase FMS</Link>
+          <ChevronRight className="h-3 w-3" />
+          <span className="font-jetbrains">{shortPr(req.reqNo)}</span>
         </div>
-        {/* Title row */}
         <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="h-10 w-10 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
-              <ShoppingBag className="h-5 w-5 text-amber-600" />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="font-fraunces text-[22px] font-semibold text-[#18211C]">{shortPr(req.reqNo)}</h1>
+              <StageBadge req={req} />
+              <WaitChip req={req} />
             </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h1 className="text-xl font-bold text-gray-900">{req.reqNo}</h1>
-                <StatusBadge status={req.status} />
-                {req.deadline && <DeadlineChip deadline={req.deadline} />}
-              </div>
-              <p className="text-sm text-gray-500 truncate mt-0.5">{description}</p>
-            </div>
+            <p className="text-xs text-[#8A9490] font-jakarta mt-0.5 truncate max-w-[480px]">{description}</p>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button className="h-8 w-8 rounded-md border border-gray-200 bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors">
-              <MoreHorizontal className="h-4 w-4" />
-            </button>
-            <Link href="/fms/purchase">
-              <Button variant="outline" size="sm" className="h-8 text-sm bg-white">
-                ‹ Back
-              </Button>
-            </Link>
+          <div className="flex items-center gap-2 shrink-0">
             {req.po && (
-              <button
-                onClick={() => window.open(`/fms/purchase/${req._id}/po/print`, '_blank')}
-                className="h-8 inline-flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-800 border border-gray-200 rounded-md px-3 bg-white transition-colors"
-              >
+              <button onClick={() => window.open(`/fms/purchase/${req._id}/po/print`, '_blank')}
+                className="h-8 inline-flex items-center gap-1.5 text-xs text-[#66706A] hover:text-[#18211C] border border-[#ECE9E1] rounded-[10px] px-3 bg-white font-jakarta">
                 <Printer className="h-3.5 w-3.5" /> Print PO
               </button>
             )}
-            {isPoCreator && (
-              <Button type="submit" form={PO_FORM_ID} size="sm"
-                className="h-8 bg-[#2F6B47] hover:bg-[#2F6B47]/90 text-sm font-medium">
-                Create Purchase Order <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
-            )}
-            {isReceiver && (
-              <Button type="submit" form={RECEIVE_FORM_ID} size="sm"
-                className="h-8 bg-[#2F6B47] hover:bg-[#2F6B47]/90 text-sm font-medium">
-                <Package className="h-4 w-4 mr-1.5" /> Mark Goods Received
-              </Button>
+            <Link href="/fms/purchase">
+              <Button variant="outline" size="sm" className="h-8 text-xs font-jakarta rounded-[10px]">‹ Back</Button>
+            </Link>
+            {primaryCTA && (
+              <Link href={primaryCTA.href}>
+                <Button size="sm" className="h-8 text-xs font-jakarta rounded-[10px] text-white" style={{ background: '#1E5E3F' }}>
+                  {primaryCTA.label} <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                </Button>
+              </Link>
             )}
           </div>
         </div>
       </div>
 
-      {/* Body */}
+      {/* ── Body ── */}
       <div className="flex-1 flex overflow-hidden">
 
-        {/* Scrollable left + center */}
+        {/* Main content */}
         <div className="flex-1 overflow-auto p-6">
-          <div className="max-w-4xl space-y-5">
+          <div className="max-w-4xl space-y-4">
 
-            {/* Pipeline */}
+            <NextStepBanner req={req} purchaseRole={purchaseRole} isSuperadmin={isSuperadmin} />
             <PipelineTracker req={req} />
 
-            {/* Row 1: Request Details + Items */}
-            <div className="grid grid-cols-2 gap-5">
-
-              {/* Request Details */}
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="flex items-center gap-2 px-5 py-3.5 border-b border-gray-100">
-                  <FileText className="h-4 w-4 text-[#2F6B47]" />
-                  <h3 className="text-sm font-semibold text-gray-800">Request Details</h3>
-                </div>
-                <div className="divide-y divide-gray-50">
-                  {([
-                    ['PR Number',     req.reqNo],
-                    ['Requested By',  req.requestedByName],
-                    ['Department',    '—'],
-                    ['Request Date',  fmtShort(req.createdAt)],
-                    ['Required Date', '—'],
-                    ['Purpose',       req.note || '—'],
-                    ['Status',        <StatusBadge key="s" status={req.status} />],
-                    ['Description',   description],
-                  ] as Array<[string, any]>).map(([label, value]) => (
-                    <div key={label} className="flex items-start gap-4 px-5 py-2.5">
-                      <span className="text-xs text-gray-400 w-28 flex-shrink-0 pt-0.5">{label}</span>
-                      {typeof value === 'string'
-                        ? <span className="text-sm text-gray-800 font-medium flex-1 min-w-0">{value}</span>
-                        : <div className="flex-1">{value}</div>
-                      }
+            {/* Items */}
+            <div className="bg-white rounded-[18px] border border-[#ECE9E1] overflow-hidden shadow-[0_1px_2px_rgba(24,33,28,.06)]">
+              <div className="flex items-center gap-2 px-5 py-3 border-b border-[#ECE9E1]">
+                <Package className="h-4 w-4 text-[#1E5E3F]" />
+                <h3 className="text-sm font-semibold text-[#18211C] font-jakarta">Items ({req.items?.length ?? 0})</h3>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ background: '#FAF9F5' }} className="border-b border-[#ECE9E1]">
+                    {['#','Material','Qty','UOM','Notes'].map(h => (
+                      <th key={h} className="px-5 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.07em] text-[#8A9490] font-jakarta">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {req.items?.map((item: any, idx: number) => (
+                    <tr key={idx} className="border-b border-[#F5F3EE] last:border-0 hover:bg-[#FAF9F5]">
+                      <td className="px-5 py-3 text-[#8A9490] text-xs font-jetbrains">{idx + 1}</td>
+                      <td className="px-5 py-3 text-[#18211C] font-medium font-jakarta">{item.materialName}</td>
+                      <td className="px-5 py-3 text-[#18211C] font-jetbrains font-medium">{item.qtyKg}</td>
+                      <td className="px-5 py-3 text-[#66706A] font-jakarta">{item.uom || 'kg'}</td>
+                      <td className="px-5 py-3 text-[#8A9490] text-xs font-jakarta">—</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {req.po && (
+                <div className="px-5 py-3 border-t border-[#ECE9E1] bg-[#EDF3FB]">
+                  <div className="flex justify-between items-center mb-1">
+                    <div className="text-xs text-[#1F4F8A] font-jakarta">
+                      <span className="font-semibold">{req.po.poNo}</span> — {req.po.vendorName}
+                      {req.po.vendorPhone && <span className="ml-2">{req.po.vendorPhone}</span>}
+                    </div>
+                    <span className="text-sm font-bold text-[#1E5E3F] font-jetbrains">₹{req.po.totalAmount?.toLocaleString('en-IN')}</span>
+                  </div>
+                  {req.po.items?.map((i: any, idx: number) => (
+                    <div key={idx} className="flex justify-between text-xs text-[#1F4F8A] font-jakarta py-0.5">
+                      <span>{i.materialName} {i.qtyKg} {i.uom || 'kg'} × ₹{i.ratePerKg}/kg</span>
+                      <span className="font-medium">₹{i.amount?.toLocaleString('en-IN')}</span>
                     </div>
                   ))}
                 </div>
-                {req.decision && (
-                  <div className={`px-5 py-3 border-t text-xs ${req.decision.action === 'REJECTED' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
-                    <span className="font-semibold">{req.decision.action}</span> by {req.decision.byName}
-                    {req.decision.reason && <div className="mt-0.5">Reason: {req.decision.reason}</div>}
-                  </div>
-                )}
-              </div>
-
-              {/* Items */}
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="flex items-center gap-2 px-5 py-3.5 border-b border-gray-100">
-                  <Package className="h-4 w-4 text-[#2F6B47]" />
-                  <h3 className="text-sm font-semibold text-gray-800">Items ({req.items?.length ?? 0})</h3>
+              )}
+              {req.status === 'SPLIT' && req.children?.length > 0 && (
+                <div className="px-5 py-3 border-t border-[#ECE9E1]" style={{ background: '#F5F3FF' }}>
+                  <p className="text-xs font-semibold mb-2 font-jakarta" style={{ color: '#4B3FAC' }}>
+                    Split into {req.children.length} vendor POs
+                  </p>
+                  {req.children.map((child: any) => (
+                    <Link key={child._id} href={`/fms/purchase/${child._id}`}
+                      className="flex items-center justify-between py-1.5 hover:bg-white/60 rounded px-1 -mx-1">
+                      <div className="text-xs font-jakarta" style={{ color: '#4B3FAC' }}>
+                        <span className="font-semibold font-jetbrains">{child.reqNo}</span>
+                        <span className="ml-1 opacity-60">— {child.po?.vendorName}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <StageBadge req={child} />
+                        <span className="text-xs font-bold font-jetbrains text-[#1E5E3F]">₹{child.po?.totalAmount?.toLocaleString('en-IN')}</span>
+                      </div>
+                    </Link>
+                  ))}
                 </div>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-100">
-                      <th className="text-left text-xs font-medium text-gray-400 px-5 py-2.5 w-8">#</th>
-                      <th className="text-left text-xs font-medium text-gray-400 px-2 py-2.5">Item Name</th>
-                      <th className="text-right text-xs font-medium text-gray-400 px-2 py-2.5">Quantity</th>
-                      <th className="text-left text-xs font-medium text-gray-400 px-2 py-2.5">UOM</th>
-                      <th className="text-left text-xs font-medium text-gray-400 px-5 py-2.5">Remarks</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {req.items?.map((item: any, idx: number) => (
-                      <tr key={idx} className="border-b border-gray-50 last:border-0">
-                        <td className="px-5 py-3 text-gray-400 text-xs">{idx + 1}</td>
-                        <td className="px-2 py-3 text-gray-800 font-medium">{item.materialName}</td>
-                        <td className="px-2 py-3 text-right text-gray-800 font-mono font-medium">{item.qtyKg}</td>
-                        <td className="px-2 py-3 text-gray-500">KG</td>
-                        <td className="px-5 py-3 text-gray-400 text-xs">—</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {req.po && (
-                  <div className="px-5 py-3 border-t border-gray-100 bg-blue-50">
-                    <div className="flex justify-between items-center">
-                      <div className="text-xs text-blue-600">
-                        <span className="font-semibold">{req.po.poNo}</span> — {req.po.vendorName}
-                        {req.po.vendorPhone && <span className="ml-2 text-blue-500">{req.po.vendorPhone}</span>}
+              )}
+              {req.receipt && (
+                <div className="px-5 py-3 border-t border-[#ECE9E1] bg-[#EAF3EE]">
+                  <p className="text-xs font-semibold text-[#1E5E3F] mb-1 font-jakarta">Goods Received</p>
+                  {req.receipt.receivedItems?.map((i: any, idx: number) => {
+                    const v = i.receivedKg - i.orderedKg;
+                    const pct = Math.abs(v / i.orderedKg);
+                    const c = pct > 0.05 ? '#A3241A' : v < 0 ? '#8A4B06' : '#1E5E3F';
+                    return (
+                      <div key={idx} className="flex justify-between text-xs py-0.5 font-jakarta">
+                        <span className="text-[#1E5E3F]">{i.materialName}</span>
+                        <span className="text-[#3E6B50]">ordered {i.orderedKg} · <strong>rcvd {i.receivedKg}</strong></span>
+                        <span className="font-medium font-jetbrains" style={{ color: c }}>{v > 0 ? '+' : ''}{v.toFixed(1)}</span>
                       </div>
-                      <div className="text-sm font-bold text-[#2F6B47]">
-                        ₹{req.po.totalAmount?.toLocaleString('en-IN')}
-                      </div>
-                    </div>
-                    {req.po.items && (
-                      <div className="mt-2 space-y-0.5">
-                        {req.po.items.map((i: any, idx: number) => (
-                          <div key={idx} className="flex justify-between text-xs text-blue-600">
-                            <span>{i.materialName} {i.qtyKg}KG × ₹{i.ratePerKg}/KG</span>
-                            <span>₹{i.amount?.toLocaleString('en-IN')}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {req.status === 'SPLIT' && req.children?.length > 0 && (
-                  <div className="px-5 py-3 border-t border-gray-100 bg-indigo-50">
-                    <p className="text-xs font-semibold text-indigo-700 mb-2">Split into {req.children.length} vendor POs:</p>
-                    {req.children.map((child: any) => (
-                      <Link key={child._id} href={`/fms/purchase/${child._id}`}
-                        className="flex items-center justify-between py-1.5 hover:bg-indigo-100 rounded px-1 -mx-1 transition-colors">
-                        <div className="text-xs text-indigo-700">
-                          <span className="font-semibold">{child.reqNo}</span>
-                          <span className="ml-1 text-indigo-500">— {child.po?.vendorName}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <StatusBadge status={child.status} />
-                          <span className="text-xs font-semibold text-[#2F6B47]">₹{child.po?.totalAmount?.toLocaleString('en-IN')}</span>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-                {req.receipt && (
-                  <div className="px-5 py-3 border-t border-gray-100 bg-emerald-50">
-                    <p className="text-xs font-semibold text-emerald-700 mb-1">Goods Received</p>
-                    {req.receipt.receivedItems?.map((i: any, idx: number) => {
-                      const variance = i.receivedKg - i.orderedKg;
-                      const pct = Math.abs(variance / i.orderedKg);
-                      const color = pct > 0.05 ? 'text-red-600' : variance < 0 ? 'text-amber-600' : 'text-emerald-600';
-                      return (
-                        <div key={idx} className="flex justify-between text-xs py-0.5">
-                          <span className="text-emerald-700">{i.materialName}</span>
-                          <span className="text-emerald-600">Ordered: {i.orderedKg}KG | <strong>Rcvd: {i.receivedKg}KG</strong></span>
-                          <span className={`font-medium ${color}`}>{variance > 0 ? '+' : ''}{variance.toFixed(1)}KG</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
-            {/* Row 2: Timeline + Notes */}
-            <div className="grid grid-cols-2 gap-5">
-
-              {/* Timeline */}
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
-                  <div className="flex items-center gap-2">
-                    <History className="h-4 w-4 text-[#2F6B47]" />
-                    <h3 className="text-sm font-semibold text-gray-800">Timeline</h3>
-                  </div>
+            {/* Timeline + Notes */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white rounded-[18px] border border-[#ECE9E1] overflow-hidden shadow-[0_1px_2px_rgba(24,33,28,.06)]">
+                <div className="flex items-center gap-2 px-5 py-3 border-b border-[#ECE9E1]">
+                  <History className="h-4 w-4 text-[#1E5E3F]" />
+                  <h3 className="text-sm font-semibold text-[#18211C] font-jakarta">Timeline</h3>
                 </div>
                 <div className="p-5">
-                  {allStages.map((stage, idx) => {
-                    const entry  = req.timeline?.find((t: any) => t.status === stage.doneStatus);
+                  {allStages.map((s, idx) => {
+                    const entry  = req.timeline?.find((t: any) => t.status === s.doneStatus);
                     const isDone = !!entry;
                     const isLast = idx === allStages.length - 1;
                     return (
                       <div key={idx} className="flex gap-3">
-                        <div className="flex flex-col items-center flex-shrink-0">
-                          <div className={`h-3 w-3 rounded-full mt-0.5 ${isDone ? 'bg-[#2F6B47]' : 'bg-gray-200'}`} />
-                          {!isLast && <div className="w-px flex-1 bg-gray-100 min-h-[20px] my-1" />}
+                        <div className="flex flex-col items-center shrink-0">
+                          <div className={`h-3 w-3 rounded-full mt-0.5 ${isDone ? 'bg-[#1E5E3F]' : 'bg-[#ECE9E1]'}`} />
+                          {!isLast && <div className="w-px flex-1 bg-[#ECE9E1] min-h-[20px] my-1" />}
                         </div>
                         <div className="pb-4 flex-1 min-w-0">
-                          <p className={`text-sm font-medium leading-tight ${isDone ? 'text-gray-800' : 'text-gray-400'}`}>
-                            {isDone && entry.action ? entry.action : stage.label}
+                          <p className={`text-sm font-medium font-jakarta leading-tight ${isDone ? 'text-[#18211C]' : 'text-[#B0B8B3]'}`}>
+                            {isDone && entry.action ? entry.action : s.label}
                           </p>
                           {isDone && entry ? (
                             <>
-                              <p className="text-xs text-gray-500 mt-0.5">by {entry.byName}</p>
-                              <p className="text-xs text-gray-400">{fmtShort(entry.at)}</p>
+                              <p className="text-xs text-[#66706A] mt-0.5 font-jakarta">by {entry.byName}</p>
+                              <p className="text-xs text-[#8A9490] font-jakarta">{fmtDate(entry.at)}</p>
                             </>
                           ) : (
-                            <p className="text-xs text-gray-400 mt-0.5">Pending</p>
+                            <p className="text-xs text-[#B0B8B3] mt-0.5 font-jakarta">Pending</p>
                           )}
                         </div>
                       </div>
@@ -919,60 +677,35 @@ export default function FmsPurchaseRequestDetailPage() {
                 </div>
               </div>
 
-              {/* Attachments & Notes */}
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
-                  <div className="flex items-center gap-2">
-                    <Paperclip className="h-4 w-4 text-[#2F6B47]" />
-                    <h3 className="text-sm font-semibold text-gray-800">Attachments & Notes</h3>
-                  </div>
-                  <button className="h-7 flex items-center gap-1.5 text-xs font-medium text-white bg-[#2F6B47] hover:bg-[#2F6B47]/90 rounded-lg px-3 transition-colors">
-                    <Plus className="h-3.5 w-3.5" /> Add Note
-                  </button>
+              <div className="bg-white rounded-[18px] border border-[#ECE9E1] overflow-hidden shadow-[0_1px_2px_rgba(24,33,28,.06)]">
+                <div className="flex items-center gap-2 px-5 py-3 border-b border-[#ECE9E1]">
+                  <Paperclip className="h-4 w-4 text-[#1E5E3F]" />
+                  <h3 className="text-sm font-semibold text-[#18211C] font-jakarta">Notes & Files</h3>
                 </div>
-                {/* Tabs */}
-                <div className="flex border-b border-gray-100">
-                  <button
-                    onClick={() => setNotesTab('notes')}
-                    className={`px-5 py-2.5 text-xs font-medium border-b-2 transition-colors ${notesTab === 'notes' ? 'border-[#2F6B47] text-[#2F6B47]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-                  >
-                    Notes
-                  </button>
-                  <button
-                    onClick={() => setNotesTab('attachments')}
-                    className={`px-5 py-2.5 text-xs font-medium border-b-2 transition-colors ${notesTab === 'attachments' ? 'border-[#2F6B47] text-[#2F6B47]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-                  >
-                    Attachments
-                  </button>
+                <div className="flex border-b border-[#ECE9E1]">
+                  {(['notes','attachments'] as const).map(tab => (
+                    <button key={tab} onClick={() => setNotesTab(tab)}
+                      className={`px-5 py-2 text-xs font-medium font-jakarta border-b-2 capitalize ${notesTab === tab ? 'border-[#1E5E3F] text-[#1E5E3F]' : 'border-transparent text-[#66706A] hover:text-[#18211C]'}`}>
+                      {tab}
+                    </button>
+                  ))}
                 </div>
                 {notesTab === 'notes' ? (
                   <div className="p-4">
-                    <textarea
-                      className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 min-h-[90px] resize-none focus:outline-none focus:ring-2 focus:ring-[#2F6B47]/20 focus:border-[#2F6B47]/60 placeholder:text-gray-400"
-                      placeholder="Add a note..."
-                      value={noteText}
-                      onChange={(e) => setNoteText(e.target.value.slice(0, 500))}
-                    />
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="text-xs text-gray-400">{noteText.length}/500 characters</span>
-                      <Button size="sm" variant="outline" className="h-7 text-xs" disabled={!noteText.trim()}>
-                        Add Note
-                      </Button>
-                    </div>
                     {(req.vendorBills?.length ? req.vendorBills : req.vendorBill ? [req.vendorBill] : []).map((bill: any, i: number, arr: any[]) => (
                       <FileViewer key={bill.publicId || i} file={bill} label={arr.length > 1 ? `Vendor Bill ${i + 1}` : 'Vendor Bill'} />
                     ))}
                     {req.receipt?.gateBill && <FileViewer file={req.receipt.gateBill} label="Gate Bill" />}
+                    {!req.vendorBills?.length && !req.vendorBill && !req.receipt?.gateBill && (
+                      <p className="text-xs text-[#B0B8B3] font-jakarta text-center py-4">No documents yet.</p>
+                    )}
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
-                    <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
-                      <FileText className="h-6 w-6 text-gray-400" />
+                  <div className="flex flex-col items-center justify-center py-10 text-center">
+                    <div className="h-10 w-10 rounded-full bg-[#F7F6F2] flex items-center justify-center mb-3">
+                      <FileText className="h-5 w-5 text-[#B0B8B3]" />
                     </div>
-                    <p className="text-sm font-medium text-gray-600">No notes yet</p>
-                    <p className="text-xs text-gray-400 mt-1 max-w-[200px]">
-                      Add a note to keep track of important information about this purchase request.
-                    </p>
+                    <p className="text-sm font-medium text-[#66706A] font-jakarta">No attachments yet</p>
                   </div>
                 )}
               </div>
@@ -981,80 +714,96 @@ export default function FmsPurchaseRequestDetailPage() {
           </div>
         </div>
 
-        {/* Right sidebar */}
-        <div className="w-80 border-l border-gray-200 bg-white flex flex-col flex-shrink-0 overflow-hidden">
-          <div className="flex-1 overflow-auto p-5 space-y-0">
+        {/* ── Right sidebar ── */}
+        <div className="w-72 border-l border-[#ECE9E1] bg-white flex flex-col shrink-0 overflow-hidden">
+          {/* Metadata */}
+          <div className="p-4 border-b border-[#ECE9E1]">
+            <p className="text-[11px] font-semibold text-[#8A9490] uppercase tracking-[0.07em] font-jakarta mb-3">Request Info</p>
+            {[
+              { Icon: User,      label: 'Requester',    value: req.requestedByName },
+              { Icon: Building2, label: 'Department',   value: req.department || '—' },
+              { Icon: Calendar,  label: 'Required by',  value: req.requiredBy ? fmtDate(req.requiredBy) : '—' },
+              { Icon: FileText,  label: 'Purpose',      value: req.note || req.purpose || '—' },
+            ].map(({ Icon, label, value }) => (
+              <div key={label} className="flex items-start gap-2 py-1.5">
+                <Icon className="h-3.5 w-3.5 text-[#B0B8B3] shrink-0 mt-0.5" />
+                <span className="text-[11px] text-[#8A9490] font-jakarta w-20 shrink-0">{label}</span>
+                <span className={`text-xs font-medium font-jakarta flex-1 min-w-0 ${!value || value === '—' ? 'text-[#D9902B]' : 'text-[#18211C]'}`}>
+                  {value || '—'}
+                </span>
+              </div>
+            ))}
+            {(!req.department || !req.requiredBy) && (
+              <div className="mt-2 flex items-start gap-1.5 rounded-[10px] bg-[#FDF3E3] border border-[#F5D798] p-2">
+                <AlertCircle className="h-3.5 w-3.5 text-[#8A4B06] shrink-0 mt-0.5" />
+                <p className="text-[11px] text-[#8A4B06] font-jakarta">Missing fields affect overdue tracking.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Action panels */}
+          <div className="flex-1 overflow-auto p-4">
             {req.status === 'SPLIT' ? (
-              <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 space-y-2">
-                <p className="text-sm font-semibold text-indigo-800">Split into {req.children?.length ?? 0} vendor POs</p>
-                <p className="text-xs text-indigo-600">Each PO is proceeding through its own approval pipeline.</p>
+              <div className="rounded-[12px] border p-3 space-y-2" style={{ borderColor: '#DDD9F0', background: '#F5F3FF' }}>
+                <p className="text-sm font-semibold font-jakarta" style={{ color: '#4B3FAC' }}>
+                  Split into {req.children?.length ?? 0} POs
+                </p>
                 {req.children?.map((child: any) => (
                   <Link key={child._id} href={`/fms/purchase/${child._id}`}
-                    className="flex items-center justify-between py-1.5 px-2 rounded bg-white border border-indigo-100 hover:border-indigo-300 transition-colors">
-                    <span className="text-xs font-medium text-indigo-700">{child.reqNo}</span>
-                    <StatusBadge status={child.status} />
+                    className="flex items-center justify-between py-1.5 px-2 rounded-[10px] bg-white border hover:border-[#9B8FE0]" style={{ borderColor: '#DDD9F0' }}>
+                    <span className="text-xs font-medium font-jetbrains" style={{ color: '#4B3FAC' }}>{child.reqNo}</span>
+                    <StageBadge req={child} />
                   </Link>
                 ))}
               </div>
-            ) : showAction ? (
+            ) : (
               <>
-                {(isSuperadmin || purchaseRole === 'po_creator') && (req.status === 'REQUESTED' || req.status === 'REJECTED') && (
-                  <POCreatorPanel req={req} onSuccess={onActionSuccess} />
+                {showPOPanel  && <POCreatorPanel req={req} onSuccess={onActionSuccess} />}
+                {showAppPanel && <ApproverPanel  req={req} onSuccess={onActionSuccess} />}
+                {showRcvPanel && <ReceiverPanel  req={req} onSuccess={onActionSuccess} />}
+                {(showPOPanel || showAppPanel || showRcvPanel) &&
+                  <DeadlineSetter reqId={req._id} currentDeadline={req.deadline} onSuccess={onActionSuccess} />}
+                {!showPOPanel && !showAppPanel && !showRcvPanel && !['COMPLETED','CANCELLED'].includes(req.status) && (
+                  <div className="rounded-[12px] border border-[#F5D798] bg-[#FDF3E3] p-3">
+                    <p className="text-sm font-semibold text-[#8A4B06] font-jakarta">Waiting for action</p>
+                    {req.deadline?.dueAt && <p className="text-xs text-[#8A4B06] mt-1 font-jakarta">Due: {fmtIST(req.deadline.dueAt)}</p>}
+                  </div>
                 )}
-                {(isSuperadmin || purchaseRole === 'approver') && (req.status === 'PO_CREATED' || req.status === 'APPROVED' || req.status === 'VENDOR_BILL_UPLOADED') && (
-                  <ApproverPanel req={req} onSuccess={onActionSuccess} />
+                {req.status === 'COMPLETED' && (
+                  <div className="rounded-[12px] border border-[#B8DFC8] bg-[#EAF3EE] p-3">
+                    <p className="text-sm font-semibold text-[#1E5E3F] font-jakarta">Order closed</p>
+                    {req.receipt?.at && <p className="text-xs text-[#3E6B50] mt-1 font-jakarta">{fmtIST(req.receipt.at)}</p>}
+                  </div>
                 )}
-                {(isSuperadmin || purchaseRole === 'receiver') && req.status === 'VENDOR_BILL_UPLOADED' && (
-                  <ReceiverPanel req={req} onSuccess={onActionSuccess} />
-                )}
-                <DeadlineSetter reqId={req._id} currentDeadline={req.deadline} onSuccess={onActionSuccess} />
               </>
-            ) : !['COMPLETED', 'CANCELLED'].includes(req.status) ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                <p className="text-sm font-semibold text-amber-800">Waiting on {holderRole}</p>
-                {req.deadline && <div className="mt-2"><DeadlineChip deadline={req.deadline} /></div>}
-              </div>
-            ) : req.status === 'COMPLETED' ? (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-                <p className="text-sm font-semibold text-emerald-800">Order Closed</p>
-                {req.receipt?.at && <p className="text-xs text-emerald-600 mt-1">{fmtIST(req.receipt.at)}</p>}
-              </div>
-            ) : null}
+            )}
           </div>
 
-          {/* Bottom CTA buttons */}
-          {(showAction && (isPoCreator || isReceiver)) && (
-            <div className="border-t border-gray-200 p-4 flex gap-2 flex-shrink-0">
-              <Button variant="outline" size="sm" className="flex-1 h-9 text-sm">
-                Save as Draft
-              </Button>
-              <Button
-                type="submit"
-                form={isPoCreator ? PO_FORM_ID : RECEIVE_FORM_ID}
-                size="sm"
-                className="flex-1 h-9 bg-[#2F6B47] hover:bg-[#2F6B47]/90 text-sm font-medium"
-              >
-                {isPoCreator ? 'Create Purchase Order' : 'Mark Received'}
-                <ChevronRight className="h-4 w-4 ml-1" />
+          {/* Submit CTA for inline forms */}
+          {(showPOPanel || showRcvPanel) && (
+            <div className="border-t border-[#ECE9E1] p-3 flex gap-2 shrink-0">
+              <Button type="submit" form={showPOPanel ? PO_FORM_ID : RECEIVE_FORM_ID}
+                size="sm" className="flex-1 h-8 text-xs font-jakarta rounded-[10px] text-white" style={{ background: '#1E5E3F' }}>
+                {showPOPanel ? 'Create PO' : 'Mark Received'}
+                <ChevronRight className="h-3.5 w-3.5 ml-1" />
               </Button>
             </div>
           )}
 
+          {/* Cancel */}
           {canCancel && (
-            <div className="border-t border-gray-200 p-4 flex-shrink-0">
-              <Button
-                variant="outline" size="sm" className="w-full text-red-600 border-red-200 h-9"
+            <div className="border-t border-[#ECE9E1] p-3 shrink-0">
+              <Button variant="outline" size="sm" className="w-full text-red-600 border-red-200 h-8 text-xs font-jakarta rounded-[10px]"
                 onClick={() => {
                   const reason = prompt('Reason for cancellation:');
-                  if (reason?.trim()) cancelMutation.mutate(reason.trim());
-                }}
-                disabled={cancelMutation.isPending}
-              >
+                  if (reason?.trim()) cancelMut.mutate(reason.trim());
+                }} disabled={cancelMut.isPending}>
                 Cancel Request
               </Button>
             </div>
           )}
         </div>
+
       </div>
     </div>
   );

@@ -88,6 +88,15 @@ export class PurchaseController {
     );
   }
 
+  @Get('summary')
+  getSummary(@CurrentUser() user: JwtPayload) {
+    return this.purchaseService.getPurchaseSummary(
+      user.sub,
+      user.purchaseRole,
+      user.role === 'superadmin',
+    );
+  }
+
   // ─── Requests ──────────────────────────────────────────────────────────
 
   @Get('requests')

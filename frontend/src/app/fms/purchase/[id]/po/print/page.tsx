@@ -20,7 +20,9 @@ export default function FmsPrintPOPage() {
   });
 
   useEffect(() => {
-    if (req?.po) setTimeout(() => window.print(), 800);
+    if (!req?.po) return;
+    const t = setTimeout(() => window.print(), 800);
+    return () => clearTimeout(t);
   }, [req]);
 
   if (isLoading) return <div className="flex items-center justify-center h-screen text-sm text-gray-500">Loading PO…</div>;
@@ -115,7 +117,7 @@ export default function FmsPrintPOPage() {
             </tr>
           </thead>
           <tbody>
-            {(po.items || req.items).map((item: any, i: number) => (
+            {(po.items || req.items || []).map((item: any, i: number) => (
               <tr key={i} className={i % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
                 <td className="px-3 py-2 border border-gray-200 text-gray-500">{i + 1}</td>
                 <td className="px-3 py-2 border border-gray-200 font-medium">{item.materialName}</td>

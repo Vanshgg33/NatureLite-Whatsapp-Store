@@ -9,16 +9,53 @@ export class PurchaseRequest {
   reqNo: string;
 
   @Prop({
-    type: [{ materialId: String, materialName: String, qtyKg: Number }],
+    type: [{
+      materialId: String,
+      materialName: String,
+      qtyKg: Number,
+      uom: { type: String, default: 'kg' },   // copied from Material.uom at save time
+    }],
     required: true,
   })
-  items: Array<{ materialId: string; materialName: string; qtyKg: number }>;
+  items: Array<{ materialId: string; materialName: string; qtyKg: number; uom?: string }>;
 
   @Prop()
   note: string;
 
   @Prop({ default: 'REQUESTED' })
   status: string;
+
+  // ── New fields (additive — old docs render fine without them) ──────────────
+
+  @Prop({ enum: ['FLOUR_MILL', 'OIL_PRESS', 'PACKING', 'STORE', 'OTHER'] })
+  department: string;
+
+  @Prop()
+  requiredBy: Date;
+
+  @Prop({ enum: ['NORMAL', 'URGENT'], default: 'NORMAL' })
+  priority: string;
+
+  @Prop({ maxlength: 200 })
+  purpose: string;
+
+  /** Cached output of deriveRequestStage — updated on every write */
+  @Prop({ index: true })
+  stage: string;
+
+  @Prop()
+  stageEnteredAt: Date;
+
+  @Prop()
+  closedAt: Date;
+
+  @Prop()
+  cancelReason: string;
+
+  @Prop({ default: false, index: true })
+  isTest: boolean;
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   @Prop({ required: true })
   requestedById: string;
@@ -96,3 +133,5 @@ export const PurchaseRequestSchema = SchemaFactory.createForClass(PurchaseReques
 
 PurchaseRequestSchema.index({ status: 1, createdAt: -1 });
 PurchaseRequestSchema.index({ requestedById: 1, createdAt: -1 });
+PurchaseRequestSchema.index({ stage: 1, stageEnteredAt: 1 });
+PurchaseRequestSchema.index({ 'items.materialId': 1, stage: 1 });

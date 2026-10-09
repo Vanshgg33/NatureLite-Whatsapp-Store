@@ -13,6 +13,14 @@ import { PurchaseVendor, PurchaseVendorDocument } from './schemas/purchase-vendo
 import { AdminUser, AdminUserDocument } from '../admin/schemas/admin-user.schema';
 import { EmailService } from '../email/email.service';
 import { JwtPayload } from '../../common/decorators/current-user.decorator';
+import {
+  Stage,
+  deriveRequestStage,
+  parentStatusToPos,
+  statusToBucket,
+  isOverdue,
+  waitMs,
+} from './lib/stage';
 
 const TRANSITIONS: Record<string, { next: string[]; roles: string[] }> = {
   REQUESTED: { next: ['PO_CREATED', 'CANCELLED'], roles: ['po_creator', 'superadmin'] },
@@ -33,6 +41,18 @@ function effectiveRole(user: JwtPayload): string {
   return user.purchaseRole || 'none';
 }
 
+const STAGE_TO_ROLE: Record<string, string> = {
+  NEEDS_PO: 'po_creator',
+  AWAITING_APPROVAL: 'approver',
+  AWAITING_DELIVERY: 'receiver',
+  PARTLY_RECEIVED: 'receiver',
+  READY_TO_CLOSE: 'po_creator',
+};
+
+const OPEN_STAGE_SET = new Set<Stage>([
+  'NEEDS_PO', 'AWAITING_APPROVAL', 'AWAITING_DELIVERY', 'PARTLY_RECEIVED', 'READY_TO_CLOSE',
+]);
+
 @Injectable()
 export class PurchaseService {
   constructor(
@@ -42,6 +62,42 @@ export class PurchaseService {
     @InjectModel(AdminUser.name) private adminModel: Model<AdminUserDocument>,
     private emailService: EmailService,
   ) {}
+
+  // ─── Stage caching ────────────────────────────────────────────────────────
+
+  private async recomputeAndCacheStage(req: PurchaseRequestDocument): Promise<Stage> {
+    let pos: { bucket: ReturnType<typeof statusToBucket> }[];
+
+    if (req.status === 'SPLIT') {
+      const children = await this.requestModel.find({ parentId: req._id.toString() }).lean();
+      pos = children.map(c => ({ bucket: statusToBucket(c.status) }));
+    } else {
+      pos = parentStatusToPos(req.status);
+    }
+
+    const newStage = deriveRequestStage(req, pos);
+    const prevStage = req.stage as Stage | undefined;
+
+    if (newStage !== prevStage) {
+      req.stage = newStage;
+      req.stageEnteredAt = new Date();
+    } else if (!req.stageEnteredAt) {
+      req.stageEnteredAt = (req as any).updatedAt || (req as any).createdAt || new Date();
+    }
+
+    req.markModified('stage');
+    req.markModified('stageEnteredAt');
+    return newStage;
+  }
+
+  /** When a child PO is saved, propagate stage to its parent */
+  private async propagateToParent(childReq: PurchaseRequestDocument): Promise<void> {
+    if (!childReq.parentId) return;
+    const parent = await this.requestModel.findById(childReq.parentId);
+    if (!parent) return;
+    await this.recomputeAndCacheStage(parent);
+    await parent.save();
+  }
 
   // ─── Materials ────────────────────────────────────────────────────────────
 
@@ -80,7 +136,7 @@ export class PurchaseService {
   async createMaterial(data: { name: string; category?: string }) {
     return this.materialModel.create({
       name: data.name.trim(),
-      category: data.category || 'General',
+      category: data.category || 'OTHER',
     });
   }
 
@@ -154,22 +210,49 @@ export class PurchaseService {
     if (filters.status) query.status = filters.status;
     if (filters.mine && filters.userId) query.requestedById = filters.userId;
     query.parentId = { $exists: false };
-    return this.requestModel.find(query).sort({ createdAt: -1 }).lean();
+    query.isTest = { $ne: true };
+
+    const requests = await this.requestModel.find(query).sort({ createdAt: -1 }).lean();
+
+    // Enrich each request with its derived stage (use cached stage if present)
+    const splitIds = requests.filter(r => r.status === 'SPLIT' && !r.stage).map(r => r._id.toString());
+    const childMap = new Map<string, any[]>();
+    if (splitIds.length > 0) {
+      const children = await this.requestModel.find({ parentId: { $in: splitIds } }).lean();
+      for (const c of children) {
+        if (!childMap.has(c.parentId!)) childMap.set(c.parentId!, []);
+        childMap.get(c.parentId!)!.push(c);
+      }
+    }
+
+    return requests.map(r => {
+      if (r.stage) return r; // cached — trust it
+      // Derive on the fly for uncached docs
+      const children = childMap.get(r._id.toString()) || [];
+      const pos = children.length > 0
+        ? children.map(c => ({ bucket: statusToBucket(c.status) }))
+        : parentStatusToPos(r.status);
+      const derivedStage = deriveRequestStage(r, pos);
+      return { ...r, stage: derivedStage };
+    });
   }
+
+  // ─── Stats (legacy endpoint — kept for backward compat) ───────────────────
 
   async getStats(userId: string, purchaseRole: string | undefined, isSuperadmin: boolean) {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const baseFilter = { parentId: { $exists: false }, isTest: { $ne: true } };
 
     const [open, completedThisMonth, total] = await Promise.all([
-      this.requestModel.countDocuments({ status: { $nin: ['COMPLETED', 'CANCELLED'] } }),
-      this.requestModel.countDocuments({ status: 'COMPLETED', updatedAt: { $gte: startOfMonth } }),
-      this.requestModel.countDocuments(),
+      this.requestModel.countDocuments({ ...baseFilter, status: { $nin: ['COMPLETED', 'CANCELLED'] } }),
+      this.requestModel.countDocuments({ ...baseFilter, status: 'COMPLETED', updatedAt: { $gte: startOfMonth } }),
+      this.requestModel.countDocuments(baseFilter),
     ]);
 
     const roleToStatuses: Record<string, string[]> = {
       po_creator: ['REQUESTED', 'REJECTED'],
-      approver: ['PO_CREATED', 'APPROVED'],
+      approver: ['PO_CREATED', 'APPROVED', 'SPLIT'],
       receiver: ['VENDOR_BILL_UPLOADED'],
     };
 
@@ -177,20 +260,118 @@ export class PurchaseService {
     const myAction = isSuperadmin
       ? open
       : myActionStatuses
-      ? await this.requestModel.countDocuments({ status: { $in: myActionStatuses } })
+      ? await this.requestModel.countDocuments({ ...baseFilter, status: { $in: myActionStatuses } })
       : 0;
 
     return { open, myAction, completedThisMonth, total };
   }
+
+  // ─── Summary — one source of truth ────────────────────────────────────────
+
+  async getPurchaseSummary(userId: string, purchaseRole: string | undefined, isSuperadmin: boolean) {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const baseFilter = { parentId: { $exists: false }, isTest: { $ne: true } };
+
+    const allRequests = await this.requestModel.find(baseFilter).sort({ createdAt: -1 }).lean();
+
+    // Load children for any SPLIT parent that doesn't have a cached stage
+    const needsChildren = allRequests.filter(r => r.status === 'SPLIT' && !r.stage).map(r => r._id.toString());
+    const childMap = new Map<string, any[]>();
+    if (needsChildren.length > 0) {
+      const children = await this.requestModel.find({ parentId: { $in: needsChildren } }).lean();
+      for (const c of children) {
+        if (!childMap.has(c.parentId!)) childMap.set(c.parentId!, []);
+        childMap.get(c.parentId!)!.push(c);
+      }
+    }
+
+    // Derive stage for every request
+    const withStage = allRequests.map(r => {
+      const derivedStage: Stage = r.stage
+        ? (r.stage as Stage)
+        : (() => {
+            const children = childMap.get(r._id.toString()) || [];
+            const pos = children.length > 0
+              ? children.map(c => ({ bucket: statusToBucket(c.status) }))
+              : parentStatusToPos(r.status);
+            return deriveRequestStage(r, pos);
+          })();
+      return { ...r, derivedStage };
+    });
+
+    const openReqs    = withStage.filter(r => OPEN_STAGE_SET.has(r.derivedStage));
+    const closedReqs  = withStage.filter(r => r.derivedStage === 'CLOSED');
+    const cancelReqs  = withStage.filter(r => r.derivedStage === 'CANCELLED');
+
+    const byStage: Record<string, number> = {};
+    for (const r of withStage) byStage[r.derivedStage] = (byStage[r.derivedStage] || 0) + 1;
+
+    const myAction = isSuperadmin
+      ? openReqs.length
+      : openReqs.filter(r => STAGE_TO_ROLE[r.derivedStage] === purchaseRole).length;
+
+    const overdueReqs = openReqs.filter(r => isOverdue(r, r.derivedStage, now));
+
+    // Pipeline kg (kg uom only; litres reported separately)
+    let pipelineKg = 0;
+    let pipelineLines = 0;
+    for (const r of openReqs) {
+      for (const item of (r.items || [])) {
+        const uom = (item.uom || 'kg').toLowerCase();
+        if (uom === 'kg') { pipelineKg += item.qtyKg || 0; pipelineLines++; }
+      }
+    }
+
+    let oldestOpen: { prNo: string; days: number; title: string } | null = null;
+    if (openReqs.length > 0) {
+      const oldest = openReqs.reduce((a, b) => waitMs(b, now) > waitMs(a, now) ? b : a);
+      oldestOpen = {
+        prNo: oldest.reqNo,
+        days: Math.round(waitMs(oldest, now) / 86_400_000),
+        title: oldest.items?.[0]?.materialName || oldest.reqNo,
+      };
+    }
+
+    const closedThisMonth = closedReqs.filter(r => {
+      const at = r.closedAt || r.updatedAt;
+      return at && new Date(at) >= startOfMonth;
+    }).length;
+
+    return {
+      open: openReqs.length,
+      byStage,
+      myAction,
+      overdue: overdueReqs.length,
+      overdueItems: overdueReqs.map(r => ({ prNo: r.reqNo, days: Math.round(waitMs(r, now) / 86_400_000) })),
+      oldestOpen,
+      pipelineKg: Math.round(pipelineKg),
+      pipelineLines,
+      closedThisMonth,
+      counts: {
+        open: openReqs.length,
+        completed: closedReqs.length,
+        cancelled: cancelReqs.length,
+        all: withStage.length,
+      },
+      mixByCategory: [] as { category: string; kg: number }[], // populated in Phase 3
+    };
+  }
+
+  // ─── Single request ────────────────────────────────────────────────────────
 
   async getRequest(id: string): Promise<any> {
     const req = await this.requestModel.findById(id).lean();
     if (!req) throw new NotFoundException('Request not found');
     if (req.status === 'SPLIT') {
       const children = await this.requestModel.find({ parentId: id }).sort({ reqNo: 1 }).lean();
-      return { ...req, children };
+      const pos = children.map(c => ({ bucket: statusToBucket(c.status) }));
+      const stage = deriveRequestStage(req, pos);
+      return { ...req, children, stage };
     }
-    return req;
+    const pos = parentStatusToPos(req.status);
+    const stage = req.stage || deriveRequestStage(req, pos);
+    return { ...req, stage };
   }
 
   async createRequest(
@@ -198,6 +379,10 @@ export class PurchaseService {
     data: {
       items: Array<{ materialId: string; materialName: string; qtyKg: number }>;
       note?: string;
+      department?: string;
+      requiredBy?: string;
+      priority?: string;
+      purpose?: string;
     },
   ) {
     const role = effectiveRole(user);
@@ -218,6 +403,12 @@ export class PurchaseService {
       items: data.items,
       note: data.note || '',
       status: 'REQUESTED',
+      stage: 'NEEDS_PO',
+      stageEnteredAt: new Date(),
+      department: data.department,
+      requiredBy: data.requiredBy ? new Date(data.requiredBy) : undefined,
+      priority: data.priority || 'NORMAL',
+      purpose: data.purpose,
       requestedById: user.sub,
       requestedByName: user.name || 'Unknown',
       requestedByEmail: '',
@@ -253,10 +444,7 @@ export class PurchaseService {
     const poCount = await this.requestModel.countDocuments({ 'po.poNo': { $exists: true } });
     const poNo = `PO-${year}-${String(poCount + 1).padStart(4, '0')}`;
 
-    const poItems = data.items.map((item) => ({
-      ...item,
-      amount: item.qtyKg * item.ratePerKg,
-    }));
+    const poItems = data.items.map(item => ({ ...item, amount: item.qtyKg * item.ratePerKg }));
     const totalAmount = poItems.reduce((s, i) => s + i.amount, 0);
 
     req.po = {
@@ -278,6 +466,7 @@ export class PurchaseService {
       byName: user.name || 'System',
       at: new Date(),
     });
+    await this.recomputeAndCacheStage(req);
     await req.save();
 
     this.sendStatusEmail(req.toObject(), 'PO_CREATED').catch(() => null);
@@ -328,12 +517,9 @@ export class PurchaseService {
 
     for (const [vendorName, vItems] of vendorGroups) {
       const first = vItems[0];
-      const poItems = vItems.map((i) => ({
-        materialId: i.materialId,
-        materialName: i.materialName,
-        qtyKg: i.qtyKg,
-        ratePerKg: i.ratePerKg,
-        amount: i.qtyKg * i.ratePerKg,
+      const poItems = vItems.map(i => ({
+        materialId: i.materialId, materialName: i.materialName,
+        qtyKg: i.qtyKg, ratePerKg: i.ratePerKg, amount: i.qtyKg * i.ratePerKg,
       }));
       const totalAmount = poItems.reduce((s, i) => s + i.amount, 0);
       poCount++;
@@ -343,19 +529,19 @@ export class PurchaseService {
       const child = await this.requestModel.create({
         reqNo: childReqNo,
         parentId: id,
-        items: vItems.map((i) => ({ materialId: i.materialId, materialName: i.materialName, qtyKg: i.qtyKg })),
+        items: vItems.map(i => ({ materialId: i.materialId, materialName: i.materialName, qtyKg: i.qtyKg })),
         note: req.note || '',
         status: 'PO_CREATED',
+        stage: 'AWAITING_APPROVAL',
+        stageEnteredAt: new Date(),
         requestedById: req.requestedById,
         requestedByName: req.requestedByName,
         requestedByEmail: req.requestedByEmail || '',
         po: {
-          poNo,
-          vendorName,
+          poNo, vendorName,
           vendorPhone: first.vendorPhone || '',
           vendorAddress: first.vendorAddress || '',
-          items: poItems,
-          totalAmount,
+          items: poItems, totalAmount,
           expectedDelivery: data.expectedDelivery || '',
           terms: first.terms || '',
           createdByName: user.name || 'System',
@@ -371,11 +557,12 @@ export class PurchaseService {
 
     req.status = 'SPLIT';
     req.timeline.push({
-      action: `Split into ${children.length} vendor PO${children.length > 1 ? 's' : ''} (${children.map((c) => c.po.vendorName).join(', ')})`,
+      action: `Split into ${children.length} vendor PO${children.length > 1 ? 's' : ''} (${children.map((c: any) => c.po.vendorName).join(', ')})`,
       status: 'PO_CREATED',
       byName: user.name || 'System',
       at: new Date(),
     });
+    await this.recomputeAndCacheStage(req);
     await req.save();
 
     this.sendStatusEmail(req.toObject(), 'SPLIT').catch(() => null);
@@ -397,12 +584,7 @@ export class PurchaseService {
       throw new BadRequestException('Rejection reason is required');
     }
 
-    req.decision = {
-      action: data.action,
-      reason: data.reason || '',
-      byName: user.name || 'System',
-      at: new Date(),
-    };
+    req.decision = { action: data.action, reason: data.reason || '', byName: user.name || 'System', at: new Date() };
     req.status = data.action;
     req.timeline.push({
       action: data.action === 'APPROVED' ? 'PO Approved' : `PO Rejected: ${data.reason}`,
@@ -410,7 +592,9 @@ export class PurchaseService {
       byName: user.name || 'System',
       at: new Date(),
     });
+    await this.recomputeAndCacheStage(req);
     await req.save();
+    await this.propagateToParent(req);
 
     this.sendStatusEmail(req.toObject(), data.action).catch(() => null);
     return req;
@@ -442,7 +626,9 @@ export class PurchaseService {
       });
       this.sendStatusEmail(req.toObject(), 'VENDOR_BILL_UPLOADED').catch(() => null);
     }
+    await this.recomputeAndCacheStage(req);
     await req.save();
+    await this.propagateToParent(req);
     return req;
   }
 
@@ -453,7 +639,7 @@ export class PurchaseService {
     if (!['approver', 'superadmin'].includes(role)) throw new ForbiddenException();
     if (req.status !== 'VENDOR_BILL_UPLOADED') throw new ForbiddenException('Can only delete bills in VENDOR_BILL_UPLOADED status');
 
-    req.vendorBills = (req.vendorBills || []).filter((b) => b.publicId !== publicId);
+    req.vendorBills = (req.vendorBills || []).filter(b => b.publicId !== publicId);
     req.markModified('vendorBills');
 
     if (req.vendorBills.length === 0) {
@@ -465,7 +651,9 @@ export class PurchaseService {
         at: new Date(),
       });
     }
+    await this.recomputeAndCacheStage(req);
     await req.save();
+    await this.propagateToParent(req);
     return req;
   }
 
@@ -487,10 +675,7 @@ export class PurchaseService {
 
     req.receipt = {
       gateBill: data.gateBill,
-      receivedItems: data.receivedItems.map((i) => ({
-        ...i,
-        varianceKg: i.receivedKg - i.orderedKg,
-      })),
+      receivedItems: data.receivedItems.map(i => ({ ...i, varianceKg: i.receivedKg - i.orderedKg })),
       remarks: data.remarks || '',
       byName: user.name || 'System',
       at: new Date(),
@@ -502,7 +687,9 @@ export class PurchaseService {
       byName: user.name || 'System',
       at: new Date(),
     });
+    await this.recomputeAndCacheStage(req);
     await req.save();
+    await this.propagateToParent(req);
 
     this.sendStatusEmail(req.toObject(), 'COMPLETED').catch(() => null);
     return req;
@@ -516,7 +703,6 @@ export class PurchaseService {
     }
     const due = new Date(dueAt);
     if (isNaN(due.getTime())) throw new BadRequestException('Invalid date');
-
     req.deadline = { stage: req.status, dueAt: due, setByName: user.name || 'System', setAt: new Date() };
     await req.save();
     return req;
@@ -535,12 +721,14 @@ export class PurchaseService {
     }
 
     req.status = 'CANCELLED';
+    req.cancelReason = reason;
     req.timeline.push({
       action: `Cancelled: ${reason}`,
       status: 'CANCELLED',
       byName: user.name || 'System',
       at: new Date(),
     });
+    await this.recomputeAndCacheStage(req);
     await req.save();
 
     this.sendStatusEmail(req.toObject(), 'CANCELLED').catch(() => null);
@@ -562,8 +750,8 @@ export class PurchaseService {
 
     const allEmails = [
       ...new Set([
-        ...purchaseUsers.map((u) => u.email),
-        ...superadmins.map((u) => u.email),
+        ...purchaseUsers.map((u: any) => u.email),
+        ...superadmins.map((u: any) => u.email),
       ]),
     ].filter(Boolean);
 
@@ -610,7 +798,7 @@ export class PurchaseService {
     const now = this.fmtIST(new Date());
 
     const itemsList = (req.items || [])
-      .map((i: any) => `<li>${i.materialName} — ${i.qtyKg} KG</li>`)
+      .map((i: any) => `<li>${i.materialName} — ${i.qtyKg} ${i.uom || 'kg'}</li>`)
       .join('');
 
     const lastEntry = req.timeline?.[req.timeline.length - 1];
@@ -632,8 +820,8 @@ export class PurchaseService {
          <table style="width:100%;border-collapse:collapse;font-size:13px">
            <tr style="background:#1E3D2B;color:#fff">
              <th style="padding:6px 8px;text-align:left">Material</th>
-             <th style="padding:6px 8px;text-align:right">Ordered (KG)</th>
-             <th style="padding:6px 8px;text-align:right">Received (KG)</th>
+             <th style="padding:6px 8px;text-align:right">Ordered</th>
+             <th style="padding:6px 8px;text-align:right">Received</th>
              <th style="padding:6px 8px;text-align:right">Variance</th>
            </tr>
            ${req.receipt.receivedItems.map((i: any) => {
