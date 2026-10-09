@@ -5,7 +5,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Package, Plus, Check, X, Sparkles } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
-import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -76,22 +75,22 @@ export default function FmsPurchaseMaterialsPage() {
 
   if (!isSuperadmin) {
     return (
-      <div className="flex flex-col h-screen">
-        <Header title="Purchase Materials" icon={<Package className="h-6 w-6 text-amber-600" />} />
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-gray-500">Superadmin only.</p>
-        </div>
+      <div className="flex h-full items-center justify-center" style={{ background: '#F7F6F2' }}>
+        <p className="text-sm text-[#66706A] font-jakarta">Superadmin only.</p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-screen">
-      <Header
-        title="Purchase Materials"
-        description="Master list of raw materials for procurement"
-        icon={<Package className="h-6 w-6 text-amber-600" />}
-      />
+    <div className="min-h-full" style={{ background: '#F7F6F2' }}>
+      <div className="bg-white border-b border-[#ECE9E1] px-6 py-4">
+        <div className="flex items-center gap-2 text-xs text-[#8A9490] mb-1 font-jakarta">
+          <Package className="h-3.5 w-3.5" />
+          <span>Materials</span>
+        </div>
+        <h1 className="font-fraunces text-[22px] font-semibold text-[#18211C]">Purchase Materials</h1>
+        <p className="text-xs text-[#8A9490] font-jakarta mt-0.5">Master list of raw materials for procurement</p>
+      </div>
 
       <div className="flex-1 overflow-auto p-6 space-y-6">
         <form
