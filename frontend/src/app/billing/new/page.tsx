@@ -534,7 +534,7 @@ export default function NewBillPage() {
                     </div>
                   )}
                 </div>
-                <button onClick={() => setCustomer(null)} className="text-gray-300 hover:text-red-500 shrink-0 transition-colors">
+                <button onClick={() => { setCustomer(null); setOrderTag(''); setDeliveryUserId(''); setDeliveryUserName(''); }} className="text-gray-300 hover:text-red-500 shrink-0 transition-colors">
                   <X className="h-4 w-4" />
                 </button>
               </div>
