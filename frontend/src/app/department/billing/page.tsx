@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { FileText, ArrowRight, CheckCircle2, Truck, Search, ArrowLeftRight, Trash2 } from 'lucide-react';
+import { FileText, ArrowRight, CheckCircle2, Truck, Search, ArrowLeftRight, Trash2, Pin } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
@@ -126,6 +126,13 @@ export default function BillingDashboardPage() {
     },
   });
 
+  const setPermanent = useMutation({
+    mutationFn: ({ userId, riderId }: { userId: string; riderId: string }) =>
+      api.updateUser(userId, { assignedDeliveryUserId: riderId }),
+    onSuccess: () => toast({ title: 'Default rider saved' }),
+    onError: () => toast({ title: 'Failed to save default rider', variant: 'destructive' }),
+  });
+
   const deleteOrder = useMutation({
     mutationFn: (orderId: string) => api.dismissOrderFromView(orderId, 'billing'),
     onMutate: async (orderId) => {
@@ -208,8 +215,10 @@ export default function BillingDashboardPage() {
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {orders.map((order) => {
-              const riderId = selectedRider[order._id] ?? '';
+              const riderId = selectedRider[order._id] ?? order.assignedDeliveryUserId ?? '';
               const canSend = !!riderId;
+              const userId = typeof order.user === 'string' ? order.user : (order.user as any)?._id;
+              const isDefaultRider = !!riderId && riderId === order.assignedDeliveryUserId && !selectedRider[order._id];
 
               return (
                 <Card key={order._id} className="border-sky-50 shadow-sm">
@@ -295,6 +304,21 @@ export default function BillingDashboardPage() {
                           ))}
                         </SelectContent>
                       </Select>
+                      {isDefaultRider ? (
+                        <span className="text-[11px] text-gray-400 flex items-center gap-1">
+                          <Pin className="h-3 w-3 fill-current" /> Default rider
+                        </span>
+                      ) : riderId && userId ? (
+                        <button
+                          type="button"
+                          onClick={() => setPermanent.mutate({ userId, riderId })}
+                          disabled={setPermanent.isPending}
+                          className="flex items-center gap-1 text-[11px] text-green-700 hover:underline disabled:opacity-50"
+                        >
+                          <Pin className="h-3 w-3" />
+                          {setPermanent.isPending ? 'Saving…' : `Make default for ${order.shippingAddress.name.split(' ')[0]}`}
+                        </button>
+                      ) : null}
                     </div>
 
                     <div className="flex gap-2">
