@@ -18,6 +18,7 @@ import {
   type Segment,
   type OrderForCycle,
 } from './engine/status-model';
+import { BillingBill } from '../billing/schemas/billing-bill.schema';
 
 interface SettingsSnapshot {
   reorderCycles: Record<string, number>;
@@ -36,6 +37,7 @@ export class CrmEngineService implements OnModuleInit {
     @InjectModel(CrmEngineRun.name) private runModel: Model<CrmEngineRunDocument>,
     @InjectModel('Order') private orderModel: Model<any>,
     @InjectModel('User') private userModel: Model<any>,
+    @InjectModel(BillingBill.name) private billModel: Model<any>,
   ) {}
 
   async onModuleInit() {
@@ -70,7 +72,7 @@ export class CrmEngineService implements OnModuleInit {
     const settings = await this.getSettings();
     const today = getISTDate();
 
-    const [user, rows] = await Promise.all([
+    const [user, orderRows, billRows] = await Promise.all([
       this.userModel.findById(uid).select('name phone').lean<{ name?: string; phone?: string }>(),
       this.orderModel.aggregate([
         { $match: { user: uid, status: 'delivered' } },
@@ -110,7 +112,31 @@ export class CrmEngineService implements OnModuleInit {
         },
         { $sort: { createdAt: -1 } },
       ]),
+      this.billModel.aggregate([
+        { $match: { customerId: uid, status: 'active' } },
+        { $sort: { createdAt: -1 } },
+        { $unwind: '$items' },
+        {
+          $group: {
+            _id: '$_id',
+            createdAt: { $first: '$createdAt' },
+            total: { $first: '$grandTotal' },
+            items: {
+              $push: {
+                productName: '$items.name',
+                qty: '$items.qty',
+                categoryName: '',
+              },
+            },
+          },
+        },
+        { $sort: { createdAt: -1 } },
+      ]),
     ]);
+
+    const rows = [...orderRows, ...billRows].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
 
     const nameMissing = this.isNameMissing(user?.name, user?.phone);
 

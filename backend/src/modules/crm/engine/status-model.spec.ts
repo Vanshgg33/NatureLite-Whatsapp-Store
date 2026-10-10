@@ -8,6 +8,7 @@ import {
   computeLtvPct,
   DEFAULT_THRESHOLDS,
   DEFAULT_VIP,
+  OrderForCycle,
 } from './status-model';
 
 // Fixed reference: 2026-10-10 00:00:00 UTC = 2026-10-10 05:30:00 IST (same calendar date)
@@ -114,6 +115,24 @@ describe('resolveCycle', () => {
     const result = resolveCycle([], cycles, fallback);
     expect(result.source).toBe('fallback');
     expect(result.days).toBe(30);
+  });
+
+  it('uses fallback when single billing row has empty categories', () => {
+    const orders: OrderForCycle[] = [
+      { date: new Date('2026-10-10T00:00:00.000Z'), categories: [] },
+    ];
+    expect(resolveCycle(orders, { Oils: 30 }, 45)).toEqual({ days: 45, source: 'fallback' });
+  });
+
+  it('uses personal cycle when multiple billing rows have empty categories', () => {
+    const orders: OrderForCycle[] = [
+      { date: new Date('2026-10-10T00:00:00.000Z'), categories: [] },
+      { date: new Date('2026-09-09T00:00:00.000Z'), categories: [] },
+      { date: new Date('2026-08-09T00:00:00.000Z'), categories: [] },
+    ];
+    const result = resolveCycle(orders, { Oils: 30 }, 45);
+    expect(result.source).toBe('personal');
+    expect(result.days).toBe(31);
   });
 });
 

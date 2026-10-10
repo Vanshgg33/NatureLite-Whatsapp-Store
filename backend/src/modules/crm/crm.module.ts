@@ -5,6 +5,7 @@ import { CrmCallLog, CrmCallLogSchema } from './schemas/crm-call-log.schema';
 import { CrmCampaign, CrmCampaignSchema } from './schemas/crm-campaign.schema';
 import { CrmSettings, CrmSettingsSchema } from './schemas/crm-settings.schema';
 import { CrmEngineRun, CrmEngineRunSchema } from './schemas/crm-engine-run.schema';
+import { BillingBill, BillingBillSchema } from '../billing/schemas/billing-bill.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { Order, OrderSchema } from '../orders/schemas/order.schema';
 import { AdminUser, AdminUserSchema } from '../admin/schemas/admin-user.schema';
@@ -21,6 +22,7 @@ import { CrmController } from './crm.controller';
       { name: CrmCampaign.name, schema: CrmCampaignSchema },
       { name: CrmSettings.name, schema: CrmSettingsSchema },
       { name: CrmEngineRun.name, schema: CrmEngineRunSchema },
+      { name: BillingBill.name, schema: BillingBillSchema },
       { name: User.name, schema: UserSchema },
       { name: Order.name, schema: OrderSchema },
       { name: AdminUser.name, schema: AdminUserSchema },
