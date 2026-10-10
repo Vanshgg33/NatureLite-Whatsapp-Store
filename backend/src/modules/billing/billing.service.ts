@@ -1,6 +1,7 @@
 import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { CrmEngineService } from '../crm/crm-engine.service';
 import { CustomerTag, TAG_PRIORITY } from './schemas/billing-customer.schema';
 import { BillingTagPrice, BillingTagPriceDocument } from './schemas/billing-tag-price.schema';
 import { BillingBill, BillingBillDocument, BillLineItem } from './schemas/billing-bill.schema';
@@ -15,6 +16,7 @@ export class BillingService {
     @InjectModel(BillingBill.name) private billModel: Model<BillingBillDocument>,
     @InjectModel(BillingCounter.name) private counterModel: Model<BillingCounterDocument>,
     @InjectModel('Product') private productModel: Model<any>,
+    private readonly crmEngine: CrmEngineService,
   ) {}
 
   // Map a User document to the billing customer shape the frontend expects
@@ -102,6 +104,7 @@ export class BillingService {
       billingAddresses,
       isActive: true,
     });
+    this.crmEngine.refreshUser(u._id).catch(() => {});
     return this.mapUser(u);
   }
 
@@ -327,6 +330,7 @@ export class BillingService {
       $inc: { outstanding: amountDue },
     });
 
+    this.crmEngine.refreshUser(data.customerId).catch(() => {});
     return bill;
   }
 
