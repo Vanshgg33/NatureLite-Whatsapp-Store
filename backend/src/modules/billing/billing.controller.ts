@@ -88,11 +88,21 @@ export class BillingController {
 
   // ─── Bills ────────────────────────────────────────────────────────────────
 
+  @Patch('customers/:id/default-delivery')
+  setDefaultDelivery(
+    @Param('id') id: string,
+    @Body() body: { deliveryUserId: string | null },
+  ) {
+    return this.billingService.setDefaultDelivery(id, body.deliveryUserId);
+  }
+
   @Post('bills')
   createBill(@Body() body: {
     customerId: string;
     billingAddress?: string;
     orderTag: string;
+    deliveryUserId?: string;
+    deliveryUserName?: string;
     items: Array<{
       productId: string;
       name: string;

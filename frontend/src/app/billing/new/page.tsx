@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useMutation } from '@tanstack/react-query';
-import { Search, Plus, X, Printer, Save, User, Package, Trash2, ChevronLeft } from 'lucide-react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { Search, Plus, X, Printer, Save, User, Package, Trash2, ChevronLeft, Pin } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useDebouncedValue, cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
@@ -26,6 +26,7 @@ const TAG_COLORS: Record<string, string> = {
 };
 
 const ALL_TAGS: CTag[] = ['B2B', 'Transport', 'Home Delivery', 'Store/Retail', 'Wholesale', 'Retail'];
+const DELIVERY_TAGS: CTag[] = ['Home Delivery', 'Transport'];
 const GST_RATES = [0, 5, 12, 18, 28];
 
 interface LineItem {
@@ -267,6 +268,9 @@ export default function NewBillPage() {
   const [customer, setCustomer] = useState<any | null>(null);
   const [selectedAddrIdx, setSelectedAddrIdx] = useState(0);
   const [orderTag, setOrderTag] = useState('');
+  const [deliveryUserId, setDeliveryUserId] = useState('');
+  const [deliveryUserName, setDeliveryUserName] = useState('');
+  const [settingPermanent, setSettingPermanent] = useState(false);
   const [items, setItems] = useState<LineItem[]>([]);
   const [amountPaid, setAmountPaid] = useState(0);
   const [notes, setNotes] = useState('');
@@ -274,6 +278,21 @@ export default function NewBillPage() {
   const [newAddrLabel, setNewAddrLabel] = useState('');
   const [newAddrLine, setNewAddrLine] = useState('');
   const [addingAddr, setAddingAddr] = useState(false);
+
+  const needsDelivery = DELIVERY_TAGS.includes(orderTag as CTag);
+  const { data: deliveryStaff = [] } = useQuery({
+    queryKey: ['delivery-staff'],
+    queryFn: () => api.getDeliveryStaff(),
+    enabled: needsDelivery,
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    if (deliveryUserId && deliveryStaff.length) {
+      const match = deliveryStaff.find((d: any) => d._id === deliveryUserId);
+      if (match) setDeliveryUserName(match.name);
+    }
+  }, [deliveryUserId, deliveryStaff]);
 
   const subtotal = Math.round(items.reduce((s, i) => s + i.taxableAmount, 0) * 100) / 100;
   const totalGst = Math.round(items.reduce((s, i) => s + i.gstAmount, 0) * 100) / 100;
@@ -288,6 +307,12 @@ export default function NewBillPage() {
     setSelectedAddrIdx(Math.max(0, defaultAddr));
     const primary = TAG_PRIORITY.find(t => c.tags?.includes(t)) ?? '';
     setOrderTag(primary);
+    if (c.assignedDeliveryUserId) {
+      setDeliveryUserId(c.assignedDeliveryUserId);
+    } else {
+      setDeliveryUserId('');
+      setDeliveryUserName('');
+    }
   };
 
   const addItem = (item: LineItem) => {
@@ -342,6 +367,20 @@ export default function NewBillPage() {
     return () => window.removeEventListener('keydown', handler);
   }, [customer, items, amountPaid, orderTag, notes]);
 
+  const makePermanent = async () => {
+    if (!customer || !deliveryUserId) return;
+    setSettingPermanent(true);
+    try {
+      const updated = await api.setDefaultDeliveryForBillingCustomer(customer._id, deliveryUserId);
+      setCustomer(updated);
+      toast({ title: `${deliveryUserName} set as permanent delivery for ${customer.name}` });
+    } catch {
+      toast({ title: 'Failed to set permanent delivery', variant: 'destructive' });
+    } finally {
+      setSettingPermanent(false);
+    }
+  };
+
   const saveMutation = useMutation({
     mutationFn: async (print: boolean) => {
       if (!customer) throw new Error('Select a customer first');
@@ -352,6 +391,8 @@ export default function NewBillPage() {
         customerId: customer._id,
         billingAddress: address,
         orderTag,
+        deliveryUserId: deliveryUserId || undefined,
+        deliveryUserName: deliveryUserName || undefined,
         items: items.map(i => ({
           productId: i.productId,
           name: i.name,
@@ -679,6 +720,47 @@ export default function NewBillPage() {
               </span>
             </div>
           </div>
+
+          {/* Delivery */}
+          {needsDelivery && (
+            <div className="px-4 py-3 border-b border-gray-100 space-y-2">
+              <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Delivery Person</label>
+              <select
+                value={deliveryUserId}
+                onChange={e => {
+                  const id = e.target.value;
+                  setDeliveryUserId(id);
+                  const match = deliveryStaff.find((d: any) => d._id === id);
+                  setDeliveryUserName(match?.name ?? '');
+                }}
+                className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f]/30 bg-white"
+              >
+                <option value="">— Select —</option>
+                {deliveryStaff.map((d: any) => (
+                  <option key={d._id} value={d._id}>{d.name}</option>
+                ))}
+              </select>
+              {deliveryUserId && deliveryUserId !== customer?.assignedDeliveryUserId && (
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={makePermanent}
+                    disabled={settingPermanent}
+                    className="flex items-center gap-1.5 text-[11px] text-[#2d7a4f] hover:underline disabled:opacity-50"
+                  >
+                    <Pin className="h-3 w-3" />
+                    {settingPermanent ? 'Saving…' : `Make permanent for ${customer?.name?.split(' ')[0]}`}
+                  </button>
+                  <span className="text-[11px] text-gray-400">or just this bill ↑</span>
+                </div>
+              )}
+              {deliveryUserId && deliveryUserId === customer?.assignedDeliveryUserId && (
+                <span className="text-[11px] text-gray-400 flex items-center gap-1">
+                  <Pin className="h-3 w-3 fill-current" /> Auto-filled from customer default
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Notes */}
           <div className="px-4 py-3 border-b border-gray-100">

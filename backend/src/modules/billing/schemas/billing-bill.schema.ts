@@ -66,6 +66,12 @@ export class BillingBill {
   status: string;
 
   @Prop()
+  deliveryUserId?: string;
+
+  @Prop()
+  deliveryUserName?: string;
+
+  @Prop()
   notes?: string;
 
   createdAt: Date;

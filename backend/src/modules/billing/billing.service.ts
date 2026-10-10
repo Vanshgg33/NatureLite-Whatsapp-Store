@@ -43,6 +43,7 @@ export class BillingService {
       orderCount: u.totalOrders ?? 0,
       totalPurchase: u.totalSpent ?? 0,
       outstanding: u.outstanding ?? 0,
+      assignedDeliveryUserId: u.assignedDeliveryUserId,
     };
   }
 
@@ -227,10 +228,22 @@ export class BillingService {
 
   // ─── Bills ───────────────────────────────────────────────────────────────
 
+  async setDefaultDelivery(customerId: string, deliveryUserId: string | null) {
+    const u = await this.userModel.findByIdAndUpdate(
+      customerId,
+      { $set: { assignedDeliveryUserId: deliveryUserId ?? null } },
+      { new: true },
+    ).lean();
+    if (!u) throw new NotFoundException('Customer not found');
+    return this.mapUser(u);
+  }
+
   async createBill(data: {
     customerId: string;
     billingAddress?: string;
     orderTag: string;
+    deliveryUserId?: string;
+    deliveryUserName?: string;
     items: Array<{
       productId: string;
       name: string;
@@ -297,6 +310,8 @@ export class BillingService {
       billingAddress,
       customerTags: customer.tags ?? [],
       orderTag: data.orderTag,
+      deliveryUserId: data.deliveryUserId,
+      deliveryUserName: data.deliveryUserName,
       items,
       subtotal,
       totalGst,

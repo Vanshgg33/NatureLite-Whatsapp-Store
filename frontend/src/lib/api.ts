@@ -1921,6 +1921,11 @@ class ApiClient {
     return res.data.data;
   }
 
+  async setDefaultDeliveryForBillingCustomer(id: string, deliveryUserId: string | null): Promise<any> {
+    const res = await this.client.patch<ApiResponse<any>>(`/billing/customers/${id}/default-delivery`, { deliveryUserId });
+    return res.data.data;
+  }
+
   async getBillingTagPrices(productId?: string): Promise<any[]> {
     const qs = productId ? `?productId=${productId}` : '';
     const res = await this.client.get<ApiResponse<any[]>>(`/billing/tag-prices${qs}`);
