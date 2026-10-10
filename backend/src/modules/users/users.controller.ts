@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -76,6 +77,15 @@ export class UsersController {
     @Body() dto: UpdateUserDto,
   ): Promise<User> {
     return this.usersService.update(id, dto);
+  }
+
+  @Patch(':id/default-delivery')
+  @Roles('admin', 'superadmin')
+  async setDefaultDelivery(
+    @Param('id') id: string,
+    @Body('deliveryUserId') deliveryUserId: string,
+  ): Promise<User> {
+    return this.usersService.update(id, { assignedDeliveryUserId: deliveryUserId });
   }
 
   @Post('me/addresses')

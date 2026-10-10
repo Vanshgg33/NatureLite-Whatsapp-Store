@@ -128,7 +128,7 @@ export default function BillingDashboardPage() {
 
   const setPermanent = useMutation({
     mutationFn: ({ userId, riderId }: { userId: string; riderId: string }) =>
-      api.updateUser(userId, { assignedDeliveryUserId: riderId }),
+      api.setDefaultDeliveryForUser(userId, riderId),
     onSuccess: () => toast({ title: 'Default rider saved' }),
     onError: () => toast({ title: 'Failed to save default rider', variant: 'destructive' }),
   });
@@ -305,17 +305,17 @@ export default function BillingDashboardPage() {
                         </SelectContent>
                       </Select>
                       {isDefaultRider ? (
-                        <span className="text-[11px] text-gray-400 flex items-center gap-1">
-                          <Pin className="h-3 w-3 fill-current" /> Default rider
-                        </span>
+                        <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 font-medium">
+                          <Pin className="h-3.5 w-3.5 fill-current" /> Default rider
+                        </div>
                       ) : riderId && userId ? (
                         <button
                           type="button"
                           onClick={() => setPermanent.mutate({ userId, riderId })}
                           disabled={setPermanent.isPending}
-                          className="flex items-center gap-1 text-[11px] text-green-700 hover:underline disabled:opacity-50"
+                          className="w-full flex items-center justify-center gap-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg px-3 py-2 disabled:opacity-50"
                         >
-                          <Pin className="h-3 w-3" />
+                          <Pin className="h-3.5 w-3.5" />
                           {setPermanent.isPending ? 'Saving…' : `Make default for ${order.shippingAddress.name.split(' ')[0]}`}
                         </button>
                       ) : null}

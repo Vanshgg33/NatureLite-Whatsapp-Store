@@ -922,6 +922,11 @@ class ApiClient {
     return response.data.data;
   }
 
+  async setDefaultDeliveryForUser(id: string, deliveryUserId: string): Promise<User> {
+    const response = await this.client.patch<ApiResponse<User>>(`/users/${id}/default-delivery`, { deliveryUserId });
+    return response.data.data;
+  }
+
   async bulkAssignDelivery(userIds: string[], deliveryUserId: string): Promise<{ modified: number }> {
     const response = await this.client.put<ApiResponse<{ modified: number }>>('/users/bulk-assign-delivery', { userIds, deliveryUserId });
     return response.data.data;

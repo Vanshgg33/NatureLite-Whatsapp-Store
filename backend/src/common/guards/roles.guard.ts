@@ -52,6 +52,7 @@ export class RolesGuard implements CanActivate {
         'getDeliveryStaff',
         'deleteOrder',
         'dismissFromView',
+        'setDefaultDelivery',
       ];
       if (!allowedDepartmentHandlers.includes(handlerName)) {
         throw new ForbiddenException('Department staff cannot access this area. Use the department portal.');
