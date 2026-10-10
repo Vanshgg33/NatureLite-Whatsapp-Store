@@ -8,6 +8,7 @@ import { CrmCampaign, CrmCampaignDocument } from './schemas/crm-campaign.schema'
 import { CrmSettings, CrmSettingsDocument, DEFAULT_REORDER_CYCLES } from './schemas/crm-settings.schema';
 import { CrmEngineService } from './crm-engine.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { getISTDate } from './engine/status-model';
 
 @Injectable()
 export class CrmService {
@@ -31,8 +32,9 @@ export class CrmService {
     page?: number;
     limit?: number;
     agentId?: string;
+    isEscalated?: boolean;
   }) {
-    const { segment, search, agentId } = opts;
+    const { segment, search, agentId, isEscalated } = opts;
     const page = opts.page ?? 1;
     const limit = Math.min(opts.limit ?? 50, 100);
 
@@ -40,6 +42,7 @@ export class CrmService {
     if (agentId) {
       const statsFilter: any = { assignedAgentId: new Types.ObjectId(agentId) };
       if (segment) statsFilter.segment = segment;
+      if (isEscalated) statsFilter.isEscalated = true;
       let stats = await this.statsModel.find(statsFilter).sort({ priorityScore: -1 }).lean();
       const userFilter: any = { _id: { $in: stats.map((s: any) => s.userId) } };
       if (search?.trim()) {
@@ -72,6 +75,7 @@ export class CrmService {
 
     const statsFilter: any = { userId: { $in: users.map((u: any) => u._id) } };
     if (segment) statsFilter.segment = segment;
+    if (isEscalated) statsFilter.isEscalated = true;
     const allStats = await this.statsModel.find(statsFilter).lean();
     const statsMap = new Map(allStats.map((s: any) => [s.userId.toString(), s]));
 
@@ -112,7 +116,7 @@ export class CrmService {
 
   // ─── Queue ───────────────────────────────────────────────────────────────
 
-  async getQueue(opts: { agentId?: string; tab: 'today' | 'overdue' | 'at_risk' | 'upcoming' | 'all' }) {
+  async getQueue(opts: { agentId?: string; tab: 'today' | 'overdue' | 'at_risk' | 'upcoming' | 'dormant' | 'all' }) {
     const { agentId, tab } = opts;
     const filter: any = {};
     if (agentId) filter.assignedAgentId = new Types.ObjectId(agentId);
@@ -122,17 +126,19 @@ export class CrmService {
     const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
 
     if (tab === 'today') {
-      filter.segment = { $in: ['Overdue', 'Due Soon'] };
+      filter.segment = { $in: ['Overdue', 'Due Soon', 'overdue', 'due_today'] };
       filter.predictedReorderDate = { $lte: todayEnd };
     } else if (tab === 'overdue') {
-      filter.segment = 'Overdue';
+      filter.segment = { $in: ['Overdue', 'overdue'] };
       filter.predictedReorderDate = { $lt: todayStart };
     } else if (tab === 'at_risk') {
-      filter.segment = 'At Risk';
+      filter.segment = { $in: ['At Risk', 'at_risk'] };
     } else if (tab === 'upcoming') {
-      filter.segment = 'Due Soon';
+      filter.segment = { $in: ['Due Soon', 'due_soon'] };
+    } else if (tab === 'dormant') {
+      filter.segment = { $in: ['Dormant', 'dormant'] };
     } else {
-      filter.segment = { $in: ['Due Soon', 'Overdue', 'At Risk'] };
+      filter.segment = { $in: ['Due Soon', 'Overdue', 'At Risk', 'due_soon', 'overdue', 'at_risk'] };
     }
 
     // Exclude dismissed and currently snoozed customers
@@ -201,11 +207,12 @@ export class CrmService {
       notes: dto.notes ?? '',
       callbackAt: dto.callbackAt ? new Date(dto.callbackAt) : null,
     });
-    // Update lastCallAt and lastCallOutcome on stats
+    // Update lastCallAt and lastCallOutcome on stats, then recompute segment
     await this.statsModel.findOneAndUpdate(
       { userId: customerId },
       { $set: { lastCallAt: new Date(), lastCallOutcome: dto.outcome } },
     );
+    this.engine.refreshUser(customerId).catch(() => {});
     return log;
   }
 
@@ -323,42 +330,62 @@ export class CrmService {
   // ─── Analytics ───────────────────────────────────────────────────────────
 
   async getAnalytics() {
-    const [segmentCounts, totalCustomers, revenueAtRisk, callsLast30] = await Promise.all([
-      this.statsModel.aggregate([{ $group: { _id: '$segment', count: { $sum: 1 } } }]),
-      this.statsModel.countDocuments(),
-      this.statsModel.aggregate([
-        { $match: { segment: { $in: ['At Risk', 'Dormant'] } } },
-        { $group: { _id: null, total: { $sum: '$ltv' } } },
-      ]),
-      this.callLogModel.countDocuments({ createdAt: { $gte: new Date(Date.now() - 30 * 86400000) }, type: { $ne: 'whatsapp' } }),
-    ]);
-
-    const segMap = Object.fromEntries(segmentCounts.map((s: any) => [s._id, s.count]));
-    const repeatCustomers = (segMap['Active'] ?? 0) + (segMap['Overdue'] ?? 0) + (segMap['At Risk'] ?? 0);
-    const repeatRate = totalCustomers > 0 ? Math.round((repeatCustomers / totalCustomers) * 100) : 0;
+    const m = await this.getMetrics();
+    const segmentBreakdown = [
+      { segment: 'new', count: m.new },
+      { segment: 'active', count: m.active },
+      { segment: 'due_soon', count: m.dueSoon },
+      { segment: 'due_today', count: m.dueToday },
+      { segment: 'overdue', count: m.overdue },
+      { segment: 'at_risk', count: m.atRisk },
+      { segment: 'dormant', count: m.dormant },
+      { segment: 'lost', count: m.lost },
+    ].filter(s => s.count > 0);
 
     return {
-      segmentCounts: segMap,
-      totalCustomers,
-      repeatRate,
-      revenueAtRisk: revenueAtRisk[0]?.total ?? 0,
-      callsLast30,
+      segmentCounts: m.segments,       // backward compat
+      segmentBreakdown,                 // fixes D3: analytics page reads this key
+      totalCustomers: m.total,
+      repeatRate: m.repeatRate,
+      revenueAtRisk: m.revenueAtRisk,
+      callsLast30: m.callsLast30,
+      callsThisMonth: m.callsLast30,   // alias for mismatched frontend key
+      funnelStats: m.funnelStats,
     };
   }
 
   // ─── Settings ────────────────────────────────────────────────────────────
 
   async getSettings() {
-    const s = await this.settingsModel.findOne().lean();
-    return { reorderCycles: s?.reorderCycles ?? DEFAULT_REORDER_CYCLES };
+    const [s, lastRun] = await Promise.all([
+      this.settingsModel.findOne().lean(),
+      this.engine.getLastRun(),
+    ]);
+    return {
+      reorderCycles: s?.reorderCycles ?? DEFAULT_REORDER_CYCLES,
+      fallbackCycleDays: s?.fallbackCycleDays ?? 30,
+      thresholds: s?.thresholds ?? { atRiskAfterDays: 15, dormantAfterDays: 60, lostAfterDays: 180 },
+      vip: s?.vip ?? { minOrders: 2, minLifetimeValue: 4000 },
+      dailyCallTarget: s?.dailyCallTarget ?? 50,
+      lastEngineRun: lastRun ?? null,
+    };
   }
 
-  async updateSettings(reorderCycles: Record<string, number>) {
-    return this.settingsModel.findOneAndUpdate(
+  async updateSettings(dto: {
+    reorderCycles?: Record<string, number>;
+    fallbackCycleDays?: number;
+    thresholds?: { atRiskAfterDays: number; dormantAfterDays: number; lostAfterDays: number };
+    vip?: { minOrders: number; minLifetimeValue: number };
+    dailyCallTarget?: number;
+  }) {
+    const updated = await this.settingsModel.findOneAndUpdate(
       {},
-      { $set: { reorderCycles } },
+      { $set: dto },
       { upsert: true, new: true },
     );
+    // Async full recompute so segment thresholds / cycles take effect
+    this.engine.refreshAll('settings').catch(() => {});
+    return updated;
   }
 
   // ─── Notes ───────────────────────────────────────────────────────────────
@@ -406,38 +433,83 @@ export class CrmService {
     });
   }
 
+  // ─── Metrics (single aggregation source — fixes D3 & D4) ────────────────
+
+  async getMetrics() {
+    const now = new Date();
+    const todayStart = getISTDate(now);
+    const todayEnd = new Date(todayStart.getTime() + 86_400_000);
+    const last30 = new Date(now.getTime() - 30 * 86_400_000);
+
+    const [segRows, revenueRows, callsTodayC, convTodayC, callsLast30C, funnelRows, settings] = await Promise.all([
+      this.statsModel.aggregate([{ $group: { _id: '$segment', count: { $sum: 1 } } }]),
+      this.statsModel.aggregate([
+        { $match: { segment: { $in: ['at_risk', 'dormant', 'At Risk', 'Dormant'] } } },
+        { $group: { _id: null, total: { $sum: '$ltv' } } },
+      ]),
+      this.callLogModel.countDocuments({ createdAt: { $gte: todayStart, $lt: todayEnd }, type: { $ne: 'whatsapp' } }),
+      this.callLogModel.countDocuments({ createdAt: { $gte: todayStart, $lt: todayEnd }, type: { $ne: 'whatsapp' }, outcome: 'ordered' }),
+      this.callLogModel.countDocuments({ createdAt: { $gte: last30 }, type: { $ne: 'whatsapp' } }),
+      this.callLogModel.aggregate([
+        { $match: { createdAt: { $gte: last30 }, type: { $ne: 'whatsapp' }, outcome: { $ne: null } } },
+        { $group: { _id: '$outcome', count: { $sum: 1 } } },
+      ]),
+      this.settingsModel.findOne().select('dailyCallTarget').lean(),
+    ]);
+
+    const seg: Record<string, number> = Object.fromEntries(segRows.map((r: any) => [r._id ?? 'unknown', r.count]));
+    const merge = (k1: string, k2: string) => (seg[k1] ?? 0) + (seg[k2] ?? 0);
+
+    const newC = merge('new', 'New');
+    const activeC = merge('active', 'Active');
+    const dueSoonC = merge('due_soon', 'Due Soon');
+    const dueTodayC = seg['due_today'] ?? 0;
+    const overdueC = merge('overdue', 'Overdue');
+    const atRiskC = merge('at_risk', 'At Risk');
+    const dormantC = merge('dormant', 'Dormant');
+    const lostC = merge('lost', 'Lost');
+    const noOrdersC = seg['no_orders'] ?? 0;
+
+    const total = newC + activeC + dueSoonC + dueTodayC + overdueC + atRiskC + dormantC + lostC + noOrdersC;
+    const repeatCustomers = activeC + dueSoonC + dueTodayC + overdueC + atRiskC + dormantC + lostC;
+
+    return {
+      segments: seg,
+      total,
+      new: newC,
+      active: activeC,
+      dueSoon: dueSoonC,
+      dueToday: dueTodayC,
+      overdue: overdueC,
+      atRisk: atRiskC,
+      dormant: dormantC,
+      lost: lostC,
+      noOrders: noOrdersC,
+      revenueAtRisk: revenueRows[0]?.total ?? 0,
+      repeatRate: total > 0 ? Math.round((repeatCustomers / total) * 100) : 0,
+      repeatCustomers,
+      callsToday: callsTodayC,
+      conversionsToday: convTodayC,
+      callsLast30: callsLast30C,
+      funnelStats: Object.fromEntries(funnelRows.map((r: any) => [r._id, r.count])) as Record<string, number>,
+      target: (settings as any)?.dailyCallTarget ?? 50,
+    };
+  }
+
   // ─── Dashboard ───────────────────────────────────────────────────────────
 
   async getDashboard() {
-    const now = new Date();
-    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
-    const next7 = new Date(now.getTime() + 7 * 86400000);
-
-    const [dueTodayCount, overdueCount, upcomingCount, totalCustomers, revenueAtRisk, segmentCounts, callsToday, conversionsToday] =
-      await Promise.all([
-        this.statsModel.countDocuments({ segment: { $in: ['Due Soon', 'Overdue'] }, predictedReorderDate: { $lte: todayEnd } }),
-        this.statsModel.countDocuments({ segment: 'Overdue' }),
-        this.statsModel.countDocuments({ segment: 'Due Soon', predictedReorderDate: { $gte: now, $lte: next7 } }),
-        this.statsModel.countDocuments(),
-        this.statsModel.aggregate([{ $match: { segment: { $in: ['At Risk', 'Dormant'] } } }, { $group: { _id: null, total: { $sum: '$ltv' } } }]),
-        this.statsModel.aggregate([{ $group: { _id: '$segment', count: { $sum: 1 } } }]),
-        this.callLogModel.countDocuments({ createdAt: { $gte: todayStart, $lte: todayEnd }, type: { $ne: 'whatsapp' } }),
-        this.callLogModel.countDocuments({ createdAt: { $gte: todayStart, $lte: todayEnd }, type: { $ne: 'whatsapp' }, outcome: 'ordered' }),
-      ]);
-
-    const segMap = Object.fromEntries(segmentCounts.map((s: any) => [s._id, s.count]));
-    const repeatCustomers = (segMap['Active'] ?? 0) + (segMap['Overdue'] ?? 0) + (segMap['At Risk'] ?? 0);
-
+    const m = await this.getMetrics();
     return {
-      dueTodayCount,
-      overdueCount,
-      upcomingCount,
-      revenueAtRisk: revenueAtRisk[0]?.total ?? 0,
-      totalCustomers,
-      repeatRate: totalCustomers > 0 ? Math.round((repeatCustomers / totalCustomers) * 100) : 0,
-      callsToday,
-      conversionsToday,
+      dueTodayCount: m.dueToday,
+      overdueCount: m.overdue,
+      upcomingCount: m.dueSoon,
+      revenueAtRisk: m.revenueAtRisk,
+      totalCustomers: m.total,
+      repeatRate: m.repeatRate,
+      callsToday: m.callsToday,
+      conversionsToday: m.conversionsToday,
+      target: m.target,
     };
   }
 
@@ -464,7 +536,7 @@ export class CrmService {
   // ─── Manual engine trigger ───────────────────────────────────────────────
 
   async triggerRefresh() {
-    this.engine.refreshAll().catch(() => {}); // fire-and-forget
+    this.engine.refreshAll('manual').catch(() => {});
     return { ok: true, message: 'Refresh started' };
   }
 }

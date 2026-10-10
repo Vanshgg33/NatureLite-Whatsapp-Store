@@ -2004,11 +2004,12 @@ class ApiClient {
 
   // ─── CRM ─────────────────────────────────────────────────────────────────
 
-  async getCrmCustomers(params: { segment?: string; search?: string; page?: number } = {}): Promise<any> {
+  async getCrmCustomers(params: { segment?: string; search?: string; page?: number; isEscalated?: boolean } = {}): Promise<any> {
     const qs = new URLSearchParams();
     if (params.segment) qs.set('segment', params.segment);
     if (params.search) qs.set('search', params.search);
     if (params.page) qs.set('page', String(params.page));
+    if (params.isEscalated) qs.set('isEscalated', 'true');
     const res = await this.client.get<ApiResponse<any>>(`/crm/customers?${qs}`);
     return res.data.data;
   }
@@ -2089,8 +2090,14 @@ class ApiClient {
     return res.data.data;
   }
 
-  async updateCrmSettings(reorderCycles: Record<string, number>): Promise<any> {
-    const res = await this.client.put<ApiResponse<any>>('/crm/settings', { reorderCycles });
+  async updateCrmSettings(payload: {
+    reorderCycles?: Record<string, number>;
+    fallbackCycleDays?: number;
+    thresholds?: { atRiskAfterDays: number; dormantAfterDays: number; lostAfterDays: number };
+    vip?: { minOrders: number; minLifetimeValue: number };
+    dailyCallTarget?: number;
+  }): Promise<any> {
+    const res = await this.client.put<ApiResponse<any>>('/crm/settings', payload);
     return res.data.data;
   }
 
@@ -2111,6 +2118,11 @@ class ApiClient {
 
   async sendCrmNudge(data: { customerId: string; templateName: string; message: string }): Promise<any> {
     const res = await this.client.post<ApiResponse<any>>('/crm/nudge', data);
+    return res.data.data;
+  }
+
+  async getCrmMetrics(): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>('/crm/metrics');
     return res.data.data;
   }
 

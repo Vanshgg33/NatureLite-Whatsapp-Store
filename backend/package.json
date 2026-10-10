@@ -60,6 +60,7 @@
     "@types/bcrypt": "^5.0.2",
     "@types/cookie-parser": "^1.4.6",
     "@types/express": "^4.17.21",
+    "@types/jest": "^30.0.0",
     "@types/multer": "^1.4.11",
     "@types/node": "^20.11.0",
     "@types/nodemailer": "^7.0.11",
@@ -89,6 +90,11 @@
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "globals": {
+      "ts-jest": {
+        "tsconfig": { "types": ["jest", "node"] }
+      }
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"

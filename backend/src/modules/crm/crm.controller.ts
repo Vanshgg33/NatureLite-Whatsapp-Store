@@ -22,6 +22,7 @@ export class CrmController {
     @Query('search') search: string,
     @Query('page') page: string,
     @Query('limit') limit: string,
+    @Query('isEscalated') isEscalated: string,
     @CurrentUser() user: JwtPayload,
   ) {
     const agentId = user.departmentType === 'crm_senior' ? user.sub : undefined;
@@ -30,6 +31,7 @@ export class CrmController {
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 50,
       agentId,
+      isEscalated: isEscalated === 'true',
     });
   }
 
@@ -143,11 +145,17 @@ export class CrmController {
 
   @Put('settings')
   updateSettings(
-    @Body() body: { reorderCycles: Record<string, number> },
+    @Body() body: {
+      reorderCycles?: Record<string, number>;
+      fallbackCycleDays?: number;
+      thresholds?: { atRiskAfterDays: number; dormantAfterDays: number; lostAfterDays: number };
+      vip?: { minOrders: number; minLifetimeValue: number };
+      dailyCallTarget?: number;
+    },
     @CurrentUser() user: JwtPayload,
   ) {
     if (user.departmentType === 'crm_senior') throw new ForbiddenException('Settings restricted to managers and admins');
-    return this.crm.updateSettings(body.reorderCycles);
+    return this.crm.updateSettings(body);
   }
 
   // ─── Notes ───────────────────────────────────────────────────────────────
@@ -174,6 +182,14 @@ export class CrmController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.crm.logNudge({ ...body, agentId: user.sub });
+  }
+
+  // ─── Metrics ─────────────────────────────────────────────────────────────
+
+  @Get('metrics')
+  getMetrics(@CurrentUser() user: JwtPayload) {
+    if (user.departmentType === 'crm_senior') throw new ForbiddenException();
+    return this.crm.getMetrics();
   }
 
   // ─── Dashboard ───────────────────────────────────────────────────────────

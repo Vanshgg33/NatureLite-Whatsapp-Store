@@ -4,15 +4,98 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── CRM Design System ───────────────────────────── */
-.crm-root { font-family: 'DM Sans', system-ui, sans-serif; }
-.crm-display { font-family: 'Fraunces', Georgia, serif; font-optical-sizing: auto; }
+/* ── CRM Design System v2 ─────────────────────────── */
 
+/* Token variables — all CRM colours live here, scoped to .crm-root */
+.crm-root {
+  font-family: var(--font-sans, 'DM Sans', system-ui, sans-serif);
+
+  /* Forest greens (sidebar, primary buttons) */
+  --crm-forest:       #13241B;
+  --crm-forest-2:     #1D3327;
+  --crm-forest-3:     #2A4434;
+  --crm-moss:         #2F5A41;
+
+  /* Gold (active nav, fills, logo) */
+  --crm-gold:         #D99A1E;
+  --crm-gold-bright:  #F2C14E;
+
+  /* Page surfaces */
+  --crm-cream:        #F5F2EA;
+  --crm-paper:        #FFFFFF;
+  --crm-sand:         #F7F4EE;
+  --crm-sand-2:       #EFEBE1;
+
+  /* Borders / lines */
+  --crm-line:         #E6E1D6;
+
+  /* Text */
+  --crm-ink:          #1B1F1C;
+  --crm-ink-2:        #3E4540;
+  --crm-muted:        #5E655F;
+  --crm-side-text:    #C9D3CC;
+  --crm-side-muted:   #9FB0A5;
+  --crm-on-dark-muted:#B9C7BE;
+
+  /* Danger (overdue) */
+  --crm-danger:       #B42318;
+  --crm-danger-bg:    #FDEDEB;
+  --crm-danger-line:  #F4C7C2;
+  --crm-danger-track: #F4E3E0;
+
+  /* Amber (due today) */
+  --crm-amber:        #8A5A00;
+  --crm-amber-bg:     #FFF6E3;
+  --crm-amber-line:   #F1D9A6;
+
+  /* Blue (new / upcoming) */
+  --crm-blue:         #2457C5;
+  --crm-blue-bg:      #EEF3FC;
+  --crm-blue-line:    #CFDCF5;
+
+  /* Success (active / ordered) */
+  --crm-success:      #1E7A46;
+  --crm-success-bg:   #E9F6EE;
+
+  /* VIP */
+  --crm-vip-bg:       #FFF1CC;
+  --crm-vip-text:     #7A5300;
+
+  /* Warning (data-check banner) */
+  --crm-warn-bg:      #FFF4E5;
+  --crm-warn-line:    #F3D4A4;
+  --crm-warn-text:    #5A3A00;
+  --crm-warn-icon:    #9A5B00;
+  --crm-warn-btn-line:#E3B26A;
+
+  /* Misc segment colours */
+  --crm-unsegmented:  #BDB6A6;
+  --crm-weekend:      #8A6A1F;
+  --crm-funnel-4:     #F2E3BD;
+  --crm-row-selected: #FFFBF0;
+  --crm-dashed:       #C9C2B3;
+}
+
+.crm-display {
+  font-family: var(--font-serif, 'Fraunces', Georgia, serif);
+  font-optical-sizing: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* v1 card (kept for backward compat on existing pages) */
 .crm-card {
   background: #ffffff;
   border: 1px solid #E8E2D9;
   border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
+}
+
+/* v2 card — 16px radius, uses design-system tokens */
+.crm-card-v2 {
+  background: var(--crm-paper);
+  border: 1px solid var(--crm-line);
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 
 .crm-card-hover:hover {
@@ -32,6 +115,9 @@
 .crm-priority-high     { border-left: 3px solid #EA580C; }
 .crm-priority-medium   { border-left: 3px solid #D97706; }
 .crm-priority-low      { border-left: 3px solid #2563EB; }
+
+/* tabular nums for phone/money cells */
+.crm-tabular { font-variant-numeric: tabular-nums; }
 
 @keyframes crm-count-in {
   from { opacity: 0; transform: translateY(8px); }
