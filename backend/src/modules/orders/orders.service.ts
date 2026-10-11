@@ -30,6 +30,7 @@ import { MediaService } from '../media/media.service';
 import { UpdateUserDto } from '../users/dto/user.dto';
 import { RedisService } from '../redis/redis.service';
 import { CrmEngineService } from '../crm/crm-engine.service';
+import { InventoryService } from '../inventory/inventory.service';
 import {
   CreateOrderDto,
   UpdateOrderStatusDto,
@@ -118,6 +119,7 @@ export class OrdersService implements OnModuleInit {
     private readonly mediaService: MediaService,
     private readonly redisService: RedisService,
     private readonly crmEngine: CrmEngineService,
+    private readonly inventoryService: InventoryService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -503,20 +505,13 @@ export class OrdersService implements OnModuleInit {
         throw new BadRequestException('Failed to generate a unique order number. Please try again.');
       }
 
-      // Decrement stock from main store (Raipur).
+      // Decrement stock from the fulfilment store (city-matched or main store fallback).
       //   - Products with trackStock=false opt out of inventory entirely — skip.
-      //   - Products with no StoreStock row yet (admin hasn't set store-level
-      //     inventory) also skip the decrement: blocking a customer order for
-      //     a data-setup gap that only the admin can fix would be incorrect.
-      //     Admins can still see low/zero stock in the Store Stock dashboard.
-      //   - Products with a StoreStock row get the normal guarded decrement.
-      let mainStore: Awaited<ReturnType<typeof this.storesService.findMainStore>> | null = null;
-      try {
-        mainStore = await this.storesService.findMainStore();
-      } catch {
-        // Main store not configured — skip stock decrement, order still goes through
-      }
-      const mainStoreId = mainStore?._id.toString();
+      //   - Products with no StoreStock row yet also skip the decrement.
+      const fulfilmentStore = await this.inventoryService.resolveFulfilmentStore(
+        dto.shippingAddress?.city,
+      );
+      const mainStoreId = fulfilmentStore?._id.toString();
 
       await Promise.all(
         orderItems.map(async (item) => {

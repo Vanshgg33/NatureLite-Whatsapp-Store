@@ -8,11 +8,13 @@ import { StoreStockModule } from '../store-stock/store-stock.module';
 import { StoresModule } from '../stores/stores.module';
 import { UcmModule } from '../ucm/ucm.module';
 import { CartModule } from '../cart/cart.module';
+import { InventoryModule } from '../inventory/inventory.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Product.name, schema: ProductSchema }]),
     StoreStockModule,
+    InventoryModule,
     forwardRef(() => StoresModule),
     forwardRef(() => UcmModule),
     forwardRef(() => CartModule),

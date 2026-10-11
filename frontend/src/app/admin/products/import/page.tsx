@@ -80,6 +80,7 @@ export default function ImportProductsPage() {
   const [result, setResult] = useState<{ created: number; skipped: number; errors: string[] } | null>(null);
   const [parseError, setParseError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+  const selectedFileRef = useRef<File | null>(null);
 
   const { data: categories } = useQuery({
     queryKey: ['categories'],
@@ -112,13 +113,14 @@ export default function ImportProductsPage() {
     setParseError('');
     setResult(null);
     setFileName(file.name);
+    selectedFileRef.current = file;
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
         const text = ev.target?.result as string;
         const parsed = parseCsv(text);
         if (parsed.length === 0) { setParseError('CSV appears empty or has no data rows.'); return; }
-        
+
         const headers = Object.keys(parsed[0]);
         setCsvHeaders(headers);
         setRawRows(parsed);
@@ -151,10 +153,16 @@ export default function ImportProductsPage() {
     if (!rows || !defaultCategoryId) return;
     setImporting(true);
     try {
-      const res = await api.importProductsCsv(rows, defaultCategoryId);
+      let res: { created: number; skipped: number; errors: string[] };
+      if (selectedFileRef.current) {
+        res = await api.importProductsCsvFile(selectedFileRef.current, defaultCategoryId, mapping);
+      } else {
+        res = await api.importProductsCsv(rows, defaultCategoryId);
+      }
       setResult(res);
       setRows(null);
       setFileName('');
+      selectedFileRef.current = null;
       if (fileRef.current) fileRef.current.value = '';
     } catch (err) {
       setResult({ created: 0, skipped: rows.length, errors: [(err as Error).message] });

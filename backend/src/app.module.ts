@@ -47,6 +47,7 @@ import { RedisModule } from './modules/redis/redis.module';
 import { PurchaseModule } from './modules/purchase/purchase.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { CrmModule } from './modules/crm/crm.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -151,6 +152,7 @@ import { HealthController } from './health.controller';
     PurchaseModule,
     BillingModule,
     CrmModule,
+    InventoryModule,
   ],
   providers: [
     {

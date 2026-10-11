@@ -15,6 +15,8 @@ import { ProductRepository } from './repositories/product.repository';
 import { UcmService } from '../ucm/ucm.service';
 import { RedisService } from '../redis/redis.service';
 import { CartRepository } from '../cart/repositories/cart.repository';
+import { InventoryService } from '../inventory/inventory.service';
+import { parseCsv, toCsvRow, escapeCsvField } from '../../common/utils/csv.util';
 
 @Injectable()
 export class ProductsService implements OnModuleInit {
@@ -29,6 +31,7 @@ export class ProductsService implements OnModuleInit {
     private readonly redisService: RedisService,
     @Inject(forwardRef(() => CartRepository))
     private readonly cartRepository: CartRepository,
+    private readonly inventoryService: InventoryService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -439,9 +442,24 @@ export class ProductsService implements OnModuleInit {
     return this.productRepository.findLowStock(limit) as Promise<Product[]>;
   }
 
-  async searchProducts(searchTerm: string, limit: number = 20): Promise<Product[]> {
+  async searchProducts(searchTerm: string, limit: number = 20, storeId?: string): Promise<Product[]> {
     const products = await this.productRepository.searchByText(searchTerm, limit) as Product[];
-    await this.overlayStoreStock(products as unknown as Array<{ _id: Types.ObjectId; stock?: number; variants?: Array<{ sku: string; stock?: number }> }>);
+    if (storeId) {
+      const avail = await this.inventoryService.availability(storeId, products.map((p) => (p as any)._id.toString()));
+      for (const p of products as any[]) {
+        const a = avail.get(p._id.toString());
+        if (!a) continue;
+        if (p.variants?.length) {
+          for (const v of p.variants) {
+            v.available = a.variants[v._id?.toString()] ?? a.variants[v.sku] ?? 0;
+          }
+        } else {
+          p.available = a.base;
+        }
+      }
+    } else {
+      await this.overlayStoreStock(products as unknown as Array<{ _id: Types.ObjectId; stock?: number; variants?: Array<{ sku: string; stock?: number }> }>);
+    }
     return products;
   }
 
@@ -486,34 +504,117 @@ export class ProductsService implements OnModuleInit {
     return { modifiedCount: result.modifiedCount };
   }
 
+  private static readonly CSV_HEADERS = [
+    'sku', 'variantSku', 'name', 'variantName',
+    'price', 'compareAtPrice', 'specialOfferPrice', 'specialOfferLabel',
+    'stock', 'category', 'shortDescription', 'tags', 'isActive', 'isFeatured',
+    'hsnCode', 'videoUrl', 'images', 'weight', 'trackStock', 'lowStockThreshold',
+    'seoTitle', 'seoDescription', 'seoKeywords',
+  ];
+
+  getCsvTemplate(): string {
+    const example = toCsvRow([
+      'GHEE-500G', '', 'Bilona A2 Ghee 500g', '',
+      '899', '999', '', '',
+      '0', 'Ghee', 'Premium hand-churned A2 cow ghee', 'organic|ghee|a2', 'true', 'false',
+      '0402', '', '', '0.5', 'false', '5',
+      '', '', '',
+    ]);
+    return [ProductsService.CSV_HEADERS.join(','), example].join('\n');
+  }
+
   async exportToCsv(categoryId?: string): Promise<string> {
-    const query: ProductQueryDto = { limit: 5000, page: 1 };
-    if (categoryId) query.category = categoryId;
-    const result = await this.productRepository.findAllPaginated(query);
-    const products = result.items as (Product & { _id: Types.ObjectId })[];
+    try {
+      const filter: Record<string, unknown> = { category: { $type: 'objectId' } };
+      if (categoryId && isValidObjectIdString(categoryId)) {
+        filter.category = new Types.ObjectId(categoryId);
+      }
 
-    const headers = [
-      'name', 'sku', 'price', 'compareAtPrice', 'specialOfferPrice', 'specialOfferLabel',
-      'stock', 'category', 'shortDescription', 'tags', 'isActive', 'isFeatured',
-      'hsnCode', 'videoUrl', 'seoTitle', 'seoDescription', 'seoKeywords', 'canonicalUrl',
-    ];
+      type LeanProduct = {
+        _id: Types.ObjectId;
+        sku: string;
+        name: string;
+        price: number;
+        compareAtPrice?: number;
+        specialOfferPrice?: number;
+        specialOfferLabel?: string;
+        stock: number;
+        category?: { name?: string } | null;
+        shortDescription?: string;
+        tags?: string[];
+        isActive: boolean;
+        isFeatured: boolean;
+        hsnCode?: string;
+        videoUrl?: string;
+        images?: string[];
+        weight?: number;
+        trackStock: boolean;
+        lowStockThreshold: number;
+        seo?: { title?: string; description?: string; keywords?: string } | null;
+        variants?: Array<{
+          sku: string; name: string; price: number;
+          compareAtPrice?: number; stock: number;
+        }>;
+      };
 
-    const escape = (v: unknown) => {
-      const s = v == null ? '' : String(v);
-      return s.includes(',') || s.includes('"') || s.includes('\n')
-        ? `"${s.replace(/"/g, '""')}"` : s;
-    };
+      const products = await this.productRepository.getModel()
+        .find(filter)
+        .populate('category', 'name')
+        .lean()
+        .limit(5000)
+        .exec() as unknown as LeanProduct[];
 
-    const rows = products.map((p) => [
-      p.name, p.sku, p.price, p.compareAtPrice ?? '', p.specialOfferPrice ?? '',
-      p.specialOfferLabel ?? '', p.stock,
-      typeof p.category === 'object' ? (p.category as unknown as { name?: string }).name ?? '' : '',
-      p.shortDescription ?? '', (p.tags ?? []).join('|'), p.isActive, p.isFeatured,
-      p.hsnCode ?? '', p.videoUrl ?? '',
-      p.seo?.title ?? '', p.seo?.description ?? '', p.seo?.keywords ?? '', p.seo?.canonicalUrl ?? '',
-    ].map(escape).join(','));
+      const rows: string[] = [ProductsService.CSV_HEADERS.join(',')];
 
-    return [headers.join(','), ...rows].join('\n');
+      for (const p of products) {
+        const catName = p.category?.name ?? '';
+        const images = (p.images ?? []).join('|');
+        const tags = (p.tags ?? []).join('|');
+
+        if (!p.variants?.length) {
+          rows.push(toCsvRow([
+            p.sku, '', p.name, '',
+            p.price, p.compareAtPrice ?? '', p.specialOfferPrice ?? '', p.specialOfferLabel ?? '',
+            p.stock, catName, p.shortDescription ?? '', tags, p.isActive, p.isFeatured,
+            p.hsnCode ?? '', p.videoUrl ?? '', images, p.weight ?? '', p.trackStock, p.lowStockThreshold,
+            p.seo?.title ?? '', p.seo?.description ?? '', p.seo?.keywords ?? '',
+          ]));
+        } else {
+          for (const v of p.variants) {
+            rows.push(toCsvRow([
+              p.sku, v.sku, p.name, v.name,
+              v.price, v.compareAtPrice ?? '', p.specialOfferPrice ?? '', p.specialOfferLabel ?? '',
+              v.stock, catName, p.shortDescription ?? '', tags, p.isActive, p.isFeatured,
+              p.hsnCode ?? '', p.videoUrl ?? '', images, p.weight ?? '', p.trackStock, p.lowStockThreshold,
+              p.seo?.title ?? '', p.seo?.description ?? '', p.seo?.keywords ?? '',
+            ]));
+          }
+        }
+      }
+
+      return rows.join('\n');
+    } catch (err) {
+      this.logger.error('exportToCsv failed', (err as Error).stack);
+      throw err;
+    }
+  }
+
+  async importFromCsvBuffer(
+    buffer: Buffer,
+    defaultCategoryId: string,
+    mapping?: Record<string, string>,
+  ): Promise<{ created: number; skipped: number; errors: string[] }> {
+    const rawRows = parseCsv(buffer.toString('utf8'));
+    const rows = mapping
+      ? rawRows.map((raw) => {
+          const mapped: Record<string, string> = {};
+          for (const [targetKey, csvCol] of Object.entries(mapping)) {
+            if (csvCol) mapped[targetKey] = raw[csvCol] ?? '';
+          }
+          return mapped;
+        })
+      : rawRows;
+    return this.importFromCsvRows(rows, defaultCategoryId);
   }
 
   async importFromCsvRows(
@@ -530,6 +631,9 @@ export class ProductsService implements OnModuleInit {
       try {
         const sku = row.sku?.trim();
         if (!sku) { errors.push(`Row missing SKU: ${JSON.stringify(row)}`); skipped++; continue; }
+
+        // Skip variant rows — they reference a parent product SKU
+        if (row.variantSku?.trim()) { skipped++; continue; }
 
         const existing = await this.productRepository.findOneBySku(sku);
         if (existing) { skipped++; continue; }
@@ -560,12 +664,13 @@ export class ProductsService implements OnModuleInit {
           isFeatured: row.isFeatured === 'true',
           hsnCode: row.hsnCode || undefined,
           videoUrl: row.videoUrl || undefined,
+          weight: (() => { const v = parseFloat(row.weight); return isNaN(v) ? undefined : v; })(),
           category: categoryId,
           variants: [],
           images: [],
           imageAlts: [],
-          trackStock: false,
-          lowStockThreshold: 0,
+          trackStock: row.trackStock === 'true',
+          lowStockThreshold: (() => { const v = parseInt(row.lowStockThreshold, 10); return isNaN(v) ? 0 : v; })(),
           relatedProducts: [],
           upsellProducts: [],
           specialOfferActive: false,

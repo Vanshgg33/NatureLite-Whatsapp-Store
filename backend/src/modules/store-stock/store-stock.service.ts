@@ -9,6 +9,7 @@ import { SetStoreStockDto, BulkSetStockDto, StockQueryDto, StockAnalyticsQueryDt
 import { PaginatedResult } from '../../common/types/pagination.types';
 import { parseObjectId } from '../../common/utils/objectid.util';
 import { JwtPayload } from '../../common/decorators/current-user.decorator';
+import { InventoryService } from '../inventory/inventory.service';
 
 @Injectable()
 export class StoreStockService {
@@ -16,6 +17,7 @@ export class StoreStockService {
     private readonly storeStockRepository: StoreStockRepository,
     private readonly stockSnapshotRepository: StockSnapshotRepository,
     private readonly adminUserRepository: AdminUserRepository,
+    private readonly inventoryService: InventoryService,
   ) {}
 
   private async verifyAdminPassword(user: JwtPayload | undefined, password: string | undefined): Promise<void> {
@@ -114,7 +116,7 @@ export class StoreStockService {
     let result: StoreStock;
 
     if (hasDeltaUpdate) {
-      const netDelta = stockInDelta + returnedDelta + damagedDelta - saleLogDelta;
+      const netDelta = stockInDelta + returnedDelta - damagedDelta - saleLogDelta;
       if (dto.variantSku) {
         result = await this.storeStockRepository.applyVariantStockDeltas(
           storeObjId,
@@ -162,6 +164,7 @@ export class StoreStockService {
       result = await this.storeStockRepository.setStockMain(storeObjId, productObjId, update);
     }
 
+    void this.inventoryService.refreshProductCache([dto.productId]);
     return result;
   }
 
@@ -224,6 +227,7 @@ export class StoreStockService {
         throw new BadRequestException('Insufficient store stock for this product');
       }
     }
+    void this.inventoryService.refreshProductCache([productId]);
   }
 
   async incrementStock(
@@ -244,6 +248,7 @@ export class StoreStockService {
     } else {
       await this.storeStockRepository.incrementMain(storeObjId, productObjId, quantity);
     }
+    void this.inventoryService.refreshProductCache([productId]);
   }
 
   async bulkSetStock(dto: BulkSetStockDto): Promise<void> {
@@ -253,6 +258,13 @@ export class StoreStockService {
       stock: item.stock,
     }));
     await this.storeStockRepository.bulkSetStock(storeObjId, items);
+    void this.inventoryService.refreshProductCache(dto.items.map((i) => i.productId));
+  }
+
+  async getMovements(storeId: string, productId: string, limit = 50): Promise<unknown> {
+    parseObjectId(storeId, 'storeId');
+    parseObjectId(productId, 'productId');
+    return this.inventoryService.getMovements(storeId, productId, limit);
   }
 
   async aggregateStockByProducts(

@@ -28,6 +28,9 @@ export class Store {
   @Prop()
   adminEmail?: string;
 
+  @Prop({ select: false })
+  adminPassword?: string;
+
   @Prop({ type: [String], default: [] })
   cities: string[];
 

@@ -69,4 +69,13 @@ export class StoreStockController {
   ) {
     return this.storeStockService.updateStockAnalytics(snapshotId, dto, user);
   }
+
+  @Get('movements')
+  async getMovements(
+    @Query('store') storeId: string,
+    @Query('product') productId: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.storeStockService.getMovements(storeId, productId, limit ? parseInt(limit, 10) : 50);
+  }
 }

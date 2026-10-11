@@ -979,7 +979,6 @@ export interface Store {
   isMainStore: boolean;
   isActive: boolean;
   adminEmail?: string;
-  adminPassword?: string;
   createdAt: string;
   updatedAt: string;
 }

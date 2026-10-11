@@ -13,6 +13,7 @@ import { EmailModule } from '../email/email.module';
 import { StoresModule } from '../stores/stores.module';
 import { StoreStockModule } from '../store-stock/store-stock.module';
 import { StoreSalesModule } from '../store-sales/store-sales.module';
+import { InventoryModule } from '../inventory/inventory.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { UcmModule } from '../ucm/ucm.module';
@@ -31,6 +32,7 @@ import { CrmModule } from '../crm/crm.module';
     EmailModule,
     forwardRef(() => StoresModule),
     StoreStockModule,
+    InventoryModule,
     forwardRef(() => StoreSalesModule),
     WalletModule,
     NotificationsModule,
