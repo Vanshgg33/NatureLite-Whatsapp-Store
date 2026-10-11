@@ -5,6 +5,9 @@ export type StoreStockDocument = StoreStock & Document;
 
 @Schema({ _id: false })
 export class VariantStock {
+  @Prop({ type: Types.ObjectId })
+  variantId?: Types.ObjectId;
+
   @Prop({ required: true })
   variantSku: string;
 
@@ -44,6 +47,9 @@ export class StoreStock {
 
   @Prop({ default: 5 })
   lowStockThreshold: number;
+
+  @Prop({ default: 0 })
+  version: number;
 
   createdAt: Date;
   updatedAt: Date;

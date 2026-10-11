@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MapPin, Plus, Building2, Check, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { MapPin, Plus, Building2, Check, KeyRound } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,7 +26,6 @@ export default function StoresPage() {
   const [passwordStore, setPasswordStore] = useState<Store | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
-  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
 
   const { data: stores = [], isLoading } = useQuery({
     queryKey: ['stores'],
@@ -151,26 +150,10 @@ export default function StoresPage() {
                   </Button>
                 </div>
               </div>
-              <div className="space-y-1 pt-2 border-t mt-2">
+              <div className="pt-2 border-t mt-2">
                 <p className="text-xs text-gray-500">
                   <span className="text-gray-400">Email:</span> {store.adminEmail || `${store.code}@naturelite.com`}
                 </p>
-                <div className="flex items-center gap-1.5">
-                  <p className="text-xs text-gray-500">
-                    <span className="text-gray-400">Password:</span>{' '}
-                    {visiblePasswords[store._id]
-                      ? (store.adminPassword || 'Store@123')
-                      : '••••••••'}
-                  </p>
-                  <button
-                    onClick={() => setVisiblePasswords((prev) => ({ ...prev, [store._id]: !prev[store._id] }))}
-                    className="text-gray-400 hover:text-gray-600"
-                  >
-                    {visiblePasswords[store._id]
-                      ? <EyeOff className="h-3 w-3" />
-                      : <Eye className="h-3 w-3" />}
-                  </button>
-                </div>
               </div>
             </CardContent>
           </Card>

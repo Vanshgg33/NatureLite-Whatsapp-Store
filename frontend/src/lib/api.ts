@@ -645,8 +645,13 @@ class ApiClient {
     return response.data.data;
   }
 
-  async searchProducts(query: string, limit: number = 10): Promise<Product[]> {
-    const response = await this.client.get<ApiResponse<Product[]>>('/products/search', { params: { q: query, limit } });
+  async searchProducts(query: string, limit: number = 10, storeId?: string): Promise<Product[]> {
+    const response = await this.client.get<ApiResponse<Product[]>>('/products/search', { params: { q: query, limit, ...(storeId && { storeId }) } });
+    return response.data.data;
+  }
+
+  async getStockMovements(storeId: string, productId: string, limit?: number): Promise<unknown[]> {
+    const response = await this.client.get<ApiResponse<unknown[]>>('/store-stock/movements', { params: { store: storeId, product: productId, limit } });
     return response.data.data;
   }
 
@@ -683,6 +688,28 @@ class ApiClient {
     const params = categoryId ? { category: categoryId } : {};
     const res = await this.client.get<string>('/products/export/csv', { params, responseType: 'text' });
     return res.data;
+  }
+
+  async getProductCsvTemplate(): Promise<string> {
+    const res = await this.client.get<string>('/products/csv/template', { responseType: 'text' });
+    return res.data;
+  }
+
+  async importProductsCsvFile(
+    file: File,
+    defaultCategoryId: string,
+    mapping?: Record<string, string>,
+  ): Promise<{ created: number; skipped: number; errors: string[] }> {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('defaultCategoryId', defaultCategoryId);
+    if (mapping) form.append('mapping', JSON.stringify(mapping));
+    const res = await this.client.post<ApiResponse<{ created: number; skipped: number; errors: string[] }>>(
+      '/products/import',
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+    return res.data.data;
   }
 
   async importProductsCsv(rows: Record<string, string>[], defaultCategoryId: string): Promise<{ created: number; skipped: number; errors: string[] }> {

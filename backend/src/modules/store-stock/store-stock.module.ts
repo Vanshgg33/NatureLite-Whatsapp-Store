@@ -7,10 +7,12 @@ import { StockSnapshot, StockSnapshotSchema } from './schemas/stock-snapshot.sch
 import { StoreStockRepository } from './repositories/store-stock.repository';
 import { StockSnapshotRepository } from './repositories/stock-snapshot.repository';
 import { AdminModule } from '../admin/admin.module';
+import { InventoryModule } from '../inventory/inventory.module';
 
 @Module({
   imports: [
     AdminModule,
+    InventoryModule,
     MongooseModule.forFeature([
       { name: StoreStock.name, schema: StoreStockSchema },
       { name: StockSnapshot.name, schema: StockSnapshotSchema },

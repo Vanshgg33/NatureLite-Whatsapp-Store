@@ -107,15 +107,31 @@ export default function IMSPage() {
     if (!reportDate && availableDates.length > 0) setReportDate(availableDates[0]);
   }, [availableDates, reportDate]);
 
+  const stockQueryKey = ['store-stock', selectedStoreId, page, debouncedSearch, lowStockOnly];
+
   const updateStockMutation = useMutation({
-    mutationFn: (data: { storeId: string; productId: string; stockInDelta?: number; returnedDelta?: number; damagedDelta?: number; saleLogDelta?: number; variantSku?: string; lowStockThreshold?: number; adminPassword?: string }) =>
+    mutationFn: (data: { storeId: string; productId: string; stockInDelta?: number; returnedDelta?: number; damagedDelta?: number; saleLogDelta?: number; variantSku?: string; lowStockThreshold?: number }) =>
       api.setStoreStock(data),
+    onMutate: async (vars) => {
+      await queryClient.cancelQueries({ queryKey: stockQueryKey });
+      const prev = queryClient.getQueryData(stockQueryKey);
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(stockQueryKey, ctx.prev);
+      const msg = (_e as any)?.response?.data?.message ?? 'Failed to update stock';
+      toast({ title: 'Error', description: Array.isArray(msg) ? msg.join(', ') : msg, variant: 'destructive' });
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['store-stock'] });
-      queryClient.invalidateQueries({ queryKey: ['store-stock-summary', selectedStoreId] });
-      queryClient.invalidateQueries({ queryKey: ['stock-analytics-dates'] });
       setEditItem(null);
       toast({ title: 'Stock updated' });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['store-stock', selectedStoreId] });
+      queryClient.invalidateQueries({ queryKey: ['store-stock-summary', selectedStoreId] });
+      queryClient.invalidateQueries({ queryKey: ['stock-analytics-dates'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['product-search'] });
     },
   });
 
@@ -572,7 +588,7 @@ export default function IMSPage() {
               {[
                 { label: 'Stock In', state: editStockIn, setter: setEditStockIn, note: 'Increases total', positive: true },
                 { label: 'Returned', state: editReturned, setter: setEditReturned, note: 'Increases total', positive: true },
-                { label: 'Damaged', state: editDamaged, setter: setEditDamaged, note: 'Increases total', positive: true },
+                { label: 'Damaged', state: editDamaged, setter: setEditDamaged, note: 'Decreases total', positive: false },
                 { label: 'Sale Log', state: editSaleLog, setter: setEditSaleLog, note: 'Decreases total', positive: false },
               ].map((f) => (
                 <div key={f.label}>
@@ -590,7 +606,7 @@ export default function IMSPage() {
               )}
             </div>
             {(editStockIn || editReturned || editDamaged || editSaleLog) && (() => {
-              const net = (parseInt(editStockIn) || 0) + (parseInt(editReturned) || 0) + (parseInt(editDamaged) || 0) - (parseInt(editSaleLog) || 0);
+              const net = (parseInt(editStockIn) || 0) + (parseInt(editReturned) || 0) - (parseInt(editDamaged) || 0) - (parseInt(editSaleLog) || 0);
               const newSelectionStock = Math.max(0, editSelectionStock + net);
               return (
                 <div className={`text-sm font-medium px-3 py-2.5 rounded-xl ${net >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>

@@ -22,11 +22,11 @@ export function getProductTotalStock(product: { stock?: number; variants?: { sto
   return main + variantsSum;
 }
 
-/** Sum of main stock + all variant SKU stocks (for StoreStockItem). */
+/** Total stock for a StoreStockItem. Variant products: sum variants only. Simple products: base stock. Never adds both. */
 export function getStoreItemTotalStock(item: { stock?: number; variantStocks?: { stock?: number }[] }): number {
-  const main = item.stock ?? 0;
-  const variantsSum = (item.variantStocks ?? []).reduce((s, v) => s + (v.stock ?? 0), 0);
-  return main + variantsSum;
+  const variants = item.variantStocks ?? [];
+  if (variants.length) return variants.reduce((s, v) => s + (v.stock ?? 0), 0);
+  return item.stock ?? 0;
 }
 
 export function formatCurrency(amount: number): string {

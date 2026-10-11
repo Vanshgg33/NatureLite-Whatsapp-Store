@@ -10,8 +10,12 @@ import {
   Query,
   UseGuards,
   Res,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ProductsService } from './products.service';
 import {
   CreateProductDto,
@@ -63,10 +67,12 @@ export class ProductsController {
   async searchProducts(
     @Query('q') searchTerm: string,
     @Query('limit') limit?: string,
+    @Query('storeId') storeId?: string,
   ): Promise<Product[]> {
     return this.productsService.searchProducts(
       searchTerm,
       limit ? parseInt(limit, 10) : 20,
+      storeId,
     );
   }
 
@@ -137,6 +143,16 @@ export class ProductsController {
     return { message: 'Product deleted successfully' };
   }
 
+  @Get('csv/template')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  getCsvTemplate(@Res() res: Response): void {
+    const csv = this.productsService.getCsvTemplate();
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="products-template.csv"');
+    res.send(csv);
+  }
+
   @Get('export/csv')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
@@ -148,6 +164,21 @@ export class ProductsController {
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="products.csv"');
     res.send(csv);
+  }
+
+  @Post('import')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  async importCsvFile(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('defaultCategoryId') defaultCategoryId: string,
+    @Body('mapping') mappingJson: string | undefined,
+  ): Promise<{ created: number; skipped: number; errors: string[] }> {
+    if (!file) throw new BadRequestException('No file uploaded');
+    if (!defaultCategoryId) throw new BadRequestException('defaultCategoryId required');
+    const mapping = mappingJson ? (JSON.parse(mappingJson) as Record<string, string>) : undefined;
+    return this.productsService.importFromCsvBuffer(file.buffer, defaultCategoryId, mapping);
   }
 
   @Post('import/csv')
