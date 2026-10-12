@@ -3,7 +3,7 @@ import { Document, Types } from 'mongoose'
 
 @Schema({ timestamps: false, collection: 'billing_audit_logs' })
 export class AuditLog extends Document {
-  @Prop({ required: true }) collection: string
+  @Prop({ required: true }) targetCollection: string
   @Prop({ type: Types.ObjectId, required: true, index: true }) docId: Types.ObjectId
   @Prop({ required: true, enum: ['create','update','cancel','delete','restore'] }) action: string
   @Prop({ type: Object }) before: Record<string, unknown>
