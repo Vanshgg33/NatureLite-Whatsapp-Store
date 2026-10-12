@@ -44,6 +44,21 @@ export class BillingCustomer {
   @Prop({ default: 0 })
   outstanding: number;
 
+  // Phase 0 additions — all optional with safe defaults
+  @Prop({ default: 'customer', enum: ['customer','supplier','both'] }) partyType: string
+  @Prop() gstin: string
+  @Prop({ default: 'unregistered', enum: ['registered','unregistered','composition','consumer','overseas','sez'] }) gstType: string
+  @Prop() stateCode: string
+  @Prop() pan: string
+  @Prop({ default: 0 }) openingBalance: number
+  @Prop({ default: 'to_receive', enum: ['to_receive','to_pay'] }) openingBalanceType: string
+  @Prop() openingBalanceDate: Date
+  @Prop({ default: 0 }) creditLimit: number
+  @Prop({ default: 15 }) creditDays: number
+  @Prop() partyGroup: string
+  @Prop() email: string
+  @Prop() notes: string
+
   createdAt: Date;
   updatedAt: Date;
 }
