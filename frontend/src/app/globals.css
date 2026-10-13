@@ -4,6 +4,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Billing Design System tokens (§15.1) ── */
+:root {
+  --billing-brand-900: #1a3a2a;
+  --billing-brand-600: #2d6a4f;
+  --billing-brand-50:  #f0f7f4;
+  --billing-cream:     #faf8f2;
+  --billing-ink:       #1a1a1a;
+}
+
 /* ── CRM Design System v2 ─────────────────────────── */
 
 /* Token variables — all CRM colours live here, scoped to .crm-root */

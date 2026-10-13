@@ -13,7 +13,10 @@ export class TaxSettingsController {
   }
 
   @Get('rules')
-  getRules() { return this.svc.getRules() }
+  getRules(@Req() req: any) {
+    this.requireAdmin(req)
+    return this.svc.getRules()
+  }
 
   @Post('rules')
   createRule(@Body() dto: CreateRuleDto, @Req() req: any) {
@@ -28,8 +31,14 @@ export class TaxSettingsController {
   }
 
   @Get('params')
-  getParams() { return this.svc.getAllParams() }
+  getParams(@Req() req: any) {
+    this.requireAdmin(req)
+    return this.svc.getAllParams()
+  }
 
   @Get('changelog')
-  getChangelog() { return this.svc.getChangelog() }
+  getChangelog(@Req() req: any) {
+    this.requireAdmin(req)
+    return this.svc.getChangelog()
+  }
 }

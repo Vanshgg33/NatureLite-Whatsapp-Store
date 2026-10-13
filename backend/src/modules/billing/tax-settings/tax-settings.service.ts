@@ -70,6 +70,11 @@ export class TaxSettingsService {
 
     const effectiveFrom = new Date(dto.effectiveFrom)
 
+    // Guard: scope key must be present to avoid matching wrong documents
+    if (dto.scope === 'hsn' && !dto.hsnPrefix) throw new BadRequestException('hsnPrefix required for HSN scope')
+    if (dto.scope === 'category' && !dto.categoryId) throw new BadRequestException('categoryId required for category scope')
+    if (dto.scope === 'item' && !dto.itemId) throw new BadRequestException('itemId required for item scope')
+
     // Guard: check if effectiveFrom falls inside a filed GST month
     const lockedParam = await this.paramModel.findOne({ key: 'gstr1FiledUntil' }).sort({ effectiveFrom: -1 })
     if (lockedParam) {

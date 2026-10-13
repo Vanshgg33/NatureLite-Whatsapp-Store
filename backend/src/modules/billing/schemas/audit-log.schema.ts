@@ -13,5 +13,5 @@ export class AuditLog extends Document {
   @Prop() ip: string
 }
 export const AuditLogSchema = SchemaFactory.createForClass(AuditLog)
-AuditLogSchema.index({ collection: 1, docId: 1 })
+AuditLogSchema.index({ targetCollection: 1, docId: 1 })
 AuditLogSchema.index({ at: -1 })

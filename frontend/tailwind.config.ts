@@ -201,7 +201,21 @@ const config: Config = {
             dark: 'hsl(var(--brand-border-dark))',
           },
           highlight: 'hsl(var(--brand-highlight))',
+        // Billing system tokens (§15.1)
+        900: 'var(--billing-brand-900)',
+        600: 'var(--billing-brand-600)',
+        50:  'var(--billing-brand-50)',
         },
+      // Billing standalone tokens
+      'billing-cream': 'var(--billing-cream)',
+      'billing-ink':   'var(--billing-ink)',
+      // Customer tag colours
+      'tag-b2b':          '#3B82F6',
+      'tag-transport':    '#F97316',
+      'tag-homedelivery': '#14B8A6',
+      'tag-storeretail':  '#A855F7',
+      'tag-wholesale':    '#F59E0B',
+      'tag-retail':       '#EC4899',
       },
       fontFamily: {
         display: ['var(--font-playfair)', 'Georgia', 'serif'],
@@ -369,6 +383,9 @@ const config: Config = {
           from: { opacity: '1', transform: 'translateY(0)' },
           to: { opacity: '0', transform: 'translateY(20px)' },
         },
+        // Billing motion tokens (§15.2)
+        'billing-highlight': { '0%,100%': { backgroundColor: 'transparent' }, '30%': { backgroundColor: 'var(--billing-brand-50)' } },
+        'billing-shake':     { '0%,100%': { transform: 'translateX(0)' }, '25%': { transform: 'translateX(-4px)' }, '75%': { transform: 'translateX(4px)' } },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
@@ -388,6 +405,8 @@ const config: Config = {
         'confetti-fall': 'confetti-fall 1s ease-out forwards',
         'slide-in-bottom': 'slide-in-bottom 0.4s var(--ease-smooth) forwards',
         'slide-out-bottom': 'slide-out-bottom 0.3s var(--ease-smooth) forwards',
+        'billing-highlight': 'billing-highlight 0.5s ease-out',
+        'billing-shake':     'billing-shake 0.3s ease-out',
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
