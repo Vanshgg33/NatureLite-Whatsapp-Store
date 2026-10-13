@@ -6,13 +6,14 @@ import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   Users, FileText, AlertCircle, BarChart3, Trophy, FileSpreadsheet,
-  LayoutDashboard, Plus, LogOut, Menu, X, type LucideIcon,
+  LayoutDashboard, Plus, LogOut, Menu, X, Settings, type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { MotionConfig } from 'framer-motion';
 
 type NavItem = { name: string; href: string; icon: LucideIcon; soon?: boolean };
 type NavGroup = { label: string; items: NavItem[] };
@@ -44,6 +45,12 @@ const BILLING_NAV: NavGroup[] = [
     items: [
       { name: 'Customer Insights', href: '/billing/insights', icon: Trophy },
       { name: 'GSTR-1', href: '/billing/gstr1', icon: FileSpreadsheet },
+    ],
+  },
+  {
+    label: 'Settings',
+    items: [
+      { name: 'Tax & Compliance', href: '/billing/settings/tax', icon: Settings },
     ],
   },
 ];
@@ -173,20 +180,22 @@ export default function BillingLayout({ children }: { children: React.ReactNode 
   if (!hasHydrated || !isAuthenticated) return null;
 
   return (
-    <div className="flex h-screen bg-[#EDEEF2]">
-      <BillingSidebar mobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)} />
-      <div className="flex flex-1 flex-col min-w-0">
-        {/* Mobile top bar */}
-        <div className="flex md:hidden h-12 items-center gap-3 border-b bg-white px-4 shrink-0">
-          <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} aria-label="Open menu" className="h-8 w-8">
-            <Menu className="h-4 w-4" />
-          </Button>
-          <span className="font-semibold text-sm text-gray-800">Billing</span>
+    <MotionConfig reducedMotion="user">
+      <div className="flex h-screen bg-[#EDEEF2]">
+        <BillingSidebar mobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)} />
+        <div className="flex flex-1 flex-col min-w-0">
+          {/* Mobile top bar */}
+          <div className="flex md:hidden h-12 items-center gap-3 border-b bg-white px-4 shrink-0">
+            <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} aria-label="Open menu" className="h-8 w-8">
+              <Menu className="h-4 w-4" />
+            </Button>
+            <span className="font-semibold text-sm text-gray-800">Billing</span>
+          </div>
+          <main className="flex-1 overflow-auto">
+            <ErrorBoundary>{children}</ErrorBoundary>
+          </main>
         </div>
-        <main className="flex-1 overflow-auto">
-          <ErrorBoundary>{children}</ErrorBoundary>
-        </main>
       </div>
-    </div>
+    </MotionConfig>
   );
 }
