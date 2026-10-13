@@ -270,11 +270,11 @@ export class InventoryService {
   /** Resolve which store should fulfil an order based on city. Fallback = main store. */
   async resolveFulfilmentStore(city?: string): Promise<StoreDocument | null> {
     const c = (city ?? '').trim().toLowerCase();
-    const stores = await this.stores.find({ isActive: true }).lean();
+    const stores = await this.stores.find({ isActive: true });
     return (
-      stores.find((s: any) => (s.cities ?? []).some((x: string) => x.toLowerCase() === c)) ??
-      stores.find((s: any) => s.isMainStore) ??
-      (stores[0] as StoreDocument | undefined) ??
+      stores.find((s) => (s.cities ?? []).some((x: string) => x.toLowerCase() === c)) ??
+      stores.find((s) => s.isMainStore) ??
+      stores[0] ??
       null
     );
   }
