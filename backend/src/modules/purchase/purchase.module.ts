@@ -7,6 +7,7 @@ import { AdminUser, AdminUserSchema } from '../admin/schemas/admin-user.schema';
 import { PurchaseService } from './purchase.service';
 import { PurchaseController } from './purchase.controller';
 import { EmailModule } from '../email/email.module';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 
 @Module({
   imports: [
@@ -19,6 +20,6 @@ import { EmailModule } from '../email/email.module';
     ]),
   ],
   controllers: [PurchaseController],
-  providers: [PurchaseService],
+  providers: [PurchaseService, PermissionGuard],
 })
 export class PurchaseModule {}

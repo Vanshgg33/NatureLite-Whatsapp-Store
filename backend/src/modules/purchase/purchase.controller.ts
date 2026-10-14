@@ -2,13 +2,12 @@ import {
   Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards,
 } from '@nestjs/common';
 import { PurchaseService } from './purchase.service';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 
 @Controller('purchase')
-@UseGuards(RolesGuard)
-@Roles('admin', 'superadmin')
+@UseGuards(PermissionGuard)
 export class PurchaseController {
   constructor(private readonly purchaseService: PurchaseService) {}
 
@@ -25,11 +24,13 @@ export class PurchaseController {
   }
 
   @Post('materials')
+  @RequirePermission('materials.manage')
   createMaterial(@Body() body: { name: string; category?: string }) {
     return this.purchaseService.createMaterial(body);
   }
 
   @Patch('materials/:id')
+  @RequirePermission('materials.manage')
   updateMaterial(
     @Param('id') id: string,
     @Body() body: { name?: string; category?: string; isActive?: boolean },
@@ -45,6 +46,7 @@ export class PurchaseController {
   }
 
   @Post('vendors')
+  @RequirePermission('vendors.manage')
   createVendor(@Body() body: {
     name: string;
     phone?: string;
@@ -57,6 +59,7 @@ export class PurchaseController {
   }
 
   @Patch('vendors/:id')
+  @RequirePermission('vendors.manage')
   updateVendor(
     @Param('id') id: string,
     @Body() body: {
@@ -73,6 +76,7 @@ export class PurchaseController {
   }
 
   @Delete('vendors/:id')
+  @RequirePermission('vendors.manage')
   deleteVendor(@Param('id') id: string) {
     return this.purchaseService.deleteVendor(id);
   }
@@ -112,6 +116,7 @@ export class PurchaseController {
   }
 
   @Post('requests')
+  @RequirePermission('pr.create')
   createRequest(
     @CurrentUser() user: JwtPayload,
     @Body() body: {
@@ -128,6 +133,7 @@ export class PurchaseController {
   }
 
   @Post('requests/:id/po')
+  @RequirePermission('po.raise')
   createPO(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
@@ -144,6 +150,7 @@ export class PurchaseController {
   }
 
   @Post('requests/:id/split-po')
+  @RequirePermission('po.raise')
   splitPO(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
@@ -165,6 +172,7 @@ export class PurchaseController {
   }
 
   @Post('requests/:id/decision')
+  @RequirePermission('po.approve')
   makeDecision(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
@@ -192,6 +200,7 @@ export class PurchaseController {
   }
 
   @Post('requests/:id/receive')
+  @RequirePermission('delivery.receive')
   receiveGoods(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
@@ -205,6 +214,7 @@ export class PurchaseController {
   }
 
   @Post('requests/:id/deadline')
+  @RequirePermission('deadline.set')
   setDeadline(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
@@ -214,6 +224,7 @@ export class PurchaseController {
   }
 
   @Post('requests/:id/cancel')
+  @RequirePermission('request.cancel')
   cancelRequest(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
