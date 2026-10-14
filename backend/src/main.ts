@@ -5,6 +5,7 @@ import { ExpressAdapter } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { WhatsAppConfig } from './config/configuration';
+import { AuthService } from './modules/auth/auth.service';
 
 const express = require('express');
 const bodyParser = require('body-parser');
@@ -171,6 +172,11 @@ async function createApp() {
   );
 
   await app.init();
+
+  // Bootstrap FMS super admin from env vars (idempotent — skips if loginId already exists)
+  const authService = app.get(AuthService);
+  await authService.bootstrapFmsAdmin().catch((err) => logger.warn(`bootstrapFmsAdmin failed: ${err.message}`));
+
   return { app, configService };
 }
 

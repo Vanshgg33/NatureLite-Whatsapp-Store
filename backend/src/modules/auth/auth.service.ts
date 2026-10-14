@@ -20,6 +20,7 @@ import {
 } from './dto/auth.dto';
 import { JwtPayload } from '../../common/decorators/current-user.decorator';
 import { parseObjectId } from '../../common/utils/objectid.util';
+import { PURCHASE_PERMISSIONS } from '../../common/decorators/require-permission.decorator';
 import { RedisService } from '../redis/redis.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 
@@ -120,7 +121,7 @@ export class AuthService {
   }
 
   async adminLogin(dto: AdminLoginDto): Promise<AuthResponse> {
-    const admin = await this.adminUserRepository.findOneByEmailForAuth(dto.email.toLowerCase());
+    const admin = await this.adminUserRepository.findOneForAuthByLoginIdOrEmail(dto.email);
 
     if (!admin) {
       throw new UnauthorizedException('Invalid credentials');
@@ -501,6 +502,27 @@ export class AuthService {
     if (tokenDoc) {
       await this.refreshTokenRepository.deleteManyByUserId(tokenDoc.userId);
     }
+  }
+
+  async bootstrapFmsAdmin(): Promise<void> {
+    const loginId = process.env.FMS_ADMIN_LOGIN;
+    const password = process.env.FMS_ADMIN_PASSWORD;
+    if (!loginId || !password) return;
+    const exists = await this.adminUserRepository.findOne({ loginId: loginId.toLowerCase().trim() });
+    if (exists) return;
+    const hash = await bcrypt.hash(password, 12);
+    await this.adminUserRepository.create({
+      loginId: loginId.toLowerCase().trim(),
+      email: `${loginId.toLowerCase().trim()}@naturelite.internal`,
+      name: 'Super Admin',
+      password: hash,
+      role: 'superadmin',
+      departmentType: 'fms',
+      designation: 'Administrator',
+      permissions: [...PURCHASE_PERMISSIONS],
+      mustChangePassword: false,
+      isActive: true,
+    } as any);
   }
 
   async getProfile(userId: string, role: string): Promise<any> {

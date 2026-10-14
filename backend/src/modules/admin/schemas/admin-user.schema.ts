@@ -48,6 +48,21 @@ export class AdminUser {
   @Prop()
   avatar?: string;
 
+  @Prop({ unique: true, sparse: true, lowercase: true, trim: true })
+  loginId?: string;
+
+  @Prop()
+  designation?: string;
+
+  @Prop({
+    enum: ['SUPER_ADMIN', 'REQUESTER', 'APPROVER', 'RECEIVER', 'PURCHASE_OFFICER', 'CUSTOM'],
+    required: false,
+  })
+  rolePreset?: string;
+
+  @Prop({ default: false })
+  mustChangePassword: boolean;
+
   @Prop({ type: Object, default: {} })
   preferences: Record<string, unknown>;
 

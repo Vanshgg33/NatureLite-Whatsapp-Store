@@ -49,4 +49,12 @@ export class AdminUserRepository extends BaseRepository<AdminUserDocument> {
   ): Promise<AdminUserDocument | null> {
     return this.model.findByIdAndUpdate(id, { $set: update }, { new: true }).select('-password -plainPassword').exec();
   }
+
+  async findOneForAuthByLoginIdOrEmail(identifier: string): Promise<AdminUserDocument | null> {
+    const lower = identifier.toLowerCase().trim();
+    return this.model
+      .findOne({ $or: [{ loginId: lower }, { email: lower }] })
+      .select('+password')
+      .exec();
+  }
 }
