@@ -232,4 +232,36 @@ export class PurchaseController {
   ) {
     return this.purchaseService.cancelRequest(id, user, body.reason);
   }
+
+  // ─── FMS User management ───────────────────────────────────────────────────
+
+  @Get('users')
+  @RequirePermission('users.manage')
+  getFmsUsers() {
+    return this.purchaseService.getFmsUsers();
+  }
+
+  @Post('users')
+  @RequirePermission('users.manage')
+  createFmsUser(@Body() body: any) {
+    return this.purchaseService.createFmsUser(body);
+  }
+
+  @Patch('users/:id')
+  @RequirePermission('users.manage')
+  updateFmsUser(@Param('id') id: string, @Body() body: any) {
+    return this.purchaseService.updateFmsUser(id, body);
+  }
+
+  @Post('users/:id/photo')
+  @RequirePermission('users.manage')
+  setUserPhoto(@Param('id') id: string, @Body() body: { photoUrl: string }) {
+    return this.purchaseService.setUserPhoto(id, body.photoUrl);
+  }
+
+  @Post('users/:id/reset-password')
+  @RequirePermission('users.manage')
+  resetFmsUserPassword(@Param('id') id: string, @Body() body: { newPassword: string }) {
+    return this.purchaseService.resetFmsUserPassword(id, body.newPassword);
+  }
 }

@@ -769,6 +769,69 @@ export class PurchaseService {
     return req;
   }
 
+  // ─── FMS User management ──────────────────────────────────────────────────
+
+  async getFmsUsers() {
+    return this.adminModel
+      .find({ $or: [{ departmentType: 'fms' }, { purchaseRole: { $exists: true, $ne: null } }] })
+      .select('-password')
+      .lean();
+  }
+
+  async createFmsUser(body: {
+    loginId: string;
+    name: string;
+    designation?: string;
+    rolePreset?: string;
+    tempPassword: string;
+    permissions?: string[];
+  }) {
+    const bcrypt = require('bcrypt');
+    const loginId = body.loginId.toLowerCase().trim();
+    const exists = await this.adminModel.findOne({ loginId });
+    if (exists) throw new ConflictException(`Login ID '${loginId}' already taken`);
+    const hash = await bcrypt.hash(body.tempPassword, 12);
+    return this.adminModel.create({
+      loginId,
+      email: `${loginId}@naturelite.internal`,
+      name: body.name,
+      designation: body.designation || '',
+      password: hash,
+      role: 'admin',
+      departmentType: 'fms',
+      rolePreset: body.rolePreset || 'CUSTOM',
+      permissions: body.permissions || [],
+      mustChangePassword: true,
+      isActive: true,
+    });
+  }
+
+  async updateFmsUser(id: string, body: Partial<{
+    name: string;
+    designation: string;
+    rolePreset: string;
+    permissions: string[];
+    isActive: boolean;
+  }>) {
+    const user = await this.adminModel.findByIdAndUpdate(id, { $set: body }, { new: true }).select('-password');
+    if (!user) throw new NotFoundException('User not found');
+    return user;
+  }
+
+  async setUserPhoto(id: string, photoUrl: string) {
+    const user = await this.adminModel.findByIdAndUpdate(id, { $set: { avatar: photoUrl } }, { new: true }).select('-password');
+    if (!user) throw new NotFoundException('User not found');
+    return user;
+  }
+
+  async resetFmsUserPassword(id: string, newPassword: string) {
+    const bcrypt = require('bcrypt');
+    const hash = await bcrypt.hash(newPassword, 12);
+    const user = await this.adminModel.findByIdAndUpdate(id, { $set: { password: hash, mustChangePassword: true } }, { new: true }).select('-password');
+    if (!user) throw new NotFoundException('User not found');
+    return user;
+  }
+
   // ─── Email ────────────────────────────────────────────────────────────────
 
   private async sendStatusEmail(req: any, event: string) {
