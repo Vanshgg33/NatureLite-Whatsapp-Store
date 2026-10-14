@@ -3,6 +3,14 @@ import { Document } from 'mongoose';
 
 export type PurchaseRequestDocument = PurchaseRequest & Document;
 
+export interface ActorSnapshot {
+  userId: string;
+  name: string;
+  designation: string;
+  photoUrl: string;
+  at: Date;
+}
+
 @Schema({ timestamps: true })
 export class PurchaseRequest {
   @Prop({ unique: true })
@@ -112,10 +120,18 @@ export class PurchaseRequest {
   };
 
   @Prop({
-    type: [{ action: String, status: String, byName: String, at: Date }],
+    type: [{ action: String, status: String, byName: String, at: Date, actor: Object }],
     default: [],
   })
-  timeline: Array<{ action: string; status: string; byName: string; at: Date }>;
+  timeline: Array<{ action: string; status: string; byName: string; at: Date; actor?: ActorSnapshot }>;
+
+  // ActorSnapshot fields (all optional — old docs load without them)
+  @Prop({ type: Object }) requestedBy?: ActorSnapshot;
+  @Prop({ type: Object }) poRaisedBy?: ActorSnapshot;
+  @Prop({ type: Object }) approvedBy?: ActorSnapshot;
+  @Prop({ type: Object }) receivedBy?: ActorSnapshot;
+  @Prop({ type: Object }) closedBy?: ActorSnapshot;
+  @Prop({ type: Object }) cancelledBy?: ActorSnapshot;
 
   @Prop({ type: Object })
   deadline: {

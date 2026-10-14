@@ -13,6 +13,7 @@ import { PurchaseVendor, PurchaseVendorDocument } from './schemas/purchase-vendo
 import { AdminUser, AdminUserDocument } from '../admin/schemas/admin-user.schema';
 import { EmailService } from '../email/email.service';
 import { JwtPayload } from '../../common/decorators/current-user.decorator';
+import { ActorSnapshot } from './schemas/purchase-request.schema';
 import {
   Stage,
   deriveRequestStage,
@@ -21,6 +22,24 @@ import {
   isOverdue,
   waitMs,
 } from './lib/stage';
+
+export async function buildActorSnapshot(
+  user: JwtPayload,
+  adminModel: Model<any>,
+  at: Date,
+): Promise<ActorSnapshot> {
+  const dbUser = await adminModel
+    .findById(user.sub)
+    .select('name designation avatar')
+    .lean() as unknown as { name?: string; designation?: string; avatar?: string } | null;
+  return {
+    userId: user.sub,
+    name: dbUser?.name ?? user.name ?? '',
+    designation: dbUser?.designation ?? '',
+    photoUrl: dbUser?.avatar ?? '',
+    at,
+  };
+}
 
 const TRANSITIONS: Record<string, { next: string[]; roles: string[] }> = {
   REQUESTED: { next: ['PO_CREATED', 'CANCELLED'], roles: ['po_creator', 'superadmin'] },
@@ -385,16 +404,14 @@ export class PurchaseService {
       purpose?: string;
     },
   ) {
-    const role = effectiveRole(user);
-    if (role !== 'requester' && role !== 'superadmin') {
-      throw new ForbiddenException('Only requesters can create purchase requests');
-    }
     if (!data.items?.length) throw new BadRequestException('At least one item required');
     for (const item of data.items) {
       if (!item.qtyKg || item.qtyKg <= 0) throw new BadRequestException('Quantity must be > 0');
     }
 
-    const year = new Date().getFullYear();
+    const now = new Date();
+    const actor = await buildActorSnapshot(user, this.adminModel, now);
+    const year = now.getFullYear();
     const count = await this.requestModel.countDocuments();
     const reqNo = `PR-${year}-${String(count + 1).padStart(4, '0')}`;
 
@@ -404,16 +421,17 @@ export class PurchaseService {
       note: data.note || '',
       status: 'REQUESTED',
       stage: 'NEEDS_PO',
-      stageEnteredAt: new Date(),
+      stageEnteredAt: now,
       department: data.department,
       requiredBy: data.requiredBy ? new Date(data.requiredBy) : undefined,
       priority: data.priority || 'NORMAL',
       purpose: data.purpose,
       requestedById: user.sub,
-      requestedByName: user.name || 'Unknown',
+      requestedByName: actor.name || user.name || 'Unknown',
       requestedByEmail: '',
+      requestedBy: actor,
       timeline: [
-        { action: 'Purchase request created', status: 'REQUESTED', byName: user.name || 'System', at: new Date() },
+        { action: 'Purchase request created', status: 'REQUESTED', byName: actor.name || 'System', at: now, actor },
       ],
     });
 
@@ -509,7 +527,9 @@ export class PurchaseService {
       vendorGroups.get(key)!.push(item);
     }
 
-    const year = new Date().getFullYear();
+    const now = new Date();
+    const actor = await buildActorSnapshot(user, this.adminModel, now);
+    const year = now.getFullYear();
     let poCount = await this.requestModel.countDocuments({ 'po.poNo': { $exists: true } });
     const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     const children: any[] = [];
@@ -533,10 +553,11 @@ export class PurchaseService {
         note: req.note || '',
         status: 'PO_CREATED',
         stage: 'AWAITING_APPROVAL',
-        stageEnteredAt: new Date(),
+        stageEnteredAt: now,
         requestedById: req.requestedById,
         requestedByName: req.requestedByName,
         requestedByEmail: req.requestedByEmail || '',
+        poRaisedBy: actor,
         po: {
           poNo, vendorName,
           vendorPhone: first.vendorPhone || '',
@@ -544,12 +565,12 @@ export class PurchaseService {
           items: poItems, totalAmount,
           expectedDelivery: data.expectedDelivery || '',
           terms: first.terms || '',
-          createdByName: user.name || 'System',
-          createdAt: new Date(),
+          createdByName: actor.name || 'System',
+          createdAt: now,
         },
         timeline: [
-          { action: `Derived from ${req.reqNo}`, status: 'REQUESTED', byName: user.name || 'System', at: new Date() },
-          { action: `PO ${poNo} created — ₹${totalAmount.toLocaleString('en-IN')}`, status: 'PO_CREATED', byName: user.name || 'System', at: new Date() },
+          { action: `Derived from ${req.reqNo}`, status: 'REQUESTED', byName: actor.name || 'System', at: now, actor },
+          { action: `PO ${poNo} created — ₹${totalAmount.toLocaleString('en-IN')}`, status: 'PO_CREATED', byName: actor.name || 'System', at: now, actor },
         ],
       });
       children.push(child.toObject());
@@ -559,8 +580,9 @@ export class PurchaseService {
     req.timeline.push({
       action: `Split into ${children.length} vendor PO${children.length > 1 ? 's' : ''} (${children.map((c: any) => c.po.vendorName).join(', ')})`,
       status: 'PO_CREATED',
-      byName: user.name || 'System',
-      at: new Date(),
+      byName: actor.name || 'System',
+      at: now,
+      actor,
     });
     await this.recomputeAndCacheStage(req);
     await req.save();
@@ -584,13 +606,17 @@ export class PurchaseService {
       throw new BadRequestException('Rejection reason is required');
     }
 
-    req.decision = { action: data.action, reason: data.reason || '', byName: user.name || 'System', at: new Date() };
+    const now = new Date();
+    const actor = await buildActorSnapshot(user, this.adminModel, now);
+    req.decision = { action: data.action, reason: data.reason || '', byName: actor.name || 'System', at: now };
     req.status = data.action;
+    if (data.action === 'APPROVED') req.approvedBy = actor;
     req.timeline.push({
       action: data.action === 'APPROVED' ? 'PO Approved' : `PO Rejected: ${data.reason}`,
       status: data.action,
-      byName: user.name || 'System',
-      at: new Date(),
+      byName: actor.name || 'System',
+      at: now,
+      actor,
     });
     await this.recomputeAndCacheStage(req);
     await req.save();
@@ -673,19 +699,23 @@ export class PurchaseService {
       throw new ForbiddenException(`Cannot complete from status ${req.status} with role ${role}`);
     }
 
+    const now = new Date();
+    const actor = await buildActorSnapshot(user, this.adminModel, now);
     req.receipt = {
       gateBill: data.gateBill,
       receivedItems: data.receivedItems.map(i => ({ ...i, varianceKg: i.receivedKg - i.orderedKg })),
       remarks: data.remarks || '',
-      byName: user.name || 'System',
-      at: new Date(),
+      byName: actor.name || 'System',
+      at: now,
     };
+    req.receivedBy = actor;
     req.status = 'COMPLETED';
     req.timeline.push({
       action: 'Goods received — order closed',
       status: 'COMPLETED',
-      byName: user.name || 'System',
-      at: new Date(),
+      byName: actor.name || 'System',
+      at: now,
+      actor,
     });
     await this.recomputeAndCacheStage(req);
     await req.save();
@@ -720,13 +750,17 @@ export class PurchaseService {
       throw new BadRequestException('Cannot cancel a completed or already-cancelled request');
     }
 
+    const now = new Date();
+    const actor = await buildActorSnapshot(user, this.adminModel, now);
     req.status = 'CANCELLED';
     req.cancelReason = reason;
+    req.cancelledBy = actor;
     req.timeline.push({
       action: `Cancelled: ${reason}`,
       status: 'CANCELLED',
-      byName: user.name || 'System',
-      at: new Date(),
+      byName: actor.name || 'System',
+      at: now,
+      actor,
     });
     await this.recomputeAndCacheStage(req);
     await req.save();
