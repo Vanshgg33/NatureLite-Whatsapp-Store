@@ -170,6 +170,11 @@ export class Product {
   @Prop({ default: 0 })
   viewCount: number;
 
+  // Phase 1 billing fields:
+  @Prop({ default: 5 }) gstRate: number;
+  @Prop({ default: 0 }) mrp: number;
+  @Prop({ default: 'NOS' }) uqc: string;
+
   createdAt: Date;
   updatedAt: Date;
 }

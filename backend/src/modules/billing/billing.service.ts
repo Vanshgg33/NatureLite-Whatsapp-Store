@@ -4,9 +4,15 @@ import { Model, Types } from 'mongoose';
 import { CrmEngineService } from '../crm/crm-engine.service';
 import { CustomerTag, TAG_PRIORITY } from './schemas/billing-customer.schema';
 import { BillingTagPrice, BillingTagPriceDocument } from './schemas/billing-tag-price.schema';
-import { BillingBill, BillingBillDocument, BillLineItem } from './schemas/billing-bill.schema';
+import { BillingBill, BillingBillDocument, BillLineItem, PaymentStatus } from './schemas/billing-bill.schema';
 import { BillingCounter, BillingCounterDocument } from './schemas/billing-counter.schema';
+import { Godown } from './schemas/godown.schema';
+import { AuditLog } from './schemas/audit-log.schema';
 import { User } from '../users/schemas/user.schema';
+
+function validateInvoiceNo(no: string): boolean {
+  return /^[A-Za-z0-9/\-]{1,16}$/.test(no);
+}
 
 @Injectable()
 export class BillingService {
@@ -16,6 +22,8 @@ export class BillingService {
     @InjectModel(BillingBill.name) private billModel: Model<BillingBillDocument>,
     @InjectModel(BillingCounter.name) private counterModel: Model<BillingCounterDocument>,
     @InjectModel('Product') private productModel: Model<any>,
+    @InjectModel(Godown.name) private godownModel: Model<any>,
+    @InjectModel(AuditLog.name) private auditLogModel: Model<any>,
     private readonly crmEngine: CrmEngineService,
   ) {}
 
@@ -148,7 +156,7 @@ export class BillingService {
       : { isActive: true };
 
     const products = await this.productModel
-      .find(filter, 'name sku price hsnCode')
+      .find(filter, 'name sku price hsnCode gstRate mrp uqc')
       .limit(30)
       .lean();
 
@@ -168,6 +176,7 @@ export class BillingService {
     return products.map(p => ({
       ...p,
       tagPrices: tpMap[p._id.toString()] ?? [],
+      unit: (p as any).uqc ?? 'NOS',
     }));
   }
 
@@ -227,6 +236,29 @@ export class BillingService {
       { upsert: true, new: true },
     ).lean();
     return `NL-${year}-${String(counter.value).padStart(4, '0')}`;
+  }
+
+  private async nextInvoiceNoV1(fyLabel = '2026-27', prefix = 'NLF-26-27/'): Promise<string> {
+    const counter = await this.counterModel.findOneAndUpdate(
+      { key: `sale-${fyLabel}` },
+      { $inc: { value: 1 } },
+      { upsert: true, new: true },
+    ).lean();
+    const no = `${prefix}${counter.value}`;
+    if (!validateInvoiceNo(no)) throw new BadRequestException(`Generated invoice no too long: ${no}`);
+    return no;
+  }
+
+  // ─── Godowns ──────────────────────────────────────────────────────────────
+
+  async getGodowns() {
+    const docs = await this.godownModel.find().sort({ isDefault: -1, name: 1 }).lean();
+    return docs.map((d: any) => ({
+      _id: d._id.toString(),
+      name: d.name,
+      code: d.code,
+      isDefault: !!d.isDefault,
+    }));
   }
 
   // ─── Bills ───────────────────────────────────────────────────────────────
@@ -735,6 +767,245 @@ export class BillingService {
     );
 
     return this.billModel.aggregate(pipeline);
+  }
+
+  async createBillV1(dto: {
+    paymentTerm?: string;
+    invoiceDate?: string;
+    invoiceNo?: string;
+    placeOfSupply?: string;
+    godownId?: string;
+    customerId: string;
+    billingAddress?: string;
+    shippingAddress?: string;
+    sameAsBilling?: boolean;
+    orderTag: string;
+    paymentMode?: string;
+    items: Array<{
+      productId: string;
+      name: string;
+      sku: string;
+      hsnCode: string;
+      mrp?: number;
+      qty: number;
+      unit?: string;
+      rate: number;
+      priceInclTax?: boolean;
+      discountPct?: number;
+      gstRate: number;
+    }>;
+    billDiscountPct?: number;
+    charges?: Array<{ label: string; amtRupees: number }>;
+    roundOffEnabled?: boolean;
+    amountPaidRupees?: number;
+    terms?: string;
+    notes?: string;
+    deliveryUserId?: string;
+    deliveryUserName?: string;
+  }, userId = 'system', ip = '') {
+    if (!dto.items?.length) throw new BadRequestException('Bill must have at least one item');
+
+    // 1. Invoice number
+    const providedNo = dto.invoiceNo?.trim();
+    let invoiceNo: string;
+    if (providedNo) {
+      if (!validateInvoiceNo(providedNo)) throw new BadRequestException('Invoice number must be 1-16 chars, letters/digits/hyphen/slash only');
+      const existing = await this.billModel.findOne({ invoiceNo: providedNo }).lean();
+      if (existing) throw new ConflictException(`Invoice number ${providedNo} already exists`);
+      invoiceNo = providedNo;
+    } else {
+      invoiceNo = await this.nextInvoiceNoV1();
+    }
+
+    // 2. Customer snapshot
+    const customer = await this.userModel.findById(dto.customerId).lean() as any;
+    if (!customer) throw new NotFoundException('Customer not found');
+
+    // 3. Tax direction
+    const pos = dto.placeOfSupply ?? '22';
+    const isInterState = pos !== '22';
+
+    const billDiscountPct = dto.billDiscountPct ?? 0;
+
+    // 4. Pre-discount taxables (for proportional allocation)
+    const preTaxables = dto.items.map(item => {
+      const ratePaise = Math.round(item.rate * 100);
+      const gross = ratePaise * item.qty;
+      const lineDiscAmt = Math.round(gross * (item.discountPct ?? 0) / 100);
+      const afterLineDisc = gross - lineDiscAmt;
+      return (item.priceInclTax !== false)
+        ? Math.round(afterLineDisc * 100 / (100 + item.gstRate))
+        : afterLineDisc;
+    });
+    const totalPreTaxable = preTaxables.reduce((s, t) => s + t, 0);
+    const billDiscAmtPaise = Math.round(totalPreTaxable * billDiscountPct / 100);
+
+    const billDiscAlloc = (totalPreTaxable > 0 && billDiscAmtPaise > 0)
+      ? preTaxables.map(t => Math.round(billDiscAmtPaise * t / totalPreTaxable))
+      : preTaxables.map(() => 0);
+
+    // 5. Per-line calc
+    const lines = dto.items.map((item, i) => {
+      const ratePaise = Math.round(item.rate * 100);
+      const gross = ratePaise * item.qty;
+      const lineDiscAmt = Math.round(gross * (item.discountPct ?? 0) / 100);
+      const afterLineDisc = gross - lineDiscAmt;
+      const taxable = (item.priceInclTax !== false)
+        ? Math.round(afterLineDisc * 100 / (100 + item.gstRate))
+        : afterLineDisc;
+      const taxableABD = Math.max(0, taxable - billDiscAlloc[i]);
+      const taxAmt = Math.round(taxableABD * item.gstRate / 100);
+      const cgst = isInterState ? 0 : Math.floor(taxAmt / 2);
+      const sgst = isInterState ? 0 : (taxAmt - Math.floor(taxAmt / 2));
+      const igst = isInterState ? taxAmt : 0;
+      const total = taxableABD + taxAmt;
+      return {
+        productId: new Types.ObjectId(item.productId),
+        name: item.name,
+        sku: item.sku,
+        hsnCode: item.hsnCode ?? '',
+        mrp: item.mrp ?? 0,
+        qty: item.qty,
+        unit: item.unit ?? 'NOS',
+        rate: item.rate,
+        priceInclTax: item.priceInclTax !== false,
+        discountPct: item.discountPct ?? 0,
+        discountAmt: lineDiscAmt,
+        taxable: taxableABD,
+        gstRate: item.gstRate,
+        cgst, sgst, igst,
+        total,
+        // backward compat float fields:
+        unitPrice: item.rate,
+        taxableAmount: +(taxableABD / 100).toFixed(2),
+        gstAmount: +(taxAmt / 100).toFixed(2),
+      };
+    });
+
+    // 6. Charges + totals
+    const chargesPaise = (dto.charges ?? []).map(c => ({
+      label: c.label,
+      amtPaise: Math.round(c.amtRupees * 100),
+    }));
+    const chargesTotalPaise = chargesPaise.reduce((s, c) => s + c.amtPaise, 0);
+    const cgstTotalPaise = lines.reduce((s, l) => s + l.cgst, 0);
+    const sgstTotalPaise = lines.reduce((s, l) => s + l.sgst, 0);
+    const igstTotalPaise = lines.reduce((s, l) => s + l.igst, 0);
+    const taxableTotalPaise = lines.reduce((s, l) => s + l.taxable, 0);
+    const grandBeforePaise = taxableTotalPaise + cgstTotalPaise + sgstTotalPaise + igstTotalPaise + chargesTotalPaise;
+
+    // 7. Round-off
+    let roundOffPaise = 0;
+    let grandTotalPaise = grandBeforePaise;
+    if (dto.roundOffEnabled) {
+      const rounded = Math.round(grandBeforePaise / 100) * 100;
+      roundOffPaise = rounded - grandBeforePaise;
+      grandTotalPaise = rounded;
+    }
+
+    const amountPaidPaise = Math.round((dto.amountPaidRupees ?? 0) * 100);
+    const amountDuePaise = Math.max(0, grandTotalPaise - amountPaidPaise);
+    const paymentStatus: PaymentStatus = amountDuePaise <= 0 ? 'paid' : amountPaidPaise > 0 ? 'partial' : 'unpaid';
+
+    // 8. GSTR-1 section
+    const gstin = customer.gstNo ?? '';
+    const hasValidGstin = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin);
+    const B2CL_THRESHOLD_PAISE = 10_000_000; // Rs 1 lakh
+    let gstr1Section: string;
+    if (hasValidGstin) {
+      gstr1Section = 'B2B';
+    } else if (isInterState && grandTotalPaise > B2CL_THRESHOLD_PAISE) {
+      gstr1Section = 'B2CL';
+    } else {
+      gstr1Section = 'B2CS';
+    }
+
+    // 9. Resolve billing address
+    const rawPhone = customer.phone ?? '';
+    const customerPhone = /^91\d{10}$/.test(rawPhone) ? rawPhone.slice(2) : rawPhone;
+    const billingAddrs: any[] = customer.billingAddresses ?? [];
+    const defaultBillingLine =
+      (billingAddrs.find((a: any) => a.isDefault) ?? billingAddrs[0])?.line ?? '';
+
+    const bill = await this.billModel.create({
+      invoiceNo,
+      invoiceDate: dto.invoiceDate ? new Date(dto.invoiceDate) : new Date(),
+      customerId: new Types.ObjectId(dto.customerId),
+      customerName: customer.name ?? '',
+      customerPhone,
+      customerGstNo: customer.gstNo,
+      billingAddress: dto.billingAddress ?? defaultBillingLine,
+      shippingAddress: (dto.sameAsBilling !== false) ? (dto.billingAddress ?? defaultBillingLine) : (dto.shippingAddress ?? ''),
+      sameAsBilling: dto.sameAsBilling !== false,
+      customerTags: customer.tags ?? [],
+      orderTag: dto.orderTag,
+      deliveryUserId: dto.deliveryUserId,
+      deliveryUserName: dto.deliveryUserName,
+      godownId: dto.godownId,
+      placeOfSupply: pos,
+      isInterState,
+      paymentTerm: dto.paymentTerm ?? 'credit',
+      paymentMode: dto.paymentMode ?? 'credit',
+      items: lines,
+      billDiscountPct,
+      billDiscountAmtPaise,
+      charges: chargesPaise,
+      roundOffPaise,
+      cgstTotalPaise,
+      sgstTotalPaise,
+      igstTotalPaise,
+      grandTotalPaise,
+      amountPaidPaise,
+      amountDuePaise,
+      gstr1Section,
+      // backward compat float fields:
+      subtotal: +(taxableTotalPaise / 100).toFixed(2),
+      totalGst: +((cgstTotalPaise + sgstTotalPaise + igstTotalPaise) / 100).toFixed(2),
+      grandTotal: +(grandTotalPaise / 100).toFixed(2),
+      amountPaid: +(amountPaidPaise / 100).toFixed(2),
+      amountDue: +(amountDuePaise / 100).toFixed(2),
+      paymentStatus,
+      terms: dto.terms,
+      notes: dto.notes,
+      status: 'active',
+    });
+
+    await this.auditLogModel.create({
+      targetCollection: 'BillingBill',
+      docId: bill._id,
+      action: 'create',
+      before: null,
+      after: { invoiceNo, grandTotalPaise, paymentStatus },
+      userId,
+      ip,
+      at: new Date(),
+    });
+
+    await this.userModel.findByIdAndUpdate(dto.customerId, {
+      $inc: { outstanding: amountDuePaise / 100 },
+    });
+    this.crmEngine.refreshUser(dto.customerId).catch(() => {});
+    return bill;
+  }
+
+  async cancelBill(id: string, reason: string, userId = 'system', ip = '') {
+    if (!reason?.trim()) throw new BadRequestException('Cancel reason required');
+    const bill = await this.billModel.findById(id).lean() as any;
+    if (!bill) throw new NotFoundException('Bill not found');
+    if (bill.status === 'cancelled') throw new BadRequestException('Already cancelled');
+
+    await this.billModel.updateOne({ _id: id }, { $set: { status: 'cancelled', cancelReason: reason.trim() } });
+    await this.auditLogModel.create({
+      targetCollection: 'BillingBill',
+      docId: bill._id,
+      action: 'cancel',
+      before: { status: bill.status },
+      after: { status: 'cancelled', cancelReason: reason.trim() },
+      userId,
+      ip,
+      at: new Date(),
+    });
+    return { ok: true };
   }
 
   async recordPayment(id: string, amount: number) {

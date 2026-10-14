@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards,
+  Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req,
 } from '@nestjs/common';
 import { BillingService } from './billing.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -86,6 +86,13 @@ export class BillingController {
     return this.billingService.bulkUpsertTagPrices(body);
   }
 
+  // ─── Godowns ──────────────────────────────────────────────────────────────
+
+  @Get('godowns')
+  getGodowns() {
+    return this.billingService.getGodowns();
+  }
+
   // ─── Bills ────────────────────────────────────────────────────────────────
 
   @Patch('customers/:id/default-delivery')
@@ -116,6 +123,20 @@ export class BillingController {
     notes?: string;
   }) {
     return this.billingService.createBill(body);
+  }
+
+  @Post('bills/v1')
+  createBillV1(@Body() body: any, @Req() req: any) {
+    const userId = req.user?._id?.toString() ?? 'system';
+    const ip = req.ip ?? '';
+    return this.billingService.createBillV1(body, userId, ip);
+  }
+
+  @Patch('bills/:id/cancel')
+  cancelBill(@Param('id') id: string, @Body('reason') reason: string, @Req() req: any) {
+    const userId = req.user?._id?.toString() ?? 'system';
+    const ip = req.ip ?? '';
+    return this.billingService.cancelBill(id, reason, userId, ip);
   }
 
   @Get('bills')

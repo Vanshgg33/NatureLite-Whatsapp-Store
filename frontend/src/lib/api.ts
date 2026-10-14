@@ -2039,6 +2039,45 @@ class ApiClient {
     return res.data.data;
   }
 
+  async getBillingGodowns(): Promise<{ _id: string; name: string; code: string; isDefault: boolean }[]> {
+    const res = await this.client.get<ApiResponse<any[]>>('/billing/godowns');
+    return res.data.data;
+  }
+
+  async createBillingBillV1(data: {
+    paymentTerm?: string;
+    invoiceDate?: string;
+    invoiceNo?: string;
+    placeOfSupply?: string;
+    godownId?: string;
+    customerId: string;
+    billingAddress?: string;
+    shippingAddress?: string;
+    sameAsBilling?: boolean;
+    orderTag: string;
+    paymentMode?: string;
+    items: Array<{
+      productId: string; name: string; sku: string; hsnCode: string;
+      mrp?: number; qty: number; unit?: string; rate: number;
+      priceInclTax?: boolean; discountPct?: number; gstRate: number;
+    }>;
+    billDiscountPct?: number;
+    charges?: Array<{ label: string; amtRupees: number }>;
+    roundOffEnabled?: boolean;
+    amountPaidRupees?: number;
+    terms?: string;
+    notes?: string;
+    deliveryUserId?: string;
+    deliveryUserName?: string;
+  }): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>('/billing/bills/v1', data);
+    return res.data.data;
+  }
+
+  async cancelBillingBill(id: string, reason: string): Promise<void> {
+    await this.client.patch(`/billing/bills/${id}/cancel`, { reason });
+  }
+
   // ─── CRM ─────────────────────────────────────────────────────────────────
 
   async getCrmCustomers(params: { segment?: string; search?: string; page?: number; isEscalated?: boolean } = {}): Promise<any> {

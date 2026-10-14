@@ -11,11 +11,22 @@ export interface BillLineItem {
   sku: string;
   hsnCode: string;
   qty: number;
-  unitPrice: number;   // GST-inclusive price per unit
-  gstRate: number;     // e.g. 5, 12, 18
-  taxableAmount: number; // total / (1 + rate/100)
-  gstAmount: number;   // total - taxableAmount
-  total: number;       // unitPrice * qty
+  unitPrice: number;      // backward compat: GST-inclusive price per unit (rupees float)
+  gstRate: number;        // e.g. 5, 12, 18
+  taxableAmount: number;  // backward compat: rupees float
+  gstAmount: number;      // backward compat: rupees float
+  total: number;          // backward compat: rupees float
+  // Phase 1 additions (paise integers):
+  mrp?: number;           // rupees display
+  unit?: string;
+  rate?: number;          // rupees as entered
+  priceInclTax?: boolean;
+  discountPct?: number;
+  discountAmt?: number;   // paise
+  taxable?: number;       // paise
+  cgst?: number;          // paise
+  sgst?: number;          // paise
+  igst?: number;          // paise (overrides cgst+sgst when inter-state)
 }
 
 @Schema({ timestamps: true })
@@ -48,6 +59,17 @@ export class BillingBill {
       taxableAmount: Number,
       gstAmount: Number,
       total: Number,
+      // Phase 1:
+      mrp: { type: Number, default: 0 },
+      unit: { type: String, default: 'NOS' },
+      rate: { type: Number, default: 0 },
+      priceInclTax: { type: Boolean, default: true },
+      discountPct: { type: Number, default: 0 },
+      discountAmt: { type: Number, default: 0 },
+      taxable: { type: Number, default: 0 },
+      cgst: { type: Number, default: 0 },
+      sgst: { type: Number, default: 0 },
+      igst: { type: Number, default: 0 },
     }],
     required: true,
   })
@@ -73,6 +95,29 @@ export class BillingBill {
 
   @Prop()
   notes?: string;
+
+  // Phase 1 fields:
+  @Prop({ default: 'credit' }) paymentTerm: string;
+  @Prop() invoiceDate?: Date;
+  @Prop({ default: '22' }) placeOfSupply: string;
+  @Prop({ default: false }) isInterState: boolean;
+  @Prop() godownId?: string;
+  @Prop() shippingAddress?: string;
+  @Prop({ default: true }) sameAsBilling: boolean;
+  @Prop({ default: 'credit' }) paymentMode: string;
+  @Prop({ default: 0 }) billDiscountPct: number;
+  @Prop({ default: 0 }) billDiscountAmtPaise: number;
+  @Prop({ type: [{ label: String, amtPaise: Number }], default: [] }) charges: Array<{ label: string; amtPaise: number }>;
+  @Prop({ default: 0 }) roundOffPaise: number;
+  @Prop({ default: 0 }) cgstTotalPaise: number;
+  @Prop({ default: 0 }) sgstTotalPaise: number;
+  @Prop({ default: 0 }) igstTotalPaise: number;
+  @Prop({ default: 0 }) grandTotalPaise: number;
+  @Prop({ default: 0 }) amountPaidPaise: number;
+  @Prop({ default: 0 }) amountDuePaise: number;
+  @Prop({ default: 'B2CS' }) gstr1Section: string;
+  @Prop() terms?: string;
+  @Prop() cancelReason?: string;
 
   createdAt: Date;
   updatedAt: Date;
