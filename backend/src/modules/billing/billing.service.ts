@@ -948,7 +948,7 @@ export class BillingService {
       paymentMode: dto.paymentMode ?? 'credit',
       items: lines,
       billDiscountPct,
-      billDiscountAmtPaise,
+      billDiscountAmtPaise: billDiscAmtPaise,
       charges: chargesPaise,
       roundOffPaise,
       cgstTotalPaise,
