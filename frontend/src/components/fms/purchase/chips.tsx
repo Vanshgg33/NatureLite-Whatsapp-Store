@@ -2,6 +2,18 @@ import { getStage, getOverdueMs, getWaitMs, STAGE_LABEL, STAGE_COLORS } from '@/
 import { fmtOverdue, fmtWait } from '@/lib/fms/format';
 
 export function StageBadge({ req }: { req: any }) {
+  if (req.status === 'SPLIT') {
+    const needsPO = (req.items || []).filter((i: any) => !i.lineStatus || i.lineStatus === 'NEEDS_PO').length;
+    const awaiting = (req.children || []).length;
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-fms-chip whitespace-nowrap font-jakarta" style={{ background: '#F5F3FF', color: '#4B3FAC' }}>
+        {needsPO > 0 && <span style={{ color: '#8A4B06' }}>Needs PO · {needsPO}</span>}
+        {needsPO > 0 && awaiting > 0 && <span className="opacity-40">|</span>}
+        {awaiting > 0 && <span>Awaiting · {awaiting}</span>}
+        {needsPO === 0 && awaiting === 0 && 'Split'}
+      </span>
+    );
+  }
   const stage = getStage(req);
   const { bg, text } = STAGE_COLORS[stage];
   return (

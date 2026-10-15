@@ -20,10 +20,16 @@ export class PurchaseMaterial {
   category: string;
 
   @Prop({
-    enum: ['kg', 'g', 'L', 'ml', 'pcs'],
+    enum: ['kg', 'g', 'L', 'ml', 'pcs', 'box', 'packet', 'roll'],
     default: 'kg',
   })
   uom: string;
+
+  @Prop({ maxlength: 500 })
+  notes?: string;
+
+  @Prop({ type: String })
+  defaultTagId?: string;
 
   @Prop({ default: true })
   isActive: boolean;

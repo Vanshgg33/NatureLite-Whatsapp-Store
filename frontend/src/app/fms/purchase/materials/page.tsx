@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Package, Plus, Check, X, Sparkles } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
+import { usePermission } from '@/lib/fms/permissions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -18,14 +19,24 @@ export default function FmsPurchaseMaterialsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const isSuperadmin = user?.role === 'superadmin';
+  const canManage = usePermission('materials.manage');
+
+  const [bulkText, setBulkText] = useState('');
+  const [bulkUom, setBulkUom] = useState('kg');
 
   const [name, setName] = useState('');
   const [category, setCategory] = useState('General');
+  const [uom, setUom] = useState('kg');
   const [editingName, setEditingName] = useState<Record<string, string>>({});
 
   const { data: materials = [], isLoading } = useQuery({
     queryKey: ['purchase-materials-all'],
     queryFn: () => api.getPurchaseMaterials(true),
+  });
+
+  const { data: tags = [] } = useQuery({
+    queryKey: ['purchase-tags'],
+    queryFn: () => api.getPurchaseTags(),
   });
 
   const seedMutation = useMutation({
@@ -39,15 +50,30 @@ export default function FmsPurchaseMaterialsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: () => api.createPurchaseMaterial({ name: name.trim(), category }),
+    mutationFn: () => api.createPurchaseMaterial({ name: name.trim(), category, uom }),
     onSuccess: () => {
       toast({ title: 'Material added' });
       setName('');
       setCategory('General');
+      setUom('kg');
       queryClient.invalidateQueries({ queryKey: ['purchase-materials-all'] });
       queryClient.invalidateQueries({ queryKey: ['purchase-materials'] });
     },
     onError: (err) => toast({ title: 'Error', description: getApiError(err), variant: 'destructive' }),
+  });
+
+  const bulkMutation = useMutation({
+    mutationFn: () => api.bulkAddPurchaseMaterials({
+      names: bulkText.split('\n').map(l => l.trim()).filter(Boolean),
+      uom: bulkUom,
+    }),
+    onSuccess: (r: any) => {
+      toast({ title: `${r.created} added, ${r.skipped?.length ?? 0} skipped` });
+      setBulkText('');
+      queryClient.invalidateQueries({ queryKey: ['purchase-materials-all'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-materials'] });
+    },
+    onError: (err) => toast({ title: 'Bulk add failed', description: getApiError(err), variant: 'destructive' }),
   });
 
   const updateMutation = useMutation({
@@ -73,10 +99,10 @@ export default function FmsPurchaseMaterialsPage() {
     cancelEdit(id);
   };
 
-  if (!isSuperadmin) {
+  if (!canManage) {
     return (
       <div className="flex h-full items-center justify-center" style={{ background: '#F7F6F2' }}>
-        <p className="text-sm text-[#66706A] font-jakarta">Superadmin only.</p>
+        <p className="text-sm text-[#66706A] font-jakarta">Needs materials.manage permission.</p>
       </div>
     );
   }
@@ -116,6 +142,16 @@ export default function FmsPurchaseMaterialsPage() {
               {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
             </select>
           </div>
+          <div className="w-24">
+            <label className="text-xs font-medium text-gray-700">UOM</label>
+            <select
+              className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm font-mono"
+              value={uom}
+              onChange={(e) => setUom(e.target.value)}
+            >
+              {['kg','g','L','ml','pcs','box','packet','roll'].map(u => <option key={u}>{u}</option>)}
+            </select>
+          </div>
           <Button type="submit" size="sm" disabled={!name.trim() || createMutation.isPending} className="bg-[#2F6B47] hover:bg-[#2F6B47]/90">
             <Plus className="h-4 w-4 mr-1" />
             Add
@@ -152,6 +188,7 @@ export default function FmsPurchaseMaterialsPage() {
                     <th className="px-4 py-2 text-left font-medium text-gray-700">Name</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-700">Category</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-700">Unit</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-700">Default Tag</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-700">Active</th>
                     <th className="px-4 py-2" />
                   </tr>
@@ -191,7 +228,19 @@ export default function FmsPurchaseMaterialsPage() {
                           )}
                         </td>
                         <td className="px-4 py-2 text-gray-500">{mat.category}</td>
-                        <td className="px-4 py-2 font-mono text-gray-500">{mat.unit}</td>
+                        <td className="px-4 py-2 font-mono text-gray-500">{mat.uom}</td>
+                        <td className="px-4 py-2">
+                          {mat.defaultTagId ? (
+                            (() => {
+                              const t = (tags as any[]).find((x: any) => x._id === mat.defaultTagId);
+                              return t ? (
+                                <span className="text-[11px] px-2 py-0.5 rounded-full font-jakarta font-medium text-white" style={{ background: t.color }}>
+                                  {t.name}
+                                </span>
+                              ) : <span className="text-gray-300 text-xs">—</span>;
+                            })()
+                          ) : <span className="text-gray-300 text-xs">—</span>}
+                        </td>
                         <td className="px-4 py-2">
                           <Switch
                             checked={mat.isActive}
@@ -208,6 +257,32 @@ export default function FmsPurchaseMaterialsPage() {
               </table>
             </div>
           )}
+        </div>
+
+        {/* Bulk add panel */}
+        <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-3">
+          <p className="text-sm font-medium text-[#18211C] font-jakarta">Bulk Add Materials</p>
+          <p className="text-xs text-[#8A9490] font-jakarta">One name per line. Existing names are skipped.</p>
+          <textarea
+            className="w-full h-28 rounded-lg border border-[#ECE9E1] px-3 py-2 text-sm font-jakarta resize-none focus:outline-none focus:ring-2 focus:ring-[#1E5E3F]/20"
+            placeholder={"Kokum\nSesame\nBajra"}
+            value={bulkText}
+            onChange={e => setBulkText(e.target.value)}
+          />
+          <div className="flex items-center gap-3">
+            <select
+              className="h-9 rounded-lg border border-[#ECE9E1] px-2 text-sm font-jetbrains"
+              value={bulkUom}
+              onChange={e => setBulkUom(e.target.value)}
+            >
+              {['kg','g','L','ml','pcs','box','packet','roll'].map(u => <option key={u}>{u}</option>)}
+            </select>
+            <Button size="sm" disabled={!bulkText.trim() || bulkMutation.isPending}
+              onClick={() => bulkMutation.mutate()}
+              className="text-white" style={{ background: '#1E5E3F' }}>
+              {bulkMutation.isPending ? 'Adding…' : 'Add All'}
+            </Button>
+          </div>
         </div>
 
         <p className="text-xs text-gray-400">

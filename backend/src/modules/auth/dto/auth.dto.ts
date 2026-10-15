@@ -131,5 +131,11 @@ export interface AuthResponse {
     purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver';
     storeId?: string;
     storeName?: string;
+    permissions?: string[];
+    designation?: string;
+    rolePreset?: string;
+    photoUrl?: string;
+    mustChangePassword?: boolean;
+    loginId?: string;
   };
 }

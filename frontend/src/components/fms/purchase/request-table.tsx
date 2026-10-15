@@ -5,6 +5,34 @@ import { getStage, getOverdueMs, Stage } from '@/lib/fms/stage';
 import { fmtDate, shortPr } from '@/lib/fms/format';
 import { Button } from '@/components/ui/button';
 
+const AVATAR_COLORS = ['#1E5E3F','#2F6FB5','#C77700','#4B3FAC','#A3241A','#4A6FA5'];
+function nameColor(name: string) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+
+function LastActor({ req }: { req: any }) {
+  const timeline: any[] = req.timeline || [];
+  const last = timeline[timeline.length - 1];
+  if (!last) return <span className="text-[#B0B8B3] text-[11px] font-jakarta">—</span>;
+  const name: string = last.actor?.name || last.byName || '';
+  const firstName = name.split(' ')[0];
+  return (
+    <div className="flex items-center gap-1.5">
+      {last.actor?.photoUrl ? (
+        <img src={last.actor.photoUrl} alt={firstName} className="h-6 w-6 rounded-full object-cover shrink-0" />
+      ) : (
+        <div className="h-6 w-6 rounded-full flex items-center justify-center text-white text-[10px] font-semibold shrink-0"
+          style={{ background: nameColor(name) }}>
+          {name[0]?.toUpperCase() ?? '?'}
+        </div>
+      )}
+      <span className="text-[12px] text-[#3E4A43] font-jakarta truncate max-w-[64px]">{firstName}</span>
+    </div>
+  );
+}
+
 interface Counts { open: number; completed: number; cancelled: number; all: number }
 
 function filterByTab(requests: any[], tab: string): any[] {
@@ -96,7 +124,7 @@ export function RequestTable({
                 <table className="min-w-full text-sm">
                   <thead className="border-b" style={{ background: '#FAF9F5' }}>
                     <tr>
-                      {['Request', 'Items', 'Stage', 'Waiting', 'Date', ''].map(h => (
+                      {['Request', 'Items', 'Stage', 'Last action', 'Waiting', 'Date', ''].map(h => (
                         <th key={h} className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.07em] text-fms-muted font-jakarta whitespace-nowrap">
                           {h}
                         </th>
@@ -119,6 +147,7 @@ export function RequestTable({
                             <ItemChips items={req.items || []} />
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap"><StageBadge req={req} /></td>
+                          <td className="px-4 py-3 whitespace-nowrap"><LastActor req={req} /></td>
                           <td className="px-4 py-3 whitespace-nowrap"><WaitChip req={req} /></td>
                           <td className="px-4 py-3 text-fms-muted text-xs font-jakarta whitespace-nowrap">{fmtDate(req.createdAt)}</td>
                           <td className="px-4 py-3 text-right">

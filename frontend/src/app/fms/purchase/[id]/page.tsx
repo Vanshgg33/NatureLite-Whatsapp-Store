@@ -18,6 +18,7 @@ import { getApiError } from '@/lib/api-error';
 import { StageBadge, WaitChip } from '@/components/fms/purchase/chips';
 import { getStage, getOverdueMs } from '@/lib/fms/stage';
 import { fmtDate, shortPr } from '@/lib/fms/format';
+import { usePermission } from '@/lib/fms/permissions';
 
 function fmtIST(d: string | Date) {
   return new Date(d).toLocaleString('en-IN', {
@@ -31,6 +32,52 @@ function fmtShort(d: string | Date) {
     timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short',
     hour: '2-digit', minute: '2-digit', hour12: true,
   });
+}
+
+const AVATAR_COLORS = ['#1E5E3F','#2F6FB5','#C77700','#4B3FAC','#A3241A','#4A6FA5'];
+function nameColor(name: string) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+
+function LockButton({ label, permission }: { label: string; permission: string }) {
+  return (
+    <div className="relative group inline-block">
+      <button
+        disabled
+        className="h-8 inline-flex items-center gap-1.5 text-xs text-[#B0B8B3] border border-[#ECE9E1] rounded-[10px] px-3 bg-white font-jakarta cursor-not-allowed opacity-60"
+      >
+        <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+        </svg>
+        {label}
+      </button>
+      <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-50 hidden group-hover:block">
+        <div className="bg-[#18211C] text-white text-[11px] font-jakarta px-2.5 py-1.5 rounded-[8px] whitespace-nowrap shadow-md">
+          Needs <span className="font-semibold font-jetbrains">{permission}</span> — ask admin
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ActorAvatar({ actor, byName, size = 28 }: { actor?: any; byName?: string; size?: number }) {
+  const name = actor?.name || byName || '?';
+  const initial = name[0]?.toUpperCase() ?? '?';
+  if (actor?.photoUrl) {
+    return (
+      <img src={actor.photoUrl} alt={name}
+        className="rounded-full object-cover ring-2 ring-[#1E5E3F]/25 shrink-0"
+        style={{ width: size, height: size }} />
+    );
+  }
+  return (
+    <div className="rounded-full flex items-center justify-center text-white font-semibold ring-2 ring-[#1E5E3F]/15 shrink-0"
+      style={{ width: size, height: size, background: nameColor(name), fontSize: Math.round(size * 0.38) }}>
+      {initial}
+    </div>
+  );
 }
 
 function FileViewer({ file, label }: { file: { url: string; name: string; mime?: string }; label: string }) {
@@ -61,6 +108,41 @@ const PIPELINE_STAGES = [
 const ACTIVE_STEP: Record<string, number> = {
   REQUESTED: 2, REJECTED: 2, PO_CREATED: 3, SPLIT: 3, APPROVED: 4, VENDOR_BILL_UPLOADED: 5,
 };
+
+function ChildRollup({ req }: { req: any }) {
+  if (req.status !== 'SPLIT' || !req.children?.length) return null;
+  const children: any[] = req.children;
+  const allDone = children.every((c: any) => c.status === 'COMPLETED');
+  return (
+    <div className="bg-white rounded-[18px] border border-[#ECE9E1] px-5 py-4 shadow-[0_1px_2px_rgba(24,33,28,.06)]">
+      <p className="text-xs font-semibold text-[#4B3FAC] font-jakarta mb-3 uppercase tracking-wider">Child PO Progress</p>
+      <div className="space-y-2">
+        {children.map((child: any) => {
+          const STEPS = ['REQUESTED','PO_CREATED','APPROVED','VENDOR_BILL_UPLOADED','COMPLETED'];
+          const step = STEPS.indexOf(child.status);
+          const pct = step < 0 ? 0 : Math.round((step / (STEPS.length - 1)) * 100);
+          return (
+            <Link key={child._id} href={`/fms/purchase/${child._id}`} className="block group">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold font-jetbrains text-[#4B3FAC] group-hover:underline">{child.reqNo}</span>
+                  {child.po?.vendorName && <span className="text-[11px] text-[#8A9490] font-jakarta">{child.po.vendorName}</span>}
+                </div>
+                <StageBadge req={child} />
+              </div>
+              <div className="h-1.5 rounded-full bg-[#ECE9E1] overflow-hidden">
+                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: child.status === 'COMPLETED' ? '#1E5E3F' : '#D9902B' }} />
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+      {allDone && (
+        <p className="mt-3 text-xs text-[#1E5E3F] font-jakarta font-medium">All child POs completed</p>
+      )}
+    </div>
+  );
+}
 
 function PipelineTracker({ req }: { req: any }) {
   const timeline: any[] = req.timeline || [];
@@ -103,9 +185,17 @@ function PipelineTracker({ req }: { req: any }) {
                 {isRejHere ? (
                   <p className="text-[10px] text-[#A3241A] font-jakarta">Rejected</p>
                 ) : entry ? (
-                  <div className="text-center">
-                    <p className="text-[10px] text-[#8A9490] font-jakarta leading-tight">{fmtShort(entry.at)}</p>
-                    <p className="text-[10px] text-[#66706A] font-jakarta leading-tight truncate max-w-[70px]">{entry.byName}</p>
+                  <div className="flex flex-col items-center gap-0.5 mt-0.5">
+                    <ActorAvatar actor={entry.actor} byName={entry.byName} size={24} />
+                    <p className="text-[10px] font-medium text-[#18211C] font-jakarta leading-tight truncate max-w-[72px] text-center">
+                      {entry.actor?.name || entry.byName}
+                    </p>
+                    {entry.actor?.designation && (
+                      <p className="text-[9px] text-[#8A9490] font-jakarta leading-tight truncate max-w-[72px] text-center">
+                        {entry.actor.designation}
+                      </p>
+                    )}
+                    <p className="text-[9px] text-[#B0B8B3] font-jakarta leading-tight text-center">{fmtShort(entry.at)}</p>
                   </div>
                 ) : isActive ? (
                   <p className="text-[10px] text-[#8A4B06] font-jakarta font-medium">Awaiting…</p>
@@ -259,6 +349,86 @@ function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void })
         </div>
       )}
     </form>
+  );
+}
+
+function SplitApproverCards({ children, onSuccess }: { children: any[]; onSuccess: () => void }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [rejReasons, setRejReasons] = useState<Record<string, string>>({});
+  const [showReject, setShowReject] = useState<Record<string, boolean>>({});
+
+  const decisionMut = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => api.makePurchaseDecision(id, data),
+    onSuccess: () => {
+      toast({ title: 'Decision recorded' });
+      queryClient.invalidateQueries({ queryKey: ['purchase-request'] });
+      onSuccess();
+    },
+    onError: (err) => toast({ title: 'Error', description: getApiError(err), variant: 'destructive' }),
+  });
+
+  const approvable = children.filter((c: any) => c.status === 'PO_CREATED');
+  if (!approvable.length) return null;
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold text-[#1F4F8A] font-jakarta uppercase tracking-wider">
+        Pending approval ({approvable.length})
+      </p>
+      {approvable.map((child: any) => (
+        <div key={child._id} className="rounded-[12px] border border-[#C8D9F0] bg-[#EDF3FB] p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-xs font-semibold font-jetbrains text-[#1F4F8A]">{child.reqNo}</span>
+              {child.po?.vendorName && <span className="ml-1.5 text-xs text-[#3A5C8A] font-jakarta">{child.po.vendorName}</span>}
+            </div>
+            {child.po?.totalAmount && (
+              <span className="text-sm font-bold font-jetbrains text-[#1E5E3F]">₹{child.po.totalAmount.toLocaleString('en-IN')}</span>
+            )}
+          </div>
+          {child.po?.items?.map((item: any, idx: number) => (
+            <div key={idx} className="flex justify-between text-xs text-[#1F4F8A] font-jakarta">
+              <span>{item.materialName} {item.qtyKg} {item.uom || 'kg'} × ₹{item.ratePerKg}/kg</span>
+              <span className="font-medium">₹{item.amount?.toLocaleString('en-IN')}</span>
+            </div>
+          ))}
+          {showReject[child._id] ? (
+            <div className="space-y-1.5">
+              <input
+                className="w-full h-8 rounded-[8px] border border-[#C8D9F0] px-2 text-xs font-jakarta focus:outline-none"
+                placeholder="Reason for rejection…"
+                value={rejReasons[child._id] || ''}
+                onChange={e => setRejReasons(p => ({ ...p, [child._id]: e.target.value }))}
+              />
+              <div className="flex gap-1.5">
+                <Button size="sm" variant="outline" className="flex-1 h-7 text-xs font-jakarta"
+                  onClick={() => setShowReject(p => ({ ...p, [child._id]: false }))}>
+                  Cancel
+                </Button>
+                <Button size="sm" className="flex-1 h-7 text-xs text-white font-jakarta bg-red-600 hover:bg-red-700"
+                  disabled={!rejReasons[child._id]?.trim() || decisionMut.isPending}
+                  onClick={() => decisionMut.mutate({ id: child._id, data: { action: 'REJECTED', reason: rejReasons[child._id] } })}>
+                  Confirm Reject
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-1.5">
+              <Button size="sm" className="flex-1 h-7 text-xs text-white font-jakarta" style={{ background: '#1E5E3F' }}
+                disabled={decisionMut.isPending}
+                onClick={() => decisionMut.mutate({ id: child._id, data: { action: 'APPROVED' } })}>
+                Approve
+              </Button>
+              <Button size="sm" variant="outline" className="flex-1 h-7 text-xs font-jakarta border-red-200 text-red-600"
+                onClick={() => setShowReject(p => ({ ...p, [child._id]: true }))}>
+                Reject
+              </Button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -462,6 +632,10 @@ export default function FmsPurchaseRequestDetailPage() {
   const { user } = useAdminAuthStore();
   const isSuperadmin = user?.role === 'superadmin';
   const purchaseRole = user?.purchaseRole;
+  const canRaisePO   = usePermission('po.raise');
+  const canApprove   = usePermission('po.approve');
+  const canReceive   = usePermission('delivery.receive');
+  const canCancel_p  = usePermission('request.cancel');
 
   const [notesTab, setNotesTab] = useState<'notes' | 'attachments'>('notes');
 
@@ -488,26 +662,16 @@ export default function FmsPurchaseRequestDetailPage() {
   );
   if (!req) return null;
 
-  const canCancel   = !['COMPLETED','CANCELLED'].includes(req.status) && (isSuperadmin || req.requestedById === user?.id);
-  const showPOPanel = (isSuperadmin || purchaseRole === 'po_creator') && (req.status === 'REQUESTED' || req.status === 'REJECTED');
-  const showAppPanel= (isSuperadmin || purchaseRole === 'approver') && (req.status === 'PO_CREATED' || req.status === 'APPROVED' || req.status === 'VENDOR_BILL_UPLOADED');
-  const showRcvPanel= (isSuperadmin || purchaseRole === 'receiver') && req.status === 'VENDOR_BILL_UPLOADED';
+  const canCancel   = !['COMPLETED','CANCELLED'].includes(req.status) && (isSuperadmin || canCancel_p || req.requestedById === user?.id);
+  // Stage-based flags — show action area to ALL users so lock buttons appear for those without permission
+  const needsPOStage  = req.status === 'REQUESTED' || req.status === 'REJECTED' || (req.status === 'SPLIT' && (req.items || []).some((i: any) => i.lineStatus === 'NEEDS_PO'));
+  const appStage      = req.status === 'PO_CREATED' || req.status === 'APPROVED' || req.status === 'VENDOR_BILL_UPLOADED';
+  const rcvStage      = req.status === 'VENDOR_BILL_UPLOADED';
+  const showPOPanel   = canRaisePO && (req.status === 'REQUESTED' || req.status === 'REJECTED');
+  const showAppPanel  = canApprove && appStage;
+  const showRcvPanel  = canReceive && rcvStage;
 
   const description = req.items?.map((i: any) => `${i.materialName} ${i.qtyKg} ${i.uom || 'kg'}`).join(', ');
-
-  // Primary header CTA → dedicated page
-  const primaryCTA =
-    showPOPanel  ? { label: 'Create PO',       href: `/fms/purchase/${req._id}/raise-po` } :
-    (showAppPanel && req.status === 'PO_CREATED') ? { label: 'Review & Approve', href: `/fms/purchase/${req._id}/approve` } :
-    showRcvPanel ? { label: 'Receive Goods',   href: `/fms/purchase/${req._id}/receive` } :
-    null;
-
-  const allStages = [
-    { label: 'Purchase request created', doneStatus: 'REQUESTED' },
-    { label: 'PO created',               doneStatus: 'PO_CREATED' },
-    { label: 'Approved',                 doneStatus: 'APPROVED' },
-    { label: 'Goods received',           doneStatus: 'COMPLETED' },
-  ];
 
   return (
     <div className="flex flex-col h-screen" style={{ background: '#F7F6F2' }}>
@@ -537,10 +701,27 @@ export default function FmsPurchaseRequestDetailPage() {
             <Link href="/fms/purchase">
               <Button variant="outline" size="sm" className="h-8 text-xs font-jakarta rounded-[10px]">‹ Back</Button>
             </Link>
-            {primaryCTA && (
-              <Link href={primaryCTA.href}>
+            {needsPOStage && !canRaisePO && <LockButton label="Create PO" permission="po.raise" />}
+            {needsPOStage && canRaisePO && (
+              <Link href={`/fms/purchase/${req._id}/raise-po`}>
                 <Button size="sm" className="h-8 text-xs font-jakarta rounded-[10px] text-white" style={{ background: '#1E5E3F' }}>
-                  {primaryCTA.label} <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                  Create PO <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                </Button>
+              </Link>
+            )}
+            {appStage && req.status === 'PO_CREATED' && !canApprove && <LockButton label="Review & Approve" permission="po.approve" />}
+            {appStage && req.status === 'PO_CREATED' && canApprove && (
+              <Link href={`/fms/purchase/${req._id}/approve`}>
+                <Button size="sm" className="h-8 text-xs font-jakarta rounded-[10px] text-white" style={{ background: '#1E5E3F' }}>
+                  Review & Approve <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                </Button>
+              </Link>
+            )}
+            {rcvStage && !canReceive && <LockButton label="Receive Goods" permission="delivery.receive" />}
+            {rcvStage && canReceive && (
+              <Link href={`/fms/purchase/${req._id}/receive`}>
+                <Button size="sm" className="h-8 text-xs font-jakarta rounded-[10px] text-white" style={{ background: '#1E5E3F' }}>
+                  Receive Goods <ArrowRight className="h-3.5 w-3.5 ml-1" />
                 </Button>
               </Link>
             )}
@@ -557,6 +738,7 @@ export default function FmsPurchaseRequestDetailPage() {
 
             <NextStepBanner req={req} purchaseRole={purchaseRole} isSuperadmin={isSuperadmin} />
             <PipelineTracker req={req} />
+            <ChildRollup req={req} />
 
             {/* Items */}
             <div className="bg-white rounded-[18px] border border-[#ECE9E1] overflow-hidden shadow-[0_1px_2px_rgba(24,33,28,.06)]">
@@ -646,30 +828,35 @@ export default function FmsPurchaseRequestDetailPage() {
                 <div className="flex items-center gap-2 px-5 py-3 border-b border-[#ECE9E1]">
                   <History className="h-4 w-4 text-[#1E5E3F]" />
                   <h3 className="text-sm font-semibold text-[#18211C] font-jakarta">Timeline</h3>
+                  {req.timeline?.length > 0 && (
+                    <span className="ml-auto text-[11px] text-[#8A9490] font-jakarta">{req.timeline.length} event{req.timeline.length !== 1 ? 's' : ''}</span>
+                  )}
                 </div>
-                <div className="p-5">
-                  {allStages.map((s, idx) => {
-                    const entry  = req.timeline?.find((t: any) => t.status === s.doneStatus);
-                    const isDone = !!entry;
-                    const isLast = idx === allStages.length - 1;
+                <div className="p-5 space-y-0">
+                  {(!req.timeline || req.timeline.length === 0) ? (
+                    <p className="text-xs text-[#B0B8B3] font-jakarta text-center py-4">No events yet.</p>
+                  ) : (req.timeline as any[]).map((entry: any, idx: number) => {
+                    const isLast = idx === req.timeline.length - 1;
+                    const actorName = entry.actor?.name || entry.byName || '?';
                     return (
                       <div key={idx} className="flex gap-3">
+                        {/* Left: avatar + connector line */}
                         <div className="flex flex-col items-center shrink-0">
-                          <div className={`h-3 w-3 rounded-full mt-0.5 ${isDone ? 'bg-[#1E5E3F]' : 'bg-[#ECE9E1]'}`} />
-                          {!isLast && <div className="w-px flex-1 bg-[#ECE9E1] min-h-[20px] my-1" />}
+                          <ActorAvatar actor={entry.actor} byName={entry.byName} size={28} />
+                          {!isLast && <div className="w-px flex-1 bg-[#ECE9E1] min-h-[16px] my-1" />}
                         </div>
-                        <div className="pb-4 flex-1 min-w-0">
-                          <p className={`text-sm font-medium font-jakarta leading-tight ${isDone ? 'text-[#18211C]' : 'text-[#B0B8B3]'}`}>
-                            {isDone && entry.action ? entry.action : s.label}
+                        {/* Right: content */}
+                        <div className="pb-4 flex-1 min-w-0 pt-0.5">
+                          <p className="text-sm font-medium text-[#18211C] font-jakarta leading-snug">
+                            {entry.action || entry.status}
                           </p>
-                          {isDone && entry ? (
-                            <>
-                              <p className="text-xs text-[#66706A] mt-0.5 font-jakarta">by {entry.byName}</p>
-                              <p className="text-xs text-[#8A9490] font-jakarta">{fmtDate(entry.at)}</p>
-                            </>
-                          ) : (
-                            <p className="text-xs text-[#B0B8B3] mt-0.5 font-jakarta">Pending</p>
-                          )}
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            <span className="text-xs font-medium text-[#3E4A43] font-jakarta">{actorName}</span>
+                            {entry.actor?.designation && (
+                              <span className="text-xs text-[#8A9490] font-jakarta">· {entry.actor.designation}</span>
+                            )}
+                            <span className="text-xs text-[#B0B8B3] font-jakarta">· {fmtDate(entry.at)}</span>
+                          </div>
                         </div>
                       </div>
                     );
@@ -744,17 +931,56 @@ export default function FmsPurchaseRequestDetailPage() {
           {/* Action panels */}
           <div className="flex-1 overflow-auto p-4">
             {req.status === 'SPLIT' ? (
-              <div className="rounded-[12px] border p-3 space-y-2" style={{ borderColor: '#DDD9F0', background: '#F5F3FF' }}>
-                <p className="text-sm font-semibold font-jakarta" style={{ color: '#4B3FAC' }}>
-                  Split into {req.children?.length ?? 0} POs
-                </p>
-                {req.children?.map((child: any) => (
-                  <Link key={child._id} href={`/fms/purchase/${child._id}`}
-                    className="flex items-center justify-between py-1.5 px-2 rounded-[10px] bg-white border hover:border-[#9B8FE0]" style={{ borderColor: '#DDD9F0' }}>
-                    <span className="text-xs font-medium font-jetbrains" style={{ color: '#4B3FAC' }}>{child.reqNo}</span>
-                    <StageBadge req={child} />
-                  </Link>
-                ))}
+              <div className="space-y-3">
+                {/* Pending PO items — orange block */}
+                {(() => {
+                  const pendingItems = (req.items || []).filter((i: any) => !i.lineStatus || i.lineStatus === 'NEEDS_PO');
+                  if (!pendingItems.length) return null;
+                  return (
+                    <div className="rounded-[12px] border border-[#F5D798] bg-[#FDF3E3] p-3 space-y-1.5">
+                      <p className="text-sm font-semibold text-[#8A4B06] font-jakarta">
+                        Pending PO ({pendingItems.length} item{pendingItems.length !== 1 ? 's' : ''})
+                      </p>
+                      {pendingItems.map((item: any, idx: number) => (
+                        <div key={idx} className="flex items-center justify-between text-xs font-jakarta text-[#8A4B06]">
+                          <span>{item.materialName}</span>
+                          <span className="font-jetbrains font-medium">{item.qtyKg} {item.uom || 'kg'}</span>
+                        </div>
+                      ))}
+                      {canRaisePO && (
+                        <Link href={`/fms/purchase/${req._id}/split-po`}
+                          className="mt-2 flex items-center gap-1 text-xs text-[#8A4B06] font-medium font-jakarta hover:underline">
+                          Raise PO for these items <ChevronRight className="h-3 w-3" />
+                        </Link>
+                      )}
+                    </div>
+                  );
+                })()}
+                {/* Raised POs — purple block */}
+                {req.children?.length > 0 && (
+                  <div className="rounded-[12px] border p-3 space-y-2" style={{ borderColor: '#DDD9F0', background: '#F5F3FF' }}>
+                    <p className="text-sm font-semibold font-jakarta" style={{ color: '#4B3FAC' }}>
+                      Raised POs ({req.children.length})
+                    </p>
+                    {req.children.map((child: any) => (
+                      <Link key={child._id} href={`/fms/purchase/${child._id}`}
+                        className="flex items-center justify-between py-1.5 px-2 rounded-[10px] bg-white border hover:border-[#9B8FE0]" style={{ borderColor: '#DDD9F0' }}>
+                        <div>
+                          <span className="text-xs font-medium font-jetbrains" style={{ color: '#4B3FAC' }}>{child.reqNo}</span>
+                          {child.po?.vendorName && <span className="text-xs ml-1.5 text-[#4B3FAC] opacity-60 font-jakarta">{child.po.vendorName}</span>}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <StageBadge req={child} />
+                          {child.po?.totalAmount && <span className="text-xs font-bold font-jetbrains text-[#1E5E3F]">₹{child.po.totalAmount.toLocaleString('en-IN')}</span>}
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+                {/* Per-child approval cards for approvers */}
+                {canApprove && req.children?.some((c: any) => c.status === 'PO_CREATED') && (
+                  <SplitApproverCards children={req.children} onSuccess={onActionSuccess} />
+                )}
               </div>
             ) : (
               <>

@@ -10,6 +10,11 @@ interface AdminUser {
   storeName?: string;
   departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior' | 'fms';
   purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver';
+  designation?: string;
+  photoUrl?: string;
+  permissions?: string[];
+  mustChangePassword?: boolean;
+  rolePreset?: string;
 }
 
 interface AdminAuthState {

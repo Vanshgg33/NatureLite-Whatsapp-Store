@@ -703,6 +703,12 @@ export interface AuthUser {
   storeName?: string;
   departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior' | 'fms';
   purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver';
+  permissions?: string[];
+  designation?: string;
+  rolePreset?: string;
+  photoUrl?: string;
+  mustChangePassword?: boolean;
+  loginId?: string;
 }
 
 export interface UploadResult {

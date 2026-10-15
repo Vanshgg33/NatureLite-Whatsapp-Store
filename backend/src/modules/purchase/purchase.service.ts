@@ -10,6 +10,7 @@ import { Model } from 'mongoose';
 import { PurchaseMaterial, PurchaseMaterialDocument } from './schemas/purchase-material.schema';
 import { PurchaseRequest, PurchaseRequestDocument } from './schemas/purchase-request.schema';
 import { PurchaseVendor, PurchaseVendorDocument } from './schemas/purchase-vendor.schema';
+import { PurchaseTag, PurchaseTagDocument } from './schemas/purchase-tag.schema';
 import { AdminUser, AdminUserDocument } from '../admin/schemas/admin-user.schema';
 import { EmailService } from '../email/email.service';
 import { JwtPayload } from '../../common/decorators/current-user.decorator';
@@ -22,6 +23,14 @@ import {
   isOverdue,
   waitMs,
 } from './lib/stage';
+
+export function validatePartialPO(lines: Array<{
+  materialId: string; vendorName?: string; ratePerKg?: number; [k: string]: any;
+}>): { assigned: typeof lines; unassigned: typeof lines } {
+  const assigned = lines.filter(l => l.vendorName && (l.ratePerKg ?? 0) > 0);
+  const unassigned = lines.filter(l => !l.vendorName || (l.ratePerKg ?? 0) <= 0);
+  return { assigned, unassigned };
+}
 
 export async function buildActorSnapshot(
   user: JwtPayload,
@@ -79,6 +88,7 @@ export class PurchaseService {
     @InjectModel(PurchaseRequest.name) private requestModel: Model<PurchaseRequestDocument>,
     @InjectModel(PurchaseVendor.name) private vendorModel: Model<PurchaseVendorDocument>,
     @InjectModel(AdminUser.name) private adminModel: Model<AdminUserDocument>,
+    @InjectModel(PurchaseTag.name) private tagModel: Model<PurchaseTagDocument>,
     private emailService: EmailService,
   ) {}
 
@@ -152,17 +162,87 @@ export class PurchaseService {
     return this.materialModel.find(filter).sort({ name: 1 }).lean();
   }
 
-  async createMaterial(data: { name: string; category?: string }) {
+  async createMaterial(data: { name: string; category?: string; uom?: string }) {
     return this.materialModel.create({
       name: data.name.trim(),
       category: data.category || 'OTHER',
+      uom: data.uom || 'kg',
     });
   }
 
-  async updateMaterial(id: string, data: { name?: string; category?: string; isActive?: boolean }) {
+  async updateMaterial(id: string, data: { name?: string; category?: string; isActive?: boolean; uom?: string; defaultTagId?: string }) {
     const mat = await this.materialModel.findByIdAndUpdate(id, { $set: data }, { new: true });
     if (!mat) throw new NotFoundException('Material not found');
     return mat;
+  }
+
+  async bulkAddMaterials(names: string[], uom: string, defaultTagId?: string): Promise<{ created: number; skipped: string[] }> {
+    const deduped = [...new Set(names.map(n => n.trim()).filter(Boolean))];
+    const existing = await this.materialModel
+      .find({ name: { $in: deduped.map(n => new RegExp(`^${n}$`, 'i')) } })
+      .select('name')
+      .lean();
+    const existingLower = new Set((existing as any[]).map((e) => e.name.toLowerCase()));
+    const skipped = deduped.filter(n => existingLower.has(n.toLowerCase()));
+    const toCreate = deduped.filter(n => !existingLower.has(n.toLowerCase()));
+    if (toCreate.length) {
+      await this.materialModel.insertMany(
+        toCreate.map(name => ({ name, uom: uom || 'kg', defaultTagId, isActive: true })),
+      );
+    }
+    return { created: toCreate.length, skipped };
+  }
+
+  // ─── Item aggregation ─────────────────────────────────────────────────────
+
+  async getItems(query: { tags?: string; status?: string; q?: string }) {
+    const tagNames = query.tags?.split(',').filter(Boolean) ?? [];
+    const pipeline: any[] = [
+      { $match: { status: { $nin: ['CANCELLED'] } } },
+      { $unwind: '$items' },
+    ];
+    if (tagNames.length) pipeline.push({ $match: { 'items.tagName': { $in: tagNames } } });
+    if (query.status) pipeline.push({ $match: { stage: query.status } });
+    if (query.q) pipeline.push({ $match: { 'items.materialName': new RegExp(query.q, 'i') } });
+    pipeline.push({
+      $project: {
+        _id: '$items._id', reqId: '$_id', reqNo: 1,
+        materialName: '$items.materialName', qty: '$items.qtyKg', uom: '$items.uom',
+        tagName: '$items.tagName', tagColor: '$items.tagColor',
+        lineStatus: '$items.lineStatus', childPoId: '$items.childPoId',
+        stage: 1, stageEnteredAt: 1, createdAt: 1,
+      },
+    });
+    return this.requestModel.aggregate(pipeline).exec();
+  }
+
+  // ─── Tags ─────────────────────────────────────────────────────────────────
+
+  async getTags(activeOnly = true) {
+    const q = activeOnly ? { isActive: true } : {};
+    return this.tagModel.find(q).sort({ sortOrder: 1, name: 1 }).lean();
+  }
+
+  async createTag(body: { name: string; color: string; icon?: string; description?: string }, actor?: any) {
+    return this.tagModel.create({ ...body, createdBy: actor });
+  }
+
+  async updateTag(id: string, body: Partial<{ name: string; color: string; description: string; isActive: boolean }>) {
+    return this.tagModel.findByIdAndUpdate(id, { $set: body }, { new: true });
+  }
+
+  async seedDefaultTags() {
+    const defaults = [
+      { name: 'Ready to Sell', color: '#2E7D4F', description: 'Finished goods bought ready for sale', sortOrder: 1 },
+      { name: 'For Processing', color: '#C77700', description: 'Raw material for processing', sortOrder: 2 },
+      { name: 'Factory Use', color: '#4A6FA5', description: 'Consumables and supplies for the factory', sortOrder: 3 },
+    ];
+    let created = 0;
+    for (const t of defaults) {
+      const exists = await this.tagModel.findOne({ name: t.name });
+      if (!exists) { await this.tagModel.create(t); created++; }
+    }
+    return { created };
   }
 
   // ─── Vendors ──────────────────────────────────────────────────────────────
@@ -492,103 +572,110 @@ export class PurchaseService {
   }
 
   async splitPO(
-    id: string,
+    parentId: string,
     user: JwtPayload,
-    data: {
+    body: {
       items: Array<{
-        materialId: string;
-        materialName: string;
-        qtyKg: number;
-        ratePerKg: number;
-        vendorName: string;
-        vendorPhone?: string;
-        vendorAddress?: string;
-        terms?: string;
+        materialId: string; materialName: string; qtyKg: number; ratePerKg: number;
+        vendorName: string; vendorPhone?: string; vendorAddress?: string; terms?: string;
       }>;
       expectedDelivery?: string;
     },
   ) {
-    const role = effectiveRole(user);
-    const req = await this.requestModel.findById(id);
-    if (!req) throw new NotFoundException('Request not found');
-    if (!canTransition(req.status, 'PO_CREATED', role)) {
-      throw new ForbiddenException(`Cannot create PO from status ${req.status} with role ${role}`);
-    }
-    if (!data.items?.length) throw new BadRequestException('Items required');
-    for (const item of data.items) {
-      if (!item.vendorName?.trim()) throw new BadRequestException(`Vendor required for ${item.materialName}`);
-      if (!item.ratePerKg || item.ratePerKg <= 0) throw new BadRequestException(`Rate required for ${item.materialName}`);
-    }
-
-    const vendorGroups = new Map<string, typeof data.items>();
-    for (const item of data.items) {
-      const key = item.vendorName.trim();
-      if (!vendorGroups.has(key)) vendorGroups.set(key, []);
-      vendorGroups.get(key)!.push(item);
-    }
-
     const now = new Date();
     const actor = await buildActorSnapshot(user, this.adminModel, now);
-    const year = now.getFullYear();
-    let poCount = await this.requestModel.countDocuments({ 'po.poNo': { $exists: true } });
-    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    const children: any[] = [];
-    let letterIdx = 0;
+    const { assigned, unassigned } = validatePartialPO(body.items);
+    if (!assigned.length) throw new BadRequestException('No items with vendor and rate assigned');
 
-    for (const [vendorName, vItems] of vendorGroups) {
-      const first = vItems[0];
-      const poItems = vItems.map(i => ({
-        materialId: i.materialId, materialName: i.materialName,
-        qtyKg: i.qtyKg, ratePerKg: i.ratePerKg, amount: i.qtyKg * i.ratePerKg,
-      }));
-      const totalAmount = poItems.reduce((s, i) => s + i.amount, 0);
-      poCount++;
-      const poNo = `PO-${year}-${String(poCount).padStart(4, '0')}`;
-      const childReqNo = `${req.reqNo}-${letters[letterIdx++]}`;
+    const parent = await this.requestModel.findById(parentId);
+    if (!parent) throw new NotFoundException('Request not found');
 
-      const child = await this.requestModel.create({
-        reqNo: childReqNo,
-        parentId: id,
-        items: vItems.map(i => ({ materialId: i.materialId, materialName: i.materialName, qtyKg: i.qtyKg })),
-        note: req.note || '',
-        status: 'PO_CREATED',
-        stage: 'AWAITING_APPROVAL',
-        stageEnteredAt: now,
-        requestedById: req.requestedById,
-        requestedByName: req.requestedByName,
-        requestedByEmail: req.requestedByEmail || '',
-        poRaisedBy: actor,
-        po: {
-          poNo, vendorName,
-          vendorPhone: first.vendorPhone || '',
-          vendorAddress: first.vendorAddress || '',
-          items: poItems, totalAmount,
-          expectedDelivery: data.expectedDelivery || '',
-          terms: first.terms || '',
-          createdByName: actor.name || 'System',
-          createdAt: now,
-        },
-        timeline: [
-          { action: `Derived from ${req.reqNo}`, status: 'REQUESTED', byName: actor.name || 'System', at: now, actor },
-          { action: `PO ${poNo} created — ₹${totalAmount.toLocaleString('en-IN')}`, status: 'PO_CREATED', byName: actor.name || 'System', at: now, actor },
-        ],
-      });
-      children.push(child.toObject());
+    // Optimistic lock: check no race on any assigned line
+    for (const a of assigned) {
+      const line = parent.items.find(i => i.materialId === a.materialId);
+      if (!line) throw new BadRequestException(`Material ${a.materialId} not on this request`);
+      if ((line as any).lineStatus === 'PO_RAISED') {
+        throw new ConflictException(`${a.materialName} already has a PO — reload and try again`);
+      }
     }
 
-    req.status = 'SPLIT';
-    req.timeline.push({
-      action: `Split into ${children.length} vendor PO${children.length > 1 ? 's' : ''} (${children.map((c: any) => c.po.vendorName).join(', ')})`,
-      status: 'PO_CREATED',
-      byName: actor.name || 'System',
-      at: now,
-      actor,
-    });
-    await this.recomputeAndCacheStage(req);
-    await req.save();
+    // Group by vendor
+    const byVendor = new Map<string, typeof assigned>();
+    for (const a of assigned) {
+      const key = a.vendorName.trim();
+      if (!byVendor.has(key)) byVendor.set(key, []);
+      byVendor.get(key)!.push(a);
+    }
 
-    this.sendStatusEmail(req.toObject(), 'SPLIT').catch(() => null);
-    return { parent: req.toObject(), children };
+    const existing = await this.requestModel.find({ parentId }).sort({ createdAt: 1 }).lean();
+    let letterIdx = existing.length;
+    const year = now.getFullYear();
+    let poCount = await this.requestModel.countDocuments({ 'po.poNo': { $exists: true } });
+    const childIds: string[] = [];
+
+    for (const [vendorName, vendorItems] of byVendor.entries()) {
+      const letter = String.fromCharCode(65 + letterIdx++);
+      const childReqNo = `${parent.reqNo}-${letter}`;
+      poCount++;
+      const poNo = `PO-${year}-${String(poCount).padStart(4, '0')}`;
+      const first = vendorItems[0];
+      const poItems = vendorItems.map(i => ({ materialId: i.materialId, materialName: i.materialName, qtyKg: i.qtyKg, ratePerKg: i.ratePerKg, amount: i.qtyKg * i.ratePerKg }));
+      const totalAmount = poItems.reduce((s, i) => s + i.amount, 0);
+
+      const child = await this.requestModel.create({
+        reqNo: childReqNo, parentId: parent._id.toString(),
+        status: 'PO_CREATED', stage: 'AWAITING_APPROVAL', stageEnteredAt: now,
+        requestedById: parent.requestedById, requestedByName: parent.requestedByName,
+        requestedByEmail: (parent as any).requestedByEmail || '',
+        items: vendorItems.map(i => ({ materialId: i.materialId, materialName: i.materialName, qtyKg: i.qtyKg, lineStatus: 'PO_RAISED' })),
+        poRaisedBy: actor,
+        po: { poNo, vendorName, vendorPhone: first.vendorPhone ?? '', vendorAddress: first.vendorAddress ?? '', items: poItems, totalAmount, expectedDelivery: body.expectedDelivery ?? '', terms: first.terms ?? '', createdByName: actor.name, createdAt: now },
+        timeline: [
+          { action: `Derived from ${parent.reqNo}`, status: 'REQUESTED', byName: actor.name, at: now, actor },
+          { action: `PO ${poNo} created — ₹${totalAmount.toLocaleString('en-IN')}`, status: 'PO_CREATED', byName: actor.name, at: now, actor },
+        ],
+      });
+      childIds.push(child._id.toString());
+
+      for (const a of vendorItems) {
+        const line = parent.items.find(i => i.materialId === a.materialId);
+        if (line) {
+          (line as any).lineStatus = 'PO_RAISED';
+          (line as any).childPoId = child._id.toString();
+          (line as any).movedAt = now;
+        }
+      }
+    }
+
+    const remaining = parent.items.filter(i => (i as any).lineStatus === 'NEEDS_PO');
+    parent.pendingLineCount = remaining.length;
+    parent.markModified('items');
+    parent.status = 'SPLIT';
+    parent.timeline.push({
+      action: `Raised ${childIds.length} PO(s) (${[...byVendor.keys()].join(', ')})${unassigned.length ? `. ${unassigned.length} items still need PO` : ''}`,
+      status: 'SPLIT', byName: actor.name, at: now, actor,
+    });
+    await this.recomputeAndCacheStage(parent);
+    await parent.save();
+    this.sendStatusEmail(parent.toObject(), 'SPLIT').catch(() => null);
+    return { childPoIds: childIds, remainingCount: remaining.length };
+  }
+
+  async dropItem(parentId: string, itemId: string, reason: string, user: JwtPayload) {
+    const now = new Date();
+    const actor = await buildActorSnapshot(user, this.adminModel, now);
+    const parent = await this.requestModel.findById(parentId);
+    if (!parent) throw new NotFoundException('Request not found');
+    const line = parent.items.find(i => (i as any)._id?.toString() === itemId);
+    if (!line) throw new NotFoundException('Item not found on request');
+    if ((line as any).lineStatus === 'PO_RAISED') throw new BadRequestException('Cannot drop an item that already has a PO');
+    (line as any).lineStatus = 'DROPPED';
+    parent.markModified('items');
+    parent.pendingLineCount = parent.items.filter(i => (i as any).lineStatus === 'NEEDS_PO').length;
+    parent.timeline.push({ action: `Dropped item ${line.materialName}: ${reason}`, status: parent.status, byName: actor.name, at: now, actor });
+    await this.recomputeAndCacheStage(parent);
+    await parent.save();
+    return { ok: true };
   }
 
   async makeDecision(

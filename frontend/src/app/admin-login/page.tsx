@@ -45,6 +45,11 @@ export default function AdminLoginPage() {
         storeName: response.user.storeName,
         departmentType: response.user.departmentType,
         purchaseRole: response.user.purchaseRole,
+        permissions: response.user.permissions,
+        designation: response.user.designation,
+        rolePreset: response.user.rolePreset,
+        photoUrl: response.user.photoUrl,
+        mustChangePassword: response.user.mustChangePassword,
       });
       setTokens(response.accessToken, response.refreshToken);
       

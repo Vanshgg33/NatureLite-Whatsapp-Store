@@ -88,6 +88,15 @@ export function isOverdue(req: TimestampedReq, stage: Stage, now: Date): boolean
   return false;
 }
 
+export function deriveParentStageFromLines(
+  items: Array<{ lineStatus?: string }>,
+): 'NEEDS_PO' | 'PO_RAISED' | 'ALL_DROPPED' {
+  const active = items.filter(i => i.lineStatus !== 'DROPPED');
+  if (active.length === 0) return 'ALL_DROPPED';
+  if (active.some(i => !i.lineStatus || i.lineStatus === 'NEEDS_PO')) return 'NEEDS_PO';
+  return 'PO_RAISED';
+}
+
 export function waitMs(req: TimestampedReq, now: Date): number {
   const enteredAt = req.stageEnteredAt ?? req.updatedAt ?? req.createdAt;
   if (!enteredAt) return 0;

@@ -25,17 +25,55 @@ export class PurchaseController {
 
   @Post('materials')
   @RequirePermission('materials.manage')
-  createMaterial(@Body() body: { name: string; category?: string }) {
+  createMaterial(@Body() body: { name: string; category?: string; uom?: string }) {
     return this.purchaseService.createMaterial(body);
+  }
+
+  @Post('materials/bulk')
+  @RequirePermission('materials.manage')
+  bulkAddMaterials(@Body() body: { names: string[]; uom: string; defaultTagId?: string }) {
+    return this.purchaseService.bulkAddMaterials(body.names, body.uom, body.defaultTagId);
   }
 
   @Patch('materials/:id')
   @RequirePermission('materials.manage')
   updateMaterial(
     @Param('id') id: string,
-    @Body() body: { name?: string; category?: string; isActive?: boolean },
+    @Body() body: { name?: string; category?: string; isActive?: boolean; uom?: string; defaultTagId?: string },
   ) {
     return this.purchaseService.updateMaterial(id, body);
+  }
+
+  // ─── Item line aggregation ────────────────────────────────────────────────
+
+  @Get('items')
+  getItems(@Query() q: { tags?: string; status?: string; q?: string }) {
+    return this.purchaseService.getItems(q);
+  }
+
+  // ─── Tags ──────────────────────────────────────────────────────────────────
+
+  @Get('tags')
+  getTags(@Query('all') all?: string) {
+    return this.purchaseService.getTags(all !== 'true');
+  }
+
+  @Post('tags/seed')
+  @RequirePermission('tags.manage')
+  seedTags() {
+    return this.purchaseService.seedDefaultTags();
+  }
+
+  @Post('tags')
+  @RequirePermission('tags.manage')
+  createTag(@Body() body: any, @CurrentUser() user: JwtPayload) {
+    return this.purchaseService.createTag(body, { userId: user.sub, name: user.name });
+  }
+
+  @Patch('tags/:id')
+  @RequirePermission('tags.manage')
+  updateTag(@Param('id') id: string, @Body() body: any) {
+    return this.purchaseService.updateTag(id, body);
   }
 
   // ─── Vendors ─────────────────────────────────────────────────────────────
@@ -169,6 +207,16 @@ export class PurchaseController {
     },
   ) {
     return this.purchaseService.splitPO(id, user, body);
+  }
+
+  @Post('requests/:id/drop-item')
+  @RequirePermission('po.raise')
+  dropItem(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { itemId: string; reason: string },
+  ) {
+    return this.purchaseService.dropItem(id, body.itemId, body.reason, user);
   }
 
   @Post('requests/:id/decision')

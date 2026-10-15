@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { PurchaseMaterial, PurchaseMaterialSchema } from './schemas/purchase-material.schema';
 import { PurchaseRequest, PurchaseRequestSchema } from './schemas/purchase-request.schema';
 import { PurchaseVendor, PurchaseVendorSchema } from './schemas/purchase-vendor.schema';
+import { PurchaseTag, PurchaseTagSchema } from './schemas/purchase-tag.schema';
 import { AdminUser, AdminUserSchema } from '../admin/schemas/admin-user.schema';
 import { PurchaseService } from './purchase.service';
 import { PurchaseController } from './purchase.controller';
@@ -17,6 +18,7 @@ import { PermissionGuard } from '../../common/guards/permission.guard';
       { name: PurchaseRequest.name, schema: PurchaseRequestSchema },
       { name: PurchaseVendor.name, schema: PurchaseVendorSchema },
       { name: AdminUser.name, schema: AdminUserSchema },
+      { name: PurchaseTag.name, schema: PurchaseTagSchema },
     ]),
   ],
   controllers: [PurchaseController],

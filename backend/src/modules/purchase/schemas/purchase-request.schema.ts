@@ -21,11 +21,25 @@ export class PurchaseRequest {
       materialId: String,
       materialName: String,
       qtyKg: Number,
-      uom: { type: String, default: 'kg' },   // copied from Material.uom at save time
+      uom: { type: String, default: 'kg' },
+      lineStatus: { type: String, enum: ['NEEDS_PO', 'PO_RAISED', 'DROPPED'], default: 'NEEDS_PO' },
+      childPoId: { type: String, default: null },
+      movedAt: { type: Date, default: null },
+      tagId: { type: String, default: null },
+      tagName: { type: String, default: '' },
+      tagColor: { type: String, default: '' },
     }],
     required: true,
   })
-  items: Array<{ materialId: string; materialName: string; qtyKg: number; uom?: string }>;
+  items: Array<{
+    materialId: string; materialName: string; qtyKg: number; uom?: string;
+    lineStatus?: 'NEEDS_PO' | 'PO_RAISED' | 'DROPPED';
+    childPoId?: string | null; movedAt?: Date | null;
+    tagId?: string | null; tagName?: string; tagColor?: string;
+  }>;
+
+  @Prop({ default: 0 })
+  pendingLineCount: number;
 
   @Prop()
   note: string;
@@ -151,3 +165,4 @@ PurchaseRequestSchema.index({ status: 1, createdAt: -1 });
 PurchaseRequestSchema.index({ requestedById: 1, createdAt: -1 });
 PurchaseRequestSchema.index({ stage: 1, stageEnteredAt: 1 });
 PurchaseRequestSchema.index({ 'items.materialId': 1, stage: 1 });
+PurchaseRequestSchema.index({ 'items.tagName': 1, stage: 1 });

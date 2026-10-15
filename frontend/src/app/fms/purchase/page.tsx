@@ -1,10 +1,10 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, ExternalLink } from 'lucide-react';
 
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
@@ -17,6 +17,7 @@ import { RequestTable } from '@/components/fms/purchase/request-table';
 import { AttentionList, CategoryMix, buildAlerts } from '@/components/fms/purchase/attention-list';
 import { getStage, getOverdueMs, Stage } from '@/lib/fms/stage';
 import { fmtDate, shortPr } from '@/lib/fms/format';
+import { parseTagsParam, buildTagsParam } from './tag-filter-utils';
 import Loading from './loading';
 
 // ─── Board view ──────────────────────────────────────────────────────────────
@@ -134,6 +135,180 @@ function MobileQueue({ requests, summary }: { requests: any[]; summary: any }) {
   );
 }
 
+// ─── Item-level view (shown when tags are selected) ──────────────────────────
+
+const ITEM_STAGE_META: Record<string, { label: string; dot: string; bg: string; text: string }> = {
+  NEEDS_PO:          { label: 'Needs PO',         dot: '#D9902B', bg: '#FDF3E3', text: '#8A4B06' },
+  AWAITING_APPROVAL: { label: 'Awaiting approval', dot: '#2F6FB5', bg: '#EDF3FB', text: '#1F4F8A' },
+  AWAITING_DELIVERY: { label: 'Awaiting delivery', dot: '#7B8780', bg: '#F2F4F3', text: '#3E4A43' },
+  PARTLY_RECEIVED:   { label: 'Partly received',   dot: '#8A4B06', bg: '#FDF3E3', text: '#8A4B06' },
+  READY_TO_CLOSE:    { label: 'Ready to close',    dot: '#2F8A57', bg: '#EAF3EE', text: '#1E5E3F' },
+  CLOSED:            { label: 'Closed',             dot: '#3E4A43', bg: '#F2F4F3', text: '#3E4A43' },
+  DROPPED:           { label: 'Dropped',            dot: '#B0B8B3', bg: '#F7F6F2', text: '#8A9490' },
+};
+
+// Derive the effective stage of a single item line from aggregation result
+function itemLineStage(item: any): keyof typeof ITEM_STAGE_META {
+  if (item.lineStatus === 'DROPPED') return 'DROPPED';
+  if (!item.lineStatus || item.lineStatus === 'NEEDS_PO') return 'NEEDS_PO';
+  // PO_RAISED: parent's stage reflects rollup; if parent is still NEEDS_PO (partial split),
+  // this line is in AWAITING_APPROVAL since it was just moved to a child PO
+  const s = item.stage as string;
+  if (!s || s === 'NEEDS_PO' || s === 'DRAFT') return 'AWAITING_APPROVAL';
+  return (ITEM_STAGE_META[s] ? s : 'AWAITING_APPROVAL') as keyof typeof ITEM_STAGE_META;
+}
+
+const STAGE_SLA_DAYS: Partial<Record<string, number>> = {
+  NEEDS_PO: 2, AWAITING_APPROVAL: 1, AWAITING_DELIVERY: 5, PARTLY_RECEIVED: 5, READY_TO_CLOSE: 1,
+};
+
+function waitDays(item: any): number {
+  const from = item.stageEnteredAt ?? item.createdAt;
+  if (!from) return 0;
+  return Math.floor((Date.now() - new Date(from).getTime()) / 86_400_000);
+}
+
+function ItemView({ items, loading }: { items: any[]; loading: boolean }) {
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="h-6 w-6 border-2 border-[#1E5E3F] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Summary counts by derived stage
+  const stageCounts: Partial<Record<string, number>> = {};
+  for (const item of items) {
+    const s = itemLineStage(item);
+    stageCounts[s] = (stageCounts[s] ?? 0) + 1;
+  }
+  const summaryStages = Object.entries(stageCounts).filter(([, n]) => n! > 0);
+
+  return (
+    <div className="space-y-4">
+      {/* Summary cards */}
+      {summaryStages.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {summaryStages.map(([stage, count]) => {
+            const m = ITEM_STAGE_META[stage] ?? ITEM_STAGE_META.NEEDS_PO;
+            return (
+              <div key={stage} className="flex items-center gap-2 px-3 py-2 rounded-[10px] border border-[#ECE9E1] bg-white shadow-[0_1px_2px_rgba(24,33,28,.04)]">
+                <span className="h-2 w-2 rounded-full shrink-0" style={{ background: m.dot }} />
+                <span className="text-xs font-jakarta text-[#66706A]">{m.label}</span>
+                <span className="text-xs font-semibold font-jetbrains" style={{ color: m.text }}>{count}</span>
+              </div>
+            );
+          })}
+          <div className="flex items-center px-3 py-2 rounded-[10px] border border-[#ECE9E1] bg-white shadow-[0_1px_2px_rgba(24,33,28,.04)]">
+            <span className="text-xs font-jakarta text-[#8A9490]">Total</span>
+            <span className="ml-2 text-xs font-semibold font-jetbrains text-[#18211C]">{items.length} lines</span>
+          </div>
+        </div>
+      )}
+
+      {/* Item table */}
+      <div className="bg-white rounded-fms-card border border-fms-line shadow-[0_1px_2px_rgba(24,33,28,.06)] overflow-hidden">
+        {items.length === 0 ? (
+          <div className="py-14 text-center">
+            <p className="text-sm text-fms-muted font-jakarta">No items match the selected tags.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-fms-line bg-[#FAFAF8]">
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-fms-muted uppercase tracking-[0.06em] font-jakarta">Material</th>
+                  <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-fms-muted uppercase tracking-[0.06em] font-jakarta">Qty</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-fms-muted uppercase tracking-[0.06em] font-jakarta">Request</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-fms-muted uppercase tracking-[0.06em] font-jakarta">Stage</th>
+                  <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-fms-muted uppercase tracking-[0.06em] font-jakarta">Waiting</th>
+                  <th className="px-4 py-2.5" />
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item: any, idx: number) => {
+                  const stage = itemLineStage(item);
+                  const meta  = ITEM_STAGE_META[stage];
+                  const days  = waitDays(item);
+                  const sla   = STAGE_SLA_DAYS[stage];
+                  const overdue = sla !== undefined && days > sla;
+                  const linkTarget = item.lineStatus === 'PO_RAISED' && item.childPoId
+                    ? `/fms/purchase/${item.childPoId}`
+                    : `/fms/purchase/${item.reqId}`;
+
+                  return (
+                    <tr key={item._id ?? idx} className="border-b border-fms-line last:border-0 hover:bg-[#FAFAF8] transition-colors">
+                      {/* Material */}
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-fms-ink font-jakarta text-sm">{item.materialName}</p>
+                        {item.tagName && (
+                          <span className="inline-flex items-center gap-1 mt-0.5 text-[10px] font-jakarta px-1.5 py-0.5 rounded-full"
+                            style={{ background: item.tagColor ? `${item.tagColor}22` : '#F7F6F2', color: item.tagColor ?? '#66706A' }}>
+                            <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: item.tagColor ?? '#8A9490' }} />
+                            {item.tagName}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Qty */}
+                      <td className="px-4 py-3 text-right font-jetbrains text-sm text-fms-ink whitespace-nowrap">
+                        {item.qty} <span className="text-fms-muted text-xs">{item.uom ?? 'kg'}</span>
+                      </td>
+
+                      {/* Request / PO */}
+                      <td className="px-4 py-3">
+                        <Link href={`/fms/purchase/${item.reqId}`}
+                          className="text-[#1E5E3F] hover:underline font-jetbrains text-xs font-medium">
+                          {shortPr(item.reqNo)}
+                        </Link>
+                        {item.lineStatus === 'PO_RAISED' && item.childPoId && (
+                          <Link href={`/fms/purchase/${item.childPoId}`}
+                            className="ml-2 text-[10px] text-[#2F6FB5] hover:underline font-jakarta inline-flex items-center gap-0.5">
+                            PO <ExternalLink className="h-2.5 w-2.5" />
+                          </Link>
+                        )}
+                      </td>
+
+                      {/* Stage chip */}
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium font-jakarta"
+                          style={{ background: meta.bg, color: meta.text }}>
+                          <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: meta.dot }} />
+                          {meta.label}
+                        </span>
+                      </td>
+
+                      {/* Waiting */}
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        {stage !== 'DROPPED' && stage !== 'CLOSED' ? (
+                          <span className={`text-xs font-jetbrains font-medium ${overdue ? 'text-[#A3241A]' : 'text-fms-muted'}`}>
+                            {days}d{overdue ? ' !' : ''}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-fms-muted font-jakarta">—</span>
+                        )}
+                      </td>
+
+                      {/* Action */}
+                      <td className="px-4 py-3 text-right">
+                        <Link href={linkTarget}
+                          className="text-xs text-[#1E5E3F] hover:underline font-jakarta font-medium">
+                          View
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main page ───────────────────────────────────────────────────────────────
 
 function PurchasePageInner() {
@@ -144,6 +319,7 @@ function PurchasePageInner() {
 
   const [stageFilter, setStageFilter] = useState<Stage | null>(null);
   const [search, setSearch] = useState('');
+  const selectedTagNames = parseTagsParam(params.get('tags'));
 
   const { data: summary } = useQuery({
     queryKey: ['purchase-summary'],
@@ -156,6 +332,32 @@ function PurchasePageInner() {
     queryFn: () => api.getPurchaseRequests(),
     refetchInterval: 15000,
   });
+
+  const { data: tags = [] } = useQuery({
+    queryKey: ['purchase-tags'],
+    queryFn: () => api.getPurchaseTags(),
+    staleTime: 60_000,
+  });
+
+  const { data: tagItems = [], isLoading: itemsLoading } = useQuery({
+    queryKey: ['purchase-items', selectedTagNames],
+    queryFn: () => api.getPurchaseItems({ tags: selectedTagNames.join(',') }),
+    enabled: selectedTagNames.length > 0,
+    staleTime: 15_000,
+  });
+
+  // Count items per tag name from cached requests (no extra call)
+  const tagCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const r of rawRequests) {
+      for (const item of (r.items ?? [])) {
+        if (item.tagName && item.lineStatus !== 'DROPPED') {
+          counts[item.tagName] = (counts[item.tagName] ?? 0) + 1;
+        }
+      }
+    }
+    return counts;
+  }, [rawRequests]);
 
   const requests = search
     ? rawRequests.filter((r: any) =>
@@ -224,28 +426,66 @@ function PurchasePageInner() {
             />
           )}
 
-          {/* Two-column: attention + category mix */}
-          <div className="grid grid-cols-5 gap-5">
-            <div className="col-span-3">
-              <p className="text-[11px] font-semibold text-fms-muted uppercase tracking-[0.07em] font-jakarta mb-2">Needs attention</p>
-              <AttentionList alerts={alerts} />
+          {/* Tag filter bar */}
+          {(tags as any[]).length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap -mt-2">
+              <button
+                onClick={() => router.push('/fms/purchase')}
+                className="px-3 py-1 rounded-full text-xs font-medium border font-jakarta transition-colors"
+                style={!selectedTagNames.length ? { background: '#1E5E3F', color: '#fff', borderColor: '#1E5E3F' } : { background: '#fff', color: '#66706A', borderColor: '#ECE9E1' }}>
+                All
+              </button>
+              {(tags as any[]).map((t: any) => {
+                const active = selectedTagNames.includes(t.name);
+                const next = active
+                  ? selectedTagNames.filter(n => n !== t.name)
+                  : [...selectedTagNames, t.name];
+                const count = tagCounts[t.name];
+                return (
+                  <button key={t._id}
+                    onClick={() => router.push(next.length ? `/fms/purchase?tags=${buildTagsParam(next)}` : '/fms/purchase')}
+                    className="px-3 py-1 rounded-full text-xs font-medium border font-jakarta transition-colors inline-flex items-center gap-1.5"
+                    style={active ? { background: t.color, color: '#fff', borderColor: t.color } : { background: '#fff', color: '#66706A', borderColor: '#ECE9E1' }}>
+                    {t.name}
+                    {count != null && count > 0 && (
+                      <span className="text-[10px] font-jetbrains" style={active ? { opacity: 0.85 } : { color: '#8A9490' }}>
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
-            <div className="col-span-2">
-              <p className="text-[11px] font-semibold text-fms-muted uppercase tracking-[0.07em] font-jakarta mb-2">By category (kg)</p>
-              <div className="bg-fms-surface rounded-fms-card border border-fms-line p-4 shadow-[0_1px_2px_rgba(24,33,28,.06)]">
-                <CategoryMix mix={summary?.mixByCategory || []} />
-              </div>
-            </div>
-          </div>
+          )}
 
-          {/* Request table with tabs */}
-          {summary?.counts && (
-            <RequestTable
-              requests={requests}
-              counts={summary.counts}
-              stageFilter={stageFilter}
-              onBoardToggle={() => router.push('/fms/purchase?view=board')}
-            />
+          {selectedTagNames.length > 0 ? (
+            /* ── Tag item view ── */
+            <ItemView items={tagItems} loading={itemsLoading} />
+          ) : (
+            /* ── Normal attention + table ── */
+            <>
+              <div className="grid grid-cols-5 gap-5">
+                <div className="col-span-3">
+                  <p className="text-[11px] font-semibold text-fms-muted uppercase tracking-[0.07em] font-jakarta mb-2">Needs attention</p>
+                  <AttentionList alerts={alerts} />
+                </div>
+                <div className="col-span-2">
+                  <p className="text-[11px] font-semibold text-fms-muted uppercase tracking-[0.07em] font-jakarta mb-2">By category (kg)</p>
+                  <div className="bg-fms-surface rounded-fms-card border border-fms-line p-4 shadow-[0_1px_2px_rgba(24,33,28,.06)]">
+                    <CategoryMix mix={summary?.mixByCategory || []} />
+                  </div>
+                </div>
+              </div>
+
+              {summary?.counts && (
+                <RequestTable
+                  requests={requests}
+                  counts={summary.counts}
+                  stageFilter={stageFilter}
+                  onBoardToggle={() => router.push('/fms/purchase?view=board')}
+                />
+              )}
+            </>
           )}
         </div>
       </div>

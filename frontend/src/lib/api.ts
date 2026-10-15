@@ -1813,12 +1813,12 @@ class ApiClient {
     return res.data.data;
   }
 
-  async createPurchaseMaterial(data: { name: string; category?: string }): Promise<any> {
+  async createPurchaseMaterial(data: { name: string; category?: string; uom?: string }): Promise<any> {
     const res = await this.client.post<ApiResponse<any>>('/purchase/materials', data);
     return res.data.data;
   }
 
-  async updatePurchaseMaterial(id: string, data: { name?: string; category?: string; isActive?: boolean }): Promise<any> {
+  async updatePurchaseMaterial(id: string, data: { name?: string; category?: string; isActive?: boolean; uom?: string; defaultTagId?: string }): Promise<any> {
     const res = await this.client.patch<ApiResponse<any>>(`/purchase/materials/${id}`, data);
     return res.data.data;
   }
@@ -1923,6 +1923,61 @@ class ApiClient {
 
   async setPurchaseDeadline(id: string, dueAt: string): Promise<any> {
     const res = await this.client.post<ApiResponse<any>>(`/purchase/requests/${id}/deadline`, { dueAt });
+    return res.data.data;
+  }
+
+  async getPurchaseTags(): Promise<any[]> {
+    const r = await this.client.get<ApiResponse<any[]>>('/purchase/tags');
+    return r.data.data;
+  }
+
+  async seedPurchaseTags(): Promise<{ created: number }> {
+    const r = await this.client.post<ApiResponse<{ created: number }>>('/purchase/tags/seed');
+    return r.data.data;
+  }
+
+  async createPurchaseTag(data: { name: string; color: string; description?: string; icon?: string }): Promise<any> {
+    const r = await this.client.post<ApiResponse<any>>('/purchase/tags', data);
+    return r.data.data;
+  }
+
+  async updatePurchaseTag(id: string, data: { name?: string; color?: string; description?: string; isActive?: boolean }): Promise<any> {
+    const r = await this.client.patch<ApiResponse<any>>(`/purchase/tags/${id}`, data);
+    return r.data.data;
+  }
+
+  async getPurchaseItems(params: { tags?: string; status?: string; q?: string } = {}): Promise<any[]> {
+    const r = await this.client.get<ApiResponse<any[]>>('/purchase/items', { params });
+    return r.data.data;
+  }
+
+  async bulkAddPurchaseMaterials(body: { names: string[]; uom: string; defaultTagId?: string }): Promise<{ created: number; skipped: string[] }> {
+    const r = await this.client.post<ApiResponse<{ created: number; skipped: string[] }>>('/purchase/materials/bulk', body);
+    return r.data.data;
+  }
+
+  async getFmsUsers(): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>('/purchase/users');
+    return res.data.data;
+  }
+
+  async createFmsUser(data: any): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>('/purchase/users', data);
+    return res.data.data;
+  }
+
+  async updateFmsUser(id: string, data: any): Promise<any> {
+    const res = await this.client.patch<ApiResponse<any>>(`/purchase/users/${id}`, data);
+    return res.data.data;
+  }
+
+  async setFmsUserPhoto(id: string, photoUrl: string): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>(`/purchase/users/${id}/photo`, { photoUrl });
+    return res.data.data;
+  }
+
+  async resetFmsUserPassword(id: string, newPassword: string): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>(`/purchase/users/${id}/reset-password`, { newPassword });
     return res.data.data;
   }
 

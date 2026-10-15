@@ -183,6 +183,12 @@ export class AuthService {
         purchaseRole: admin.purchaseRole,
         storeId,
         storeName,
+        permissions: admin.permissions ?? [],
+        designation: admin.designation,
+        rolePreset: admin.rolePreset,
+        photoUrl: admin.avatar,
+        mustChangePassword: admin.mustChangePassword ?? false,
+        loginId: admin.loginId,
       },
     };
   }
@@ -465,7 +471,10 @@ export class AuthService {
 
     await this.adminUserRepository.updateOne(
       { _id: parseObjectId(adminId, 'adminId') },
-      { password: hashedPassword },
+      {
+        $set: { password: hashedPassword, mustChangePassword: false, failedLoginAttempts: 0 },
+        $unset: { lockoutUntil: 1 },
+      },
     );
   }
 

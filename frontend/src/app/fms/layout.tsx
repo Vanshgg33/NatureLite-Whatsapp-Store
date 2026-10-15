@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
-import { ShoppingBag, ShoppingCart, Plus, Building2, LogOut, Menu, X, Bell } from 'lucide-react';
+import { ShoppingBag, ShoppingCart, Plus, Building2, LogOut, Menu, X, Bell, Package, Users, Tag } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Fraunces, Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
 import { cn } from '@/lib/utils';
 import { useAdminAuthStore } from '@/lib/admin-store';
+import { hasPermission } from '@/lib/fms/permissions';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -33,6 +34,8 @@ function FmsSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobi
   const myActionCount: number = summary?.myAction ?? 0;
 
   const userInitial = user?.name?.[0]?.toUpperCase() ?? user?.email?.[0]?.toUpperCase() ?? 'A';
+  const canManageUsers = hasPermission(user, 'users.manage');
+  const canManageTags = hasPermission(user, 'tags.manage');
 
   const handleLogout = () => {
     logout();
@@ -45,14 +48,32 @@ function FmsSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobi
       href: '/fms/purchase',
       label: 'Purchase FMS',
       Icon: ShoppingBag,
-      active: pathname === '/fms/purchase' || (pathname.startsWith('/fms/purchase/') && !pathname.startsWith('/fms/purchase/vendors')),
+      active: pathname === '/fms/purchase' || (pathname.startsWith('/fms/purchase/') && !pathname.startsWith('/fms/purchase/vendors') && !pathname.startsWith('/fms/purchase/materials') && !pathname.startsWith('/fms/purchase/users') && !pathname.startsWith('/fms/purchase/tags')),
     },
+    {
+      href: '/fms/purchase/materials',
+      label: 'Materials',
+      Icon: Package,
+      active: pathname.startsWith('/fms/purchase/materials'),
+    },
+    ...(canManageTags ? [{
+      href: '/fms/purchase/tags',
+      label: 'Tags',
+      Icon: Tag,
+      active: pathname.startsWith('/fms/purchase/tags'),
+    }] : []),
     {
       href: '/fms/purchase/vendors',
       label: 'Vendors',
       Icon: Building2,
       active: pathname.startsWith('/fms/purchase/vendors'),
     },
+    ...(canManageUsers ? [{
+      href: '/fms/purchase/users',
+      label: 'Users',
+      Icon: Users,
+      active: pathname.startsWith('/fms/purchase/users'),
+    }] : []),
   ];
 
   const content = (
@@ -113,12 +134,16 @@ function FmsSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobi
 
       <div className="border-t border-white/10 p-3 flex-shrink-0">
         <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg bg-white/[0.06] mb-2">
-          <div className="h-7 w-7 rounded-md flex items-center justify-center text-white text-xs font-semibold flex-shrink-0" style={{ background: '#1E5E3F' }}>
-            {userInitial}
-          </div>
+          {user?.photoUrl ? (
+            <img src={user.photoUrl} alt={user.name} className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
+          ) : (
+            <div className="h-7 w-7 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0" style={{ background: '#1E5E3F' }}>
+              {userInitial}
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             <p className="text-white/80 text-[12.5px] font-medium truncate leading-tight font-jakarta">{user?.name ?? 'Admin'}</p>
-            <p className="text-white/35 text-[10px] font-jetbrains truncate leading-tight">fms</p>
+            <p className="text-white/35 text-[10px] font-jetbrains truncate leading-tight">{user?.designation ?? 'fms'}</p>
           </div>
         </div>
         <button
@@ -155,6 +180,7 @@ function FmsSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobi
 
 export default function FmsLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { isAuthenticated, user, hasHydrated } = useAdminAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -167,10 +193,14 @@ export default function FmsLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!hasHydrated) return;
     if (!isAuthenticated) { router.push('/admin-login'); return; }
-    if (!hasFmsAccess) router.push('/admin/dashboard');
-  }, [hasHydrated, isAuthenticated, hasFmsAccess, router]);
+    if (!hasFmsAccess) { router.push('/admin/dashboard'); return; }
+    if (user?.mustChangePassword && pathname !== '/fms/change-password') {
+      router.push('/fms/change-password');
+    }
+  }, [hasHydrated, isAuthenticated, hasFmsAccess, user?.mustChangePassword, pathname, router]);
 
   if (!hasHydrated || !isAuthenticated || !hasFmsAccess) return null;
+  if (user?.mustChangePassword && pathname !== '/fms/change-password') return null;
 
   return (
     <div
