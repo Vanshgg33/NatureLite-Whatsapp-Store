@@ -158,11 +158,14 @@ export default function FmsNewPurchaseRequestPage() {
     return next;
   });
   const setMaterialFromCombobox = (i: number, id: string, name: string, uom: string) => {
-    setItems(prev => {
-      const next = [...prev];
-      next[i] = { ...next[i], materialId: id, materialName: name, uom };
-      return next;
-    });
+    const mat = (materials as any[]).find((m: any) => m._id === id);
+    const defaultTag = mat?.defaultTagId ? (tags as any[]).find((t: any) => t._id === mat.defaultTagId) : null;
+    setItems(prev => prev.map((it, idx) => idx !== i ? it : {
+      ...it, materialId: id, materialName: name, uom,
+      tagId: defaultTag?._id || it.tagId,
+      tagName: defaultTag?.name || it.tagName,
+      tagColor: defaultTag?.color || it.tagColor,
+    }));
   };
   const setRowTag = (i: number, tagId: string, tagName: string, tagColor: string) => {
     setItems(prev => {
