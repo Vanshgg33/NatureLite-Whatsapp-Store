@@ -707,7 +707,6 @@ class ApiClient {
     const res = await this.client.post<ApiResponse<{ created: number; skipped: number; errors: string[] }>>(
       '/products/import',
       form,
-      { headers: { 'Content-Type': 'multipart/form-data' } },
     );
     return res.data.data;
   }

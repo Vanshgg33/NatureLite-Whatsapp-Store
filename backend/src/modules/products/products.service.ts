@@ -525,7 +525,7 @@ export class ProductsService implements OnModuleInit {
 
   async exportToCsv(categoryId?: string): Promise<string> {
     try {
-      const filter: Record<string, unknown> = { category: { $type: 'objectId' } };
+      const filter: Record<string, unknown> = {};
       if (categoryId && isValidObjectIdString(categoryId)) {
         filter.category = new Types.ObjectId(categoryId);
       }

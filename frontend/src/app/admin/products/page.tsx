@@ -179,8 +179,10 @@ export default function ProductsPage() {
       const a = document.createElement('a');
       a.href = url;
       a.download = catName ? `products-${catName.toLowerCase().replace(/\s+/g, '-')}.csv` : 'products.csv';
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch {
       alert('Export failed');
     } finally {
