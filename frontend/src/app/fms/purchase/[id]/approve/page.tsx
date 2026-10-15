@@ -11,6 +11,67 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { getApiError } from '@/lib/api-error';
 import { shortPr } from '@/lib/fms/format';
+import { getStage } from '@/lib/fms/stage';
+import { StageBadge } from '@/components/fms/purchase/chips';
+
+function ChildApproveCard({ child, onSuccess }: { child: any; onSuccess: () => void }) {
+  const { toast } = useToast();
+  const [rejReason, setRejReason] = useState('');
+  const [showReject, setShowReject] = useState(false);
+  const stage = getStage(child);
+  const canAct = stage === 'AWAITING_APPROVAL';
+
+  const decisionMut = useMutation({
+    mutationFn: (data: any) => api.makePurchaseDecision(child._id, data),
+    onSuccess: () => { toast({ title: 'Decision recorded' }); onSuccess(); },
+    onError: (err) => toast({ title: 'Error', description: getApiError(err), variant: 'destructive' }),
+  });
+
+  return (
+    <div className="bg-white rounded-[18px] border border-[#D0C9FF] p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold font-jetbrains text-[#4B3FAC]">{child.reqNo}</p>
+          <p className="text-sm font-medium text-[#18211C] font-jakarta">{child.po?.vendorName}</p>
+          {child.po?.vendorPhone && <p className="text-xs text-[#66706A] font-jakarta">{child.po.vendorPhone}</p>}
+        </div>
+        <div className="text-right">
+          <p className="text-lg font-bold text-[#1E5E3F] font-jetbrains">₹{child.po?.totalAmount?.toLocaleString('en-IN') ?? '—'}</p>
+          <StageBadge req={child} />
+        </div>
+      </div>
+      {(child.po?.items ?? []).map((item: any, idx: number) => (
+        <div key={idx} className="flex justify-between text-xs text-[#3E4A43] font-jakarta">
+          <span>{item.materialName} · {item.qtyKg} {item.uom || 'kg'} × ₹{item.ratePerKg}/{item.uom || 'kg'}</span>
+          <span className="font-medium font-jetbrains">₹{item.amount?.toLocaleString('en-IN')}</span>
+        </div>
+      ))}
+      {canAct && !showReject && (
+        <div className="flex gap-2 pt-1">
+          <Button onClick={() => decisionMut.mutate({ action: 'APPROVED' })} disabled={decisionMut.isPending}
+            className="flex-1 h-8 text-xs text-white font-jakarta rounded-[10px]" style={{ background: '#1E5E3F' }}>
+            Approve
+          </Button>
+          <Button variant="outline" onClick={() => setShowReject(true)}
+            className="text-red-600 border-red-200 flex-1 h-8 text-xs font-jakarta rounded-[10px]">
+            Reject
+          </Button>
+        </div>
+      )}
+      {canAct && showReject && (
+        <div className="space-y-2">
+          <Input placeholder="Rejection reason" value={rejReason} onChange={e => setRejReason(e.target.value)} className="h-8 text-xs font-jakarta" />
+          <div className="flex gap-2">
+            <Button variant="destructive" className="flex-1 h-8 text-xs font-jakarta rounded-[10px]"
+              onClick={() => decisionMut.mutate({ action: 'REJECTED', reason: rejReason })}
+              disabled={!rejReason.trim() || decisionMut.isPending}>Confirm Reject</Button>
+            <Button variant="outline" className="h-8 text-xs font-jakarta rounded-[10px]" onClick={() => setShowReject(false)}>Cancel</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function CheckItem({ label, ok }: { label: string; ok: boolean }) {
   return (
@@ -49,7 +110,7 @@ export default function FmsApprovePoPage() {
   const [rejReason, setRejReason]   = useState('');
   const [checks, setChecks]         = useState({ rateOk: false, vendorOk: false, deliveryOk: false, termsOk: false });
 
-  const { data: req } = useQuery({
+  const { data: req, refetch } = useQuery({
     queryKey: ['purchase-request', params.id],
     queryFn:  () => api.getPurchaseRequest(params.id),
   });
@@ -76,6 +137,40 @@ export default function FmsApprovePoPage() {
       <div className="h-8 w-8 border-2 border-[#1E5E3F] border-t-transparent rounded-full animate-spin" />
     </div>
   );
+
+  if (req.status === 'SPLIT') {
+    const approvable = (req.children ?? []).filter((c: any) => getStage(c) === 'AWAITING_APPROVAL');
+    return (
+      <div className="min-h-full" style={{ background: '#F7F6F2' }}>
+        <div className="bg-white border-b border-[#ECE9E1] px-6 py-4 flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-1.5 text-xs text-[#8A9490] mb-1 font-jakarta">
+              <Link href="/fms/purchase" className="text-[#1E5E3F] font-medium hover:underline">Purchase FMS</Link>
+              <ChevronRight className="h-3 w-3" />
+              <Link href={`/fms/purchase/${params.id}`} className="text-[#1E5E3F] font-medium hover:underline font-jetbrains">{shortPr(req.reqNo)}</Link>
+              <ChevronRight className="h-3 w-3" />
+              <span>Approve</span>
+            </div>
+            <h1 className="font-fraunces text-[22px] font-semibold text-[#18211C]">Review Split POs</h1>
+            <p className="text-xs text-[#8A9490] font-jakarta mt-0.5">{req.children?.length ?? 0} vendor POs · {approvable.length} pending approval</p>
+          </div>
+          <Link href={`/fms/purchase/${params.id}`}>
+            <Button variant="outline" size="sm" className="h-8 text-xs font-jakarta rounded-[10px]">
+              <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Back
+            </Button>
+          </Link>
+        </div>
+        <div className="p-6 max-w-2xl space-y-4">
+          {(req.children ?? []).map((child: any) => (
+            <ChildApproveCard key={child._id} child={child} onSuccess={() => refetch()} />
+          ))}
+          {approvable.length === 0 && (
+            <p className="text-sm text-[#66706A] font-jakarta text-center py-8">No child POs pending approval.</p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (req.status !== 'PO_CREATED') {
     return (
