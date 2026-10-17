@@ -119,6 +119,13 @@ export class PurchaseController {
     return this.purchaseService.deleteVendor(id);
   }
 
+  // ─── Documents vault ─────────────────────────────────────────────────────
+
+  @Get('documents')
+  listDocuments() {
+    return this.purchaseService.listDocuments();
+  }
+
   // ─── Stats ─────────────────────────────────────────────────────────────
 
   @Get('stats')

@@ -1,10 +1,12 @@
 'use client';
 
+import '../pfms-theme.css';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
-import { ShoppingBag, ShoppingCart, Plus, Building2, LogOut, Menu, X, Bell, Package, Users, Tag } from 'lucide-react';
+import { ShoppingBag, ShoppingCart, Plus, Building2, LogOut, Menu, X, Bell, Package, Users, Tag, Folder } from 'lucide-react';
+import { RippleProvider } from '@/components/fms/purchase/RippleProvider';
 import { useQuery } from '@tanstack/react-query';
 import { Fraunces, Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
 import { cn } from '@/lib/utils';
@@ -48,7 +50,7 @@ function FmsSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobi
       href: '/fms/purchase',
       label: 'Purchase FMS',
       Icon: ShoppingBag,
-      active: pathname === '/fms/purchase' || (pathname.startsWith('/fms/purchase/') && !pathname.startsWith('/fms/purchase/vendors') && !pathname.startsWith('/fms/purchase/materials') && !pathname.startsWith('/fms/purchase/users') && !pathname.startsWith('/fms/purchase/tags')),
+      active: pathname === '/fms/purchase' || (pathname.startsWith('/fms/purchase/') && !pathname.startsWith('/fms/purchase/vendors') && !pathname.startsWith('/fms/purchase/materials') && !pathname.startsWith('/fms/purchase/users') && !pathname.startsWith('/fms/purchase/tags') && !pathname.startsWith('/fms/purchase/documents')),
     },
     {
       href: '/fms/purchase/materials',
@@ -74,10 +76,17 @@ function FmsSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobi
       Icon: Users,
       active: pathname.startsWith('/fms/purchase/users'),
     }] : []),
+    {
+      href: '/fms/purchase/documents',
+      label: 'Documents',
+      Icon: Folder,
+      active: pathname.startsWith('/fms/purchase/documents'),
+      badge: 'NEW',
+    },
   ];
 
   const content = (
-    <div className="flex h-full w-64 flex-col" style={{ background: '#17382A' }}>
+    <div className="flex h-full w-64 flex-col" style={{ background: 'var(--f800, #17382A)' }}>
       <div className="relative flex items-center gap-3 px-4 py-5 border-b border-white/10 flex-shrink-0">
         {onMobileClose && (
           <button
@@ -100,7 +109,7 @@ function FmsSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobi
           <Bell className="h-4 w-4 text-white/60" />
           {myActionCount > 0 && (
             <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 rounded-full text-[10px] font-semibold font-jakarta flex items-center justify-center"
-              style={{ background: '#D9902B', color: 'white' }}>
+              style={{ background: 'var(--g500, #D9902B)', color: 'white' }}>
               {myActionCount > 9 ? '9+' : myActionCount}
             </span>
           )}
@@ -112,7 +121,7 @@ function FmsSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobi
           <p className="px-4 pt-2.5 pb-1 text-[9px] font-jetbrains text-white/30 uppercase tracking-[0.14em] select-none">
             Purchase
           </p>
-          {NAV_LINKS.map(({ href, label, Icon, active }) => (
+          {NAV_LINKS.map(({ href, label, Icon, active, badge }: any) => (
             <Link
               key={href}
               href={href}
@@ -120,13 +129,20 @@ function FmsSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobi
               className={cn(
                 'flex items-center gap-2.5 text-[13px] py-[7px] font-jakarta',
                 active
-                  ? 'ml-0 mr-2 pl-5 rounded-r-lg border-l-2 border-[#EAF3EE] bg-white/10 text-white font-medium'
+                  ? 'ml-0 mr-2 pl-5 rounded-r-lg border-l-2 border-[#EAF3EE] bg-white/10 text-white font-medium pf-nav-active'
                   : 'mx-2 px-3 rounded-lg text-white/60 hover:text-white/90 hover:bg-white/[0.06]',
               )}
               style={{ transition: 'background-color 0.1s, color 0.1s' }}
+              data-ripple=""
             >
               <Icon className={cn('h-[15px] w-[15px] flex-shrink-0', active ? 'opacity-100' : 'opacity-65')} />
               {label}
+              {badge && !active && (
+                <span className="ml-auto text-[9px] font-semibold px-1.5 py-0.5 rounded-full font-jetbrains"
+                  style={{ background: 'var(--g500, #d4a03a)', color: 'var(--f950, #06201a)' }}>
+                  {badge}
+                </span>
+              )}
             </Link>
           ))}
         </div>
@@ -204,9 +220,10 @@ export default function FmsLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div
-      className={`flex h-screen ${fraunces.variable} ${jakarta.variable} ${jetbrains.variable}`}
-      style={{ background: '#F7F6F2' }}
+      className={`flex h-screen pf-root ${fraunces.variable} ${jakarta.variable} ${jetbrains.variable}`}
+      style={{ background: 'var(--cream, #F7F6F2)' }}
     >
+      <RippleProvider />
       <FmsSidebar mobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)} />
       <div className="flex flex-1 flex-col min-w-0">
         <div className="flex md:hidden h-14 items-center gap-3 border-b px-4 shrink-0" style={{ background: '#F7F6F2', borderColor: '#ECE9E1' }}>
@@ -222,7 +239,7 @@ export default function FmsLayout({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* S8 bottom tab bar — mobile only */}
-      <nav className="fixed bottom-0 inset-x-0 z-40 flex md:hidden border-t" style={{ background: '#17382A', borderColor: '#1E5E3F' }}>
+      <nav className="fixed bottom-0 inset-x-0 z-40 flex md:hidden border-t" style={{ background: 'var(--f800, #17382A)', borderColor: 'var(--f600, #1E5E3F)' }}>
         {[
           { href: '/fms/purchase',         Icon: ShoppingCart, label: 'Queue' },
           { href: '/fms/purchase/new',      Icon: Plus,         label: 'New' },

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getStage, getOverdueMs, STAGE_LABEL, Stage } from '@/lib/fms/stage';
 import { shortPr } from '@/lib/fms/format';
+import { RequestedAt } from './RequestedAt';
 
 interface Alert {
   icon: string;
@@ -8,6 +9,7 @@ interface Alert {
   body: string;
   actionLabel: string;
   href: string;
+  createdAt?: string | Date;
 }
 
 const OPEN_STAGES = new Set<Stage>(['NEEDS_PO','AWAITING_APPROVAL','AWAITING_DELIVERY','PARTLY_RECEIVED','READY_TO_CLOSE']);
@@ -28,6 +30,7 @@ export function buildAlerts(requests: any[]): Alert[] {
         body: `${STAGE_LABEL[stage]} — ${Math.round(ms / 86_400_000)} days`,
         actionLabel: 'View',
         href: `/fms/purchase/${r._id}`,
+        createdAt: r.createdAt,
       });
     }
   }
@@ -42,6 +45,7 @@ export function buildAlerts(requests: any[]): Alert[] {
         body: 'All goods received — close the request',
         actionLabel: 'Close request',
         href: `/fms/purchase/${r._id}`,
+        createdAt: r.createdAt,
       });
     }
   }
@@ -108,6 +112,7 @@ export function AttentionList({ alerts }: { alerts: Alert[] }) {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-fms-ink font-jakarta">{a.title}</p>
             <p className="text-xs text-fms-muted font-jakarta mt-0.5">{a.body}</p>
+            <RequestedAt at={a.createdAt} />
           </div>
           <Link href={a.href} className="shrink-0">
             <button className="text-xs font-medium font-jakarta px-3 py-1.5 rounded-fms-control border border-fms-line2 hover:border-fms-brand hover:text-fms-brand transition-colors text-fms-muted whitespace-nowrap">

@@ -1,5 +1,7 @@
+'use client';
+import React from 'react';
 import { Stage } from '@/lib/fms/stage';
-import { fmtQty, fmtOverdue } from '@/lib/fms/format';
+import { useCountUp } from '@/hooks/useMotion';
 
 interface Summary {
   myAction: number;
@@ -12,10 +14,15 @@ interface Summary {
   closedThisMonth: number;
 }
 
+function AnimNum({ n, className, style }: { n: number; className?: string; style?: React.CSSProperties }) {
+  const v = useCountUp(n);
+  return <span className={className} style={style}>{v}</span>;
+}
+
 export function KpiStrip({ summary }: { summary: Summary }) {
-  const needs  = summary.byStage['NEEDS_PO'] || 0;
+  const needs   = summary.byStage['NEEDS_PO'] || 0;
   const approve = summary.byStage['AWAITING_APPROVAL'] || 0;
-  const close  = summary.byStage['READY_TO_CLOSE'] || 0;
+  const close   = summary.byStage['READY_TO_CLOSE'] || 0;
 
   const breakdown = [
     needs   && `${needs} need a PO`,
@@ -23,12 +30,16 @@ export function KpiStrip({ summary }: { summary: Summary }) {
     close   && `${close} to close`,
   ].filter(Boolean).join(' · ');
 
+  const pipelineDisplay = useCountUp(summary.pipelineKg);
+
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
       {/* Tile 1 — dark */}
-      <div className="col-span-2 md:col-span-1 rounded-fms-card p-5 shadow-[0_1px_2px_rgba(24,33,28,.06)]" style={{ background: '#17382A' }}>
+      <div className="col-span-2 md:col-span-1 rounded-fms-card p-5 shadow-[0_1px_2px_rgba(24,33,28,.06)]" style={{ background: 'var(--f800, #17382A)' }}>
         <p className="text-xs text-white/60 font-jakarta mb-1">Waiting on you</p>
-        <p className="text-4xl font-semibold text-white font-fraunces tabular-nums">{summary.myAction}</p>
+        <p className="text-4xl font-semibold text-white font-fraunces tabular-nums">
+          <AnimNum n={summary.myAction} />
+        </p>
         {breakdown && <p className="mt-1.5 text-[11px] text-white/50 font-jakarta leading-snug">{breakdown}</p>}
       </div>
 
@@ -36,7 +47,7 @@ export function KpiStrip({ summary }: { summary: Summary }) {
       <div className="rounded-fms-card bg-fms-surface border border-fms-line p-5 shadow-[0_1px_2px_rgba(24,33,28,.06)]">
         <p className="text-xs text-fms-muted font-jakarta mb-1">Overdue</p>
         <p className="text-4xl font-semibold font-fraunces tabular-nums" style={{ color: summary.overdue > 0 ? '#A3241A' : '#1E5E3F' }}>
-          {summary.overdue}
+          <AnimNum n={summary.overdue} />
         </p>
         {summary.overdueItems[0] && (
           <p className="mt-1.5 text-[11px] text-fms-muted font-jakarta truncate">
@@ -49,7 +60,9 @@ export function KpiStrip({ summary }: { summary: Summary }) {
       <div className="rounded-fms-card bg-fms-surface border border-fms-line p-5 shadow-[0_1px_2px_rgba(24,33,28,.06)]">
         <p className="text-xs text-fms-muted font-jakarta mb-1">Oldest open</p>
         <p className="text-4xl font-semibold font-fraunces tabular-nums" style={{ color: '#8A4B06' }}>
-          {summary.oldestOpen ? `${summary.oldestOpen.days} d` : '—'}
+          {summary.oldestOpen ? (
+            <><AnimNum n={summary.oldestOpen.days} /> d</>
+          ) : '—'}
         </p>
         {summary.oldestOpen && (
           <p className="mt-1.5 text-[11px] text-fms-muted font-jakarta truncate">{summary.oldestOpen.prNo}</p>
@@ -60,7 +73,7 @@ export function KpiStrip({ summary }: { summary: Summary }) {
       <div className="rounded-fms-card bg-fms-surface border border-fms-line p-5 shadow-[0_1px_2px_rgba(24,33,28,.06)]">
         <p className="text-xs text-fms-muted font-jakarta mb-1">In pipeline</p>
         <p className="text-4xl font-semibold text-fms-ink font-fraunces tabular-nums">
-          {summary.pipelineKg.toLocaleString('en-IN')}
+          {pipelineDisplay.toLocaleString('en-IN')}
           <span className="text-base font-normal text-fms-muted ml-1">kg</span>
         </p>
         <p className="mt-1.5 text-[11px] text-fms-muted font-jakarta">

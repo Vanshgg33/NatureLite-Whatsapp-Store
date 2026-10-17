@@ -879,10 +879,34 @@ export default function FmsPurchaseRequestDetailPage() {
                 </div>
                 {notesTab === 'notes' ? (
                   <div className="p-4">
-                    {(req.vendorBills?.length ? req.vendorBills : req.vendorBill ? [req.vendorBill] : []).map((bill: any, i: number, arr: any[]) => (
-                      <FileViewer key={bill.publicId || i} file={bill} label={arr.length > 1 ? `Vendor Bill ${i + 1}` : 'Vendor Bill'} />
-                    ))}
-                    {req.receipt?.gateBill && <FileViewer file={req.receipt.gateBill} label="Gate Bill" />}
+                    {(() => {
+                      const bills = req.vendorBills?.length ? req.vendorBills : req.vendorBill ? [req.vendorBill] : [];
+                      const billEntries = (req.timeline || []).filter((t: any) => t.status === 'VENDOR_BILL_UPLOADED');
+                      return bills.map((bill: any, i: number) => {
+                        const entry = billEntries[i];
+                        const uploadedAt = entry?.at;
+                        return (
+                          <div key={bill.publicId || i}>
+                            <FileViewer file={bill} label={bills.length > 1 ? `Vendor Bill ${i + 1}` : 'Vendor Bill'} />
+                            {uploadedAt && (
+                              <p className="text-[10px] text-[#8A9490] font-jakarta mt-1 ml-1">
+                                Uploaded {fmtIST(uploadedAt)}{entry?.actor?.name || entry?.byName ? ` by ${entry.actor?.name || entry.byName}` : ''}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
+                    {req.receipt?.gateBill && (
+                      <div>
+                        <FileViewer file={req.receipt.gateBill} label="Gate Bill" />
+                        {req.receipt.at && (
+                          <p className="text-[10px] text-[#8A9490] font-jakarta mt-1 ml-1">
+                            Uploaded {fmtIST(req.receipt.at)}{req.receipt.byName ? ` by ${req.receipt.byName}` : ''}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     {!req.vendorBills?.length && !req.vendorBill && !req.receipt?.gateBill && (
                       <p className="text-xs text-[#B0B8B3] font-jakarta text-center py-4">No documents yet.</p>
                     )}

@@ -729,14 +729,15 @@ export class PurchaseService {
     req.vendorBills.push(fileData);
     req.markModified('vendorBills');
 
+    req.timeline.push({
+      action: 'Vendor bill uploaded',
+      status: 'VENDOR_BILL_UPLOADED',
+      byName: user.name || 'System',
+      at: new Date(),
+    });
+
     if (req.status === 'APPROVED') {
       req.status = 'VENDOR_BILL_UPLOADED';
-      req.timeline.push({
-        action: 'Vendor bill uploaded',
-        status: 'VENDOR_BILL_UPLOADED',
-        byName: user.name || 'System',
-        at: new Date(),
-      });
       this.sendStatusEmail(req.toObject(), 'VENDOR_BILL_UPLOADED').catch(() => null);
     }
     await this.recomputeAndCacheStage(req);
@@ -968,6 +969,61 @@ export class PurchaseService {
       timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short',
       year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
     }) + ' IST';
+  }
+
+  async listDocuments() {
+    const requests = await this.requestModel.find(
+      {
+        $or: [
+          { 'vendorBills.0': { $exists: true } },
+          { vendorBill: { $exists: true, $ne: null } },
+          { 'receipt.gateBill': { $exists: true, $ne: null } },
+        ],
+      },
+      { reqNo: 1, requestedByName: 1, vendorBills: 1, vendorBill: 1, receipt: 1, timeline: 1, createdAt: 1 },
+    ).lean();
+
+    const docs: any[] = [];
+
+    for (const req of requests) {
+      const bills: any[] = (req.vendorBills as any[])?.length
+        ? req.vendorBills as any[]
+        : (req as any).vendorBill
+        ? [(req as any).vendorBill]
+        : [];
+      const billEntries = ((req.timeline as any[]) || []).filter((t: any) => t.status === 'VENDOR_BILL_UPLOADED');
+
+      bills.forEach((bill: any, idx: number) => {
+        const entry = billEntries[idx];
+        docs.push({
+          type: 'vendor_bill',
+          reqNo: req.reqNo,
+          reqId: req._id,
+          name: bill.name,
+          url: bill.url,
+          mime: bill.mime,
+          uploadedBy: entry?.actor?.name || entry?.byName || req.requestedByName,
+          uploadedAt: entry?.at || req.createdAt,
+        });
+      });
+
+      const receipt = req.receipt as any;
+      if (receipt?.gateBill) {
+        docs.push({
+          type: 'gate_bill',
+          reqNo: req.reqNo,
+          reqId: req._id,
+          name: receipt.gateBill.name,
+          url: receipt.gateBill.url,
+          mime: receipt.gateBill.mime,
+          uploadedBy: receipt.byName || req.requestedByName,
+          uploadedAt: receipt.at || req.createdAt,
+        });
+      }
+    }
+
+    docs.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+    return docs;
   }
 
   private buildHtml(req: any, event: string): string {

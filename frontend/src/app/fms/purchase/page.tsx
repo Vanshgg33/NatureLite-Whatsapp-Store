@@ -18,6 +18,8 @@ import { AttentionList, CategoryMix, buildAlerts } from '@/components/fms/purcha
 import { getStage, getOverdueMs, Stage } from '@/lib/fms/stage';
 import { fmtDate, shortPr } from '@/lib/fms/format';
 import { parseTagsParam, buildTagsParam } from './tag-filter-utils';
+import { DateRangeFilter } from '@/components/fms/purchase/DateRangeFilter';
+import { filterByRange } from '@/lib/fms/dateRange';
 import Loading from './loading';
 
 // ─── Board view ──────────────────────────────────────────────────────────────
@@ -102,7 +104,7 @@ function MobileQueue({ requests, summary }: { requests: any[]; summary: any }) {
     /* extra pb-16 to clear the fixed bottom tab bar */
     <div className="flex flex-col h-full bg-fms-page pb-16">
       {/* Dark header */}
-      <div className="px-4 pt-5 pb-4 rounded-b-[20px]" style={{ background: '#17382A' }}>
+      <div className="px-4 pt-5 pb-4 rounded-b-[20px]" style={{ background: 'var(--f800, #17382A)' }}>
         <p className="text-white/50 text-xs font-jakarta mb-0.5">{dateStr}</p>
         <h1 className="text-white font-fraunces text-[26px] font-semibold leading-tight">
           {summary?.myAction ?? open.length} waiting on you
@@ -316,6 +318,7 @@ function PurchasePageInner() {
   const router = useRouter();
   const params = useSearchParams();
   const isBoard = params.get('view') === 'board';
+  const dateRange = params.get('range');
 
   const [stageFilter, setStageFilter] = useState<Stage | null>(null);
   const [search, setSearch] = useState('');
@@ -346,10 +349,12 @@ function PurchasePageInner() {
     staleTime: 15_000,
   });
 
-  // Count items per tag name from cached requests (no extra call)
+  const dateFiltered = filterByRange(rawRequests, dateRange);
+
+  // Count items per tag name against the date-filtered set so badges match visible rows
   const tagCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const r of rawRequests) {
+    for (const r of dateFiltered) {
       for (const item of (r.items ?? [])) {
         if (item.tagName && item.lineStatus !== 'DROPPED') {
           counts[item.tagName] = (counts[item.tagName] ?? 0) + 1;
@@ -357,18 +362,17 @@ function PurchasePageInner() {
       }
     }
     return counts;
-  }, [rawRequests]);
-
+  }, [dateFiltered]);
   const requests = search
-    ? rawRequests.filter((r: any) =>
+    ? dateFiltered.filter((r: any) =>
         r.reqNo?.toLowerCase().includes(search.toLowerCase()) ||
         r.items?.some((i: any) => i.materialName?.toLowerCase().includes(search.toLowerCase()))
       )
-    : rawRequests;
+    : dateFiltered;
 
   const canCreate = user?.purchaseRole === 'requester' || user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
 
-  const alerts = buildAlerts(requests);
+  const alerts = buildAlerts(rawRequests);
 
   const subtitle = summary
     ? `${summary.counts.open} open · ${summary.pipelineKg.toLocaleString('en-IN')} kg on order${summary.oldestOpen ? ` · oldest ${summary.oldestOpen.days} d` : ''}`
@@ -416,7 +420,15 @@ function PurchasePageInner() {
         />
 
         <div className="px-7 pb-7 space-y-5">
-          {summary && <KpiStrip summary={summary} />}
+          <Suspense fallback={null}><DateRangeFilter className="mt-1" /></Suspense>
+          {summary && (
+            <div>
+              {dateRange && (
+                <p className="text-[11px] text-fms-muted font-jakarta mb-2">KPIs show all-time data · table shows filtered range</p>
+              )}
+              <KpiStrip summary={summary} />
+            </div>
+          )}
 
           {summary?.byStage && (
             <PipelineStrip

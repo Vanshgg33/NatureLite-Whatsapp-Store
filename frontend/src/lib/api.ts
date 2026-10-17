@@ -1950,6 +1950,11 @@ class ApiClient {
     return r.data.data;
   }
 
+  async getPurchaseDocuments(): Promise<any[]> {
+    const r = await this.client.get<ApiResponse<any[]>>('/purchase/documents');
+    return r.data.data;
+  }
+
   async bulkAddPurchaseMaterials(body: { names: string[]; uom: string; defaultTagId?: string }): Promise<{ created: number; skipped: string[] }> {
     const r = await this.client.post<ApiResponse<{ created: number; skipped: string[] }>>('/purchase/materials/bulk', body);
     return r.data.data;

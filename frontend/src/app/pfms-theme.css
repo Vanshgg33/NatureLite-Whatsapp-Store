@@ -1,0 +1,125 @@
+/* Forest & Ghee Gold — Purchase FMS skin */
+
+.pf-root {
+  --f950: #06201a;
+  --f800: #0f3d2b;
+  --f600: #1f6b4c;
+  --f400: #3a9970;
+  --f200: #a0d4b8;
+  --f100: #d4eed9;
+  --g500: #d4a03a;
+  --g400: #e6b957;
+  --g300: #f1d28e;
+  --g200: #f7e5be;
+  --g100: #fdf6e3;
+  --cream: #f4efe3;
+  --paper: #fffdf8;
+  --ink:   #16241e;
+  --ink2:  #2e3d35;
+  --mute:  #68746c;
+  --line:  #e6e1d4;
+  --line2: #cfc9b8;
+  --sunken:#ece8da;
+  --ov-bg: #fbe4dd;
+  --ov-ink:#b2402b;
+  --ov-line:#f3c0b3;
+}
+
+/* ── Sidebar nav active state ──────────────────────────────────────────────── */
+.pf-root .pf-nav-active {
+  border-left-color: var(--g300) !important;
+}
+
+/* ── Filter strip ─────────────────────────────────────────────────────────── */
+.pf-filter-strip {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.pf-filter-pill {
+  padding: 4px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--line2);
+  background: var(--paper);
+  color: var(--mute);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  font-family: var(--font-jakarta), system-ui, sans-serif;
+  white-space: nowrap;
+  line-height: 1.5;
+}
+
+.pf-filter-pill:hover {
+  border-color: var(--g400);
+  color: var(--ink);
+}
+
+.pf-filter-pill.active {
+  background: var(--f600);
+  color: #fff;
+  border-color: var(--f600);
+}
+
+/* ── RequestedAt chip ─────────────────────────────────────────────────────── */
+.pf-requested-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  padding: 2px 7px 2px 6px;
+  border-radius: 6px;
+  background: var(--g100);
+  color: var(--ink2);
+  border: 1px solid var(--g200);
+  font-family: var(--font-jakarta), system-ui, sans-serif;
+  line-height: 1.4;
+  margin-top: 4px;
+}
+
+/* ── Ripple ───────────────────────────────────────────────────────────────── */
+.pf-ripple-origin {
+  position: relative;
+  overflow: hidden;
+}
+
+.pf-ripple-wave {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(212, 160, 58, 0.22);
+  transform: scale(0);
+  animation: pf-ripple 480ms ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes pf-ripple {
+  to { transform: scale(4); opacity: 0; }
+}
+
+/* ── Stagger row entrance ─────────────────────────────────────────────────── */
+@keyframes pf-row-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.pf-row-enter {
+  animation: pf-row-in 0.22s ease-out both;
+}
+
+/* ── Documents vault ──────────────────────────────────────────────────────── */
+.pf-doc-row:hover {
+  background: var(--subtle, #f7f4ec);
+}
+
+/* ── Reduced motion ───────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .pf-root *,
+  .pf-root *::before,
+  .pf-root *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
