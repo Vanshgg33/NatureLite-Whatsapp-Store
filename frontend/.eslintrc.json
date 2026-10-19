@@ -1,0 +1,35 @@
+{
+  "extends": "next/core-web-vitals",
+  "overrides": [
+    {
+      "files": [
+        "src/app/crm/**/*.{ts,tsx}",
+        "src/components/crm/**/*.{ts,tsx}",
+        "src/lib/crm/**/*.{ts,tsx}"
+      ],
+      "rules": {
+        "no-restricted-syntax": [
+          "error",
+          {
+            "selector": "CallExpression[callee.property.name='toLocaleDateString']",
+            "message": "Use formatIST() from @/lib/time instead of toLocaleDateString"
+          },
+          {
+            "selector": "CallExpression[callee.property.name='toLocaleTimeString']",
+            "message": "Use formatIST() from @/lib/time instead of toLocaleTimeString"
+          },
+          {
+            "selector": "NewExpression[callee.object.name='Intl'][callee.property.name='DateTimeFormat']",
+            "message": "Use formatIST() from @/lib/time — Intl.DateTimeFormat is only allowed in lib/time.ts"
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/lib/time.ts"],
+      "rules": {
+        "no-restricted-syntax": "off"
+      }
+    }
+  ]
+}

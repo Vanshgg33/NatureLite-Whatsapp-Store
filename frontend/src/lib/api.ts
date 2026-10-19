@@ -354,7 +354,7 @@ class ApiClient {
     password: string;
     phone?: string;
     role?: 'admin' | 'superadmin';
-    departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior' | 'fms';
+    departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_manager' | 'crm_senior' | 'crm_viewer' | 'fms';
     purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver';
   }): Promise<AdminUser> {
     const response = await this.client.post<ApiResponse<AdminUser>>('/admin/users', data);
@@ -369,7 +369,7 @@ class ApiClient {
       role?: 'admin' | 'superadmin';
       isActive?: boolean;
       permissions?: string[];
-      departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior' | 'fms';
+      departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_manager' | 'crm_senior' | 'crm_viewer' | 'fms';
       purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver' | null;
     }
   ): Promise<AdminUser> {
@@ -2269,6 +2269,53 @@ class ApiClient {
   async getCrmCalendar(): Promise<any[]> {
     const res = await this.client.get<ApiResponse<any[]>>('/crm/calendar');
     return res.data.data ?? [];
+  }
+
+  async getCrmEmployees(): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>('/crm/admin/employees');
+    return res.data.data ?? [];
+  }
+
+  async createCrmEmployee(data: { name: string; email: string; loginId?: string; departmentType: string }): Promise<{ employee: any; tempPassword: string }> {
+    const res = await this.client.post<ApiResponse<any>>('/crm/admin/employees', data);
+    return res.data.data;
+  }
+
+  async updateCrmEmployee(id: string, data: { departmentType?: string; isActive?: boolean }): Promise<any> {
+    const res = await this.client.patch<ApiResponse<any>>(`/crm/admin/employees/${id}`, data);
+    return res.data.data;
+  }
+
+  async resetCrmEmployeePassword(id: string): Promise<{ tempPassword: string }> {
+    const res = await this.client.post<ApiResponse<any>>(`/crm/admin/employees/${id}/reset-password`, {});
+    return res.data.data;
+  }
+
+  async forceCrmEmployeeLogout(id: string): Promise<void> {
+    await this.client.post(`/crm/admin/employees/${id}/force-logout`, {});
+  }
+
+  async uploadCrmRecording(callId: string, file: File): Promise<any> {
+    const form = new FormData();
+    form.append('recording', file);
+    const res = await this.client.post<ApiResponse<any>>(`/crm/calls/${callId}/recording`, form);
+    return res.data.data;
+  }
+
+  async getCrmProducts(search?: string): Promise<any[]> {
+    const qs = search ? `?search=${encodeURIComponent(search)}` : '';
+    const res = await this.client.get<ApiResponse<any[]>>(`/crm/products${qs}`);
+    return res.data.data ?? [];
+  }
+
+  async crmHeartbeat(): Promise<void> {
+    await this.client.post('/crm/heartbeat', {});
+  }
+
+  async getCrmEmployeeStats(id: string, days?: number): Promise<any> {
+    const qs = days ? `?days=${days}` : '';
+    const res = await this.client.get<ApiResponse<any>>(`/crm/admin/employees/${id}/analytics${qs}`);
+    return res.data.data;
   }
 }
 
