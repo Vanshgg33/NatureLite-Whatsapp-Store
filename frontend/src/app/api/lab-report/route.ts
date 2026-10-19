@@ -21,8 +21,7 @@ export async function GET(request: NextRequest) {
         'Accept': 'application/pdf,*/*',
       },
       redirect: 'follow',
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      cache: 'no-store' as any,
+      cache: 'no-store',
     });
 
     if (!upstream.ok) {
