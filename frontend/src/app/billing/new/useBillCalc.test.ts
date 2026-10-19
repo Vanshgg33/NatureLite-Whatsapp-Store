@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { useBillCalcPure } from './useBillCalc';
+import { billCalcPure } from './useBillCalc';
 import type { LineItem, BillCharge } from './types';
 
 function mkItem(overrides: Partial<LineItem> = {}): LineItem {
@@ -26,10 +26,10 @@ function mkItem(overrides: Partial<LineItem> = {}): LineItem {
   };
 }
 
-describe('useBillCalcPure', () => {
+describe('billCalcPure', () => {
   it('B1 – intra-state incl-tax: CGST+SGST split, no IGST', () => {
     const items = [mkItem({ rate: 900, gstRate: 5, priceInclTax: true, qty: 1 })];
-    const { lines, totals } = useBillCalcPure(items, 0, [], false, false, 0);
+    const { lines, totals } = billCalcPure(items, 0, [], false, false, 0);
     // 900 rupees = 90000 paise incl 5% GST
     // taxable = round(90000 * 100 / 105) = 85714
     // tax = round(85714 * 5 / 100) = 4286
@@ -46,7 +46,7 @@ describe('useBillCalcPure', () => {
 
   it('B2 – inter-state: IGST only, no CGST/SGST', () => {
     const items = [mkItem({ rate: 900, gstRate: 5, priceInclTax: true, qty: 1 })];
-    const { lines } = useBillCalcPure(items, 0, [], false, true, 0);
+    const { lines } = billCalcPure(items, 0, [], false, true, 0);
     expect(lines[0].cgst).toBe(0);
     expect(lines[0].sgst).toBe(0);
     expect(lines[0].igst).toBe(4286);
@@ -55,7 +55,7 @@ describe('useBillCalcPure', () => {
   it('B3 – round-off: input is grandBefore, not already-rounded', () => {
     // rate=945.50 rupees = 94550 paise excl tax 0%
     const items = [mkItem({ rate: 945.5, gstRate: 0, priceInclTax: false, qty: 1 })];
-    const { totals } = useBillCalcPure(items, 0, [], true, false, 0);
+    const { totals } = billCalcPure(items, 0, [], true, false, 0);
     // grandBefore = 94550 paise → rounded = 94600 paise → roundOff = +50
     expect(totals.grandBeforePaise).toBe(94550);
     expect(totals.roundOffPaise).toBe(50);
@@ -73,7 +73,7 @@ describe('useBillCalcPure', () => {
     // alloc line1 = round(10000 * 40000/100000) = 4000
     // line0 taxable = 60000 - 6000 = 54000
     // line1 taxable = 40000 - 4000 = 36000
-    const { lines, totals } = useBillCalcPure(items, 10, [], false, false, 0);
+    const { lines, totals } = billCalcPure(items, 10, [], false, false, 0);
     expect(lines[0].taxable).toBe(54000);
     expect(lines[1].taxable).toBe(36000);
     expect(lines[0].cgst + lines[0].sgst).toBe(Math.round(54000 * 5 / 100));
@@ -84,7 +84,7 @@ describe('useBillCalcPure', () => {
   it('B5 – charges added to grand total', () => {
     const items = [mkItem({ rate: 1000, gstRate: 0, priceInclTax: false, qty: 1 })];
     const charges: BillCharge[] = [{ label: 'Shipping', amtRupees: 50 }];
-    const { totals } = useBillCalcPure(items, 0, charges, false, false, 0);
+    const { totals } = billCalcPure(items, 0, charges, false, false, 0);
     // 100000 + 5000 = 105000 paise
     expect(totals.grandTotalPaise).toBe(105000);
     expect(totals.chargesTotalPaise).toBe(5000);
@@ -92,10 +92,10 @@ describe('useBillCalcPure', () => {
 
   it('B6 – amount due = grand - paid, floored at 0', () => {
     const items = [mkItem({ rate: 100, gstRate: 0, priceInclTax: false, qty: 1 })];
-    const { totals } = useBillCalcPure(items, 0, [], false, false, 50);
+    const { totals } = billCalcPure(items, 0, [], false, false, 50);
     expect(totals.amountDuePaise).toBe(5000);
     // paying more than grand → due = 0
-    const { totals: t2 } = useBillCalcPure(items, 0, [], false, false, 200);
+    const { totals: t2 } = billCalcPure(items, 0, [], false, false, 200);
     expect(t2.amountDuePaise).toBe(0);
   });
 });

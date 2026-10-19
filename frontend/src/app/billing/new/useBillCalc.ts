@@ -32,7 +32,7 @@ function preTaxable(item: Pick<LineItem, 'rate' | 'qty' | 'priceInclTax' | 'disc
     : afterLineDisc;
 }
 
-export function useBillCalcPure(
+export function billCalcPure(
   items: LineItem[],
   billDiscountPct: number,
   charges: BillCharge[],
@@ -97,7 +97,7 @@ export function useBillCalc(
   amountPaidRupees: number,
 ): { lines: LineItem[]; totals: BillTotals } {
   return useMemo(
-    () => useBillCalcPure(items, billDiscountPct, charges, roundOffEnabled, isInterState, amountPaidRupees),
+    () => billCalcPure(items, billDiscountPct, charges, roundOffEnabled, isInterState, amountPaidRupees),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [items, billDiscountPct, charges, roundOffEnabled, isInterState, amountPaidRupees],
   );

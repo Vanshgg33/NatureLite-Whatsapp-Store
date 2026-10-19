@@ -884,7 +884,7 @@ export class OrdersService implements OnModuleInit {
   async updateStatus(
     id: string,
     dto: UpdateOrderStatusDto,
-    departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior' | 'fms',
+    departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_manager' | 'crm_senior' | 'crm_viewer' | 'fms',
   ): Promise<Order> {
     const idObj = parseObjectId(id, 'id');
     const order = await this.orderRepository.findById(idObj);
@@ -1025,7 +1025,7 @@ export class OrdersService implements OnModuleInit {
   async markPacked(
     id: string,
     updatedBy: string,
-    departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior' | 'fms',
+    departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_manager' | 'crm_senior' | 'crm_viewer' | 'fms',
     packedByName?: string,
   ): Promise<Order> {
     if (departmentType && departmentType !== 'packing') {
@@ -1102,7 +1102,7 @@ export class OrdersService implements OnModuleInit {
     id: string,
     dto: UpdateDeliveryWorkflowDto,
     updatedBy: string,
-    departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior' | 'fms',
+    departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_manager' | 'crm_senior' | 'crm_viewer' | 'fms',
   ): Promise<Order> {
     if (departmentType && departmentType !== 'delivery') {
       throw new BadRequestException('Only delivery staff can update delivery workflow.');
