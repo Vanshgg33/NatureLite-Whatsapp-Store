@@ -2,9 +2,11 @@
 
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart3, Trophy, TrendingUp, AlertTriangle, Users, PhoneCall, Phone, CheckCircle2 } from 'lucide-react';
+import Link from 'next/link';
+import { BarChart3, Trophy, TrendingUp, AlertTriangle, Users, PhoneCall, Phone, CheckCircle2, Activity } from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatINR, segmentLabel } from '@/lib/crm/format';
+import { useAdminAuthStore } from '@/lib/admin-store';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -64,7 +66,7 @@ function KpiCard({ label, value, sub, icon: Icon, accent, delay = 0 }: {
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'leaderboard';
+type Tab = 'overview' | 'leaderboard' | 'agents';
 
 // ─── Overview tab ─────────────────────────────────────────────────────────────
 
@@ -196,7 +198,7 @@ function LeaderboardTab() {
       ) : (data as any[]).map((entry: any, i: number) => {
         const rank = i + 1;
         const rs = RANK_STYLES[i] ?? { bg: 'var(--crm-sand)', color: 'var(--crm-muted)', ring: 'var(--crm-line)' };
-        const convRate = entry.callsCount > 0 ? Math.round((entry.conversions / entry.callsCount) * 100) : 0;
+        const convRate = entry.totalCalls > 0 ? Math.round((entry.conversions / entry.totalCalls) * 100) : 0;
         const initials = (entry.agent?.name ?? 'A').split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
         const maxConv = Math.max(...(data as any[]).map((d: any) => d.conversions ?? 0), 1);
 
@@ -238,14 +240,14 @@ function LeaderboardTab() {
                   {entry.agent?.name ?? 'Unknown'}
                 </p>
                 <p className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--crm-muted)' }}>
-                  {entry.agent?.crmRole === 'crm_head' ? 'CRM Manager' : 'Senior Agent'}
+                  {({ crm_head: 'CRM Head', crm_manager: 'CRM Manager', crm_senior: 'Senior Agent', crm_viewer: 'Viewer' } as Record<string, string>)[entry.agent?.departmentType] ?? 'Agent'}
                 </p>
               </div>
 
               {/* Stats */}
               <div className="flex items-center gap-0" style={{ borderLeft: '1px solid var(--crm-line)', paddingLeft: 16 }}>
                 {[
-                  { label: 'Calls', value: entry.callsCount ?? 0, icon: Phone, color: 'var(--crm-amber)' },
+                  { label: 'Calls', value: entry.totalCalls ?? 0, icon: Phone, color: 'var(--crm-amber)' },
                   { label: 'Conv.', value: entry.conversions ?? 0, icon: CheckCircle2, color: 'var(--crm-success)' },
                   { label: 'Rate',  value: `${convRate}%`,         icon: TrendingUp,   color: 'var(--crm-blue)' },
                 ].map((s, si) => (
@@ -290,11 +292,67 @@ function LeaderboardTab() {
   );
 }
 
+// ─── Agents tab ───────────────────────────────────────────────────────────────
+
+function AgentsTab() {
+  const { data = [], isLoading } = useQuery({ queryKey: ['crm-employees'], queryFn: () => api.getCrmEmployees() });
+  if (isLoading) return <Spinner />;
+
+  return (
+    <div className="p-7 space-y-3">
+      <p className="text-[10px] font-bold uppercase tracking-[0.18em] mb-4" style={{ color: 'var(--crm-muted)' }}>
+        All CRM team members
+      </p>
+      {!(data as any[]).length ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <Users className="h-10 w-10 mb-4" style={{ color: 'var(--crm-line)' }} />
+          <p className="font-semibold text-[15px]" style={{ color: 'var(--crm-ink)' }}>No agents yet</p>
+        </div>
+      ) : (data as any[]).map((emp: any) => (
+        <Link
+          key={emp._id}
+          href={`/crm/admin/employees/${emp._id}`}
+          className="crm-card-v2 flex items-center gap-4 p-4 transition-opacity hover:opacity-80 block"
+        >
+          <div
+            className="h-10 w-10 rounded-xl flex items-center justify-center text-[13px] font-bold flex-shrink-0"
+            style={{ background: 'var(--crm-forest)', color: 'var(--crm-gold)' }}
+          >
+            {(emp.name?.[0] ?? 'A').toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-[14px]" style={{ color: 'var(--crm-ink)' }}>{emp.name}</p>
+            <p className="text-[11px] mt-0.5" style={{ color: 'var(--crm-muted)' }}>
+              {emp.departmentType?.replace(/_/g, ' ')} · {emp.loginId ?? emp.email}
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <span
+              className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
+              style={emp.isActive
+                ? { background: 'var(--crm-success-bg)', color: 'var(--crm-success)' }
+                : { background: 'var(--crm-sand-2)', color: 'var(--crm-muted)' }
+              }
+            >
+              {emp.isActive ? 'Active' : 'Disabled'}
+            </span>
+            <Activity className="h-4 w-4" style={{ color: 'var(--crm-muted)' }} />
+          </div>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
+
+const CRM_ADMIN_ROLES = new Set(['crm_head', 'crm_manager', 'superadmin']);
 
 export default function AnalyticsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { user } = useAdminAuthStore();
+  const isCrmAdmin = CRM_ADMIN_ROLES.has(user?.departmentType ?? user?.role ?? '');
   const tab: Tab = (searchParams.get('tab') as Tab) ?? 'overview';
 
   const setTab = (t: Tab) => {
@@ -321,9 +379,10 @@ export default function AnalyticsPage() {
           {/* Tabs */}
           <div className="flex">
             {([
-              { key: 'overview',     label: 'Overview',    icon: BarChart3 },
-              { key: 'leaderboard',  label: 'Leaderboard', icon: Trophy },
-            ] as const).map(t => (
+              { key: 'overview',    label: 'Overview',    icon: BarChart3,  adminOnly: false },
+              { key: 'leaderboard', label: 'Leaderboard', icon: Trophy,     adminOnly: false },
+              { key: 'agents',      label: 'Agents',      icon: Users,      adminOnly: true  },
+            ] as const).filter(t => !t.adminOnly || isCrmAdmin).map(t => (
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}
@@ -340,7 +399,7 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {tab === 'overview' ? <OverviewTab /> : <LeaderboardTab />}
+      {tab === 'overview' ? <OverviewTab /> : tab === 'leaderboard' ? <LeaderboardTab /> : <AgentsTab />}
     </div>
   );
 }

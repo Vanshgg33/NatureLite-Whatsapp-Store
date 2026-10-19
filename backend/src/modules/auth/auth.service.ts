@@ -489,6 +489,9 @@ export class AuthService {
       if (!admin || !admin.isActive) {
         return null;
       }
+      if (admin.forcedLogoutAt && payload.iat && admin.forcedLogoutAt.getTime() > payload.iat * 1000) {
+        return null;
+      }
       // Always sync from DB so stale JWTs still get correct per-user values.
       return {
         ...payload,

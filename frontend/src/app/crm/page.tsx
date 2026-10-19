@@ -6,15 +6,11 @@ import { ArrowRight, CalendarDays } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCrmMetrics } from '@/lib/crm/metrics';
 import { formatINRCompact } from '@/lib/crm/format';
+import { istGreeting, istDateKey, istDayLabel, istFullDate } from '@/lib/time';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { ProgressRing } from '@/components/crm/ProgressRing';
 import { StackedBar, type SegmentSlice } from '@/components/crm/StackedBar';
 
-function istGreeting(name?: string) {
-  const h = parseInt(new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', hour12: false }), 10);
-  const tod = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
-  return `Good ${tod}, ${name?.split(' ')[0] ?? 'there'}`;
-}
 
 const SEG_COLORS: Record<string, string> = {
   new: '#2A4434', active: '#1E7A46', due_soon: '#2457C5', due_today: '#8A5A00',
@@ -41,17 +37,17 @@ function PipelineTile({ count, label, color, href }: { count: number; label: str
 
 function ForecastChart({ data }: { data: { date: string; count: number }[] }) {
   const countMap = new Map(data.map(d => [d.date, d.count]));
-  const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  const todayIST = istDateKey();
   const days = Array.from({ length: 30 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() + i);
-    const dateStr = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const dateStr = istDateKey(d);
     return {
       dateStr,
       isToday: dateStr === todayIST,
       isWeekend: [0, 6].includes(d.getDay()),
       count: countMap.get(dateStr) ?? 0,
-      label: d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
+      label: istDayLabel(d),
     };
   });
   const max = Math.max(...days.map(d => d.count), 1);
@@ -164,10 +160,7 @@ export default function CrmDashboardPage() {
             {istGreeting(user?.name)}
           </h1>
           <p className="text-[12px] mt-0.5" style={{ color: 'var(--crm-muted)' }}>
-            {new Date().toLocaleDateString('en-IN', {
-              timeZone: 'Asia/Kolkata',
-              weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-            })}
+            {istFullDate()}
           </p>
         </div>
         <Link

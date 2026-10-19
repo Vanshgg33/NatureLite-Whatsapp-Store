@@ -1,7 +1,10 @@
 // backend/src/modules/crm/crm.controller.ts
 import {
-  Controller, Get, Post, Patch, Put, Param, Body, Query, UseGuards, ForbiddenException,
+  Controller, Get, Post, Patch, Put, Param, Body, Query, UseGuards,
+  ForbiddenException, BadRequestException, UseInterceptors, UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
@@ -72,7 +75,7 @@ export class CrmController {
     @Body() body: { agentId: string },
     @CurrentUser() user: JwtPayload,
   ) {
-    if (user.departmentType === 'crm_senior') throw new ForbiddenException('Agents cannot reassign');
+    if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') throw new ForbiddenException('Agents cannot reassign');
     return this.crm.assignCustomer(userId, body.agentId);
   }
 
@@ -83,7 +86,7 @@ export class CrmController {
     @Body() body: { customerId: string; outcome: CallOutcome; notes?: string; callbackAt?: string },
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.crm.logCall({ ...body, agentId: user.sub });
+    return this.crm.logCall({ ...body, agentId: user.sub, agentName: user.name ?? 'Agent' });
   }
 
   @Get('calls/:customerId')
@@ -91,11 +94,24 @@ export class CrmController {
     return this.crm.getCallLogs(customerId);
   }
 
+  @Post('calls/:id/recording')
+  @UseInterceptors(FileInterceptor('recording', {
+    storage: memoryStorage(),
+    limits: { fileSize: 50 * 1024 * 1024 },
+  }))
+  uploadRecording(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('No recording file provided');
+    return this.crm.attachRecording(id, file);
+  }
+
   // ─── Campaigns ───────────────────────────────────────────────────────────
 
   @Get('campaigns')
   getCampaigns(@CurrentUser() user: JwtPayload) {
-    if (user.departmentType === 'crm_senior') throw new ForbiddenException();
+    if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') throw new ForbiddenException();
     return this.crm.getCampaigns();
   }
 
@@ -104,19 +120,19 @@ export class CrmController {
     @Body() body: { name: string; segmentFilter: string[]; waMessage: string },
     @CurrentUser() user: JwtPayload,
   ) {
-    if (user.departmentType === 'crm_senior') throw new ForbiddenException();
+    if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') throw new ForbiddenException();
     return this.crm.createCampaign({ ...body, createdById: user.sub });
   }
 
   @Patch('campaigns/:id/approve')
   approveCampaign(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
-    if (user.departmentType === 'crm_senior') throw new ForbiddenException();
+    if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') throw new ForbiddenException();
     return this.crm.approveCampaign(id, user.sub);
   }
 
   @Post('campaigns/:id/send')
   sendCampaign(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
-    if (user.departmentType === 'crm_senior') throw new ForbiddenException();
+    if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') throw new ForbiddenException();
     return this.crm.sendCampaign(id);
   }
 
@@ -131,7 +147,7 @@ export class CrmController {
 
   @Get('analytics')
   getAnalytics(@CurrentUser() user: JwtPayload) {
-    if (user.departmentType === 'crm_senior') throw new ForbiddenException('Agents use /crm/leaderboard for own stats');
+    if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') throw new ForbiddenException('Agents use /crm/leaderboard for own stats');
     return this.crm.getAnalytics();
   }
 
@@ -139,7 +155,7 @@ export class CrmController {
 
   @Get('settings')
   getSettings(@CurrentUser() user: JwtPayload) {
-    if (user.departmentType === 'crm_senior') throw new ForbiddenException('Settings restricted to managers and admins');
+    if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') throw new ForbiddenException('Settings restricted to managers and admins');
     return this.crm.getSettings();
   }
 
@@ -154,7 +170,7 @@ export class CrmController {
     },
     @CurrentUser() user: JwtPayload,
   ) {
-    if (user.departmentType === 'crm_senior') throw new ForbiddenException('Settings restricted to managers and admins');
+    if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') throw new ForbiddenException('Settings restricted to managers and admins');
     return this.crm.updateSettings(body);
   }
 
@@ -166,7 +182,7 @@ export class CrmController {
     @Body() body: { text: string },
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.crm.addNote(id, user.sub, body.text);
+    return this.crm.addNote(id, user.sub, body.text, user.name ?? 'Agent');
   }
 
   @Patch('customers/:id/notes/:noteId/delete')
@@ -181,14 +197,14 @@ export class CrmController {
     @Body() body: { customerId: string; templateName: string; message: string },
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.crm.logNudge({ ...body, agentId: user.sub });
+    return this.crm.logNudge({ ...body, agentId: user.sub, agentName: user.name ?? 'Agent' });
   }
 
   // ─── Metrics ─────────────────────────────────────────────────────────────
 
   @Get('metrics')
   getMetrics(@CurrentUser() user: JwtPayload) {
-    if (user.departmentType === 'crm_senior') throw new ForbiddenException();
+    if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') throw new ForbiddenException();
     return this.crm.getMetrics();
   }
 
@@ -196,7 +212,7 @@ export class CrmController {
 
   @Get('dashboard')
   getDashboard(@CurrentUser() user: JwtPayload) {
-    if (user.departmentType === 'crm_senior') throw new ForbiddenException();
+    if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') throw new ForbiddenException();
     return this.crm.getDashboard();
   }
 
@@ -204,7 +220,7 @@ export class CrmController {
 
   @Get('calendar')
   getCalendar(@CurrentUser() user: JwtPayload) {
-    if (user.departmentType === 'crm_senior') throw new ForbiddenException();
+    if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') throw new ForbiddenException();
     return this.crm.getCalendar();
   }
 
@@ -212,7 +228,77 @@ export class CrmController {
 
   @Post('engine/refresh')
   triggerRefresh(@CurrentUser() user: JwtPayload) {
-    if (user.departmentType === 'crm_senior') throw new ForbiddenException();
+    if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') throw new ForbiddenException();
     return this.crm.triggerRefresh();
+  }
+
+  // ─── CRM Admin — Employee Management (crm_head / crm_manager / superadmin) ─
+
+  private requireCrmAdmin(user: JwtPayload): void {
+    if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') {
+      throw new ForbiddenException('CRM admin access required');
+    }
+  }
+
+  @Get('admin/employees')
+  listEmployees(@CurrentUser() user: JwtPayload) {
+    this.requireCrmAdmin(user);
+    return this.crm.listCrmEmployees();
+  }
+
+  @Post('admin/employees')
+  createEmployee(
+    @Body() body: { name: string; email: string; loginId?: string; departmentType: 'crm_manager' | 'crm_senior' | 'crm_viewer' },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    this.requireCrmAdmin(user);
+    return this.crm.createCrmEmployee(body);
+  }
+
+  @Patch('admin/employees/:id')
+  updateEmployee(
+    @Param('id') id: string,
+    @Body() body: { departmentType?: string; isActive?: boolean },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    this.requireCrmAdmin(user);
+    return this.crm.updateCrmEmployee(id, body);
+  }
+
+  @Post('admin/employees/:id/reset-password')
+  resetEmployeePassword(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    this.requireCrmAdmin(user);
+    return this.crm.resetCrmEmployeePassword(id);
+  }
+
+  @Post('admin/employees/:id/force-logout')
+  forceEmployeeLogout(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    this.requireCrmAdmin(user);
+    return this.crm.forceCrmEmployeeLogout(id);
+  }
+
+  @Get('admin/employees/:id/analytics')
+  getEmployeeAnalytics(
+    @Param('id') id: string,
+    @Query('days') days: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    this.requireCrmAdmin(user);
+    return this.crm.getEmployeeStats(id, days ? parseInt(days) : 30);
+  }
+
+  // ─── Product catalog (read-only) ─────────────────────────────────────────
+
+  @Get('products')
+  getCrmProducts(@Query('search') search: string) {
+    return this.crm.getCrmProducts(search);
+  }
+
+  // ─── Heartbeat ───────────────────────────────────────────────────────────
+
+  @Post('heartbeat')
+  logHeartbeat(@CurrentUser() user: JwtPayload) {
+    this.crm.heartbeat(user.sub, user.name ?? 'Agent');
+    return { ok: true };
   }
 }

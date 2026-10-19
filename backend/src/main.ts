@@ -1,3 +1,6 @@
+// Must be first — sets the process timezone before any Date construction
+process.env.TZ = 'Asia/Kolkata';
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';

@@ -31,6 +31,19 @@ export class CrmCallLog {
   @Prop({ default: '' })
   messageText: string;
 
+  // IST date key "YYYY-MM-DD" written at log time for fast day-wise queries
+  @Prop({ index: true })
+  istDate?: string;
+
+  @Prop()
+  recordingUrl?: string;
+
+  @Prop()
+  recordingPublicId?: string;
+
+  @Prop({ default: 0 })
+  recordingDuration?: number;
+
   createdAt: Date;
 }
 

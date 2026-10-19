@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Settings, RefreshCw, Clock, Save, AlertTriangle, Star, Target } from 'lucide-react';
+import { Settings, RefreshCw, Clock, Save, AlertTriangle, Star, Target, Globe } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -189,8 +189,28 @@ export default function CrmSettingsPage() {
           )}
         </Section>
 
+        {/* Timezone — locked, read-only */}
+        <Section icon={Globe} iconColor="var(--crm-forest)" title="Timezone" delay={200}
+          sub="All dates and timestamps across the CRM are locked to Indian Standard Time."
+        >
+          <div
+            className="flex items-center justify-between px-3 py-2.5 rounded-xl"
+            style={{ background: 'var(--crm-sand)', border: '1px solid var(--crm-line)' }}
+          >
+            <span className="text-[13px] font-medium" style={{ color: 'var(--crm-ink)' }}>
+              Asia/Kolkata (IST, UTC+05:30)
+            </span>
+            <span
+              className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
+              style={{ background: 'var(--crm-success-bg)', color: 'var(--crm-success)' }}
+            >
+              locked
+            </span>
+          </div>
+        </Section>
+
         {/* Manual refresh */}
-        <Section icon={RefreshCw} iconColor="var(--crm-blue)" title="Manual Engine Refresh" delay={200}
+        <Section icon={RefreshCw} iconColor="var(--crm-blue)" title="Manual Engine Refresh" delay={240}
           sub="Recalculate segments and predicted reorder dates for all customers. Runs automatically at 2 AM IST."
         >
           <div className="flex items-center gap-4">

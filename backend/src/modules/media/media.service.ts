@@ -321,6 +321,33 @@ export class MediaService {
     });
   }
 
+  async uploadAudio(file: Express.Multer.File, folder = 'crm-recordings'): Promise<UploadResult & { duration?: number }> {
+    return new Promise((resolve, reject) => {
+      cloudinary.uploader
+        .upload_stream(
+          { folder, resource_type: 'video' }, // Cloudinary uses 'video' resource type for audio
+          (error: UploadApiErrorResponse | undefined, result: UploadApiResponse | undefined) => {
+            if (error || !result) {
+              this.logger.error('Audio upload failed', error);
+              reject(new BadRequestException('Failed to upload recording'));
+              return;
+            }
+            resolve({
+              publicId: result.public_id,
+              url: result.url,
+              secureUrl: result.secure_url,
+              format: result.format,
+              width: 0,
+              height: 0,
+              bytes: result.bytes,
+              duration: result.duration,
+            });
+          },
+        )
+        .end(file.buffer);
+    });
+  }
+
   async deleteImage(publicId: string): Promise<boolean> {
     try {
       const result = await cloudinary.uploader.destroy(publicId);

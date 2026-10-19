@@ -1,3 +1,6 @@
+// Lock server-side rendering to IST so Date.toString() and setHours() agree with the display timezone
+process.env.TZ = 'Asia/Kolkata';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {

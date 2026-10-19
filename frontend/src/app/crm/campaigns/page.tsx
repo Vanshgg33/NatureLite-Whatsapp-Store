@@ -6,6 +6,7 @@ import { Plus, Send, CheckCircle, X, Megaphone, Sparkles } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
 import { segmentLabel } from '@/lib/crm/format';
+import { formatIST } from '@/lib/time';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -76,9 +77,7 @@ const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }>
   sent:     { bg: 'var(--crm-success-bg)', color: 'var(--crm-success)', label: 'Sent' },
 };
 
-function fmtDate(d: string) {
-  return d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' }) : '—';
-}
+const fmtDate = (d: string) => formatIST(d);
 
 // ─── Create drawer ────────────────────────────────────────────────────────────
 

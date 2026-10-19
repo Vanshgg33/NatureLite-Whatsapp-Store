@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, Phone } from 'lucide-react';
+import { X, Phone, Mic } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
 import { formatINR, segmentLabel } from '@/lib/crm/format';
@@ -49,6 +49,7 @@ export function LogCallPanel({ item, onClose, queueKey, onSaved }: LogCallPanelP
   const [outcome, setOutcome] = useState<string>('connected');
   const [notes, setNotes] = useState('');
   const [callbackAt, setCallbackAt] = useState('');
+  const [recordingFile, setRecordingFile] = useState<File | null>(null);
   const [visible, setVisible] = useState(false);
 
   const { toast } = useToast();
@@ -65,13 +66,18 @@ export function LogCallPanel({ item, onClose, queueKey, onSaved }: LogCallPanelP
   }, [onClose]);
 
   const { mutate, isPending } = useMutation({
-    mutationFn: () =>
-      api.logCrmCall({
+    mutationFn: async () => {
+      const callLog = await api.logCrmCall({
         customerId: item.userId,
         outcome,
         notes: notes.trim() || undefined,
         callbackAt: callbackAt || undefined,
-      }),
+      });
+      if (recordingFile && callLog?._id) {
+        await api.uploadCrmRecording(callLog._id, recordingFile);
+      }
+      return callLog;
+    },
     onSuccess: () => {
       const o = CALL_OUTCOMES.find(o => o.value === outcome);
       toast({ title: outcome === 'ordered' ? '✓ Order conversion logged!' : `Call logged · ${o?.label}` });
@@ -261,6 +267,41 @@ export function LogCallPanel({ item, onClose, queueKey, onSaved }: LogCallPanelP
             />
           </div>
 
+          {/* Recording drop zone */}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] mb-1.5" style={{ color: 'var(--crm-muted)' }}>
+              Recording <span className="normal-case font-normal tracking-normal">(optional)</span>
+            </p>
+            <label
+              className="flex items-center gap-3 px-4 py-2.5 rounded-xl cursor-pointer transition-all"
+              style={{
+                background: recordingFile ? 'var(--crm-success-bg)' : 'var(--crm-sand)',
+                border: `1px dashed ${recordingFile ? 'var(--crm-success)' : 'var(--crm-line)'}`,
+                color: recordingFile ? 'var(--crm-success)' : 'var(--crm-muted)',
+              }}
+            >
+              <Mic className="h-4 w-4 flex-shrink-0" />
+              <span className="text-[12px] flex-1 truncate">
+                {recordingFile ? recordingFile.name : 'Attach recording (mp3, wav, m4a…)'}
+              </span>
+              <input
+                type="file"
+                accept="audio/*,.mp3,.wav,.m4a,.ogg,.aac,.webm"
+                className="hidden"
+                onChange={e => setRecordingFile(e.target.files?.[0] ?? null)}
+              />
+              {recordingFile && (
+                <button
+                  type="button"
+                  onClick={e => { e.preventDefault(); setRecordingFile(null); }}
+                  style={{ color: 'var(--crm-muted)' }}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </label>
+          </div>
+
           {/* Ordered banner */}
           {isOrdered && (
             <div
@@ -293,7 +334,7 @@ export function LogCallPanel({ item, onClose, queueKey, onSaved }: LogCallPanelP
               color: isOrdered ? '#fff' : 'var(--crm-gold)',
             }}
           >
-            {isPending ? 'Saving…' : 'Save call · Enter'}
+            {isPending ? (recordingFile ? 'Uploading…' : 'Saving…') : 'Save call · Enter'}
           </button>
         </div>
       </div>

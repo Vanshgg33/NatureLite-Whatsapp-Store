@@ -2,6 +2,8 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { randomBytes } from 'crypto';
+import * as bcrypt from 'bcrypt';
 import { CrmCustomerStats, CrmCustomerStatsDocument, CrmSegment } from './schemas/crm-customer-stats.schema';
 import { CrmCallLog, CrmCallLogDocument, CallOutcome } from './schemas/crm-call-log.schema';
 import { CrmCampaign, CrmCampaignDocument } from './schemas/crm-campaign.schema';
@@ -9,6 +11,10 @@ import { CrmSettings, CrmSettingsDocument, DEFAULT_REORDER_CYCLES } from './sche
 import { CrmEngineService } from './crm-engine.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { getISTDate } from './engine/status-model';
+import { istDateKey } from '../../common/utils/ist-time';
+import { CrmActivityEvent, CrmActivityEventDocument } from './schemas/crm-activity-event.schema';
+import { MediaService } from '../media/media.service';
+import { Product, ProductDocument } from '../products/schemas/product.schema';
 
 @Injectable()
 export class CrmService {
@@ -20,9 +26,25 @@ export class CrmService {
     @InjectModel('User') private userModel: Model<any>,
     @InjectModel('AdminUser') private adminUserModel: Model<any>,
     @InjectModel('Order') private orderModel: Model<any>,
+    @InjectModel(CrmActivityEvent.name) private activityModel: Model<CrmActivityEventDocument>,
+    @InjectModel(Product.name) private productModel: Model<ProductDocument>,
     private readonly engine: CrmEngineService,
     private readonly whatsapp: WhatsAppService,
+    private readonly media: MediaService,
   ) {}
+
+  logActivity(employeeId: string, employeeName: string, type: string, customerId?: string): void {
+    const now = new Date();
+    this.activityModel.create({
+      employeeId: new Types.ObjectId(employeeId),
+      employeeName,
+      at: now,
+      istDate: istDateKey(now),
+      hourIST: now.getHours(), // TZ=Asia/Kolkata set in main.ts
+      type,
+      ...(customerId ? { customerId: new Types.ObjectId(customerId) } : {}),
+    }).catch(() => {});
+  }
 
   // ─── Customers ──────────────────────────────────────────────────────────
 
@@ -108,7 +130,7 @@ export class CrmService {
       this.userModel.findById(uid).lean(),
       this.statsModel.findOne({ userId: uid }).lean(),
       this.callLogModel.find({ customerId: uid }).sort({ createdAt: -1 }).limit(50).populate('agentId', 'name').lean(),
-      this.orderModel.find({ user: uid, status: 'delivered' }).select('orderNumber total createdAt items').sort({ createdAt: -1 }).limit(20).lean(),
+      this.orderModel.find({ user: uid, status: 'delivered' }).select('orderNumber total createdAt items').sort({ createdAt: -1 }).limit(20).populate('items.product', 'name images sku').lean(),
     ]);
     if (!user) throw new NotFoundException('Customer not found');
     return { user, stats, calls, orders };
@@ -194,6 +216,7 @@ export class CrmService {
   async logCall(dto: {
     customerId: string;
     agentId: string;
+    agentName?: string;
     outcome: CallOutcome;
     notes?: string;
     callbackAt?: string;
@@ -206,13 +229,14 @@ export class CrmService {
       outcome: dto.outcome,
       notes: dto.notes ?? '',
       callbackAt: dto.callbackAt ? new Date(dto.callbackAt) : null,
+      istDate: istDateKey(),
     });
-    // Update lastCallAt and lastCallOutcome on stats, then recompute segment
     await this.statsModel.findOneAndUpdate(
       { userId: customerId },
       { $set: { lastCallAt: new Date(), lastCallOutcome: dto.outcome } },
     );
     this.engine.refreshUser(customerId).catch(() => {});
+    this.logActivity(dto.agentId, dto.agentName ?? 'Agent', 'call_logged', dto.customerId);
     return log;
   }
 
@@ -298,7 +322,7 @@ export class CrmService {
 
   async getLeaderboard() {
     const agents = await this.adminUserModel
-      .find({ departmentType: { $in: ['crm_head', 'crm_senior'] }, isActive: true })
+      .find({ departmentType: { $in: ['crm_head', 'crm_manager', 'crm_senior'] }, isActive: true })
       .select('name departmentType')
       .lean();
 
@@ -390,14 +414,14 @@ export class CrmService {
 
   // ─── Notes ───────────────────────────────────────────────────────────────
 
-  async addNote(customerId: string, agentId: string, text: string) {
-    const agent = await this.adminUserModel.findById(agentId).select('name').lean();
+  async addNote(customerId: string, agentId: string, text: string, agentName = 'Agent') {
     const updated = await this.statsModel.findOneAndUpdate(
       { userId: new Types.ObjectId(customerId) },
-      { $push: { notes: { agentId: new Types.ObjectId(agentId), agentName: (agent as any)?.name ?? 'Agent', text, createdAt: new Date() } } },
+      { $push: { notes: { agentId: new Types.ObjectId(agentId), agentName, text, createdAt: new Date() } } },
       { new: true },
     );
     if (!updated) throw new NotFoundException('Customer stats not found — trigger a CRM refresh first');
+    this.logActivity(agentId, agentName, 'note_added', customerId);
     return updated;
   }
 
@@ -414,6 +438,7 @@ export class CrmService {
   async logNudge(dto: {
     customerId: string;
     agentId: string;
+    agentName?: string;
     templateName: string;
     message: string;
   }) {
@@ -423,14 +448,17 @@ export class CrmService {
 
     await this.whatsapp.sendTextMessage({ phone: user.phone, message: dto.message });
 
-    return this.callLogModel.create({
+    const log = await this.callLogModel.create({
       customerId: uid,
       agentId: new Types.ObjectId(dto.agentId),
       type: 'whatsapp',
       outcome: null,
       templateName: dto.templateName,
       messageText: dto.message,
+      istDate: istDateKey(),
     });
+    this.logActivity(dto.agentId, dto.agentName ?? 'Agent', 'nudge_sent', dto.customerId);
+    return log;
   }
 
   // ─── Metrics (single aggregation source — fixes D3 & D4) ────────────────
@@ -538,5 +566,142 @@ export class CrmService {
   async triggerRefresh() {
     this.engine.refreshAll('manual').catch(() => {});
     return { ok: true, message: 'Refresh started' };
+  }
+
+  // ─── Call Recordings ────────────────────────────────────────────────────
+
+  async attachRecording(callId: string, file: Express.Multer.File) {
+    const log = await this.callLogModel.findById(callId);
+    if (!log) throw new NotFoundException('Call log not found');
+    const result = await this.media.uploadAudio(file, 'crm-recordings');
+    return this.callLogModel.findByIdAndUpdate(
+      callId,
+      { $set: { recordingUrl: result.secureUrl, recordingPublicId: result.publicId, recordingDuration: result.duration ?? 0 } },
+      { new: true },
+    );
+  }
+
+  // ─── CRM Admin — Employee Management ─────────────────────────────────────
+
+  async listCrmEmployees() {
+    return this.adminUserModel
+      .find({ departmentType: { $in: ['crm_head', 'crm_manager', 'crm_senior', 'crm_viewer'] } })
+      .select('-password -plainPassword -__v')
+      .sort({ createdAt: -1 })
+      .lean();
+  }
+
+  async createCrmEmployee(dto: {
+    name: string;
+    email: string;
+    loginId?: string;
+    departmentType: 'crm_manager' | 'crm_senior' | 'crm_viewer';
+  }) {
+    const tempPassword = randomBytes(5).toString('hex');
+    const hashed = await bcrypt.hash(tempPassword, 10);
+    const employee = await this.adminUserModel.create({
+      name: dto.name,
+      email: dto.email.toLowerCase(),
+      loginId: dto.loginId?.toLowerCase().trim() || undefined,
+      password: hashed,
+      role: 'admin',
+      departmentType: dto.departmentType,
+      mustChangePassword: true,
+      isActive: true,
+    });
+    const { password: _p, ...safe } = (employee as any).toObject();
+    return { employee: safe, tempPassword };
+  }
+
+  async updateCrmEmployee(id: string, dto: { departmentType?: string; isActive?: boolean }) {
+    const update: Record<string, unknown> = {};
+    if (dto.departmentType) update.departmentType = dto.departmentType;
+    if (dto.isActive !== undefined) update.isActive = dto.isActive;
+    return this.adminUserModel
+      .findByIdAndUpdate(id, { $set: update }, { new: true })
+      .select('-password -plainPassword -__v');
+  }
+
+  async resetCrmEmployeePassword(id: string) {
+    const tempPassword = randomBytes(5).toString('hex');
+    const hashed = await bcrypt.hash(tempPassword, 10);
+    await this.adminUserModel.findByIdAndUpdate(id, {
+      $set: { password: hashed, mustChangePassword: true, failedLoginAttempts: 0 },
+      $unset: { lockoutUntil: 1 },
+    });
+    return { tempPassword };
+  }
+
+  async forceCrmEmployeeLogout(id: string) {
+    await this.adminUserModel.findByIdAndUpdate(id, { $set: { forcedLogoutAt: new Date() } });
+    return { ok: true };
+  }
+
+  // ─── Product Catalog (read-only view for CRM) ────────────────────────────
+
+  async getCrmProducts(search?: string) {
+    const filter: any = { isActive: true };
+    if (search?.trim()) filter.$text = { $search: search.trim() };
+    return this.productModel
+      .find(filter)
+      .select('name sku images price compareAtPrice stock tags')
+      .sort({ totalSold: -1, name: 1 })
+      .limit(200)
+      .lean();
+  }
+
+  // ─── Heartbeat (Phase 5) ─────────────────────────────────────────────────
+
+  heartbeat(employeeId: string, employeeName: string): void {
+    this.logActivity(employeeId, employeeName, 'heartbeat');
+  }
+
+  // ─── Per-employee Analytics (Phase 5) ────────────────────────────────────
+
+  async getEmployeeStats(employeeId: string, days = 30) {
+    const since = new Date(Date.now() - days * 86_400_000);
+    const eid = new Types.ObjectId(employeeId);
+
+    const [employee, callStats, activityByDay, activityTypes] = await Promise.all([
+      this.adminUserModel.findById(eid).select('name departmentType createdAt lastLoginAt').lean(),
+      this.callLogModel.aggregate([
+        { $match: { agentId: eid, createdAt: { $gte: since }, type: { $ne: 'whatsapp' } } },
+        { $group: {
+          _id: null,
+          totalCalls: { $sum: 1 },
+          conversions: { $sum: { $cond: [{ $eq: ['$outcome', 'ordered'] }, 1, 0] } },
+          callbacks: { $sum: { $cond: [{ $eq: ['$outcome', 'callback'] }, 1, 0] } },
+          noAnswers: { $sum: { $cond: [{ $eq: ['$outcome', 'no_answer'] }, 1, 0] } },
+        }},
+      ]),
+      this.activityModel.aggregate([
+        { $match: { employeeId: eid, at: { $gte: since }, type: 'heartbeat' } },
+        { $group: { _id: '$istDate', hours: { $addToSet: '$hourIST' } } },
+        { $sort: { _id: -1 } },
+      ]),
+      this.activityModel.aggregate([
+        { $match: { employeeId: eid, at: { $gte: since } } },
+        { $group: { _id: '$type', count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    if (!employee) throw new NotFoundException('Employee not found');
+    const cs = callStats[0] ?? { totalCalls: 0, conversions: 0, callbacks: 0, noAnswers: 0 };
+    const convRate = cs.totalCalls > 0 ? Math.round((cs.conversions / cs.totalCalls) * 100) : 0;
+    const activeHours = activityByDay.reduce((sum: number, d: any) => sum + (d.hours?.length ?? 0), 0);
+
+    return {
+      employee,
+      period: days,
+      totalCalls: cs.totalCalls,
+      conversions: cs.conversions,
+      callbacks: cs.callbacks,
+      noAnswers: cs.noAnswers,
+      convRate,
+      activeHours,
+      activeDays: activityByDay.length,
+      activityByDay: activityByDay.map((d: any) => ({ date: d._id, hours: d.hours?.length ?? 0 })),
+      activityTypes: Object.fromEntries(activityTypes.map((t: any) => [t._id as string, t.count])),
+    };
   }
 }

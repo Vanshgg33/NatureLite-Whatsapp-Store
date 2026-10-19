@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
-import { Clock, Phone, PhoneCall, Users, MessageCircle, BarChart3, Settings, LogOut, Menu, X, type LucideIcon } from 'lucide-react';
+import { Clock, Phone, PhoneCall, Users, MessageCircle, BarChart3, Settings, LogOut, Menu, X, ShieldCheck, Package, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { api } from '@/lib/api';
@@ -17,15 +17,19 @@ const NAV: NavItem[] = [
   { name: 'Caller mode', href: '/crm/caller',     icon: PhoneCall },
   { name: 'Customers',   href: '/crm/customers',  icon: Users },
   { name: 'Campaigns',   href: '/crm/campaigns',  icon: MessageCircle },
+  { name: 'Products',    href: '/crm/products',   icon: Package },
   { name: 'Performance', href: '/crm/analytics',  icon: BarChart3 },
   { name: 'Settings',    href: '/crm/settings',   icon: Settings, adminOnly: true },
+  { name: 'Team',        href: '/crm/admin/employees', icon: ShieldCheck, adminOnly: true },
 ];
 
 const ROLE_LABEL: Record<string, string> = {
-  crm_head:   'CRM Manager',
-  crm_senior: 'Senior Agent',
-  superadmin: 'Super Admin',
-  admin:      'Admin',
+  crm_head:    'CRM Head',
+  crm_manager: 'CRM Manager',
+  crm_senior:  'Senior Agent',
+  crm_viewer:  'Viewer',
+  superadmin:  'Super Admin',
+  admin:       'Admin',
 };
 
 function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -159,6 +163,11 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
             <LogOut className="h-3.5 w-3.5" />
           </button>
         </div>
+        {(user?.departmentType === 'crm_senior' || user?.departmentType === 'crm_manager' || user?.departmentType === 'crm_viewer') && (
+          <p className="text-[10px] text-center px-3 pb-2 mt-1 leading-tight" style={{ color: 'rgba(255,255,255,0.25)' }}>
+            Your CRM activity is monitored
+          </p>
+        )}
       </div>
     </div>
   );
@@ -200,9 +209,19 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!hasHydrated) return;
     if (!isAuthenticated) { router.push('/admin-login'); return; }
-    const allowed = ['crm_head', 'crm_senior'];
+    const allowed = ['crm_head', 'crm_manager', 'crm_senior', 'crm_viewer'];
     if (user?.departmentType && !allowed.includes(user.departmentType)) router.push('/admin');
   }, [hasHydrated, isAuthenticated, user, router]);
+
+  const crmRoles = ['crm_head', 'crm_manager', 'crm_senior', 'crm_viewer'];
+  const isCrmEmployee = isAuthenticated && !!user?.departmentType && crmRoles.includes(user.departmentType);
+
+  useEffect(() => {
+    if (!isCrmEmployee) return;
+    api.crmHeartbeat().catch(() => {});
+    const id = setInterval(() => api.crmHeartbeat().catch(() => {}), 60_000);
+    return () => clearInterval(id);
+  }, [isCrmEmployee]);
 
   if (!hasHydrated || !isAuthenticated) return null;
 

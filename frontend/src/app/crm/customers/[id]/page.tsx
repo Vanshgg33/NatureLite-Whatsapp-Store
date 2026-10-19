@@ -5,12 +5,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
 import {
   Phone, MessageCircle, ChevronLeft, ShoppingBag,
-  PhoneCall, StickyNote, Send, Trash2, Zap,
+  PhoneCall, StickyNote, Send, Trash2, Zap, Mic, ChevronDown, ChevronRight,
 } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
 import { formatINR, segmentLabel, formatPhone } from '@/lib/crm/format';
+import { formatIST } from '@/lib/time';
 import { CustomerAvatar } from '@/components/crm/CustomerAvatar';
 import { Pill } from '@/components/crm/Pill';
 import { CALL_OUTCOMES } from '@/components/crm/LogCallPanel';
@@ -18,9 +19,7 @@ import type { PillVariant } from '@/components/crm/Pill';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function fmtDate(d?: string | Date | null) {
-  return d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' }) : '—';
-}
+const fmtDate = (d?: string | Date | null) => formatIST(d);
 
 function segPillVariant(segment: string): PillVariant {
   const s = (segment ?? '').toLowerCase().replace(/\s/g, '_');
@@ -105,8 +104,9 @@ export default function Customer360Page() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const [activeTab, setActiveTab]       = useState<'timeline' | 'orders'>('timeline');
+  const [activeTab, setActiveTab]       = useState<'timeline' | 'recordings' | 'orders'>('timeline');
   const [activePanel, setActivePanel]   = useState<'call' | 'note' | 'wa'>('call');
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [callOutcome, setCallOutcome]   = useState('');
   const [callNotes, setCallNotes]       = useState('');
   const [callbackAt, setCallbackAt]     = useState('');
@@ -468,20 +468,25 @@ export default function Customer360Page() {
         <div className="lg:col-span-3 crm-card-v2 overflow-hidden flex flex-col">
           {/* Tabs */}
           <div className="flex flex-shrink-0" style={{ borderBottom: '1px solid var(--crm-line)' }}>
-            {(['timeline', 'orders'] as const).map(t => (
-              <button
-                key={t}
-                onClick={() => setActiveTab(t)}
-                className="flex-1 py-3.5 text-[13px] font-medium transition-all capitalize"
-                style={activeTab === t
-                  ? { color: 'var(--crm-ink)', borderBottom: '2px solid var(--crm-gold)', background: 'var(--crm-amber-bg)' }
-                  : { color: 'var(--crm-muted)' }}
-              >
-                {t === 'timeline'
-                  ? `Activity (${allEvents.length})`
-                  : `Orders (${user?.totalOrders ?? orders.length})`}
-              </button>
-            ))}
+            {(['timeline', 'recordings', 'orders'] as const).map(t => {
+              const recordedCalls = (calls as any[]).filter((c: any) => c.recordingUrl);
+              return (
+                <button
+                  key={t}
+                  onClick={() => setActiveTab(t)}
+                  className="flex-1 py-3.5 text-[13px] font-medium transition-all capitalize"
+                  style={activeTab === t
+                    ? { color: 'var(--crm-ink)', borderBottom: '2px solid var(--crm-gold)', background: 'var(--crm-amber-bg)' }
+                    : { color: 'var(--crm-muted)' }}
+                >
+                  {t === 'timeline'
+                    ? `Activity (${allEvents.length})`
+                    : t === 'recordings'
+                    ? `Recordings (${recordedCalls.length})`
+                    : `Orders (${user?.totalOrders ?? orders.length})`}
+                </button>
+              );
+            })}
           </div>
 
           <div className="overflow-y-auto flex-1" style={{ maxHeight: 640 }}>
@@ -561,7 +566,7 @@ export default function Customer360Page() {
                           ) : (
                             <span className="text-[12px] font-semibold" style={{ color: 'var(--crm-muted)' }}>Call logged</span>
                           )}
-                          <span className="text-[11px]" style={{ color: 'var(--crm-muted)' }}>{fmtDate(ev.createdAt)}</span>
+                          <span className="text-[11px]" style={{ color: 'var(--crm-muted)' }}>{formatIST(ev.createdAt, true)}</span>
                           {ev.agentId?.name && (
                             <span className="text-[11px]" style={{ color: 'var(--crm-muted)' }}>· {ev.agentId.name}</span>
                           )}
@@ -578,10 +583,58 @@ export default function Customer360Page() {
                         {!isOrder && !isWA && ev.notes && (
                           <p className="text-[12px]" style={{ color: 'var(--crm-ink-2)' }}>{ev.notes}</p>
                         )}
+                        {!isOrder && !isWA && ev.recordingUrl && (
+                          <audio
+                            controls
+                            src={ev.recordingUrl}
+                            className="w-full mt-1.5"
+                            style={{ height: 32, borderRadius: 8 }}
+                          />
+                        )}
                       </div>
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* ─ Recordings ─ */}
+            {activeTab === 'recordings' && (
+              <div className="p-5 space-y-3">
+                {(calls as any[]).filter((c: any) => c.recordingUrl).length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16">
+                    <Mic className="h-8 w-8 mb-3" style={{ color: 'var(--crm-line)' }} />
+                    <p className="text-[14px] font-semibold" style={{ color: 'var(--crm-ink)' }}>No recordings yet</p>
+                    <p className="text-[12px] mt-1" style={{ color: 'var(--crm-muted)' }}>Attach a recording when logging a call</p>
+                  </div>
+                ) : (calls as any[]).filter((c: any) => c.recordingUrl).map((c: any) => (
+                  <div
+                    key={c._id}
+                    className="p-4 rounded-xl space-y-2"
+                    style={{ background: 'var(--crm-sand)', border: '1px solid var(--crm-line)' }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize"
+                          style={{ background: (OUTCOME_STYLE[c.outcome] ?? { bg: 'var(--crm-sand-2)' }).bg, color: (OUTCOME_STYLE[c.outcome] ?? { color: 'var(--crm-muted)' }).color }}
+                        >
+                          {(c.outcome ?? 'call').replace(/_/g, ' ')}
+                        </span>
+                        <span className="text-[11px]" style={{ color: 'var(--crm-muted)' }}>
+                          {c.agentId?.name && `${c.agentId.name} · `}{formatIST(c.createdAt, true)}
+                        </span>
+                      </div>
+                      {c.recordingDuration > 0 && (
+                        <span className="text-[11px]" style={{ color: 'var(--crm-muted)' }}>
+                          {Math.floor(c.recordingDuration / 60)}:{String(Math.round(c.recordingDuration % 60)).padStart(2, '0')}
+                        </span>
+                      )}
+                    </div>
+                    <audio controls src={c.recordingUrl} className="w-full" style={{ height: 32, borderRadius: 8 }} />
+                    {c.notes && <p className="text-[12px]" style={{ color: 'var(--crm-ink-2)' }}>{c.notes}</p>}
+                  </div>
+                ))}
               </div>
             )}
 
@@ -593,32 +646,97 @@ export default function Customer360Page() {
                     <ShoppingBag className="h-8 w-8 mb-3" style={{ color: 'var(--crm-line)' }} />
                     <p className="text-[14px] font-semibold" style={{ color: 'var(--crm-ink)' }}>No orders found</p>
                   </div>
-                ) : (orders as any[]).map((o: any) => (
-                  <div
-                    key={o._id}
-                    className="flex items-center gap-4 p-4 rounded-xl"
-                    style={{ background: 'var(--crm-sand)', border: '1px solid var(--crm-line)' }}
-                  >
+                ) : (orders as any[]).map((o: any) => {
+                  const expanded = expandedOrders.has(o._id);
+                  const toggle = () => setExpandedOrders(prev => {
+                    const next = new Set(prev);
+                    next.has(o._id) ? next.delete(o._id) : next.add(o._id);
+                    return next;
+                  });
+                  const items: any[] = o.items ?? [];
+                  return (
                     <div
-                      className="h-9 w-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                      style={{ background: 'var(--crm-forest)', opacity: 0.9 }}
+                      key={o._id}
+                      className="rounded-xl overflow-hidden"
+                      style={{ border: '1px solid var(--crm-line)' }}
                     >
-                      <ShoppingBag className="h-4 w-4" style={{ color: 'var(--crm-gold)' }} />
+                      {/* Order header row */}
+                      <button
+                        onClick={toggle}
+                        className="w-full flex items-center gap-4 p-4 text-left transition-colors"
+                        style={{ background: expanded ? 'var(--crm-amber-bg)' : 'var(--crm-sand)' }}
+                      >
+                        <div
+                          className="h-9 w-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                          style={{ background: 'var(--crm-forest)' }}
+                        >
+                          <ShoppingBag className="h-4 w-4" style={{ color: 'var(--crm-gold)' }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-semibold" style={{ color: 'var(--crm-ink)' }}>
+                            Order #{o.orderNumber}
+                          </p>
+                          <p className="text-[12px]" style={{ color: 'var(--crm-muted)' }}>
+                            {fmtDate(o.createdAt)} · {items.length} item{items.length !== 1 ? 's' : ''}
+                          </p>
+                        </div>
+                        <p
+                          className="text-[14px] font-semibold crm-tabular mr-2"
+                          style={{ color: 'var(--crm-forest)', fontFamily: 'var(--font-serif, Fraunces, Georgia, serif)' }}
+                        >
+                          {formatINR(o.total)}
+                        </p>
+                        {expanded
+                          ? <ChevronDown className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--crm-muted)' }} />
+                          : <ChevronRight className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--crm-muted)' }} />
+                        }
+                      </button>
+
+                      {/* Expanded line items */}
+                      {expanded && items.length > 0 && (
+                        <div style={{ borderTop: '1px solid var(--crm-line)', background: 'var(--crm-paper)' }}>
+                          {items.map((item: any, idx: number) => {
+                            const productImg = item.product?.images?.[0] ?? item.image;
+                            const productName = item.product?.name ?? item.name ?? '—';
+                            return (
+                              <div
+                                key={idx}
+                                className="flex items-center gap-3 px-4 py-3"
+                                style={idx > 0 ? { borderTop: '1px solid var(--crm-line)' } : undefined}
+                              >
+                                {/* Product thumbnail */}
+                                <div
+                                  className="h-10 w-10 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center"
+                                  style={{ background: 'var(--crm-sand)', border: '1px solid var(--crm-line)' }}
+                                >
+                                  {productImg ? (
+                                    <img src={productImg} alt={productName} className="w-full h-full object-cover" loading="lazy" />
+                                  ) : (
+                                    <ShoppingBag className="h-4 w-4" style={{ color: 'var(--crm-line)' }} />
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[13px] font-medium truncate" style={{ color: 'var(--crm-ink)' }}>{productName}</p>
+                                  {item.variantName && (
+                                    <p className="text-[11px]" style={{ color: 'var(--crm-muted)' }}>{item.variantName}</p>
+                                  )}
+                                </div>
+                                <div className="text-right flex-shrink-0">
+                                  <p className="text-[12px] font-semibold crm-tabular" style={{ color: 'var(--crm-ink)' }}>
+                                    {formatINR(item.total ?? item.price * item.quantity)}
+                                  </p>
+                                  <p className="text-[11px]" style={{ color: 'var(--crm-muted)' }}>
+                                    {item.quantity} × {formatINR(item.price)}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13px] font-semibold" style={{ color: 'var(--crm-ink)' }}>
-                        Order #{o.orderNumber}
-                      </p>
-                      <p className="text-[12px]" style={{ color: 'var(--crm-muted)' }}>{fmtDate(o.createdAt)}</p>
-                    </div>
-                    <p
-                      className="text-[14px] font-semibold flex-shrink-0 crm-tabular"
-                      style={{ color: 'var(--crm-forest)', fontFamily: 'var(--font-serif, Fraunces, Georgia, serif)' }}
-                    >
-                      {formatINR(o.total)}
-                    </p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
