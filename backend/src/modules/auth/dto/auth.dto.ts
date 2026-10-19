@@ -127,7 +127,7 @@ export interface AuthResponse {
     phone?: string;
     name?: string;
     role: string;
-    departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior' | 'fms';
+    departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_manager' | 'crm_senior' | 'crm_viewer' | 'fms';
     purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver';
     storeId?: string;
     storeName?: string;

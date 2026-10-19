@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatINR, segmentLabel, displayName, formatPhone } from '@/lib/crm/format';
+import { formatIST } from '@/lib/time';
 import { CustomerAvatar } from '@/components/crm/CustomerAvatar';
 import { Pill } from '@/components/crm/Pill';
 import { LateBar } from '@/components/crm/LateBar';
@@ -52,7 +53,7 @@ function CustomerCard({ item }: { item: any }) {
   const daysUntil = daysDiff < 0 ? Math.abs(daysDiff) : 0;
 
   const lastOrderDate = item.lastOrderAt
-    ? new Date(item.lastOrderAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+    ? formatIST(item.lastOrderAt)
     : null;
 
   return (

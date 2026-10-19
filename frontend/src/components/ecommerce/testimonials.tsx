@@ -148,7 +148,7 @@ export function Testimonials({
 
                 {/* Text */}
                 <p className="text-brand-text leading-relaxed mb-6">
-                  "{testimonial.text}"
+                  &quot;{testimonial.text}&quot;
                 </p>
 
                 {/* Author */}
@@ -237,7 +237,7 @@ export function Testimonials({
 
               {/* Text */}
               <p className="text-xl lg:text-2xl text-brand-text leading-relaxed mb-10 font-body">
-                "{featured.text}"
+                &quot;{featured.text}&quot;
               </p>
 
               {/* Author */}
@@ -367,7 +367,7 @@ export function Testimonials({
                       <div className="flex-1 text-center lg:text-left">
                         {renderStars(testimonial.rating)}
                         <p className="text-lg text-brand-text leading-relaxed mt-4 mb-6">
-                          "{testimonial.text}"
+                          &quot;{testimonial.text}&quot;
                         </p>
                         <div>
                           <div className="flex items-center gap-2">

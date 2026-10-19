@@ -74,7 +74,7 @@ function MaterialCombobox({ value, materials, canAdd, onChange, onQuickAdd }: {
             <button type="button"
               className="w-full text-left px-3 py-2 text-sm text-[#1E5E3F] font-medium hover:bg-[#F7F6F2] font-jakarta"
               onMouseDown={() => { onQuickAdd(q.trim()); }}>
-              + Add "{q.trim()}" as new material
+              + Add &quot;{q.trim()}&quot; as new material
             </button>
           )}
           {filtered.length === 0 && !q.trim() && (

@@ -352,7 +352,7 @@ function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void })
   );
 }
 
-function SplitApproverCards({ children, onSuccess }: { children: any[]; onSuccess: () => void }) {
+function SplitApproverCards({ items, onSuccess }: { items: any[]; onSuccess: () => void }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [rejReasons, setRejReasons] = useState<Record<string, string>>({});
@@ -368,7 +368,7 @@ function SplitApproverCards({ children, onSuccess }: { children: any[]; onSucces
     onError: (err) => toast({ title: 'Error', description: getApiError(err), variant: 'destructive' }),
   });
 
-  const approvable = children.filter((c: any) => c.status === 'PO_CREATED');
+  const approvable = items.filter((c: any) => c.status === 'PO_CREATED');
   if (!approvable.length) return null;
 
   return (
@@ -1003,7 +1003,7 @@ export default function FmsPurchaseRequestDetailPage() {
                 )}
                 {/* Per-child approval cards for approvers */}
                 {canApprove && req.children?.some((c: any) => c.status === 'PO_CREATED') && (
-                  <SplitApproverCards children={req.children} onSuccess={onActionSuccess} />
+                  <SplitApproverCards items={req.children} onSuccess={onActionSuccess} />
                 )}
               </div>
             ) : (
