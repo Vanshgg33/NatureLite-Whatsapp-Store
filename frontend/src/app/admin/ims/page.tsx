@@ -602,7 +602,7 @@ export default function IMSPage() {
               <label className="text-sm font-medium text-gray-700 mb-1.5 block">Low Stock Threshold</label>
               <Input type="number" min="0" value={editThreshold} onChange={(e) => setEditThreshold(e.target.value)} />
               {editHasVariants && (
-                <p className="text-xs text-gray-400 mt-1">Applies to the product's total stock across all variants.</p>
+                <p className="text-xs text-gray-400 mt-1">Applies to the product&apos;s total stock across all variants.</p>
               )}
             </div>
             {(editStockIn || editReturned || editDamaged || editSaleLog) && (() => {

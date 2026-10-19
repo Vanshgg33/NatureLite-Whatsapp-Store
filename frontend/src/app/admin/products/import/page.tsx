@@ -386,7 +386,7 @@ export default function ImportProductsPage() {
                         onChange={(e) => setMapping((prev) => ({ ...prev, [tf.key]: e.target.value }))}
                         className="w-full text-xs border rounded-lg h-8 px-2 bg-background select-none outline-none focus:ring-2 focus:ring-primary/20"
                       >
-                        <option value="">— Don't Map —</option>
+                        <option value="">— Don&apos;t Map —</option>
                         {csvHeaders.map((header) => (
                           <option key={header} value={header}>{header}</option>
                         ))}

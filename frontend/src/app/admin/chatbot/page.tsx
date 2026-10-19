@@ -705,11 +705,11 @@ export default function AdminChatbotPage() {
             <Card className="rounded-2xl border-white/40 bg-white/50 backdrop-blur-md shadow-lg p-5">
               <h4 className="font-bold text-[13px] text-gray-900 dark:text-white mb-2">Prompting Tips</h4>
               <ul className="list-disc list-inside text-[11px] text-muted-foreground space-y-1.5 leading-relaxed pl-1">
-                <li><em className="text-gray-700 font-medium">"orders in May 2025"</em> — date range queries</li>
-                <li><em className="text-gray-700 font-medium">"compare this week vs last week"</em> — period comparison</li>
-                <li><em className="text-gray-700 font-medium">"store sales last month"</em> — physical store data</li>
-                <li><em className="text-gray-700 font-medium">"failed payments"</em> — payment tracking</li>
-                <li><em className="text-gray-700 font-medium">"active subscriptions"</em> — recurring orders</li>
+                <li><em className="text-gray-700 font-medium">&quot;orders in May 2025&quot;</em> — date range queries</li>
+                <li><em className="text-gray-700 font-medium">&quot;compare this week vs last week&quot;</em> — period comparison</li>
+                <li><em className="text-gray-700 font-medium">&quot;store sales last month&quot;</em> — physical store data</li>
+                <li><em className="text-gray-700 font-medium">&quot;failed payments&quot;</em> — payment tracking</li>
+                <li><em className="text-gray-700 font-medium">&quot;active subscriptions&quot;</em> — recurring orders</li>
                 <li>Follow-up questions work — the AI remembers context.</li>
               </ul>
             </Card>
