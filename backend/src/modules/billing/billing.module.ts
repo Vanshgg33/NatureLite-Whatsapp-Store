@@ -11,6 +11,11 @@ import { Godown, GodownSchema } from './schemas/godown.schema';
 import { AuditLog, AuditLogSchema } from './schemas/audit-log.schema';
 import { BillingService } from './billing.service';
 import { BillingController } from './billing.controller';
+import { BooksService } from './books.service';
+import { BooksController } from './books.controller';
+import { BillingAccount, BillingAccountSchema, BillingExpense, BillingExpenseSchema, BillingOpening, BillingOpeningSchema, BillingPayment, BillingPaymentSchema, BillingPurchase, BillingPurchaseSchema, BillingStockEntry, BillingStockEntrySchema } from './schemas/books.schemas';
+import { ReportsService } from './reports/reports.service';
+import { ReportsController } from './reports/reports.controller';
 import { TaxSettingsModule } from './tax-settings/tax-settings.module';
 
 @Module({
@@ -24,12 +29,18 @@ import { TaxSettingsModule } from './tax-settings/tax-settings.module';
       { name: BusinessProfile.name, schema: BusinessProfileSchema },
       { name: Godown.name, schema: GodownSchema },
       { name: AuditLog.name, schema: AuditLogSchema },
+      { name: BillingAccount.name, schema: BillingAccountSchema },
+      { name: BillingPayment.name, schema: BillingPaymentSchema },
+      { name: BillingExpense.name, schema: BillingExpenseSchema },
+      { name: BillingPurchase.name, schema: BillingPurchaseSchema },
+      { name: BillingStockEntry.name, schema: BillingStockEntrySchema },
+      { name: BillingOpening.name, schema: BillingOpeningSchema },
     ]),
     CrmModule,
     TaxSettingsModule,
   ],
-  controllers: [BillingController],
-  providers: [BillingService],
+  controllers: [BillingController, ReportsController, BooksController],
+  providers: [BillingService, ReportsService, BooksService],
   exports: [BillingService],
 })
 export class BillingModule {}

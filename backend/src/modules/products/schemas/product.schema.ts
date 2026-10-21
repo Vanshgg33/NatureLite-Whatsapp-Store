@@ -174,6 +174,8 @@ export class Product {
   @Prop({ default: 5 }) gstRate: number;
   @Prop({ default: 0 }) mrp: number;
   @Prop({ default: 'NOS' }) uqc: string;
+  @Prop({ default: 0 }) purchasePrice: number; // rupees per unit, fallback stock-valuation cost
+  @Prop({ default: 'TAXABLE', enum: ['TAXABLE', 'NIL_RATED', 'EXEMPT', 'NON_GST'] }) gstTreatment: string;
 
   createdAt: Date;
   updatedAt: Date;

@@ -17,6 +17,9 @@ import type { LineItem, BillCharge, PaymentMode, GodownDto } from './types';
 const DELIVERY_TAGS = ['Home Delivery', 'Transport'];
 const TAG_PRIORITY = ['Wholesale', 'B2B', 'Transport', 'Home Delivery', 'Store/Retail', 'Retail'];
 
+const CHARGE_SAC = '996511';
+const CHARGE_GST_RATE = 18;
+
 export default function NewBillPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -186,7 +189,8 @@ export default function NewBillPage() {
           gstRate: i.gstRate,
         })),
         billDiscountPct,
-        charges,
+        // additional charges are a taxable service line (SAC 996511) so they flow into the GST reports
+        charges: charges.map(c => ({ ...c, hsn: CHARGE_SAC, gstRate: CHARGE_GST_RATE })),
         roundOffEnabled,
         amountPaidRupees,
         terms,

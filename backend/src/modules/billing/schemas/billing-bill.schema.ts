@@ -27,6 +27,21 @@ export interface BillLineItem {
   cgst?: number;          // paise
   sgst?: number;          // paise
   igst?: number;          // paise (overrides cgst+sgst when inter-state)
+  // Reports engine snapshots:
+  gstTreatment?: GstTreatment;
+  uqc?: string;
+  category?: string;
+  barcode?: string;
+}
+
+export type GstTreatment = 'TAXABLE' | 'NIL_RATED' | 'EXEMPT' | 'NON_GST';
+export type BillDocType = 'SALE' | 'CREDIT_NOTE' | 'SALE_ORDER';
+
+export interface BillPayment {
+  mode: string;           // cash | upi | card | bank | cheque | credit
+  amountPaise: number;
+  at: Date;
+  kind: 'INITIAL' | 'LATER'; // INITIAL = received at creation (Daybook Money In on the bill row)
 }
 
 @Schema({ timestamps: true })
@@ -70,6 +85,10 @@ export class BillingBill {
       cgst: { type: Number, default: 0 },
       sgst: { type: Number, default: 0 },
       igst: { type: Number, default: 0 },
+      gstTreatment: { type: String, enum: ['TAXABLE', 'NIL_RATED', 'EXEMPT', 'NON_GST'] },
+      uqc: String,
+      category: String,
+      barcode: String,
     }],
     required: true,
   })
@@ -107,7 +126,14 @@ export class BillingBill {
   @Prop({ default: 'credit' }) paymentMode: string;
   @Prop({ default: 0 }) billDiscountPct: number;
   @Prop({ default: 0 }) billDiscountAmtPaise: number;
-  @Prop({ type: [{ label: String, amtPaise: Number }], default: [] }) charges: Array<{ label: string; amtPaise: number }>;
+  @Prop({
+    type: [{ label: String, amtPaise: Number, hsn: String, gstRate: Number, taxablePaise: Number, cgst: Number, sgst: Number, igst: Number }],
+    default: [],
+  }) charges: Array<{
+    label: string; amtPaise: number;
+    // set when the charge carries GST (amtPaise is then GST-inclusive):
+    hsn?: string; gstRate?: number; taxablePaise?: number; cgst?: number; sgst?: number; igst?: number;
+  }>;
   @Prop({ default: 0 }) roundOffPaise: number;
   @Prop({ default: 0 }) cgstTotalPaise: number;
   @Prop({ default: 0 }) sgstTotalPaise: number;
@@ -119,6 +145,12 @@ export class BillingBill {
   @Prop() terms?: string;
   @Prop() cancelReason?: string;
 
+  // Reports engine:
+  @Prop({ default: 'SALE', enum: ['SALE', 'CREDIT_NOTE', 'SALE_ORDER'] }) docType: BillDocType;
+  @Prop() refInvoiceNo?: string;          // credit note -> original invoice
+  @Prop() convertedFromOrderNo?: string;  // sale converted from a sale order
+  @Prop({ type: [{ mode: String, amountPaise: Number, at: Date, kind: String }], default: [] }) payments: BillPayment[];
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -128,4 +160,17 @@ export const BillingBillSchema = SchemaFactory.createForClass(BillingBill);
 BillingBillSchema.index({ customerId: 1, createdAt: -1 });
 BillingBillSchema.index({ paymentStatus: 1, createdAt: -1 });
 BillingBillSchema.index({ createdAt: -1 });
+BillingBillSchema.index({ docType: 1, invoiceDate: 1 });
 BillingBillSchema.index({ orderTag: 1, createdAt: -1 });
+
+// Credit notes and sale orders live in the same collection but are NOT sales: hide them from every
+// existing sales/dues/insight query unless the caller opts in with .setOptions({ allDocTypes: true }).
+const NON_SALE = ['CREDIT_NOTE', 'SALE_ORDER'];
+BillingBillSchema.pre(/^(find|count|estimatedDocumentCount)/, function (this: any, next) {
+  if (!this.getOptions().allDocTypes) this.where({ docType: { $nin: NON_SALE } });
+  next();
+});
+BillingBillSchema.pre('aggregate', function (this: any, next) {
+  if (!this.options?.allDocTypes) this.pipeline().unshift({ $match: { docType: { $nin: NON_SALE } } });
+  next();
+});

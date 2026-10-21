@@ -40,6 +40,12 @@ export default function Gstr1Page() {
     queryFn: () => api.getBillingGstr1(month),
   });
 
+  // Full return (14 sheets) + reconciliation against the Sale Summary (finding F1: lines with no GST treatment / HSN)
+  const full = useQuery({ queryKey: ['billing-gstr1-full', month], queryFn: () => api.getBillingReport('gstr1-full', { month }) });
+  const recon = full.data?.reconciliation;
+  const reconIssues = recon ? (recon.flags.missingHsn.length + recon.flags.undeclaredTreatment.length) : 0;
+  const [exporting, setExporting] = useState(false);
+
   const b2b: any[] = data?.b2b ?? [];
   const b2cSummary: any[] = data?.b2cSummary ?? [];
   const hsnSummary: any[] = data?.hsnSummary ?? [];
@@ -116,13 +122,31 @@ export default function Gstr1Page() {
         description="GST return report for selected month"
         icon={<FileSpreadsheet className="h-6 w-6 text-[#2d7a4f]" />}
         action={
-          <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={exportAll} disabled={!data}>
-            <Download className="h-3.5 w-3.5" /> Export Excel
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={exportAll} disabled={!data}>
+              <Download className="h-3.5 w-3.5" /> Export Excel
+            </Button>
+            <Button size="sm" className="text-xs gap-1.5" disabled={exporting}
+              onClick={async () => { setExporting(true); try { await api.downloadBillingReport('gstr1-full', { month }); } finally { setExporting(false); } }}>
+              <Download className="h-3.5 w-3.5" /> {exporting ? 'Preparing…' : 'Export all 14 sheets'}
+            </Button>
+            <Button size="sm" variant="outline" className="text-xs gap-1.5"
+              onClick={() => api.downloadBillingReport('gstr3b', { month })}>
+              <Download className="h-3.5 w-3.5" /> GSTR-3B
+            </Button>
+          </div>
         }
       />
 
       <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4">
+        {recon && (Math.abs(recon.difference) > 0.005 || reconIssues > 0) && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 space-y-1">
+            <div className="font-semibold">Reconciliation: review before filing</div>
+            {Math.abs(recon.difference) > 0.005 && <div>Sale Summary total {fmtRs(recon.saleSummaryTotal)} does not match GSTR-1 + Table 8 + exports — difference {fmtRs(recon.difference)}.</div>}
+            {recon.flags.missingHsn.length > 0 && <div>{recon.flags.missingHsn.length} line(s) have no HSN (e.g. {recon.flags.missingHsn.slice(0, 3).map((f: any) => `${f.docNo}: ${f.item}`).join('; ')}).</div>}
+            {recon.flags.undeclaredTreatment.length > 0 && <div>{recon.flags.undeclaredTreatment.length} zero-rated line(s) have no GST treatment set (Nil-rated / Exempt / Non-GST) — they are reported as nil-rated in Table 8.</div>}
+          </div>
+        )}
         {/* Month picker */}
         <div className="flex flex-wrap items-end gap-4">
           <div className="bg-white rounded-2xl p-4 shadow-sm flex items-end gap-3">

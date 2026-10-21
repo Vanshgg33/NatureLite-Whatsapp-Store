@@ -238,9 +238,11 @@ export class BillingService {
     return `NL-${year}-${String(counter.value).padStart(4, '0')}`;
   }
 
-  private async nextInvoiceNoV1(fyLabel = '2026-27', prefix = 'NLF-26-27/'): Promise<string> {
+  private async nextInvoiceNoV1(docType: 'SALE' | 'CREDIT_NOTE' | 'SALE_ORDER' = 'SALE', fyLabel = '2026-27', prefix = 'NLF-26-27/'): Promise<string> {
+    // Three independent series: sale, credit note, sale order (blueprint §2.6)
+    const series = docType === 'CREDIT_NOTE' ? 'cn' : docType === 'SALE_ORDER' ? 'so' : 'sale';
     const counter = await this.counterModel.findOneAndUpdate(
-      { key: `sale-${fyLabel}` },
+      { key: `${series}-${fyLabel}` },
       { $inc: { value: 1 } },
       { upsert: true, new: true },
     ).lean();
@@ -397,7 +399,7 @@ export class BillingService {
   }
 
   async getBill(id: string) {
-    const bill = await this.billModel.findById(id).lean();
+    const bill = await this.billModel.findById(id).setOptions({ allDocTypes: true }).lean();
     if (!bill) throw new NotFoundException('Bill not found');
     return bill;
   }
@@ -770,6 +772,9 @@ export class BillingService {
   }
 
   async createBillV1(dto: {
+    docType?: 'SALE' | 'CREDIT_NOTE' | 'SALE_ORDER';
+    refInvoiceNo?: string;
+    convertedFromOrderNo?: string;
     paymentTerm?: string;
     invoiceDate?: string;
     invoiceNo?: string;
@@ -795,7 +800,7 @@ export class BillingService {
       gstRate: number;
     }>;
     billDiscountPct?: number;
-    charges?: Array<{ label: string; amtRupees: number }>;
+    charges?: Array<{ label: string; amtRupees: number; hsn?: string; gstRate?: number }>;
     roundOffEnabled?: boolean;
     amountPaidRupees?: number;
     terms?: string;
@@ -805,16 +810,18 @@ export class BillingService {
   }, userId = 'system', ip = '') {
     if (!dto.items?.length) throw new BadRequestException('Bill must have at least one item');
 
+    const docType = dto.docType ?? 'SALE';
+
     // 1. Invoice number
     const providedNo = dto.invoiceNo?.trim();
     let invoiceNo: string;
     if (providedNo) {
       if (!validateInvoiceNo(providedNo)) throw new BadRequestException('Invoice number must be 1-16 chars, letters/digits/hyphen/slash only');
-      const existing = await this.billModel.findOne({ invoiceNo: providedNo }).lean();
+      const existing = await this.billModel.findOne({ invoiceNo: providedNo }).setOptions({ allDocTypes: true }).lean();
       if (existing) throw new ConflictException(`Invoice number ${providedNo} already exists`);
       invoiceNo = providedNo;
     } else {
-      invoiceNo = await this.nextInvoiceNoV1();
+      invoiceNo = await this.nextInvoiceNoV1(docType);
     }
 
     // 2. Customer snapshot
@@ -826,6 +833,14 @@ export class BillingService {
     const isInterState = pos !== '22';
 
     const billDiscountPct = dto.billDiscountPct ?? 0;
+
+    // Snapshot per-product reporting attributes (GST treatment, UQC, category, barcode)
+    const productDocs = await this.productModel
+      .find({ _id: { $in: dto.items.map(i => i.productId) } })
+      .select('gstTreatment uqc sku category')
+      .populate('category', 'name')
+      .lean() as any[];
+    const productById = new Map(productDocs.map(p => [String(p._id), p]));
 
     // 4. Pre-discount taxables (for proportional allocation)
     const preTaxables = dto.items.map(item => {
@@ -867,6 +882,10 @@ export class BillingService {
         mrp: item.mrp ?? 0,
         qty: item.qty,
         unit: item.unit ?? 'NOS',
+        gstTreatment: productById.get(item.productId)?.gstTreatment ?? (item.gstRate > 0 ? 'TAXABLE' : 'NIL_RATED'),
+        uqc: productById.get(item.productId)?.uqc ?? 'NOS',
+        category: productById.get(item.productId)?.category?.name ?? '',
+        barcode: productById.get(item.productId)?.sku ?? item.sku,
         rate: item.rate,
         priceInclTax: item.priceInclTax !== false,
         discountPct: item.discountPct ?? 0,
@@ -883,16 +902,26 @@ export class BillingService {
     });
 
     // 6. Charges + totals
-    const chargesPaise = (dto.charges ?? []).map(c => ({
-      label: c.label,
-      amtPaise: Math.round(c.amtRupees * 100),
-    }));
+    // A charge with gstRate is GST-inclusive (e.g. Shipping, SAC 996511 @18%) and flows into GST reports as a pseudo-line
+    const chargesPaise = (dto.charges ?? []).map(c => {
+      const amtPaise = Math.round(c.amtRupees * 100);
+      if (!c.gstRate || c.gstRate <= 0) return { label: c.label, amtPaise, hsn: c.hsn, gstRate: c.gstRate };
+      const taxablePaise = Math.round(amtPaise * 100 / (100 + c.gstRate));
+      const tax = amtPaise - taxablePaise;
+      const cgst = isInterState ? 0 : Math.floor(tax / 2);
+      return {
+        label: c.label, amtPaise, hsn: c.hsn, gstRate: c.gstRate, taxablePaise,
+        cgst, sgst: isInterState ? 0 : tax - cgst, igst: isInterState ? tax : 0,
+      };
+    });
     const chargesTotalPaise = chargesPaise.reduce((s, c) => s + c.amtPaise, 0);
-    const cgstTotalPaise = lines.reduce((s, l) => s + l.cgst, 0);
-    const sgstTotalPaise = lines.reduce((s, l) => s + l.sgst, 0);
-    const igstTotalPaise = lines.reduce((s, l) => s + l.igst, 0);
-    const taxableTotalPaise = lines.reduce((s, l) => s + l.taxable, 0);
-    const grandBeforePaise = taxableTotalPaise + cgstTotalPaise + sgstTotalPaise + igstTotalPaise + chargesTotalPaise;
+    const lineTaxableTotal = lines.reduce((s, l) => s + l.taxable, 0);
+    const lineTaxTotal = lines.reduce((s, l) => s + l.cgst + l.sgst + l.igst, 0);
+    const grandBeforePaise = lineTaxableTotal + lineTaxTotal + chargesTotalPaise;
+    const cgstTotalPaise = lines.reduce((s, l) => s + l.cgst, 0) + chargesPaise.reduce((s, c) => s + (c.cgst ?? 0), 0);
+    const sgstTotalPaise = lines.reduce((s, l) => s + l.sgst, 0) + chargesPaise.reduce((s, c) => s + (c.sgst ?? 0), 0);
+    const igstTotalPaise = lines.reduce((s, l) => s + l.igst, 0) + chargesPaise.reduce((s, c) => s + (c.igst ?? 0), 0);
+    const taxableTotalPaise = lineTaxableTotal + chargesPaise.reduce((s, c) => s + (c.taxablePaise ?? 0), 0);
 
     // 7. Round-off
     let roundOffPaise = 0;
@@ -906,6 +935,10 @@ export class BillingService {
     const amountPaidPaise = Math.round((dto.amountPaidRupees ?? 0) * 100);
     const amountDuePaise = Math.max(0, grandTotalPaise - amountPaidPaise);
     const paymentStatus: PaymentStatus = amountDuePaise <= 0 ? 'paid' : amountPaidPaise > 0 ? 'partial' : 'unpaid';
+    const billedAt = new Date();
+    const payments = amountPaidPaise > 0
+      ? [{ mode: dto.paymentMode ?? 'cash', amountPaise: amountPaidPaise, at: billedAt, kind: 'INITIAL' as const }]
+      : [];
 
     // 8. GSTR-1 section
     const gstin = customer.gstNo ?? '';
@@ -929,7 +962,11 @@ export class BillingService {
 
     const bill = await this.billModel.create({
       invoiceNo,
-      invoiceDate: dto.invoiceDate ? new Date(dto.invoiceDate) : new Date(),
+      invoiceDate: dto.invoiceDate ? new Date(dto.invoiceDate) : billedAt,
+      docType,
+      refInvoiceNo: dto.refInvoiceNo,
+      convertedFromOrderNo: dto.convertedFromOrderNo,
+      payments,
       customerId: new Types.ObjectId(dto.customerId),
       customerName: customer.name ?? '',
       customerPhone,
@@ -981,16 +1018,18 @@ export class BillingService {
       at: new Date(),
     });
 
-    await this.userModel.findByIdAndUpdate(dto.customerId, {
-      $inc: { outstanding: amountDuePaise / 100 },
-    });
+    // Sale orders never touch the party balance; credit notes reduce it
+    const outstandingDelta = docType === 'SALE' ? amountDuePaise : docType === 'CREDIT_NOTE' ? -amountDuePaise : 0;
+    if (outstandingDelta !== 0) {
+      await this.userModel.findByIdAndUpdate(dto.customerId, { $inc: { outstanding: outstandingDelta / 100 } });
+    }
     this.crmEngine.refreshUser(dto.customerId).catch(() => {});
     return bill;
   }
 
   async cancelBill(id: string, reason: string, userId = 'system', ip = '') {
     if (!reason?.trim()) throw new BadRequestException('Cancel reason required');
-    const bill = await this.billModel.findById(id).lean() as any;
+    const bill = await this.billModel.findById(id).setOptions({ allDocTypes: true }).lean() as any;
     if (!bill) throw new NotFoundException('Bill not found');
     if (bill.status === 'cancelled') throw new BadRequestException('Already cancelled');
 
@@ -1008,7 +1047,7 @@ export class BillingService {
     return { ok: true };
   }
 
-  async recordPayment(id: string, amount: number) {
+  async recordPayment(id: string, amount: number, mode = 'cash') {
     const bill = await this.billModel.findById(id);
     if (!bill) throw new NotFoundException('Bill not found');
     if (bill.status === 'cancelled') throw new BadRequestException('Cannot record payment on cancelled bill');
@@ -1018,8 +1057,16 @@ export class BillingService {
     const newStatus = newDue <= 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid';
 
     const prevDue = bill.amountDue;
+    const prevPaidPaise = Math.round(bill.amountPaid * 100);
     bill.amountPaid = newPaid;
     bill.amountDue = newDue;
+    bill.amountPaidPaise = Math.round(newPaid * 100);
+    bill.amountDuePaise = Math.round(newDue * 100);
+    // legacy bill with no payments array: keep what was paid at creation as its INITIAL payment
+    if (!bill.payments.length && prevPaidPaise > 0) {
+      bill.payments.push({ mode: bill.paymentMode || 'cash', amountPaise: prevPaidPaise, at: (bill as any).createdAt, kind: 'INITIAL' });
+    }
+    bill.payments.push({ mode, amountPaise: Math.round((prevDue - newDue) * 100), at: new Date(), kind: 'LATER' });
     bill.paymentStatus = newStatus as any;
     await bill.save();
 

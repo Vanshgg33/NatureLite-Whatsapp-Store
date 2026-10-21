@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { useDebouncedValue } from '@/lib/utils';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
+import { StatementReport, STATEMENT_TABS, type StatementKind } from './StatementReport';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -429,8 +430,87 @@ function Spinner() {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+// ── Daybook / Sale Summary by HSN (server-built, same layout as the Excel export) ──
+
+function ExportBtn({ onClick }: { onClick: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Button size="sm" variant="outline" className="text-xs gap-1.5" disabled={busy}
+      onClick={async () => { setBusy(true); try { await onClick(); } finally { setBusy(false); } }}>
+      <Download className="h-3.5 w-3.5" /> {busy ? 'Preparing…' : 'Export Excel'}
+    </Button>
+  );
+}
+
+const TH = 'px-3 py-2 text-left text-xs font-semibold text-gray-500 bg-gray-50 sticky top-0 whitespace-nowrap';
+const TD = 'px-3 py-2 text-sm text-gray-700 whitespace-nowrap';
+
+function DaybookReport({ from, to }: { from: string; to: string }) {
+  const q = useQuery({ queryKey: ['billing-daybook', from, to], queryFn: () => api.getBillingReport('daybook', { from, to }) });
+  const rows: any[] = q.data?.rows ?? [];
+  const totals = q.data?.totals;
+  return (
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b">
+        <div className="text-sm text-gray-500">{rows.length} transactions · Money In {fmt(totals?.moneyIn)} · Money Out {fmt(totals?.moneyOut)}</div>
+        <ExportBtn onClick={() => api.downloadBillingReport('daybook', { from, to })} />
+      </div>
+      <div className="overflow-auto max-h-[65vh]">
+        <table className="w-full">
+          <thead><tr>{['Name', 'Ref No', 'Type', 'Payment Type', 'Total', 'Money In', 'Money Out', 'Description'].map(h => <th key={h} className={TH}>{h}</th>)}</tr></thead>
+          <tbody>
+            {q.isLoading && <tr><td colSpan={8} className="text-center py-10 text-gray-400">Loading…</td></tr>}
+            {!q.isLoading && rows.length === 0 && <tr><td colSpan={8} className="text-center py-10 text-gray-400">No transactions in this period.</td></tr>}
+            {rows.map((r, i) => (
+              <tr key={i} className="border-t hover:bg-[#f7faf8]">
+                <td className={TD}>{r.name}</td><td className={`${TD} font-mono text-xs`}>{r.refNo}</td><td className={TD}>{r.type}</td><td className={TD}>{r.paymentType}</td>
+                <td className={`${TD} text-right`}>{fmt(r.total)}</td><td className={`${TD} text-right text-green-700`}>{fmt(r.moneyIn)}</td>
+                <td className={`${TD} text-right text-red-600`}>{fmt(r.moneyOut)}</td><td className={TD}>{r.description}</td>
+              </tr>
+            ))}
+          </tbody>
+          {rows.length > 0 && (
+            <tfoot><tr className="border-t-2 font-semibold bg-gray-50">
+              <td className={TD} colSpan={5}>Total</td><td className={`${TD} text-right`}>{fmt(totals?.moneyIn)}</td><td className={`${TD} text-right`}>{fmt(totals?.moneyOut)}</td><td />
+            </tr></tfoot>
+          )}
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function HsnSummaryReport({ from, to }: { from: string; to: string }) {
+  const q = useQuery({ queryKey: ['billing-sale-hsn', from, to], queryFn: () => api.getBillingReport('sale-summary-hsn', { from, to }) });
+  const rows: any[] = q.data?.hsnRows ?? [];
+  const t = q.data?.hsnTotals;
+  return (
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b">
+        <div className="text-sm text-gray-500">{rows.length} HSN · {q.data?.itemRows?.length ?? 0} items · Total {fmt((t?.total ?? 0) / 100)}</div>
+        <ExportBtn onClick={() => api.downloadBillingReport('sale-summary-hsn', { from, to })} />
+      </div>
+      <div className="overflow-auto max-h-[65vh]">
+        <table className="w-full">
+          <thead><tr>{['HSN', 'Total Value', 'Taxable Value', 'IGST', 'CGST', 'SGST', 'CESS'].map(h => <th key={h} className={TH}>{h}</th>)}</tr></thead>
+          <tbody>
+            {q.isLoading && <tr><td colSpan={7} className="text-center py-10 text-gray-400">Loading…</td></tr>}
+            {!q.isLoading && rows.length === 0 && <tr><td colSpan={7} className="text-center py-10 text-gray-400">No sales in this period.</td></tr>}
+            {rows.map(r => (
+              <tr key={r.hsn} className={`border-t hover:bg-[#f7faf8] ${r.hsn === 'NA' ? 'bg-amber-50' : ''}`}>
+                <td className={`${TD} font-mono`}>{r.hsn}{r.hsn === 'NA' && <span className="ml-2 text-xs text-amber-700">missing HSN</span>}</td>
+                {[r.total, r.taxable, r.igst, r.cgst, r.sgst, r.cess].map((v, i) => <td key={i} className={`${TD} text-right`}>{fmt(v / 100)}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function SalesReportsPage() {
-  const [tab, setTab] = useState<'product' | 'customer'>('product');
+  const [tab, setTab] = useState<'product' | 'customer' | 'daybook' | 'hsn' | StatementKind>('product');
   const [filters, setFilters] = useState<FilterState>({
     startDate: startOfMonth(),
     endDate: today(),
@@ -493,17 +573,20 @@ export default function SalesReportsPage() {
         <FilterBar filters={filters} onChange={setFilters} />
 
         {/* Tabs */}
-        <div className="flex gap-1 bg-white rounded-xl p-1 shadow-sm w-fit">
-          {(['product', 'customer'] as const).map(t => (
+        <div className="flex flex-wrap gap-1 bg-white rounded-xl p-1 shadow-sm w-fit max-w-full">
+          {(['product', 'customer', 'daybook', 'hsn', ...STATEMENT_TABS.map(s => s.key)] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${tab === t ? 'bg-[#2d7a4f] text-white shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
-            >{t === 'product' ? 'By Product' : 'By Customer'}</button>
+            >{({ product: 'By Product', customer: 'By Customer', daybook: 'Daybook', hsn: 'Sale Summary by HSN', ...Object.fromEntries(STATEMENT_TABS.map(s => [s.key, s.label])) } as Record<string, string>)[t]}</button>
           ))}
         </div>
 
         {tab === 'product' && <ProductReport data={productData} loading={productQuery.isLoading} />}
+        {STATEMENT_TABS.some(s => s.key === tab) && <StatementReport kind={tab as StatementKind} from={filters.startDate} to={filters.endDate} />}
+        {tab === 'daybook' && <DaybookReport from={filters.startDate} to={filters.endDate} />}
+        {tab === 'hsn' && <HsnSummaryReport from={filters.startDate} to={filters.endDate} />}
         {tab === 'customer' && <CustomerReport data={customerData} loading={customerQuery.isLoading} />}
       </div>
     </div>

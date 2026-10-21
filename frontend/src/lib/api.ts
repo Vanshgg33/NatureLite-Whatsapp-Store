@@ -2088,6 +2088,29 @@ class ApiClient {
     return res.data.data;
   }
 
+  // Money & stock layer (accounts, payments, expenses, purchases, opening balances, stock entries)
+  async billingBooks(method: 'get' | 'post' | 'put' | 'patch' | 'delete', path: string, data?: any): Promise<any> {
+    const res = method === 'get' || method === 'delete'
+      ? await this.client[method]<ApiResponse<any>>(`/billing/books/${path}`, { params: data })
+      : await this.client[method]<ApiResponse<any>>(`/billing/books/${path}`, data);
+    return res.data.data;
+  }
+
+  async getBillingReport(report: BillingReportKey, params: Record<string, string>): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>(`/billing/reports/${report}`, { params });
+    return res.data.data;
+  }
+
+  /** Downloads the report's .xlsx (server builds the exact sheet layout) and saves it in the browser. */
+  async downloadBillingReport(report: BillingReportKey, params: Record<string, string>): Promise<void> {
+    const res = await this.client.get<Blob>(`/billing/reports/${report}`, { params: { ...params, format: 'xlsx' }, responseType: 'blob' });
+    const name = decodeURIComponent(res.headers['x-report-filename'] ?? `${report}.xlsx`);
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+    a.href = url; a.download = name; a.click();
+    URL.revokeObjectURL(url);
+  }
+
   async getBillingGstr1(month?: string): Promise<any> {
     const res = await this.client.get<ApiResponse<any>>('/billing/gstr1', { params: { month } });
     return res.data.data;
@@ -2318,5 +2341,7 @@ class ApiClient {
     return res.data.data;
   }
 }
+
+export type BillingReportKey = 'daybook' | 'sale-summary-hsn' | 'gstr1-full' | 'gstr3b' | 'profit-loss' | 'stock-summary' | 'trial-balance' | 'balance-sheet';
 
 export const api = new ApiClient();

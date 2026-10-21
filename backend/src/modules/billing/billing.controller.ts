@@ -162,8 +162,8 @@ export class BillingController {
   }
 
   @Post('bills/:id/payment')
-  recordPayment(@Param('id') id: string, @Body() body: { amount: number }) {
-    return this.billingService.recordPayment(id, body.amount);
+  recordPayment(@Param('id') id: string, @Body() body: { amount: number; mode?: string }) {
+    return this.billingService.recordPayment(id, body.amount, body.mode);
   }
 
   // ─── Dues ──────────────────────────────────────────────────────────────────
