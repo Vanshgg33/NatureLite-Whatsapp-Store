@@ -287,7 +287,7 @@ export default function ProductDetailPage() {
   }
 
   const variantImgs = selectedVariantData?.images ?? [];
-  const merged      = [...new Set([...variantImgs, ...product.images])];
+  const merged      = Array.from(new Set([...variantImgs, ...product.images]));
   const images      = merged.length > 0 ? merged : [null];
   const siteUrl    = process.env.NEXT_PUBLIC_SITE_URL;
   const productUrl = siteUrl ? `${siteUrl}/products/${product.slug}` : `/products/${product.slug}`;
