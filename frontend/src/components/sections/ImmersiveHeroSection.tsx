@@ -120,9 +120,17 @@ export default function ImmersiveHeroSection() {
     );
   }
 
-  /* ── Photo banner: all slides pre-rendered and stacked; crossfade via opacity ── */
+  /* ── Photo banner: height follows the poster's natural ratio, shown whole. ── */
   return (
-    <div className="relative w-full overflow-hidden aspect-[4/3] sm:aspect-auto sm:h-[62vh] md:h-[72vh]" style={{ background: '#1a1a1a', minHeight: 160 }}>
+    <div className="relative w-full overflow-hidden" style={{ background: '#1a1a1a' }}>
+      {/* spacer sets height = current poster's natural ratio */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={banner.imageUrl}
+        alt=""
+        aria-hidden
+        style={{ width: '100%', height: 'auto', display: 'block', visibility: 'hidden' }}
+      />
       {activeBanners.map((b, i) => (
         <motion.div
           key={b.id}
