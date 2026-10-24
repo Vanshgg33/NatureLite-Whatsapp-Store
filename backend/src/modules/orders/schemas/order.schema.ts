@@ -44,7 +44,7 @@ export class OrderItem {
   hsnCode?: string;
 
   @Prop({ default: 0 })
-  gstRate: number;
+  gstRate?: number;
 
   @Prop({ default: 0 })
   gstAmount: number;
