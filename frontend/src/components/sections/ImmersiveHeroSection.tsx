@@ -122,7 +122,7 @@ export default function ImmersiveHeroSection() {
 
   /* ── Photo banner: all slides pre-rendered and stacked; crossfade via opacity ── */
   return (
-    <div className="relative w-full overflow-hidden aspect-[4/3] sm:aspect-auto sm:h-[62vh] md:h-[72vh]" style={{ background: '#1a1a1a' }}>
+    <div className="relative w-full overflow-hidden" style={{ background: '#1a1a1a', maxHeight: '95vh' }}>
       {activeBanners.map((b, i) => (
         <motion.div
           key={b.id}
@@ -130,10 +130,9 @@ export default function ImmersiveHeroSection() {
           initial={false}
           transition={{ duration: 0.6 }}
           style={{
-            position: 'absolute',
+            position: i === 0 ? 'relative' : 'absolute',
             inset: 0,
             width: '100%',
-            height: '100%',
             zIndex: i === index ? 1 : 0,
             pointerEvents: i === index ? 'auto' : 'none',
           }}
@@ -143,7 +142,7 @@ export default function ImmersiveHeroSection() {
             src={b.imageUrl}
             alt={b.headline || ''}
             loading="eager"
-            style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover', objectPosition: 'center top' }}
+            style={{ width: '100%', height: 'auto', display: 'block' }}
           />
         </motion.div>
       ))}
