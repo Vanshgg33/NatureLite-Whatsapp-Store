@@ -162,7 +162,7 @@ function SaleInvoiceInner() {
         name: item.name,
         variantName: item.variantName,
         hsn: prod?.hsnCode ?? '',
-        mrp: item.compareAtPrice ?? prod?.compareAtPrice ?? item.price,
+        mrp: prod?.compareAtPrice ?? item.price,
         quantity: item.quantity,
         sellingPrice: item.price,
         pricePerUnit,
