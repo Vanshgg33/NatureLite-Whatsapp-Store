@@ -189,7 +189,7 @@ export default function ProductDetailPage() {
       productId: product._id,
       name: product.name,
       slug: product.slug,
-      image: product.images[0] || '/images/products/placeholder.jpg',
+      image: selectedVariantData?.images?.[0] || product.images[0] || '/images/products/placeholder.jpg',
       price: currentPrice,
       compareAtPrice: comparePrice,
       gstPercentage: product.gstPercentage ?? 0,
@@ -217,7 +217,8 @@ export default function ProductDetailPage() {
   const handleWishlist = async () => {
     if (!product) return;
     const nextState = !isInWishlist;
-    wishlistToggle({ productId: product._id, slug: product.slug, name: product.name, image: product.images[0], price: currentPrice });
+    const wishlistPayload = { productId: product._id, slug: product.slug, name: product.name, image: product.images[0], price: currentPrice };
+    wishlistToggle(wishlistPayload);
     try {
       if (isAuthenticated) {
         if (nextState) await api.addToWishlist(product._id);
@@ -225,6 +226,7 @@ export default function ProductDetailPage() {
       }
       toast({ title: nextState ? 'Added to wishlist' : 'Removed from wishlist' });
     } catch {
+      wishlistToggle(wishlistPayload); // revert optimistic toggle
       toast({ title: 'Wishlist update failed', variant: 'destructive' });
     }
   };
@@ -284,8 +286,9 @@ export default function ProductDetailPage() {
     );
   }
 
-  const variantImages = selectedVariantData?.images?.length ? selectedVariantData.images : null;
-  const images     = variantImages ?? (product.images.length > 0 ? product.images : [null]);
+  const variantImgs = selectedVariantData?.images ?? [];
+  const merged      = [...new Set([...variantImgs, ...product.images])];
+  const images      = merged.length > 0 ? merged : [null];
   const siteUrl    = process.env.NEXT_PUBLIC_SITE_URL;
   const productUrl = siteUrl ? `${siteUrl}/products/${product.slug}` : `/products/${product.slug}`;
   const totalStock = getProductTotalStock(product);

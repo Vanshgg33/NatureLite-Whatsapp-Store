@@ -174,8 +174,11 @@ export interface OrderItem {
   variantName?: string;
   quantity: number;
   price: number;
+  compareAtPrice?: number;
   total: number;
   image?: string;
+  hsnCode?: string;
+  gstRate?: number;
   gstAmount: number;
 }
 

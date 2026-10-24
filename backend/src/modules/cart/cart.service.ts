@@ -227,7 +227,7 @@ export class CartService {
         price,
         name: product.name,
         slug: product.slug,
-        image: product.images?.[0],
+        image: (dto.variantSku ? product.variants.find((v) => v.sku === dto.variantSku)?.images?.[0] : undefined) ?? product.images?.[0],
         addedAt: now,
         priceCapturedAt: now,
         gstPercentage: (product.category as any)?.gstPercentage ?? 0,

@@ -31,11 +31,20 @@ export class OrderItem {
   @Prop({ required: true })
   price: number;
 
+  @Prop()
+  compareAtPrice?: number;
+
   @Prop({ required: true })
   total: number;
 
   @Prop()
   image?: string;
+
+  @Prop()
+  hsnCode?: string;
+
+  @Prop({ default: 0 })
+  gstRate: number;
 
   @Prop({ default: 0 })
   gstAmount: number;

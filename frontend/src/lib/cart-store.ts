@@ -79,26 +79,20 @@ export const useCartStore = create<CartState>()(
           };
         });
 
-        // Attempt to sync with server; ignore 401 for guests
+        // Attempt to sync with server; guests get 401 (expected, item stays local)
         try {
           const result = await api.addToCart(item.productId, quantity, item.variantSku);
-          // Server recomputes percentage-coupon discount on the new subtotal — sync it.
-          // Guests get 401 so this only runs for authenticated users.
           set({
             couponCode: result.couponCode || null,
             discount: result.discount || 0,
             discountType: result.discount ? 'fixed' : null,
           });
         } catch (error) {
-          console.error('Failed to sync cart with server:', error);
-          // For authenticated users, try to resync full cart
-          try {
-            await get().syncWithServer();
-          } catch {
-            // syncWithServer also failed — revert the optimistic update so the
-            // UI reflects the true (unknown) server state rather than a ghost item.
-            set({ items: prevItems });
-          }
+          const status = (error as { response?: { status?: number } })?.response?.status;
+          if (status === 401) return; // guest user — keep item locally
+          // Real backend error (out of stock, price missing, etc.) — revert and surface
+          set({ items: prevItems });
+          throw error;
         }
       },
 

@@ -31,6 +31,7 @@ function getProduct(item: OrderItem) {
 const NIL_GST_KEYWORDS = ['seed', 'flour', 'rice', 'pulse'];
 
 function itemGstRate(item: OrderItem): number {
+  if (item.gstRate !== undefined) return item.gstRate;
   const prod = getProduct(item);
   const category = prod && typeof prod.category === 'object' ? prod.category : null;
   if ((category?.gstPercentage ?? 0) > 0) return category!.gstPercentage!;
@@ -188,8 +189,8 @@ function OrderInvoiceInner() {
       return {
         name: item.name,
         variantName: item.variantName,
-        hsn: prod?.hsnCode ?? '',
-        mrp: prod?.compareAtPrice ?? item.price,
+        hsn: item.hsnCode ?? prod?.hsnCode ?? '',
+        mrp: item.compareAtPrice ?? prod?.compareAtPrice ?? item.price,
         quantity: item.quantity,
         sellingPrice: item.price,
         pricePerUnit,

@@ -254,6 +254,8 @@ export class OrdersService implements OnModuleInit {
             );
           }
 
+          const cartVariant = item.variantSku ? product.variants.find((v) => v.sku === item.variantSku) : undefined;
+          const cartGstRate = (product.category as any)?.gstPercentage ?? 0;
           const orderItem: OrderItem = {
             product: new Types.ObjectId(productId),
             name: product.name,
@@ -261,9 +263,12 @@ export class OrdersService implements OnModuleInit {
             variantName: cartVariantName,
             quantity: item.quantity,
             price: resolvedPrice,
+            compareAtPrice: cartVariant?.compareAtPrice ?? product.compareAtPrice,
             total: resolvedPrice * item.quantity,
-            image: product.images?.[0],
-            gstAmount: (resolvedPrice * item.quantity * ((product.category as any)?.gstPercentage ?? 0)) / 100,
+            image: cartVariant?.images?.[0] ?? product.images?.[0],
+            hsnCode: product.hsnCode,
+            gstRate: cartGstRate,
+            gstAmount: (resolvedPrice * item.quantity * cartGstRate) / 100,
           };
 
           orderItems.push(orderItem);
@@ -309,6 +314,7 @@ export class OrdersService implements OnModuleInit {
             price = matchedVariant.price;
           }
 
+          const dtoGstRate = (product.category as any)?.gstPercentage ?? 0;
           const orderItem: OrderItem = {
             product: productIdObj,
             name: product.name,
@@ -316,8 +322,11 @@ export class OrdersService implements OnModuleInit {
             variantName: matchedVariant?.name,
             quantity: item.quantity,
             price,
+            compareAtPrice: matchedVariant?.compareAtPrice ?? product.compareAtPrice,
             total: price * item.quantity,
-            image: product.images?.[0],
+            image: matchedVariant?.images?.[0] ?? product.images?.[0],
+            hsnCode: product.hsnCode,
+            gstRate: dtoGstRate,
             gstAmount: (price * item.quantity * ((product.category as any)?.gstPercentage ?? 0)) / 100,
           };
 

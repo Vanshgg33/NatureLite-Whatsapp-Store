@@ -15,11 +15,11 @@ export function useDebouncedValue<T>(value: T, delay: number): T {
   return debounced;
 }
 
-/** Sum of main product stock + all variant stocks (for Product from API). */
+/** Total stock for a product. If variants exist, sum only variant stocks (product.stock already aggregates them after overlayStoreStock). */
 export function getProductTotalStock(product: { stock?: number; variants?: { stock?: number }[] }): number {
-  const main = product.stock ?? 0;
-  const variantsSum = (product.variants ?? []).reduce((s, v) => s + (v.stock ?? 0), 0);
-  return main + variantsSum;
+  const variants = product.variants ?? [];
+  if (variants.length) return variants.reduce((s, v) => s + (v.stock ?? 0), 0);
+  return product.stock ?? 0;
 }
 
 /** Total stock for a StoreStockItem. Variant products: sum variants only. Simple products: base stock. Never adds both. */
