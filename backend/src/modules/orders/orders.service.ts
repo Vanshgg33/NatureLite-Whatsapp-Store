@@ -1541,10 +1541,10 @@ export class OrdersService implements OnModuleInit {
             : undefined,
           quantity: item.quantity,
           price,
-          compareAtPrice: existingItem?.compareAtPrice ?? (item.variantSku ? product.variants.find((v) => v.sku === item.variantSku)?.compareAtPrice : undefined) ?? product.compareAtPrice,
+          compareAtPrice: (item.variantSku ? product.variants.find((v) => v.sku === item.variantSku)?.compareAtPrice : undefined) ?? product.compareAtPrice,
           total: lineTotal,
           image: (item.variantSku ? product.variants.find((v) => v.sku === item.variantSku)?.images?.[0] : undefined) ?? product.images?.[0],
-          hsnCode: existingItem?.hsnCode ?? product.hsnCode,
+          hsnCode: product.hsnCode,
           gstRate: gstPct,
           gstAmount: (lineTotal * gstPct) / 100,
         });
