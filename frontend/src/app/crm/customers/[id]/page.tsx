@@ -129,7 +129,7 @@ function TagsCard({ customerId, tags, onSaved }: { customerId: string; tags: str
         e.preventDefault();
         const t = input.trim().toLowerCase();
         if (!t) return;
-        saveTags([...new Set([...tags, t])]);
+        saveTags(Array.from(new Set([...tags, t])));
         setInput('');
       }} className="flex gap-2">
         <input
