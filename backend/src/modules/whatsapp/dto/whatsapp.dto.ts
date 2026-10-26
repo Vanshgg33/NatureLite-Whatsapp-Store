@@ -61,6 +61,14 @@ export class SendTemplateMessageDto {
   @IsOptional()
   headerImageUrl?: string;
 
+  @IsString()
+  @IsOptional()
+  headerDocumentUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  headerDocumentFilename?: string;
+
   @IsObject()
   @IsOptional()
   meta?: OutboundMessageMetaDto;
