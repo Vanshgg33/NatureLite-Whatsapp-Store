@@ -3,7 +3,7 @@
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { BarChart3, Trophy, TrendingUp, AlertTriangle, Users, PhoneCall, Phone, CheckCircle2, Activity } from 'lucide-react';
+import { BarChart3, Trophy, TrendingUp, AlertTriangle, Users, PhoneCall, Phone, CheckCircle2, Activity, Repeat2, Radio } from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatINR, segmentLabel } from '@/lib/crm/format';
 import { useAdminAuthStore } from '@/lib/admin-store';
@@ -66,7 +66,7 @@ function KpiCard({ label, value, sub, icon: Icon, accent, delay = 0 }: {
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'leaderboard' | 'agents';
+type Tab = 'overview' | 'leaderboard' | 'agents' | 'live';
 
 // ─── Overview tab ─────────────────────────────────────────────────────────────
 
@@ -247,9 +247,10 @@ function LeaderboardTab() {
               {/* Stats */}
               <div className="flex items-center gap-0" style={{ borderLeft: '1px solid var(--crm-line)', paddingLeft: 16 }}>
                 {[
-                  { label: 'Calls', value: entry.totalCalls ?? 0, icon: Phone, color: 'var(--crm-amber)' },
-                  { label: 'Conv.', value: entry.conversions ?? 0, icon: CheckCircle2, color: 'var(--crm-success)' },
-                  { label: 'Rate',  value: `${convRate}%`,         icon: TrendingUp,   color: 'var(--crm-blue)' },
+                  { label: 'Calls',    value: entry.totalCalls ?? 0,  icon: Phone,       color: 'var(--crm-amber)' },
+                  { label: 'Conv.',    value: entry.conversions ?? 0,  icon: CheckCircle2, color: 'var(--crm-success)' },
+                  { label: 'Winbacks', value: entry.winbacks ?? 0,     icon: Repeat2,      color: 'var(--crm-blue)' },
+                  { label: 'Rate',     value: `${convRate}%`,          icon: TrendingUp,   color: 'var(--crm-blue)' },
                 ].map((s, si) => (
                   <div key={s.label} className="flex items-center">
                     {si > 0 && <div className="w-px h-8 flex-shrink-0" style={{ background: 'var(--crm-line)', margin: '0 0px' }} />}
@@ -344,6 +345,65 @@ function AgentsTab() {
   );
 }
 
+// ─── Live View tab ────────────────────────────────────────────────────────────
+
+function LiveTab() {
+  const { data = [], isLoading } = useQuery({
+    queryKey: ['crm-live'],
+    queryFn: () => api.getCrmLiveView(),
+    refetchInterval: 30_000,
+  });
+
+  if (isLoading) return <Spinner />;
+
+  const agents = data as any[];
+
+  return (
+    <div className="p-7">
+      <div className="flex items-center gap-2 mb-5">
+        <span className="h-2 w-2 rounded-full animate-pulse" style={{ background: 'var(--crm-success)' }} />
+        <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--crm-muted)' }}>
+          Online now · refreshes every 30s
+        </p>
+      </div>
+      {agents.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <Radio className="h-10 w-10 mb-4" style={{ color: 'var(--crm-line)' }} />
+          <p className="font-semibold text-[15px]" style={{ color: 'var(--crm-ink)' }}>No one online</p>
+          <p className="text-[12px] mt-1" style={{ color: 'var(--crm-muted)' }}>Agents appear here when active in the last 5 minutes</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {agents.map((a: any) => (
+            <div key={a.agentId} className="crm-card-v2 flex items-center gap-4 p-4">
+              <div className="h-10 w-10 rounded-xl flex items-center justify-center text-[13px] font-bold flex-shrink-0"
+                style={{ background: 'var(--crm-success-bg)', color: 'var(--crm-success)' }}>
+                {(a.name?.[0] ?? 'A').toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-[14px]" style={{ color: 'var(--crm-ink)' }}>{a.name}</p>
+                <p className="text-[11px] mt-0.5" style={{ color: 'var(--crm-muted)' }}>
+                  {a.lastAction?.replace(/_/g, ' ')} · {new Date(a.lastSeenAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              </div>
+              <div className="flex items-center gap-4 flex-shrink-0">
+                <div className="text-center">
+                  <p className="text-[18px] font-semibold leading-none" style={{ color: 'var(--crm-ink)' }}>{a.todayCalls}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wide mt-0.5" style={{ color: 'var(--crm-muted)' }}>calls</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[18px] font-semibold leading-none" style={{ color: 'var(--crm-success)' }}>{a.todayConversions}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wide mt-0.5" style={{ color: 'var(--crm-muted)' }}>conv</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 const CRM_ADMIN_ROLES = new Set(['crm_head', 'crm_manager', 'superadmin']);
@@ -382,6 +442,7 @@ export default function AnalyticsPage() {
               { key: 'overview',    label: 'Overview',    icon: BarChart3,  adminOnly: false },
               { key: 'leaderboard', label: 'Leaderboard', icon: Trophy,     adminOnly: false },
               { key: 'agents',      label: 'Agents',      icon: Users,      adminOnly: true  },
+              { key: 'live',        label: 'Live',        icon: Radio,      adminOnly: true  },
             ] as const).filter(t => !t.adminOnly || isCrmAdmin).map(t => (
               <button
                 key={t.key}
@@ -399,7 +460,7 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {tab === 'overview' ? <OverviewTab /> : tab === 'leaderboard' ? <LeaderboardTab /> : <AgentsTab />}
+      {tab === 'overview' ? <OverviewTab /> : tab === 'leaderboard' ? <LeaderboardTab /> : tab === 'live' ? <LiveTab /> : <AgentsTab />}
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Settings, RefreshCw, Clock, Save, AlertTriangle, Star, Target, Globe } from 'lucide-react';
+import { Settings, RefreshCw, Clock, Save, AlertTriangle, Star, Target, Globe, FileText } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -63,6 +63,7 @@ export default function CrmSettingsPage() {
   const [thresholds, setThresholds] = useState({ atRiskAfterDays: 14, dormantAfterDays: 60, lostAfterDays: 120 });
   const [vip, setVip]               = useState({ minOrders: 5, minLifetimeValue: 5000 });
   const [callTarget, setCallTarget] = useState(20);
+  const [scripts, setScripts]       = useState<Record<string, string>>({});
 
   const { data, isLoading } = useQuery({ queryKey: ['crm-settings'], queryFn: () => api.getCrmSettings() });
 
@@ -73,6 +74,7 @@ export default function CrmSettingsPage() {
     if (data.thresholds)     setThresholds(data.thresholds);
     if (data.vip)            setVip(data.vip);
     if (data.dailyCallTarget != null) setCallTarget(data.dailyCallTarget);
+    if (data.scripts)        setScripts(data.scripts);
   }, [data]);
 
   const { mutate: save, isPending: saving } = useMutation({
@@ -82,6 +84,7 @@ export default function CrmSettingsPage() {
       thresholds,
       vip,
       dailyCallTarget: callTarget,
+      scripts,
     }),
     onSuccess: () => { toast({ title: 'Settings saved' }); qc.invalidateQueries({ queryKey: ['crm-settings'] }); },
     onError: () => toast({ title: 'Save failed', variant: 'destructive' }),
@@ -186,6 +189,34 @@ export default function CrmSettingsPage() {
         >
           {isLoading ? spinner : (
             <NumField label="Target calls per day" value={callTarget} onChange={setCallTarget} suffix="calls" min={1} max={200} />
+          )}
+        </Section>
+
+        {/* Calling scripts */}
+        <Section icon={FileText} iconColor="var(--crm-blue)" title="Calling Scripts" delay={180}
+          sub="What to say per segment. Shown to agents in the queue and on customer profiles."
+        >
+          {isLoading ? spinner : (
+            <div className="space-y-3">
+              {['overdue', 'due_today', 'due_soon', 'at_risk', 'dormant', 'new'].map(seg => (
+                <div key={seg}>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5 ml-1"
+                    style={{ color: 'var(--crm-muted)' }}>
+                    {seg.replace(/_/g, ' ')}
+                  </p>
+                  <textarea
+                    rows={3}
+                    value={scripts[seg] ?? ''}
+                    onChange={e => setScripts(s => ({ ...s, [seg]: e.target.value }))}
+                    placeholder={`Script for ${seg.replace(/_/g, ' ')} customers…`}
+                    className="w-full px-3 py-2.5 rounded-xl text-[13px] focus:outline-none resize-none transition-colors"
+                    style={{ border: '1px solid var(--crm-line)', color: 'var(--crm-ink)', background: 'var(--crm-paper)', lineHeight: '1.5' }}
+                    onFocus={e => (e.currentTarget.style.borderColor = 'var(--crm-gold)')}
+                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--crm-line)')}
+                  />
+                </div>
+              ))}
+            </div>
           )}
         </Section>
 

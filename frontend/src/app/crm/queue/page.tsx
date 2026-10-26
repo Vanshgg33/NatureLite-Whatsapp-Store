@@ -6,11 +6,13 @@ import { useSearchParams } from 'next/navigation';
 import {
   Phone, Clock, Flame, AlertTriangle, BellOff, TrendingDown,
   ChevronRight, X, ArrowUpCircle, MessageCircle, ChevronDown,
-  ChevronLeft, Search,
+  ChevronLeft, Search, CalendarCheck,
 } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
+import { useCrmMetrics } from '@/lib/crm/metrics';
+import { ProgressRing } from '@/components/crm/ProgressRing';
 import { cn } from '@/lib/utils';
 import { formatINR } from '@/lib/crm/format';
 import { segmentLabel } from '@/lib/crm/format';
@@ -24,11 +26,12 @@ import type { PillVariant } from '@/components/crm/Pill';
 // ─── Tab config ──────────────────────────────────────────────────────────────
 
 const TABS = [
-  { key: 'due_today', apiTab: 'today',    label: 'Due Today', icon: Clock,          color: 'var(--crm-amber)' },
-  { key: 'overdue',   apiTab: 'overdue',  label: 'Overdue',   icon: Flame,          color: 'var(--crm-danger)' },
-  { key: 'at_risk',   apiTab: 'at_risk',  label: 'At Risk',   icon: AlertTriangle,  color: '#C05621' },
-  { key: 'due_soon',  apiTab: 'upcoming', label: 'Due Soon',  icon: BellOff,        color: 'var(--crm-blue)' },
-  { key: 'dormant',   apiTab: 'dormant',  label: 'Dormant',   icon: TrendingDown,   color: 'var(--crm-muted)' },
+  { key: 'due_today',  apiTab: 'today',     label: 'Due Today',  icon: Clock,          color: 'var(--crm-amber)' },
+  { key: 'overdue',    apiTab: 'overdue',   label: 'Overdue',    icon: Flame,          color: 'var(--crm-danger)' },
+  { key: 'at_risk',    apiTab: 'at_risk',   label: 'At Risk',    icon: AlertTriangle,  color: '#C05621' },
+  { key: 'due_soon',   apiTab: 'upcoming',  label: 'Due Soon',   icon: BellOff,        color: 'var(--crm-blue)' },
+  { key: 'dormant',    apiTab: 'dormant',   label: 'Dormant',    icon: TrendingDown,   color: 'var(--crm-muted)' },
+  { key: 'callbacks',  apiTab: 'callbacks', label: 'Callbacks',  icon: CalendarCheck,  color: 'var(--crm-blue)' },
 ] as const;
 
 type TabKey = (typeof TABS)[number]['key'];
@@ -41,6 +44,7 @@ function resolveTab(segment: string | null, tab: string | null): TabKey {
   if (s === 'at_risk') return 'at_risk';
   if (s === 'due_soon' || s === 'upcoming') return 'due_soon';
   if (s === 'dormant') return 'dormant';
+  if (s === 'callbacks') return 'callbacks';
   return 'due_today';
 }
 
@@ -62,8 +66,8 @@ function minSnoozeDate() {
   const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10);
 }
 
-function CustomerRow({ item, onLogCall, queueKey }: {
-  item: any; onLogCall: (item: any) => void; queueKey: string;
+function CustomerRow({ item, onLogCall, queueKey, scripts }: {
+  item: any; onLogCall: (item: any) => void; queueKey: string; scripts: Record<string, string>;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -145,6 +149,10 @@ function CustomerRow({ item, onLogCall, queueKey }: {
                 <span className="truncate max-w-[120px]">{item.topProduct ?? item.topCategory}</span>
               </>
             ) : null}
+            {(item.tags as string[] | undefined)?.slice(0, 3)?.map(tag => (
+              <span key={tag} className="px-1.5 py-0.5 rounded-full text-[10px] font-medium"
+                style={{ background: 'var(--crm-blue-bg)', color: 'var(--crm-blue)' }}>{tag}</span>
+            ))}
           </div>
         </div>
 
@@ -188,9 +196,21 @@ function CustomerRow({ item, onLogCall, queueKey }: {
       {/* Expanded action strip */}
       {expanded && (
         <div
-          className="px-4 pb-3 pt-0 flex items-center gap-2.5 flex-wrap"
+          className="px-4 pb-3 pt-2 flex flex-col gap-2.5"
           style={{ borderTop: '1px solid var(--crm-line)' }}
         >
+          {(() => {
+            const segNorm = (item.segment ?? '').toLowerCase().replace(/\s/g, '_');
+            const script = scripts[segNorm];
+            return script ? (
+              <div className="px-3 py-2.5 rounded-xl text-[12px] leading-relaxed"
+                style={{ background: 'var(--crm-amber-bg)', color: 'var(--crm-ink-2)', border: '1px solid color-mix(in srgb, var(--crm-amber) 20%, transparent)' }}>
+                <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--crm-amber)' }}>Suggested Script</p>
+                {script}
+              </div>
+            ) : null;
+          })()}
+          <div className="flex items-center gap-2.5 flex-wrap">
           <p className="text-[10px] font-semibold uppercase tracking-wider mr-1" style={{ color: 'var(--crm-muted)' }}>
             Actions
           </p>
@@ -254,6 +274,7 @@ function CustomerRow({ item, onLogCall, queueKey }: {
           >
             <MessageCircle className="h-3 w-3" /> WA Nudge
           </Link>
+          </div>
         </div>
       )}
     </div>
@@ -302,6 +323,14 @@ export default function QueuePage() {
     queryFn: () => api.getCrmQueue(tabCfg.apiTab),
   });
 
+  const { data: settings } = useQuery({
+    queryKey: ['crm-settings'],
+    queryFn: () => api.getCrmSettings(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: metrics } = useCrmMetrics();
+
   // Client-side search filter
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -337,6 +366,19 @@ export default function QueuePage() {
               <span style={{ color: tabCfg.color }}>{tabCfg.label}</span>
             </p>
           </div>
+
+          {/* Progress ring */}
+          {metrics && (
+            <div className="flex items-center gap-3">
+              <ProgressRing value={metrics.callsToday ?? 0} target={metrics.target ?? 50} />
+              <div>
+                <p className="text-[13px] font-semibold" style={{ color: 'var(--crm-ink)' }}>
+                  {metrics.callsToday ?? 0} / {metrics.target ?? 50}
+                </p>
+                <p className="text-[11px]" style={{ color: 'var(--crm-muted)' }}>calls today</p>
+              </div>
+            </div>
+          )}
 
           {/* Search */}
           <div
@@ -403,6 +445,7 @@ export default function QueuePage() {
               item={item}
               onLogCall={setLogCallItem}
               queueKey={tabCfg.apiTab}
+              scripts={settings?.scripts ?? {}}
             />
           ))
         )}

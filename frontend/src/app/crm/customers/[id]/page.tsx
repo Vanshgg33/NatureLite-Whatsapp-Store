@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
 import {
   Phone, MessageCircle, ChevronLeft, ShoppingBag,
-  PhoneCall, StickyNote, Send, Trash2, Zap, Mic, ChevronDown, ChevronRight,
+  PhoneCall, StickyNote, Send, Trash2, Zap, Mic, ChevronDown, ChevronRight, X,
 } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
@@ -97,6 +97,59 @@ function buildTemplate(key: string, user: any, stats: any): string {
   }
 }
 
+// ─── Tags card ────────────────────────────────────────────────────────────────
+
+function TagsCard({ customerId, tags, onSaved }: { customerId: string; tags: string[]; onSaved: () => void }) {
+  const { toast } = useToast();
+  const [input, setInput] = useState('');
+
+  const { mutate: saveTags } = useMutation({
+    mutationFn: (next: string[]) => api.setCrmCustomerTags(customerId, next),
+    onSuccess: onSaved,
+    onError: () => toast({ title: 'Failed to save tags', variant: 'destructive' }),
+  });
+
+  return (
+    <div className="crm-card-v2 p-5">
+      <p className="text-[10px] font-bold uppercase tracking-[0.15em] mb-3" style={{ color: 'var(--crm-muted)' }}>Tags</p>
+      <div className="flex flex-wrap gap-2 mb-3">
+        {tags.length > 0 ? tags.map(tag => (
+          <span key={tag} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
+            style={{ background: 'var(--crm-blue-bg)', color: 'var(--crm-blue)' }}>
+            {tag}
+            <button onClick={() => saveTags(tags.filter(t => t !== tag))} className="opacity-60 hover:opacity-100">
+              <X className="h-2.5 w-2.5" />
+            </button>
+          </span>
+        )) : (
+          <p className="text-[12px]" style={{ color: 'var(--crm-muted)' }}>No tags yet</p>
+        )}
+      </div>
+      <form onSubmit={e => {
+        e.preventDefault();
+        const t = input.trim().toLowerCase();
+        if (!t) return;
+        saveTags([...new Set([...tags, t])]);
+        setInput('');
+      }} className="flex gap-2">
+        <input
+          type="text"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          placeholder="Add tag…"
+          maxLength={30}
+          className="flex-1 px-3 py-2 rounded-xl text-[12px] focus:outline-none"
+          style={{ border: '1px solid var(--crm-line)', color: 'var(--crm-ink)', background: 'var(--crm-sand)' }}
+        />
+        <button type="submit" className="px-4 py-2 rounded-xl text-[12px] font-semibold"
+          style={{ background: 'var(--crm-forest)', color: 'var(--crm-gold)' }}>
+          Add
+        </button>
+      </form>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Customer360Page() {
@@ -117,6 +170,12 @@ export default function Customer360Page() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['crm-customer360', id],
     queryFn: () => api.getCrmCustomer360(id),
+  });
+
+  const { data: settings } = useQuery({
+    queryKey: ['crm-settings'],
+    queryFn: () => api.getCrmSettings(),
+    staleTime: 5 * 60 * 1000,
   });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['crm-customer360', id] });
@@ -288,6 +347,18 @@ export default function Customer360Page() {
             </div>
           </div>
 
+          {/* Calling Script */}
+          {(() => {
+            const segNorm = (stats?.segment ?? '').toLowerCase().replace(/\s/g, '_');
+            const script = settings?.scripts?.[segNorm];
+            return script ? (
+              <div className="crm-card-v2 p-5">
+                <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--crm-amber)' }}>Suggested Script</p>
+                <p className="text-[13px] leading-relaxed" style={{ color: 'var(--crm-ink-2)', whiteSpace: 'pre-wrap' }}>{script}</p>
+              </div>
+            ) : null;
+          })()}
+
           {/* Customer Intel */}
           <div className="crm-card-v2 p-5">
             <p className="text-[10px] font-bold uppercase tracking-[0.15em] mb-3" style={{ color: 'var(--crm-muted)' }}>
@@ -307,6 +378,9 @@ export default function Customer360Page() {
               ))}
             </div>
           </div>
+
+          {/* Tags */}
+          <TagsCard customerId={id} tags={stats?.tags ?? []} onSaved={invalidate} />
 
           {/* Action panels */}
           <div className="crm-card-v2 overflow-hidden">

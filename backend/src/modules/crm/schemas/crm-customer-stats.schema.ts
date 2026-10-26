@@ -103,6 +103,9 @@ export class CrmCustomerStats {
   })
   notes: { _id: Types.ObjectId; agentId: Types.ObjectId; agentName: string; text: string; createdAt: Date }[];
 
+  @Prop({ type: [String], default: [] })
+  tags: string[];
+
   updatedAt: Date;
 }
 

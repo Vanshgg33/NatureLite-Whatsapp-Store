@@ -138,7 +138,7 @@ export class CrmService {
 
   // ─── Queue ───────────────────────────────────────────────────────────────
 
-  async getQueue(opts: { agentId?: string; tab: 'today' | 'overdue' | 'at_risk' | 'upcoming' | 'dormant' | 'all' }) {
+  async getQueue(opts: { agentId?: string; tab: 'today' | 'overdue' | 'at_risk' | 'upcoming' | 'dormant' | 'all' | 'callbacks' }) {
     const { agentId, tab } = opts;
     const filter: any = {};
     if (agentId) filter.assignedAgentId = new Types.ObjectId(agentId);
@@ -159,6 +159,8 @@ export class CrmService {
       filter.segment = { $in: ['Due Soon', 'due_soon'] };
     } else if (tab === 'dormant') {
       filter.segment = { $in: ['Dormant', 'dormant'] };
+    } else if (tab === 'callbacks') {
+      filter.callbackAt = { $gte: todayStart, $lte: todayEnd };
     } else {
       filter.segment = { $in: ['Due Soon', 'Overdue', 'At Risk', 'due_soon', 'overdue', 'at_risk'] };
     }
@@ -231,6 +233,16 @@ export class CrmService {
       callbackAt: dto.callbackAt ? new Date(dto.callbackAt) : null,
       istDate: istDateKey(),
     });
+
+    // Win-back: customer ordered after being dormant or lost
+    if (dto.outcome === 'ordered') {
+      const stats = await this.statsModel.findOne({ userId: customerId }).select('segment').lean<{ segment: string }>();
+      const seg = (stats?.segment ?? '').toLowerCase();
+      if (seg === 'dormant' || seg === 'lost') {
+        await this.callLogModel.updateOne({ _id: log._id }, { $set: { isWinback: true } });
+      }
+    }
+
     await this.statsModel.findOneAndUpdate(
       { userId: customerId },
       { $set: { lastCallAt: new Date(), lastCallOutcome: dto.outcome } },
@@ -336,6 +348,7 @@ export class CrmService {
           _id: '$agentId',
           totalCalls: { $sum: 1 },
           conversions: { $sum: { $cond: [{ $eq: ['$outcome', 'ordered'] }, 1, 0] } },
+          winbacks: { $sum: { $cond: ['$isWinback', 1, 0] } },
         },
       },
     ]);
@@ -343,10 +356,10 @@ export class CrmService {
     const statsMap = new Map(callStats.map((s: any) => [s._id.toString(), s]));
     return agents
       .map((a: any) => {
-        const s = statsMap.get(a._id.toString()) ?? { totalCalls: 0, conversions: 0 };
+        const s = statsMap.get(a._id.toString()) ?? { totalCalls: 0, conversions: 0, winbacks: 0 };
         const convRate = s.totalCalls > 0 ? Math.round((s.conversions / s.totalCalls) * 100) : 0;
-        const points = s.totalCalls * 1 + s.conversions * 10;
-        return { agent: a, totalCalls: s.totalCalls, conversions: s.conversions, convRate, points };
+        const points = s.totalCalls * 1 + s.conversions * 10 + (s.winbacks ?? 0) * 5;
+        return { agent: a, totalCalls: s.totalCalls, conversions: s.conversions, winbacks: s.winbacks ?? 0, convRate, points };
       })
       .sort((a: any, b: any) => b.points - a.points);
   }
@@ -391,6 +404,7 @@ export class CrmService {
       thresholds: s?.thresholds ?? { atRiskAfterDays: 15, dormantAfterDays: 60, lostAfterDays: 180 },
       vip: s?.vip ?? { minOrders: 2, minLifetimeValue: 4000 },
       dailyCallTarget: s?.dailyCallTarget ?? 50,
+      scripts: (s as any)?.scripts ?? {},
       lastEngineRun: lastRun ?? null,
     };
   }
@@ -401,6 +415,7 @@ export class CrmService {
     thresholds?: { atRiskAfterDays: number; dormantAfterDays: number; lostAfterDays: number };
     vip?: { minOrders: number; minLifetimeValue: number };
     dailyCallTarget?: number;
+    scripts?: Record<string, string>;
   }) {
     const updated = await this.settingsModel.findOneAndUpdate(
       {},
@@ -429,6 +444,15 @@ export class CrmService {
     return this.statsModel.findOneAndUpdate(
       { userId: new Types.ObjectId(customerId) },
       { $pull: { notes: { _id: new Types.ObjectId(noteId) } } },
+      { new: true },
+    );
+  }
+
+  async setTags(customerId: string, tags: string[]) {
+    const clean = [...new Set(tags.map(t => t.trim().toLowerCase()).filter(Boolean))];
+    return this.statsModel.findOneAndUpdate(
+      { userId: new Types.ObjectId(customerId) },
+      { $set: { tags: clean } },
       { new: true },
     );
   }
@@ -703,5 +727,33 @@ export class CrmService {
       activityByDay: activityByDay.map((d: any) => ({ date: d._id, hours: d.hours?.length ?? 0 })),
       activityTypes: Object.fromEntries(activityTypes.map((t: any) => [t._id as string, t.count])),
     };
+  }
+
+  // ─── Manager Live View ───────────────────────────────────────────────────
+
+  async getLiveView() {
+    const fiveMinAgo = new Date(Date.now() - 5 * 60_000);
+
+    const [recentActivity, todayCalls] = await Promise.all([
+      this.activityModel.aggregate([
+        { $match: { at: { $gte: fiveMinAgo } } },
+        { $sort: { at: -1 } },
+        { $group: { _id: '$employeeId', employeeName: { $first: '$employeeName' }, lastAt: { $first: '$at' }, lastType: { $first: '$type' } } },
+      ]),
+      this.callLogModel.aggregate([
+        { $match: { istDate: istDateKey(), type: { $ne: 'whatsapp' } } },
+        { $group: { _id: '$agentId', calls: { $sum: 1 }, conversions: { $sum: { $cond: [{ $eq: ['$outcome', 'ordered'] }, 1, 0] } } } },
+      ]),
+    ]);
+
+    const callMap = new Map(todayCalls.map((c: any) => [c._id.toString(), c]));
+    return recentActivity.map((a: any) => ({
+      agentId: a._id,
+      name: a.employeeName,
+      lastSeenAt: a.lastAt,
+      lastAction: a.lastType,
+      todayCalls: callMap.get(a._id.toString())?.calls ?? 0,
+      todayConversions: callMap.get(a._id.toString())?.conversions ?? 0,
+    }));
   }
 }

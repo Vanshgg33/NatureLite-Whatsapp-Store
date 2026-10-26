@@ -44,6 +44,9 @@ export class CrmCallLog {
   @Prop({ default: 0 })
   recordingDuration?: number;
 
+  @Prop({ default: false })
+  isWinback: boolean;
+
   createdAt: Date;
 }
 

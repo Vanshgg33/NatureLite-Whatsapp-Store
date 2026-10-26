@@ -117,6 +117,18 @@ export class MediaService {
     });
   }
 
+  async uploadRawBuffer(buffer: Buffer, folder: string, filename: string, mimeType: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        { folder, resource_type: 'raw', public_id: filename.replace(/\.[^.]+$/, ''), format: filename.split('.').pop() },
+        (error: UploadApiErrorResponse | undefined, result: UploadApiResponse | undefined) => {
+          if (error || !result) { reject(new BadRequestException('Failed to upload file')); return; }
+          resolve(result.secure_url);
+        },
+      ).end(buffer);
+    });
+  }
+
   async uploadFromUrl(
     url: string,
     folder: string = 'products',

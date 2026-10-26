@@ -167,6 +167,7 @@ export class CrmController {
       thresholds?: { atRiskAfterDays: number; dormantAfterDays: number; lostAfterDays: number };
       vip?: { minOrders: number; minLifetimeValue: number };
       dailyCallTarget?: number;
+      scripts?: Record<string, string>;
     },
     @CurrentUser() user: JwtPayload,
   ) {
@@ -188,6 +189,11 @@ export class CrmController {
   @Patch('customers/:id/notes/:noteId/delete')
   deleteNote(@Param('id') id: string, @Param('noteId') noteId: string) {
     return this.crm.deleteNote(id, noteId);
+  }
+
+  @Patch('customers/:id/tags')
+  setTags(@Param('id') id: string, @Body() body: { tags: string[] }) {
+    return this.crm.setTags(id, body.tags ?? []);
   }
 
   // ─── WhatsApp Nudge ──────────────────────────────────────────────────────
@@ -238,6 +244,12 @@ export class CrmController {
     if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') {
       throw new ForbiddenException('CRM admin access required');
     }
+  }
+
+  @Get('admin/live')
+  getLiveView(@CurrentUser() user: JwtPayload) {
+    this.requireCrmAdmin(user);
+    return this.crm.getLiveView();
   }
 
   @Get('admin/employees')

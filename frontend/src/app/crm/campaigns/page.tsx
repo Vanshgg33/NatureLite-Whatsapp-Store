@@ -375,6 +375,28 @@ export default function CampaignsPage() {
                   >
                     {c.waMessage}
                   </p>
+
+                  {/* Delivery stats — sent campaigns only */}
+                  {c.status === 'sent' && (c.recipientCount ?? 0) > 0 && (
+                    <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--crm-line)' }}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--crm-muted)' }}>Delivered</p>
+                        <p className="text-[12px] font-semibold" style={{ color: 'var(--crm-success)' }}>
+                          {c.sentCount ?? 0} / {c.recipientCount}
+                          {' '}({Math.round(((c.sentCount ?? 0) / c.recipientCount) * 100)}%)
+                        </p>
+                      </div>
+                      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--crm-sand-2)' }}>
+                        <div
+                          className="h-full rounded-full transition-all duration-700"
+                          style={{
+                            width: `${Math.min(Math.round(((c.sentCount ?? 0) / c.recipientCount) * 100), 100)}%`,
+                            background: 'var(--crm-success)',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Actions */}

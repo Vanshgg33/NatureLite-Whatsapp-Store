@@ -2254,6 +2254,7 @@ class ApiClient {
     thresholds?: { atRiskAfterDays: number; dormantAfterDays: number; lostAfterDays: number };
     vip?: { minOrders: number; minLifetimeValue: number };
     dailyCallTarget?: number;
+    scripts?: Record<string, string>;
   }): Promise<any> {
     const res = await this.client.put<ApiResponse<any>>('/crm/settings', payload);
     return res.data.data;
@@ -2271,6 +2272,16 @@ class ApiClient {
 
   async deleteCrmNote(customerId: string, noteId: string): Promise<any> {
     const res = await this.client.patch<ApiResponse<any>>(`/crm/customers/${customerId}/notes/${noteId}/delete`, {});
+    return res.data.data;
+  }
+
+  async setCrmCustomerTags(customerId: string, tags: string[]): Promise<any> {
+    const res = await this.client.patch<ApiResponse<any>>(`/crm/customers/${customerId}/tags`, { tags });
+    return res.data.data;
+  }
+
+  async getCrmLiveView(): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>('/crm/admin/live');
     return res.data.data;
   }
 
@@ -2338,6 +2349,23 @@ class ApiClient {
   async getCrmEmployeeStats(id: string, days?: number): Promise<any> {
     const qs = days ? `?days=${days}` : '';
     const res = await this.client.get<ApiResponse<any>>(`/crm/admin/employees/${id}/analytics${qs}`);
+    return res.data.data;
+  }
+
+  // ─── Daily Reports ────────────────────────────────────────────────────────
+
+  async getReportConfig(): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>('/reports/config');
+    return res.data.data;
+  }
+
+  async updateReportConfig(data: { recipients?: { name: string; email?: string; phone?: string }[]; enabled?: boolean }): Promise<any> {
+    const res = await this.client.put<ApiResponse<any>>('/reports/config', data);
+    return res.data.data;
+  }
+
+  async sendReportNow(): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>('/reports/send-now', {});
     return res.data.data;
   }
 }

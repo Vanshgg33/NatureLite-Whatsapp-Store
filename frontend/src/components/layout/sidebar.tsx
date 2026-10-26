@@ -31,6 +31,7 @@ import {
   Banknote,
   Truck,
   ShoppingBag,
+  FileText,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -127,6 +128,7 @@ const SUPERADMIN_NAV_GROUPS: NavGroup[] = [
       { name: 'Feedback', href: '/admin/feedback', icon: MessageSquare },
       { name: 'Appearance', href: '/admin/appearance', icon: Palette },
       { name: 'Settings', href: '/admin/settings', icon: Settings },
+      { name: 'Reports', href: '/admin/reports', icon: FileText },
     ],
   },
 ];
