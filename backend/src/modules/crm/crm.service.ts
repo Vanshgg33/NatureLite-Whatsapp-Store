@@ -311,6 +311,14 @@ export class CrmService {
     return { accepted: true, recipientCount: campaign.recipientCount };
   }
 
+  async cancelCampaign(id: string) {
+    const campaign = await this.campaignModel.findById(id);
+    if (!campaign) throw new NotFoundException('Campaign not found');
+    if (!['draft', 'approved'].includes(campaign.status)) throw new BadRequestException('Only draft or approved campaigns can be cancelled');
+    campaign.status = 'cancelled';
+    return campaign.save();
+  }
+
   private async _doSendCampaign(id: string, segmentFilter: string[], waMessage: string) {
     const stats = await this.statsModel.find({ segment: { $in: segmentFilter } }).select('userId').lean();
     const userIds = stats.map((s: any) => s.userId);

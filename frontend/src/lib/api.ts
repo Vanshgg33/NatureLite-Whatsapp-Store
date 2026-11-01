@@ -2233,6 +2233,11 @@ class ApiClient {
     return res.data.data;
   }
 
+  async cancelCrmCampaign(id: string): Promise<any> {
+    const res = await this.client.delete<ApiResponse<any>>(`/crm/campaigns/${id}`);
+    return res.data.data;
+  }
+
   async getCrmLeaderboard(): Promise<any[]> {
     const res = await this.client.get<ApiResponse<any[]>>('/crm/leaderboard');
     return res.data.data;

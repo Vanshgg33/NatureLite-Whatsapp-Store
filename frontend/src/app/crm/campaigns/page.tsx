@@ -72,9 +72,10 @@ const TEMPLATES = [
 ];
 
 const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
-  draft:    { bg: 'var(--crm-sand-2)',    color: 'var(--crm-muted)',   label: 'Draft' },
-  approved: { bg: 'var(--crm-blue-bg)',   color: 'var(--crm-blue)',    label: 'Approved' },
-  sent:     { bg: 'var(--crm-success-bg)', color: 'var(--crm-success)', label: 'Sent' },
+  draft:     { bg: 'var(--crm-sand-2)',    color: 'var(--crm-muted)',   label: 'Draft' },
+  approved:  { bg: 'var(--crm-blue-bg)',   color: 'var(--crm-blue)',    label: 'Approved' },
+  sent:      { bg: 'var(--crm-success-bg)', color: 'var(--crm-success)', label: 'Sent' },
+  cancelled: { bg: 'var(--crm-danger-bg)', color: 'var(--crm-danger)',  label: 'Cancelled' },
 };
 
 const fmtDate = (d: string) => formatIST(d);
@@ -280,6 +281,11 @@ export default function CampaignsPage() {
     onSuccess: () => { toast({ title: 'Campaign sent!' }); qc.invalidateQueries({ queryKey: ['crm-campaigns'] }); },
     onError: () => toast({ title: 'Send failed', variant: 'destructive' }),
   });
+  const { mutate: cancel } = useMutation({
+    mutationFn: (id: string) => api.cancelCrmCampaign(id),
+    onSuccess: () => { toast({ title: 'Campaign cancelled' }); qc.invalidateQueries({ queryKey: ['crm-campaigns'] }); },
+    onError: () => toast({ title: 'Cancel failed', variant: 'destructive' }),
+  });
 
   return (
     <div className="min-h-full" style={{ background: 'var(--crm-sand)' }}>
@@ -426,6 +432,15 @@ export default function CampaignsPage() {
                     >
                       <CheckCircle className="h-3.5 w-3.5" /> Sent
                     </div>
+                  )}
+                  {(c.status === 'draft' || c.status === 'approved') && (
+                    <button
+                      onClick={() => cancel(c._id)}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold transition-opacity hover:opacity-80"
+                      style={{ background: 'var(--crm-danger-bg)', color: 'var(--crm-danger)', border: '1px solid color-mix(in srgb, var(--crm-danger) 30%, transparent)' }}
+                    >
+                      <X className="h-3.5 w-3.5" /> Cancel
+                    </button>
                   )}
                 </div>
               </div>

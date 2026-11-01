@@ -1,6 +1,6 @@
 // backend/src/modules/crm/crm.controller.ts
 import {
-  Controller, Get, Post, Patch, Put, Param, Body, Query, UseGuards,
+  Controller, Get, Post, Patch, Put, Delete, Param, Body, Query, UseGuards,
   ForbiddenException, BadRequestException, UseInterceptors, UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -134,6 +134,12 @@ export class CrmController {
   sendCampaign(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') throw new ForbiddenException();
     return this.crm.sendCampaign(id);
+  }
+
+  @Delete('campaigns/:id')
+  cancelCampaign(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') throw new ForbiddenException();
+    return this.crm.cancelCampaign(id);
   }
 
   // ─── Leaderboard ─────────────────────────────────────────────────────────

@@ -15,8 +15,8 @@ export class CrmCampaign {
   @Prop({ required: true })
   waMessage: string;
 
-  @Prop({ default: 'draft', enum: ['draft', 'approved', 'sent'] })
-  status: 'draft' | 'approved' | 'sent';
+  @Prop({ default: 'draft', enum: ['draft', 'approved', 'sent', 'cancelled'] })
+  status: 'draft' | 'approved' | 'sent' | 'cancelled';
 
   @Prop({ type: Types.ObjectId, ref: 'AdminUser', required: true })
   createdBy: Types.ObjectId;
