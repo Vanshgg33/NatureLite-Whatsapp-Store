@@ -141,6 +141,14 @@ export class NotificationsController {
     return this.notificationsService.retryCampaign(id);
   }
 
+  @Post('campaigns/:id/cancel')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  async cancelCampaign(@Param('id') id: string): Promise<void> {
+    return this.notificationsService.cancelCampaign(id);
+  }
+
   @Get('template-presets')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')

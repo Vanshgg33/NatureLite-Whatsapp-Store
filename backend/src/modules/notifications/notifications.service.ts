@@ -736,6 +736,25 @@ export class NotificationsService {
     return { campaignId: campaign._id.toString() };
   }
 
+  async cancelCampaign(campaignId: string): Promise<void> {
+    const campaign = await this.campaignModel.findById(campaignId).exec();
+    if (!campaign) throw new Error('Campaign not found');
+    if (!['queued', 'sending'].includes(campaign.status)) throw new Error('Campaign cannot be cancelled');
+
+    if (campaign.status === 'queued') {
+      const jobId = campaign.type === 'media'
+        ? `broadcast_media_${campaign._id}`
+        : `broadcast_tpl_${campaign._id}`;
+      const job = await this.broadcastQueue.getJob(jobId);
+      if (job) await job.remove();
+    }
+
+    await this.campaignModel.updateOne(
+      { _id: campaign._id },
+      { $set: { status: 'cancelled', completedAt: new Date() } },
+    ).exec();
+  }
+
   async upsertTemplatePreset(data: {
     templateName: string;
     languageCode: string;
@@ -821,10 +840,13 @@ export class NotificationsService {
         }
 
         if ((i + 1) % 10 === 0) {
+          const current = await this.campaignModel.findById(campaign._id).select('status').lean().exec();
+          if (current?.status === 'cancelled') { bailed = true; break; }
           await this.campaignModel.updateOne({ _id: campaign._id }, { $set: { sent, skipped } }).exec();
         }
         if (i < campaign.phones.length - 1 && !bailed) await this.sleep(150);
       }
+      if (bailed && (await this.campaignModel.findById(campaign._id).select('status').lean().exec())?.status === 'cancelled') return;
       const finalUpdate: Record<string, unknown> = { status: 'done', sent, skipped, completedAt: new Date() };
       if (firstError && sent === 0) finalUpdate.errorSummary = firstError;
       await this.campaignModel.updateOne({ _id: campaign._id }, { $set: finalUpdate }).exec();
@@ -870,6 +892,8 @@ export class NotificationsService {
         }
 
         if ((i + 1) % 10 === 0) {
+          const current = await this.campaignModel.findById(campaign._id).select('status').lean().exec();
+          if (current?.status === 'cancelled') return;
           await this.campaignModel.updateOne({ _id: campaign._id }, { $set: { sent, skipped } }).exec();
         }
         if (i < campaign.phones.length - 1) await this.sleep(150);

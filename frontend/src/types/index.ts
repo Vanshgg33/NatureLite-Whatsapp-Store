@@ -514,7 +514,7 @@ export interface CampaignRecord {
   _id: string;
   label: string;
   type: 'template' | 'media';
-  status: 'queued' | 'sending' | 'done' | 'failed';
+  status: 'queued' | 'sending' | 'done' | 'failed' | 'cancelled';
   totalPhones: number;
   sent: number;
   skipped: number;

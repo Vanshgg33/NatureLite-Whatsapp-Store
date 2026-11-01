@@ -4,13 +4,13 @@ import { HydratedDocument } from 'mongoose';
 export type CampaignDocument = HydratedDocument<Campaign>;
 
 export type CampaignType = 'template' | 'media';
-export type CampaignStatus = 'queued' | 'sending' | 'done' | 'failed';
+export type CampaignStatus = 'queued' | 'sending' | 'done' | 'failed' | 'cancelled';
 
 @Schema({ timestamps: true })
 export class Campaign {
   @Prop({ required: true }) label: string;
   @Prop({ required: true, enum: ['template', 'media'] }) type: CampaignType;
-  @Prop({ required: true, enum: ['queued', 'sending', 'done', 'failed'], default: 'queued' }) status: CampaignStatus;
+  @Prop({ required: true, enum: ['queued', 'sending', 'done', 'failed', 'cancelled'], default: 'queued' }) status: CampaignStatus;
 
   @Prop({ default: 0 }) totalPhones: number;
   @Prop({ default: 0 }) sent: number;

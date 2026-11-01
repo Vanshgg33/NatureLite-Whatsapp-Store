@@ -318,6 +318,7 @@ function StatusBadge({ status }: { status: CampaignRecord['status'] }) {
   if (status === 'done') return <Badge className="text-xs bg-green-100 text-green-800 border-green-200">Done</Badge>;
   if (status === 'sending') return <Badge className="text-xs bg-blue-100 text-blue-800 border-blue-200 animate-pulse">Sending…</Badge>;
   if (status === 'failed') return <Badge className="text-xs bg-red-100 text-red-800 border-red-200">Failed</Badge>;
+  if (status === 'cancelled') return <Badge className="text-xs bg-orange-100 text-orange-800 border-orange-200">Cancelled</Badge>;
   return <Badge variant="outline" className="text-xs">Queued</Badge>;
 }
 
@@ -461,6 +462,16 @@ export default function CampaignsPage() {
       toast({ title: 'Retry queued', description: 'Resending to failed recipients.' });
     },
     onError: () => toast({ title: 'Retry failed', variant: 'destructive' }),
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: (campaignId: string) => api.cancelCampaign(campaignId),
+    onSuccess: (_, campaignId) => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+      setSelectedCampaign(prev => prev?._id === campaignId ? { ...prev, status: 'cancelled' } : prev);
+      toast({ title: 'Campaign cancelled' });
+    },
+    onError: () => toast({ title: 'Cancel failed', variant: 'destructive' }),
   });
 
   const [fetchedTemplate, setFetchedTemplate] = useState<WaTemplate | null>(null);
@@ -921,6 +932,17 @@ export default function CampaignsPage() {
                 >
                   {retryMutation.isPending ? <RefreshCw className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <RefreshCw className="h-3.5 w-3.5 mr-1.5" />}
                   Retry {c.skipped} failed
+                </Button>
+              )}
+              {(c.status === 'queued' || c.status === 'sending') && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={cancelMutation.isPending}
+                  onClick={() => cancelMutation.mutate(c._id)}
+                >
+                  <X className="h-3.5 w-3.5 mr-1.5" />
+                  {cancelMutation.isPending ? 'Cancelling…' : 'Stop Campaign'}
                 </Button>
               )}
               <StatusBadge status={c.status} />
@@ -1839,6 +1861,15 @@ export default function CampaignsPage() {
                               <span className="flex items-center gap-1 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5">
                                 <Eye className="h-3 w-3" />{readRate}% read
                               </span>
+                            )}
+                            {(c.status === 'queued' || c.status === 'sending') && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); cancelMutation.mutate(c._id); }}
+                                disabled={cancelMutation.isPending}
+                                className="flex items-center gap-1 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-full px-2 py-0.5 hover:bg-red-100 transition-colors disabled:opacity-50"
+                              >
+                                <X className="h-3 w-3" /> Stop
+                              </button>
                             )}
                             <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
                           </div>

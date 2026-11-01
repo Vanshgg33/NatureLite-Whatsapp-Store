@@ -1381,6 +1381,10 @@ class ApiClient {
     return response.data.data;
   }
 
+  async cancelCampaign(campaignId: string): Promise<void> {
+    await this.client.post(`/notifications/campaigns/${campaignId}/cancel`);
+  }
+
   async getTemplatePresets(): Promise<TemplatePreset[]> {
     const response = await this.client.get<ApiResponse<TemplatePreset[]>>('/notifications/template-presets');
     return response.data.data;
