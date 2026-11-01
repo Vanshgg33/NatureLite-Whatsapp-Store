@@ -66,7 +66,7 @@ export default function CouponsPage() {
     allowedUsers: [] as string[],
     allowedProducts: [] as string[],
     allowedCategories: [] as string[],
-    freeItems: [] as { productId: string; quantity: number }[],
+    freeItems: [] as { productId: string; variantSku?: string; quantity: number }[],
   });
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [productSearch, setProductSearch] = useState('');
@@ -209,7 +209,7 @@ export default function CouponsPage() {
     setEditingCoupon(coupon);
     const existingProducts = coupon.allowedProducts || [];
     const existingUsers = coupon.allowedUsers || [];
-    const existingFreeItems = (coupon.freeItems || []).map((fi) => ({ productId: fi.product, quantity: fi.quantity }));
+    const existingFreeItems = (coupon.freeItems || []).map((fi) => ({ productId: fi.product, variantSku: fi.variantSku, quantity: fi.quantity }));
     setFormData({
       code: coupon.code,
       description: coupon.description,
