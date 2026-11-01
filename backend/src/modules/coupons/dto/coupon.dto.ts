@@ -18,6 +18,10 @@ export class FreeItemDto {
   @IsNotEmpty()
   productId: string;
 
+  @IsString()
+  @IsOptional()
+  variantSku?: string;
+
   @IsNumber()
   @Min(1)
   quantity: number;

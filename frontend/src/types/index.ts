@@ -733,7 +733,7 @@ export interface CouponValidationResult {
   message: string;
   coupon?: Coupon;
   minOrderAmount?: number;
-  freeItems?: Array<{ productId: string; quantity: number }>;
+  freeItems?: Array<{ productId: string; variantSku?: string; quantity: number }>;
 }
 
 // ==================== DTO TYPES ====================
@@ -791,7 +791,7 @@ export interface CreateCouponDto {
   allowedUsers?: string[];
   allowedCategories?: string[];
   allowedProducts?: string[];
-  freeItems?: Array<{ productId: string; quantity: number }>;
+  freeItems?: Array<{ productId: string; variantSku?: string; quantity: number }>;
   validFrom: string;
   validUntil: string;
   isActive?: boolean;

@@ -382,16 +382,20 @@ export class OrdersService implements OnModuleInit {
             for (const fi of validation.freeItems) {
               try {
                 const freeProduct = await this.productsService.findById(fi.productId);
+                const freeVariant = fi.variantSku
+                  ? freeProduct.variants?.find((v) => v.sku === fi.variantSku)
+                  : undefined;
                 tracksStockByProductId.set(fi.productId, freeProduct.trackStock !== false);
                 orderProductIds.push(fi.productId);
                 orderItems.push({
                   product: new Types.ObjectId(fi.productId),
-                  name: freeProduct.name,
+                  name: freeVariant ? `${freeProduct.name} - ${freeVariant.name}` : freeProduct.name,
+                  variantSku: fi.variantSku,
                   quantity: fi.quantity,
                   price: 0,
                   total: 0,
                   isFreeItem: true,
-                  image: freeProduct.images?.[0],
+                  image: freeVariant?.images?.[0] ?? freeProduct.images?.[0],
                   hsnCode: freeProduct.hsnCode,
                   gstRate: 0,
                   gstAmount: 0,

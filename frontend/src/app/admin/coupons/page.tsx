@@ -815,33 +815,36 @@ export default function CouponsPage() {
                       <p className="text-xs text-muted-foreground mb-2">Products added free when this coupon is applied (requires min order amount to be met)</p>
                       {formData.freeItems.length > 0 && (
                         <div className="space-y-1.5 mb-2">
-                          {formData.freeItems.map((fi) => (
-                            <div key={fi.productId} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-green-50 border border-green-200">
-                              <span className="text-xs flex-1 truncate text-green-800 font-medium">{freeItemLabels[fi.productId] || fi.productId}</span>
-                              <input
-                                type="number"
-                                className="w-14 h-6 text-xs border border-green-300 rounded px-1.5 bg-white text-center"
-                                min={1}
-                                value={fi.quantity}
-                                onChange={(e) => {
-                                  const qty = Math.max(1, parseInt(e.target.value) || 1);
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    freeItems: prev.freeItems.map((f) =>
-                                      f.productId === fi.productId ? { ...f, quantity: qty } : f
-                                    ),
-                                  }));
-                                }}
-                              />
-                              <span className="text-xs text-green-600">qty</span>
-                              <button type="button" onClick={() => {
-                                setFormData((prev) => ({ ...prev, freeItems: prev.freeItems.filter((f) => f.productId !== fi.productId) }));
-                                setFreeItemLabels((prev) => { const n = { ...prev }; delete n[fi.productId]; return n; });
-                              }}>
-                                <XIcon className="h-3.5 w-3.5 text-green-700" />
-                              </button>
-                            </div>
-                          ))}
+                          {formData.freeItems.map((fi) => {
+                            const labelKey = `${fi.productId}:${fi.variantSku || ''}`;
+                            return (
+                              <div key={labelKey} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-green-50 border border-green-200">
+                                <span className="text-xs flex-1 truncate text-green-800 font-medium">{freeItemLabels[labelKey] || fi.productId}</span>
+                                <input
+                                  type="number"
+                                  className="w-14 h-6 text-xs border border-green-300 rounded px-1.5 bg-white text-center"
+                                  min={1}
+                                  value={fi.quantity}
+                                  onChange={(e) => {
+                                    const qty = Math.max(1, parseInt(e.target.value) || 1);
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      freeItems: prev.freeItems.map((f) =>
+                                        f.productId === fi.productId && f.variantSku === fi.variantSku ? { ...f, quantity: qty } : f
+                                      ),
+                                    }));
+                                  }}
+                                />
+                                <span className="text-xs text-green-600">qty</span>
+                                <button type="button" onClick={() => {
+                                  setFormData((prev) => ({ ...prev, freeItems: prev.freeItems.filter((f) => !(f.productId === fi.productId && f.variantSku === fi.variantSku)) }));
+                                  setFreeItemLabels((prev) => { const n = { ...prev }; delete n[labelKey]; return n; });
+                                }}>
+                                  <XIcon className="h-3.5 w-3.5 text-green-700" />
+                                </button>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                       <div className="relative">
@@ -854,21 +857,31 @@ export default function CouponsPage() {
                         />
                       </div>
                       {freeItemSearch.length >= 2 && freeItemResults?.items && (
-                        <div className="border rounded-md mt-1 max-h-36 overflow-y-auto divide-y">
+                        <div className="border rounded-md mt-1 max-h-48 overflow-y-auto divide-y">
                           {freeItemResults.items.length === 0 ? (
                             <p className="text-xs text-muted-foreground px-3 py-2">No products found</p>
-                          ) : freeItemResults.items.filter((p: Product) => !formData.freeItems.some((fi) => fi.productId === p._id)).map((p: Product) => (
+                          ) : freeItemResults.items.flatMap((p: Product) => {
+                            const activeVariants = p.variants?.filter((v) => v.isActive);
+                            if (activeVariants && activeVariants.length > 0) {
+                              return activeVariants
+                                .filter((v) => !formData.freeItems.some((fi) => fi.productId === p._id && fi.variantSku === v.sku))
+                                .map((v) => ({ productId: p._id, variantSku: v.sku, label: `${p.name} — ${v.name}` }));
+                            }
+                            if (formData.freeItems.some((fi) => fi.productId === p._id && !fi.variantSku)) return [];
+                            return [{ productId: p._id, variantSku: undefined, label: p.name }];
+                          }).map((row: { productId: string; variantSku?: string; label: string }) => (
                             <button
-                              key={p._id}
+                              key={`${row.productId}:${row.variantSku || ''}`}
                               type="button"
                               className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
                               onClick={() => {
-                                setFormData((prev) => ({ ...prev, freeItems: [...prev.freeItems, { productId: p._id, quantity: 1 }] }));
-                                setFreeItemLabels((prev) => ({ ...prev, [p._id]: p.name }));
+                                const labelKey = `${row.productId}:${row.variantSku || ''}`;
+                                setFormData((prev) => ({ ...prev, freeItems: [...prev.freeItems, { productId: row.productId, variantSku: row.variantSku, quantity: 1 }] }));
+                                setFreeItemLabels((prev) => ({ ...prev, [labelKey]: row.label }));
                                 setFreeItemSearch('');
                               }}
                             >
-                              {p.name}
+                              {row.label}
                             </button>
                           ))}
                         </div>

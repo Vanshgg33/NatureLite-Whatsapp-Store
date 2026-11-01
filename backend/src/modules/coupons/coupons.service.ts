@@ -18,7 +18,7 @@ export interface CouponValidationResult {
   discountAmount: number;
   coupon?: Coupon;
   minOrderAmount?: number;
-  freeItems?: Array<{ productId: string; quantity: number }>;
+  freeItems?: Array<{ productId: string; variantSku?: string; quantity: number }>;
 }
 
 @Injectable()
@@ -44,6 +44,7 @@ export class CouponsService {
       allowedProducts: parseObjectIdArray(dto.allowedProducts, 'allowedProducts'),
       freeItems: (dto.freeItems || []).map((fi) => ({
         product: parseObjectId(fi.productId, 'freeItems[].productId'),
+        variantSku: fi.variantSku,
         quantity: fi.quantity,
       })),
     } as Partial<Coupon>);
@@ -162,7 +163,7 @@ export class CouponsService {
     }
     discountAmount = Math.min(discountAmount, dto.orderAmount);
     const freeItems = coupon.freeItems?.length
-      ? coupon.freeItems.map((fi) => ({ productId: fi.product.toString(), quantity: fi.quantity }))
+      ? coupon.freeItems.map((fi) => ({ productId: fi.product.toString(), variantSku: fi.variantSku, quantity: fi.quantity }))
       : undefined;
     return {
       valid: true,
@@ -211,6 +212,7 @@ export class CouponsService {
     if (dto.freeItems !== undefined) {
       updateData.freeItems = dto.freeItems.map((fi) => ({
         product: parseObjectId(fi.productId, 'freeItems[].productId'),
+        variantSku: fi.variantSku,
         quantity: fi.quantity,
       }));
     }

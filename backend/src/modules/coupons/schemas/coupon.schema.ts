@@ -10,6 +10,9 @@ export class CouponFreeItem {
   @Prop({ type: Types.ObjectId, ref: 'Product', required: true })
   product: Types.ObjectId;
 
+  @Prop()
+  variantSku?: string;
+
   @Prop({ required: true, min: 1 })
   quantity: number;
 }
