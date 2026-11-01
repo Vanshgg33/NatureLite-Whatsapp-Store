@@ -120,9 +120,9 @@ export default function ImmersiveHeroSection() {
     );
   }
 
-  /* ── Photo banner: height follows the poster's natural ratio, shown whole. ── */
+  /* ── Photo banner: natural ratio on mobile, capped at 70vh on desktop. ── */
   return (
-    <div className="relative w-full overflow-hidden" style={{ background: '#1a1a1a' }}>
+    <div className="relative w-full overflow-hidden md:max-h-[70vh]" style={{ background: '#1a1a1a' }}>
       {/* spacer sets height = current poster's natural ratio */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
