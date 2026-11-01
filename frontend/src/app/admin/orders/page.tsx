@@ -66,7 +66,7 @@ type ProductRow = {
 function flattenProductRows(products: Product[]): ProductRow[] {
   const rows: ProductRow[] = [];
   for (const p of products) {
-    const allVariants = p.variants ?? [];
+    const allVariants = (p.variants ?? []).filter((v) => v.isActive !== false);
     if (allVariants.length > 0) {
       for (const v of allVariants) {
         rows.push({
@@ -1062,23 +1062,27 @@ export default function OrdersPage() {
                       <p className="text-xs text-muted-foreground">₹{item.price.toLocaleString()} each</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <Input
-                        type="number"
-                        min={1}
-                        value={item.quantity}
-                        onChange={(e) => {
-                          const val = Math.max(1, parseInt(e.target.value, 10) || 1);
-                          setCart(cart.map((ci, i) => i === idx ? { ...ci, quantity: val } : ci));
-                        }}
-                        className="w-16 h-8 text-center"
-                      />
+                      <div className="flex items-center border rounded-md overflow-hidden h-8">
+                        <button
+                          type="button"
+                          className="px-2 text-muted-foreground hover:bg-muted disabled:opacity-40"
+                          disabled={item.quantity <= 1}
+                          onClick={() => setCart((prev) => prev.map((ci, i) => i === idx ? { ...ci, quantity: ci.quantity - 1 } : ci))}
+                        >-</button>
+                        <span className="px-2 text-sm font-medium min-w-[2rem] text-center">{item.quantity}</span>
+                        <button
+                          type="button"
+                          className="px-2 text-muted-foreground hover:bg-muted"
+                          onClick={() => setCart((prev) => prev.map((ci, i) => i === idx ? { ...ci, quantity: ci.quantity + 1 } : ci))}
+                        >+</button>
+                      </div>
                       <span className="text-sm font-medium w-20 text-right">
                         ₹{(item.price * item.quantity).toLocaleString()}
                       </span>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setCart(cart.filter((_, i) => i !== idx))}
+                        onClick={() => setCart((prev) => prev.filter((_, i) => i !== idx))}
                       >
                         <Trash2 className="h-4 w-4 text-red-500" />
                       </Button>
@@ -1383,18 +1387,22 @@ export default function OrdersPage() {
                         <p className="text-xs text-muted-foreground">₹{item.price.toLocaleString()} each</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <Input
-                          type="number"
-                          min={1}
-                          value={item.quantity}
-                          onChange={(e) => {
-                            const val = Math.max(1, parseInt(e.target.value, 10) || 1);
-                            setEditCart(editCart.map((ci, i) => i === idx ? { ...ci, quantity: val } : ci));
-                          }}
-                          className="w-16 h-8 text-center"
-                        />
+                        <div className="flex items-center border rounded-md overflow-hidden h-8">
+                          <button
+                            type="button"
+                            className="px-2 text-muted-foreground hover:bg-muted disabled:opacity-40"
+                            disabled={item.quantity <= 1}
+                            onClick={() => setEditCart((prev) => prev.map((ci, i) => i === idx ? { ...ci, quantity: ci.quantity - 1 } : ci))}
+                          >-</button>
+                          <span className="px-2 text-sm font-medium min-w-[2rem] text-center">{item.quantity}</span>
+                          <button
+                            type="button"
+                            className="px-2 text-muted-foreground hover:bg-muted"
+                            onClick={() => setEditCart((prev) => prev.map((ci, i) => i === idx ? { ...ci, quantity: ci.quantity + 1 } : ci))}
+                          >+</button>
+                        </div>
                         <span className="text-sm font-medium w-20 text-right">₹{(item.price * item.quantity).toLocaleString()}</span>
-                        <Button variant="ghost" size="sm" onClick={() => setEditCart(editCart.filter((_, i) => i !== idx))}>
+                        <Button variant="ghost" size="sm" onClick={() => setEditCart((prev) => prev.filter((_, i) => i !== idx))}>
                           <Trash2 className="h-4 w-4 text-red-500" />
                         </Button>
                       </div>
