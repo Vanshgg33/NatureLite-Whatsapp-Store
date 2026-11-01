@@ -314,7 +314,7 @@ export class CrmService {
   async cancelCampaign(id: string) {
     const campaign = await this.campaignModel.findById(id);
     if (!campaign) throw new NotFoundException('Campaign not found');
-    if (!['draft', 'approved'].includes(campaign.status)) throw new BadRequestException('Only draft or approved campaigns can be cancelled');
+    if (!['draft', 'approved', 'sent'].includes(campaign.status)) throw new BadRequestException('Campaign cannot be cancelled');
     campaign.status = 'cancelled';
     return campaign.save();
   }
@@ -325,7 +325,13 @@ export class CrmService {
     const users = await this.userModel.find({ _id: { $in: userIds }, isBlocked: { $ne: true } }).select('phone').lean();
 
     let sent = 0;
-    for (const user of users) {
+    for (let i = 0; i < users.length; i++) {
+      // Check for cancellation every 10 messages
+      if (i % 10 === 0) {
+        const current = await this.campaignModel.findById(id).select('status').lean();
+        if (current?.status === 'cancelled') break;
+      }
+      const user = users[i];
       if (!user.phone) continue;
       try {
         await this.whatsapp.sendTextMessage({ phone: user.phone, message: waMessage });

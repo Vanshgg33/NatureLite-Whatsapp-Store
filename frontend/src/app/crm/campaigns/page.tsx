@@ -433,7 +433,7 @@ export default function CampaignsPage() {
                       <CheckCircle className="h-3.5 w-3.5" /> Sent
                     </div>
                   )}
-                  {(c.status === 'draft' || c.status === 'approved') && (
+                  {(c.status === 'draft' || c.status === 'approved' || c.status === 'sent') && (
                     <button
                       onClick={() => cancel(c._id)}
                       className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold transition-opacity hover:opacity-80"
