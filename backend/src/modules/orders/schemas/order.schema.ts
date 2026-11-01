@@ -48,6 +48,9 @@ export class OrderItem {
 
   @Prop({ default: 0 })
   gstAmount: number;
+
+  @Prop({ default: false })
+  isFreeItem?: boolean;
 }
 
 export const OrderItemSchema = SchemaFactory.createForClass(OrderItem);

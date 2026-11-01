@@ -8,9 +8,20 @@ import {
   IsArray,
   IsDate,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { DiscountType } from '../schemas/coupon.schema';
+
+export class FreeItemDto {
+  @IsString()
+  @IsNotEmpty()
+  productId: string;
+
+  @IsNumber()
+  @Min(1)
+  quantity: number;
+}
 
 export class CreateCouponDto {
   @IsString()
@@ -78,6 +89,16 @@ export class CreateCouponDto {
   @IsBoolean()
   @IsOptional()
   isFirstOrderOnly?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  isAutoApply?: boolean;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FreeItemDto)
+  @IsOptional()
+  freeItems?: FreeItemDto[];
 }
 
 export class UpdateCouponDto {
@@ -146,6 +167,16 @@ export class UpdateCouponDto {
   @IsBoolean()
   @IsOptional()
   isFirstOrderOnly?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  isAutoApply?: boolean;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FreeItemDto)
+  @IsOptional()
+  freeItems?: FreeItemDto[];
 }
 
 export class ValidateCouponDto {

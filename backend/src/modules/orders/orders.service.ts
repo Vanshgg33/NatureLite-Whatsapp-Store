@@ -378,6 +378,29 @@ export class OrdersService implements OnModuleInit {
         if (validation.valid) {
           discount = validation.discountAmount;
           appliedCouponCode = dto.couponCode.toUpperCase();
+          if (validation.freeItems?.length) {
+            for (const fi of validation.freeItems) {
+              try {
+                const freeProduct = await this.productsService.findById(fi.productId);
+                tracksStockByProductId.set(fi.productId, freeProduct.trackStock !== false);
+                orderProductIds.push(fi.productId);
+                orderItems.push({
+                  product: new Types.ObjectId(fi.productId),
+                  name: freeProduct.name,
+                  quantity: fi.quantity,
+                  price: 0,
+                  total: 0,
+                  isFreeItem: true,
+                  image: freeProduct.images?.[0],
+                  hsnCode: freeProduct.hsnCode,
+                  gstRate: 0,
+                  gstAmount: 0,
+                });
+              } catch {
+                this.logger.warn(`Free item product ${fi.productId} not found — skipping`);
+              }
+            }
+          }
         } else {
           // Bug fix: previously this silently dropped the discount and let the
           // order go through at full price. Customers expecting a discount got

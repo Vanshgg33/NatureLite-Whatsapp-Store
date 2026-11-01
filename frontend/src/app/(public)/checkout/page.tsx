@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
@@ -8,7 +8,7 @@ import { motion } from 'framer-motion';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ArrowLeft, CreditCard, Banknote, Smartphone, ShieldCheck, Check, ShoppingBag, MapPin, Tag, X, ChevronDown, ChevronUp, Ticket } from 'lucide-react';
+import { ArrowLeft, CreditCard, Banknote, Smartphone, ShieldCheck, Check, ShoppingBag, MapPin, Tag, X, ChevronDown, ChevronUp, Ticket, Gift } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CartItem } from '@/components/ecommerce/cart-item';
@@ -83,6 +83,8 @@ export default function CheckoutPage() {
   const storeActiveCoupons = useCouponStore((s) => s.activeCoupons);
   const [fetchedCoupons, setFetchedCoupons] = useState<Coupon[]>([]);
   const activeCoupons = storeActiveCoupons.length > 0 ? storeActiveCoupons : fetchedCoupons;
+  const appliedCouponDetail = couponCode ? activeCoupons.find((c) => c.code === couponCode) : null;
+  const appliedFreeItems = appliedCouponDetail?.freeItems ?? [];
   const idempotencyKeyRef = useRef<string>('');
   useEffect(() => {
     setMounted(true);
@@ -109,6 +111,18 @@ export default function CheckoutPage() {
   useEffect(() => {
     syncCart();
   }, [syncCart]);
+
+  // Auto-apply the first eligible isAutoApply coupon if no coupon is active yet
+  const autoAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!mounted || couponCode || activeCoupons.length === 0 || items.length === 0 || autoAppliedRef.current) return;
+    const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
+    const best = activeCoupons.find((c) => c.isAutoApply && subtotal >= (c.minOrderAmount || 0));
+    if (best) {
+      autoAppliedRef.current = true;
+      handleApplyCoupon(best.code);
+    }
+  }, [mounted, couponCode, activeCoupons, items, handleApplyCoupon]);
 
   const { data: publicSettings } = useQuery({
     queryKey: ['public-settings'],
@@ -192,7 +206,7 @@ export default function CheckoutPage() {
     if (!currentState) setValue('state', match.state);
   };
 
-  const handleApplyCoupon = async (code?: string) => {
+  const handleApplyCoupon = useCallback(async (code?: string) => {
     const input = (code ?? couponInput).trim();
     if (!input) return;
     setIsValidatingCoupon(true);
@@ -201,18 +215,25 @@ export default function CheckoutPage() {
       const productIds = items.map((item) => item.productId);
       const validation = await api.validateCoupon(input, getSubtotal(), undefined, productIds);
       const savedAmount = validation.discountAmount || 0;
+      const hasFreeItems = (validation.freeItems?.length ?? 0) > 0;
       if (validation.valid) {
-        if (savedAmount <= 0) {
+        if (savedAmount <= 0 && !hasFreeItems) {
           setCouponError('This coupon provides no discount on your current order');
         } else {
           const result = await applyCoupon(input);
+          const fmt = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+          const desc = savedAmount > 0 && hasFreeItems
+            ? `${fmt.format(savedAmount)} off + free item(s) added`
+            : savedAmount > 0
+            ? `You saved ${fmt.format(savedAmount)}`
+            : `Free item(s) added to your order`;
           if (result.success) {
             setCouponInput('');
-            toast({ title: 'Coupon applied!', description: `You saved ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(savedAmount)}` });
+            toast({ title: 'Coupon applied!', description: desc });
           } else if (result.message?.toLowerCase().includes('unauthorized') || result.message?.toLowerCase().includes('not authenticated')) {
             setLocalCoupon(input, savedAmount, 'fixed');
             setCouponInput('');
-            toast({ title: 'Coupon applied!', description: `You saved ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(savedAmount)}` });
+            toast({ title: 'Coupon applied!', description: desc });
           } else {
             setCouponError(result.message || 'Could not apply coupon. Please try again.');
           }
@@ -225,7 +246,8 @@ export default function CheckoutPage() {
     } finally {
       setIsValidatingCoupon(false);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [couponInput, items, getSubtotal, applyCoupon, setLocalCoupon, toast]);
 
   const handleRemoveCoupon = async () => {
     await removeCoupon();
@@ -796,7 +818,7 @@ export default function CheckoutPage() {
                               >
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-1.5 mb-0.5">
+                                    <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
                                       <span className="font-mono text-sm font-bold text-brand-charcoal tracking-wider">
                                         {c.code}
                                       </span>
@@ -807,6 +829,12 @@ export default function CheckoutPage() {
                                       ) : (
                                         <span className="text-[10px] bg-brand-green/20 text-brand-green font-semibold px-1.5 py-0.5 rounded-full">
                                           ₹{c.discountValue} OFF
+                                        </span>
+                                      )}
+                                      {c.freeItems && c.freeItems.length > 0 && (
+                                        <span className="text-[10px] bg-emerald-100 text-emerald-700 font-semibold px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5">
+                                          <Gift className="w-2.5 h-2.5" />
+                                          {c.freeItems.length === 1 ? 'Free item' : `${c.freeItems.length} free items`}
                                         </span>
                                       )}
                                     </div>
@@ -839,15 +867,44 @@ export default function CheckoutPage() {
                     )}
                   </div>
                 ) : (
-                  <div className="mb-4 p-2.5 bg-brand-green/10 rounded-xl flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Tag className="w-4 h-4 text-brand-green" />
-                      <span className="font-body text-sm font-medium text-brand-green">{couponCode}</span>
-                      <span className="font-body text-xs text-brand-green">(-{formatPrice(discount)})</span>
+                  <div className="mb-4 space-y-1.5">
+                    <div className="p-2.5 bg-brand-green/10 rounded-xl flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Tag className="w-4 h-4 text-brand-green" />
+                        <span className="font-body text-sm font-medium text-brand-green">{couponCode}</span>
+                        <span className="font-body text-xs text-brand-green">(-{formatPrice(discount)})</span>
+                      </div>
+                      <button type="button" onClick={handleRemoveCoupon} className="p-1 hover:bg-brand-green/10 rounded cursor-pointer">
+                        <X className="w-4 h-4 text-brand-green" />
+                      </button>
                     </div>
-                    <button type="button" onClick={handleRemoveCoupon} className="p-1 hover:bg-brand-green/10 rounded cursor-pointer">
-                      <X className="w-4 h-4 text-brand-green" />
-                    </button>
+                    {appliedFreeItems.length > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className="flex items-center gap-2.5 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl"
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                          <Gift className="w-3.5 h-3.5 text-emerald-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] font-semibold text-emerald-700 leading-tight">
+                            🎉 {appliedFreeItems.length === 1 ? '1 free item' : `${appliedFreeItems.length} free items`} added to your order!
+                          </p>
+                          <p className="text-[10px] text-emerald-600 mt-0.5">
+                            {appliedFreeItems.map((fi, i) => (
+                              <span key={i}>
+                                {i > 0 && <span className="mx-1 opacity-40">·</span>}
+                                <span className="font-medium">×{fi.quantity}</span> item
+                              </span>
+                            ))}
+                            {' '}will appear in your order
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full flex-shrink-0">FREE</span>
+                      </motion.div>
+                    )}
                   </div>
                 )}
 

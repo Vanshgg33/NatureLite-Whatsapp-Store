@@ -5,6 +5,16 @@ export type CouponDocument = Coupon & Document;
 
 export type DiscountType = 'percentage' | 'fixed';
 
+@Schema()
+export class CouponFreeItem {
+  @Prop({ type: Types.ObjectId, ref: 'Product', required: true })
+  product: Types.ObjectId;
+
+  @Prop({ required: true, min: 1 })
+  quantity: number;
+}
+export const CouponFreeItemSchema = SchemaFactory.createForClass(CouponFreeItem);
+
 @Schema({ timestamps: true })
 export class Coupon {
   _id: Types.ObjectId;
@@ -56,6 +66,12 @@ export class Coupon {
 
   @Prop({ default: false })
   isFirstOrderOnly: boolean;
+
+  @Prop({ type: [CouponFreeItemSchema], default: [] })
+  freeItems: CouponFreeItem[];
+
+  @Prop({ default: false })
+  isAutoApply: boolean;
 
   @Prop({ type: Object, default: {} })
   metadata: Record<string, unknown>;

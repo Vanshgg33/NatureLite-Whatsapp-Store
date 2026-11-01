@@ -18,6 +18,7 @@ export interface CouponValidationResult {
   discountAmount: number;
   coupon?: Coupon;
   minOrderAmount?: number;
+  freeItems?: Array<{ productId: string; quantity: number }>;
 }
 
 @Injectable()
@@ -41,6 +42,10 @@ export class CouponsService {
       allowedUsers: parseObjectIdArray(dto.allowedUsers, 'allowedUsers'),
       allowedCategories: parseObjectIdArray(dto.allowedCategories, 'allowedCategories'),
       allowedProducts: parseObjectIdArray(dto.allowedProducts, 'allowedProducts'),
+      freeItems: (dto.freeItems || []).map((fi) => ({
+        product: parseObjectId(fi.productId, 'freeItems[].productId'),
+        quantity: fi.quantity,
+      })),
     } as Partial<Coupon>);
     this.clearChatbotCache();
     return saved;
@@ -156,11 +161,15 @@ export class CouponsService {
       discountAmount = Math.max(0, coupon.discountValue);
     }
     discountAmount = Math.min(discountAmount, dto.orderAmount);
+    const freeItems = coupon.freeItems?.length
+      ? coupon.freeItems.map((fi) => ({ productId: fi.product.toString(), quantity: fi.quantity }))
+      : undefined;
     return {
       valid: true,
       message: 'Coupon applied successfully',
       discountAmount,
       coupon,
+      freeItems,
     };
   }
 
@@ -198,6 +207,12 @@ export class CouponsService {
     }
     if (dto.allowedProducts) {
       updateData.allowedProducts = parseObjectIdArray(dto.allowedProducts, 'allowedProducts');
+    }
+    if (dto.freeItems !== undefined) {
+      updateData.freeItems = dto.freeItems.map((fi) => ({
+        product: parseObjectId(fi.productId, 'freeItems[].productId'),
+        quantity: fi.quantity,
+      }));
     }
     const coupon = await this.couponRepository.findByIdAndUpdate(idObj, { $set: updateData });
     if (!coupon) {

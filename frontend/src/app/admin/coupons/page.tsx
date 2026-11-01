@@ -62,16 +62,20 @@ export default function CouponsPage() {
     validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     isActive: true,
     isFirstOrderOnly: false,
+    isAutoApply: false,
     allowedUsers: [] as string[],
     allowedProducts: [] as string[],
     allowedCategories: [] as string[],
+    freeItems: [] as { productId: string; quantity: number }[],
   });
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [productSearch, setProductSearch] = useState('');
   const [userSearch, setUserSearch] = useState('');
+  const [freeItemSearch, setFreeItemSearch] = useState('');
   // id → display label for chips (populated when user searches + selects, or shows raw id on edit)
   const [productLabels, setProductLabels] = useState<Record<string, string>>({});
   const [userLabels, setUserLabels] = useState<Record<string, string>>({});
+  const [freeItemLabels, setFreeItemLabels] = useState<Record<string, string>>({});
 
   const { data, isLoading } = useQuery({
     queryKey: ['coupons', page],
@@ -96,6 +100,12 @@ export default function CouponsPage() {
     enabled: userSearch.length >= 2,
   });
 
+  const { data: freeItemResults } = useQuery({
+    queryKey: ['coupon-free-item-search', freeItemSearch],
+    queryFn: () => api.getProducts({ search: freeItemSearch, limit: 8, isActive: true }),
+    enabled: freeItemSearch.length >= 2,
+  });
+
   const createMutation = useMutation({
     mutationFn: (data: CreateCouponDto) => api.createCoupon(data),
     onSuccess: () => {
@@ -111,7 +121,7 @@ export default function CouponsPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Coupon> }) =>
+    mutationFn: ({ id, data }: { id: string; data: Partial<CreateCouponDto> }) =>
       api.updateCoupon(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['coupons'] });
@@ -179,14 +189,18 @@ export default function CouponsPage() {
       validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       isActive: true,
       isFirstOrderOnly: false,
+      isAutoApply: false,
       allowedUsers: [],
       allowedProducts: [],
       allowedCategories: [],
+      freeItems: [],
     });
     setProductLabels({});
     setUserLabels({});
+    setFreeItemLabels({});
     setProductSearch('');
     setUserSearch('');
+    setFreeItemSearch('');
     setShowAdvanced(false);
     setIsDialogOpen(true);
   };
@@ -195,6 +209,7 @@ export default function CouponsPage() {
     setEditingCoupon(coupon);
     const existingProducts = coupon.allowedProducts || [];
     const existingUsers = coupon.allowedUsers || [];
+    const existingFreeItems = (coupon.freeItems || []).map((fi) => ({ productId: fi.product, quantity: fi.quantity }));
     setFormData({
       code: coupon.code,
       description: coupon.description,
@@ -207,16 +222,20 @@ export default function CouponsPage() {
       validUntil: coupon.validUntil ? new Date(coupon.validUntil).toISOString().split('T')[0] : '',
       isActive: coupon.isActive,
       isFirstOrderOnly: coupon.isFirstOrderOnly || false,
+      isAutoApply: coupon.isAutoApply || false,
       allowedUsers: existingUsers,
       allowedProducts: existingProducts,
       allowedCategories: coupon.allowedCategories || [],
+      freeItems: existingFreeItems,
     });
     // Seed label maps with raw IDs — admin can see what's set (names would require extra fetches)
     setProductLabels(Object.fromEntries(existingProducts.map((id) => [id, id])));
     setUserLabels(Object.fromEntries(existingUsers.map((id) => [id, id])));
+    setFreeItemLabels(Object.fromEntries(existingFreeItems.map((fi) => [fi.productId, fi.productId])));
     setProductSearch('');
     setUserSearch('');
-    const hasAdvanced = coupon.isFirstOrderOnly || existingProducts.length > 0 || existingUsers.length > 0 || (coupon.allowedCategories?.length ?? 0) > 0;
+    setFreeItemSearch('');
+    const hasAdvanced = coupon.isFirstOrderOnly || existingProducts.length > 0 || existingUsers.length > 0 || (coupon.allowedCategories?.length ?? 0) > 0 || existingFreeItems.length > 0;
     setShowAdvanced(!!hasAdvanced);
     setIsDialogOpen(true);
   };
@@ -227,8 +246,10 @@ export default function CouponsPage() {
     setSubmitError(null);
     setProductSearch('');
     setUserSearch('');
+    setFreeItemSearch('');
     setProductLabels({});
     setUserLabels({});
+    setFreeItemLabels({});
     setShowAdvanced(false);
   };
 
@@ -247,9 +268,11 @@ export default function CouponsPage() {
       validUntil: (() => { const d = new Date(formData.validUntil); d.setUTCHours(23, 59, 59, 999); return d.toISOString(); })(),
       isActive: formData.isActive,
       isFirstOrderOnly: formData.isFirstOrderOnly || undefined,
+      isAutoApply: formData.isAutoApply || undefined,
       allowedUsers: formData.allowedUsers.length > 0 ? formData.allowedUsers : undefined,
       allowedProducts: formData.allowedProducts.length > 0 ? formData.allowedProducts : undefined,
       allowedCategories: formData.allowedCategories.length > 0 ? formData.allowedCategories : undefined,
+      freeItems: formData.freeItems.length > 0 ? formData.freeItems : undefined,
     };
 
     if (editingCoupon) {
@@ -345,7 +368,7 @@ export default function CouponsPage() {
                       </TableCell>
                       <TableCell>{coupon.validUntil ? formatShortDate(coupon.validUntil) : '—'}</TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <Switch
                             checked={coupon.isActive}
                             disabled={toggleStatusMutation.isPending}
@@ -366,6 +389,11 @@ export default function CouponsPage() {
                           >
                             {active ? 'Active' : coupon.isActive ? 'Expired' : 'Off'}
                           </Badge>
+                          {coupon.isAutoApply && (
+                            <Badge className="bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5">
+                              Auto
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
@@ -598,15 +626,30 @@ export default function CouponsPage() {
                   />
                 </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="isActive"
-                  checked={formData.isActive}
-                  onCheckedChange={(checked) =>
-                    setFormData((prev) => ({ ...prev, isActive: checked }))
-                  }
-                />
-                <Label htmlFor="isActive">Active</Label>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="isActive"
+                    checked={formData.isActive}
+                    onCheckedChange={(checked) =>
+                      setFormData((prev) => ({ ...prev, isActive: checked }))
+                    }
+                  />
+                  <Label htmlFor="isActive">Active</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="isAutoApply"
+                    checked={formData.isAutoApply}
+                    onCheckedChange={(checked) =>
+                      setFormData((prev) => ({ ...prev, isAutoApply: checked }))
+                    }
+                  />
+                  <div>
+                    <Label htmlFor="isAutoApply" className="text-sm font-medium">Auto Apply</Label>
+                    <p className="text-[10px] text-muted-foreground leading-tight">Applied automatically at checkout</p>
+                  </div>
+                </div>
               </div>
 
               {/* Advanced Restrictions */}
@@ -760,6 +803,72 @@ export default function CouponsPage() {
                             >
                               <span className="font-medium">{u.name || '—'}</span>
                               <span className="text-muted-foreground ml-2 text-xs">{u.phone}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Free items */}
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Free Items with Order</Label>
+                      <p className="text-xs text-muted-foreground mb-2">Products added free when this coupon is applied (requires min order amount to be met)</p>
+                      {formData.freeItems.length > 0 && (
+                        <div className="space-y-1.5 mb-2">
+                          {formData.freeItems.map((fi) => (
+                            <div key={fi.productId} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-green-50 border border-green-200">
+                              <span className="text-xs flex-1 truncate text-green-800 font-medium">{freeItemLabels[fi.productId] || fi.productId}</span>
+                              <input
+                                type="number"
+                                className="w-14 h-6 text-xs border border-green-300 rounded px-1.5 bg-white text-center"
+                                min={1}
+                                value={fi.quantity}
+                                onChange={(e) => {
+                                  const qty = Math.max(1, parseInt(e.target.value) || 1);
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    freeItems: prev.freeItems.map((f) =>
+                                      f.productId === fi.productId ? { ...f, quantity: qty } : f
+                                    ),
+                                  }));
+                                }}
+                              />
+                              <span className="text-xs text-green-600">qty</span>
+                              <button type="button" onClick={() => {
+                                setFormData((prev) => ({ ...prev, freeItems: prev.freeItems.filter((f) => f.productId !== fi.productId) }));
+                                setFreeItemLabels((prev) => { const n = { ...prev }; delete n[fi.productId]; return n; });
+                              }}>
+                                <XIcon className="h-3.5 w-3.5 text-green-700" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                        <Input
+                          placeholder="Search products to add free..."
+                          value={freeItemSearch}
+                          onChange={(e) => setFreeItemSearch(e.target.value)}
+                          className="pl-8 h-8 text-sm"
+                        />
+                      </div>
+                      {freeItemSearch.length >= 2 && freeItemResults?.items && (
+                        <div className="border rounded-md mt-1 max-h-36 overflow-y-auto divide-y">
+                          {freeItemResults.items.length === 0 ? (
+                            <p className="text-xs text-muted-foreground px-3 py-2">No products found</p>
+                          ) : freeItemResults.items.filter((p: Product) => !formData.freeItems.some((fi) => fi.productId === p._id)).map((p: Product) => (
+                            <button
+                              key={p._id}
+                              type="button"
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
+                              onClick={() => {
+                                setFormData((prev) => ({ ...prev, freeItems: [...prev.freeItems, { productId: p._id, quantity: 1 }] }));
+                                setFreeItemLabels((prev) => ({ ...prev, [p._id]: p.name }));
+                                setFreeItemSearch('');
+                              }}
+                            >
+                              {p.name}
                             </button>
                           ))}
                         </div>

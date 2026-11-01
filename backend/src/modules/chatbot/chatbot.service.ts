@@ -1804,7 +1804,7 @@ export class ChatbotService implements OnModuleInit {
           orderAmount: cart.subtotal,
           userId,
         });
-        if (validation.valid && validation.discountAmount > 0) {
+        if (validation.valid && (validation.discountAmount > 0 || validation.freeItems?.length)) {
           results.push({
             code: coupon.code,
             discount: validation.discountAmount,
@@ -2436,6 +2436,7 @@ export class ChatbotService implements OnModuleInit {
         const finalCart = await this.cartService.getCart(session.user.toString());
         order = await this.ordersService.create(session.user.toString(), {
           cartId: finalCart.id,
+          couponCode: finalCart.couponCode || undefined,
           shippingAddress: {
             name: user.name || 'Customer',
             phone,
@@ -2709,6 +2710,7 @@ export class ChatbotService implements OnModuleInit {
 
       order = await this.ordersService.create(session.user.toString(), {
         cartId: finalCart.id,
+        couponCode: finalCart.couponCode || undefined,
         shippingAddress: {
           name: user.name || 'Customer',
           phone,
