@@ -746,7 +746,8 @@ export class NotificationsService {
         ? `broadcast_media_${campaign._id}`
         : `broadcast_tpl_${campaign._id}`;
       const job = await this.broadcastQueue.getJob(jobId);
-      if (job) await job.remove();
+      // job.remove() can throw if job became active in the race window — always set DB regardless
+      if (job) await job.remove().catch(() => {});
     }
 
     await this.campaignModel.updateOne(
@@ -790,6 +791,7 @@ export class NotificationsService {
     let skipped = 0;
     let firstError: string | undefined;
     let bailed = false;
+    let wasCancelled = false;
 
     try {
       for (let i = 0; i < campaign.phones.length; i++) {
@@ -841,12 +843,12 @@ export class NotificationsService {
 
         if ((i + 1) % 10 === 0) {
           const current = await this.campaignModel.findById(campaign._id).select('status').lean().exec();
-          if (current?.status === 'cancelled') { bailed = true; break; }
+          if (current?.status === 'cancelled') { wasCancelled = true; bailed = true; break; }
           await this.campaignModel.updateOne({ _id: campaign._id }, { $set: { sent, skipped } }).exec();
         }
         if (i < campaign.phones.length - 1 && !bailed) await this.sleep(150);
       }
-      if (bailed && (await this.campaignModel.findById(campaign._id).select('status').lean().exec())?.status === 'cancelled') return;
+      if (wasCancelled) return;
       const finalUpdate: Record<string, unknown> = { status: 'done', sent, skipped, completedAt: new Date() };
       if (firstError && sent === 0) finalUpdate.errorSummary = firstError;
       await this.campaignModel.updateOne({ _id: campaign._id }, { $set: finalUpdate }).exec();
