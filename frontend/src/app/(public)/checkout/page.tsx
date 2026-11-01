@@ -112,18 +112,6 @@ export default function CheckoutPage() {
     syncCart();
   }, [syncCart]);
 
-  // Auto-apply the first eligible isAutoApply coupon if no coupon is active yet
-  const autoAppliedRef = useRef(false);
-  useEffect(() => {
-    if (!mounted || couponCode || activeCoupons.length === 0 || items.length === 0 || autoAppliedRef.current) return;
-    const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
-    const best = activeCoupons.find((c) => c.isAutoApply && subtotal >= (c.minOrderAmount || 0));
-    if (best) {
-      autoAppliedRef.current = true;
-      handleApplyCoupon(best.code);
-    }
-  }, [mounted, couponCode, activeCoupons, items, handleApplyCoupon]);
-
   const { data: publicSettings } = useQuery({
     queryKey: ['public-settings'],
     queryFn: () => api.getPublicSettings(),
@@ -248,6 +236,18 @@ export default function CheckoutPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [couponInput, items, getSubtotal, applyCoupon, setLocalCoupon, toast]);
+
+  // Auto-apply the first eligible isAutoApply coupon if no coupon is active yet
+  const autoAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!mounted || couponCode || activeCoupons.length === 0 || items.length === 0 || autoAppliedRef.current) return;
+    const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
+    const best = activeCoupons.find((c) => c.isAutoApply && subtotal >= (c.minOrderAmount || 0));
+    if (best) {
+      autoAppliedRef.current = true;
+      handleApplyCoupon(best.code);
+    }
+  }, [mounted, couponCode, activeCoupons, items, handleApplyCoupon]);
 
   const handleRemoveCoupon = async () => {
     await removeCoupon();
