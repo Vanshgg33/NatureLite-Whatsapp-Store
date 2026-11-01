@@ -860,7 +860,7 @@ export default function CouponsPage() {
                         <div className="border rounded-md mt-1 max-h-48 overflow-y-auto divide-y">
                           {freeItemResults.items.length === 0 ? (
                             <p className="text-xs text-muted-foreground px-3 py-2">No products found</p>
-                          ) : freeItemResults.items.flatMap((p: Product) => {
+                          ) : (freeItemResults.items.flatMap((p: Product): Array<{ productId: string; variantSku?: string; label: string }> => {
                             const activeVariants = p.variants?.filter((v) => v.isActive);
                             if (activeVariants && activeVariants.length > 0) {
                               return activeVariants
@@ -869,7 +869,7 @@ export default function CouponsPage() {
                             }
                             if (formData.freeItems.some((fi) => fi.productId === p._id && !fi.variantSku)) return [];
                             return [{ productId: p._id, variantSku: undefined, label: p.name }];
-                          }).map((row: { productId: string; variantSku?: string; label: string }) => (
+                          })).map((row) => (
                             <button
                               key={`${row.productId}:${row.variantSku || ''}`}
                               type="button"
