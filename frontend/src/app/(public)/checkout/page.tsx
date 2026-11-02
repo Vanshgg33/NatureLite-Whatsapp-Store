@@ -504,46 +504,54 @@ export default function CheckoutPage() {
         </Link>
 
         {/* Checkout Progress Bar */}
-        <div className="flex items-center justify-center gap-0 mb-10">
+        <div className="flex items-center justify-center mb-10">
           {[
-            { label: 'Cart', icon: ShoppingBag, completed: true, active: false },
-            { label: 'Shipping', icon: MapPin, completed: false, active: true },
-            { label: 'Payment', icon: CreditCard, completed: false, active: false },
+            { label: 'Cart', completed: true, active: false },
+            { label: 'Shipping', completed: false, active: true },
+            { label: 'Payment', completed: false, active: false },
           ].map((step, index) => (
             <div key={step.label} className="flex items-center">
               {index > 0 && (
-                <div className={cn(
-                  "h-0.5 w-12 sm:w-20",
-                  step.completed || step.active ? 'bg-brand-green' : 'bg-brand-border'
-                )} />
-              )}
-              <div className="flex flex-col items-center gap-1.5">
-                <motion.div
-                  className={cn(
-                    "w-10 h-10 rounded-full flex items-center justify-center border-2",
-                    step.completed
-                      ? 'bg-brand-green border-brand-green text-white'
+                <div
+                  className="h-px w-14 sm:w-24 mx-1"
+                  style={{
+                    background: step.completed
+                      ? 'linear-gradient(90deg,#1a5210,rgba(26,82,16,0.3))'
                       : step.active
-                      ? 'bg-brand-mustard border-brand-mustard text-white'
-                      : 'bg-white border-brand-border text-brand-muted'
-                  )}
-                  initial={{ scale: 0.8 }}
-                  animate={{ scale: 1 }}
-                  transition={{ delay: index * 0.1 }}
+                      ? 'linear-gradient(90deg,#a07010,rgba(160,112,16,0.25))'
+                      : 'rgba(46,66,37,0.12)',
+                  }}
+                />
+              )}
+              <motion.div
+                className="flex flex-col items-center gap-1.5"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.08 }}
+              >
+                <div
+                  className="w-9 h-9 rounded-full flex items-center justify-center font-display font-bold text-sm transition-all duration-300"
+                  style={
+                    step.completed
+                      ? { background: '#1a5210', color: '#fff', boxShadow: '0 2px 8px rgba(26,82,16,0.25)' }
+                      : step.active
+                      ? { background: '#a07010', color: '#fff', boxShadow: '0 2px 12px rgba(160,112,16,0.30)' }
+                      : { background: 'transparent', color: 'rgba(46,66,37,0.30)', border: '1.5px solid rgba(46,66,37,0.16)' }
+                  }
                 >
-                  {step.completed ? (
-                    <Check className="w-5 h-5" />
-                  ) : (
-                    <step.icon className="w-5 h-5" />
-                  )}
-                </motion.div>
-                <span className={cn(
-                  "text-xs font-medium",
-                  step.completed ? 'text-brand-green' : step.active ? 'text-brand-mustard' : 'text-brand-muted'
-                )}>
+                  {step.completed ? <Check className="w-4 h-4" /> : String(index + 1).padStart(2, '0')}
+                </div>
+                <span
+                  className="font-body uppercase tracking-[0.08em]"
+                  style={{
+                    fontSize: 10,
+                    color: step.active ? '#a07010' : step.completed ? '#1a5210' : 'rgba(46,66,37,0.32)',
+                    fontWeight: step.active ? 600 : 500,
+                  }}
+                >
                   {step.label}
                 </span>
-              </div>
+              </motion.div>
             </div>
           ))}
         </div>
@@ -562,9 +570,17 @@ export default function CheckoutPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
               >
-                <h2 className="font-display text-xl font-semibold text-brand-charcoal mb-6">
-                  Shipping Address
-                </h2>
+                <div className="flex items-center gap-3 mb-6">
+                  <span
+                    className="w-7 h-7 rounded-full flex items-center justify-center font-body font-bold text-xs flex-shrink-0"
+                    style={{ background: 'rgba(160,112,16,0.10)', color: '#7a5300' }}
+                  >
+                    01
+                  </span>
+                  <h2 className="font-display text-xl font-semibold" style={{ color: '#0b1c08' }}>
+                    Shipping Address
+                  </h2>
+                </div>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div>
                     <label className="font-body text-sm text-brand-text mb-1.5 block">
@@ -701,49 +717,71 @@ export default function CheckoutPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
               >
-                <h2 className="font-display text-xl font-semibold text-brand-charcoal mb-6">
-                  Payment Method
-                </h2>
+                <div className="flex items-center gap-3 mb-6">
+                  <span
+                    className="w-7 h-7 rounded-full flex items-center justify-center font-body font-bold text-xs flex-shrink-0"
+                    style={{ background: 'rgba(160,112,16,0.10)', color: '#7a5300' }}
+                  >
+                    02
+                  </span>
+                  <h2 className="font-display text-xl font-semibold" style={{ color: '#0b1c08' }}>
+                    Payment Method
+                  </h2>
+                </div>
                 <div className="space-y-3">
-                  {paymentMethods.map((method) => (
-                    <button
-                      key={method.id}
-                      type="button"
-                      onClick={() => setSelectedPayment(method.id)}
-                      className={cn(
-                        'w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-colors text-left',
-                        selectedPayment === method.id
-                          ? 'border-brand-mustard bg-brand-mustard/5'
-                          : 'border-brand-border hover:border-brand-charcoal'
-                      )}
-                    >
-                      <div className="w-12 h-12 rounded-lg bg-brand-sand flex items-center justify-center">
-                        <method.icon className="w-6 h-6 text-brand-brown" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-display font-semibold text-brand-charcoal">
-                          {method.name}
-                        </p>
-                        <p className="font-body text-sm text-brand-muted">
-                          {method.description}
-                        </p>
-                      </div>
-                      <div
-                        className={cn(
-                          'w-5 h-5 rounded-full border-2',
-                          selectedPayment === method.id
-                            ? 'border-brand-mustard bg-brand-mustard'
-                            : 'border-brand-border'
-                        )}
+                  {paymentMethods.map((method) => {
+                    const selected = selectedPayment === method.id;
+                    return (
+                      <button
+                        key={method.id}
+                        type="button"
+                        onClick={() => setSelectedPayment(method.id)}
+                        className="w-full flex items-center gap-4 p-4 rounded-xl text-left transition-all duration-200"
+                        style={
+                          selected
+                            ? {
+                                border: '2px solid #a07010',
+                                background: 'rgba(160,112,16,0.04)',
+                                boxShadow: '0 0 0 1px rgba(160,112,16,0.12) inset',
+                              }
+                            : {
+                                border: '2px solid rgba(46,66,37,0.12)',
+                                background: '#fff',
+                              }
+                        }
                       >
-                        {selectedPayment === method.id && (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <div className="w-2 h-2 rounded-full bg-white" />
-                          </div>
-                        )}
-                      </div>
-                    </button>
-                  ))}
+                        <div
+                          className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors duration-200"
+                          style={{
+                            background: selected ? 'rgba(160,112,16,0.12)' : 'rgba(242,236,224,0.65)',
+                          }}
+                        >
+                          <method.icon
+                            className="w-5 h-5 transition-colors duration-200"
+                            style={{ color: selected ? '#a07010' : 'rgba(46,66,37,0.50)' }}
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-display font-semibold" style={{ fontSize: 14, color: '#0b1c08' }}>
+                            {method.name}
+                          </p>
+                          <p className="font-body text-xs mt-0.5" style={{ color: 'rgba(46,66,37,0.50)' }}>
+                            {method.description}
+                          </p>
+                        </div>
+                        <div
+                          className="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-200"
+                          style={
+                            selected
+                              ? { borderColor: '#a07010', background: '#a07010' }
+                              : { borderColor: 'rgba(46,66,37,0.20)', background: 'transparent' }
+                          }
+                        >
+                          {selected && <div className="w-2 h-2 rounded-full bg-white" />}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </motion.div>
             </div>
@@ -1014,10 +1052,21 @@ export default function CheckoutPage() {
 
                 <Button
                   type="submit"
-                  className="w-full mt-6 bg-brand-mustard hover:bg-brand-mustard-dark text-white rounded-xl py-6"
+                  className="w-full mt-6 rounded-xl py-6 text-white font-semibold text-base transition-all duration-200 hover:-translate-y-0.5 disabled:translate-y-0"
+                  style={{
+                    background: 'linear-gradient(135deg, #a07010 0%, #7a5300 100%)',
+                    boxShadow: '0 6px 24px -6px rgba(160,112,16,0.45)',
+                  }}
                   disabled={isSubmitting}
                 >
-                  {isSubmitting ? 'Processing...' : 'Place Order'}
+                  {isSubmitting ? (
+                    'Processing...'
+                  ) : (
+                    <span className="flex items-center justify-center gap-2">
+                      Place Order
+                      <ArrowLeft className="w-4 h-4 rotate-180" />
+                    </span>
+                  )}
                 </Button>
 
                 <div className="mt-4 flex items-center justify-center gap-2 text-brand-muted">
