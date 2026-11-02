@@ -44,6 +44,8 @@ export function CartSummary({
   const storeActiveCoupons = useCouponStore((s) => s.activeCoupons);
   const [fetchedCoupons, setFetchedCoupons] = useState<Coupon[]>([]);
   const activeCoupons = storeActiveCoupons.length > 0 ? storeActiveCoupons : fetchedCoupons;
+  const appliedCouponDetail = couponCode ? activeCoupons.find((c) => c.code === couponCode) : null;
+  const appliedFreeItems = appliedCouponDetail?.freeItems ?? [];
 
   useEffect(() => {
     let cancelled = false;
@@ -318,23 +320,58 @@ export function CartSummary({
           )}
         </div>
       ) : (
-        <div className="mb-6 p-3 bg-brand-green/10 rounded-xl flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Tag className="w-4 h-4 text-brand-green" />
-            <span className="font-body text-sm font-medium text-brand-green">
-              {couponCode}
-            </span>
-            <span className="font-body text-xs text-brand-green">
-              (-{formatPrice(discountAmount)})
-            </span>
+        <div className="mb-6 space-y-1.5">
+          <div className="p-3 bg-brand-green/10 rounded-xl flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Tag className="w-4 h-4 text-brand-green" />
+              <span className="font-body text-sm font-medium text-brand-green">
+                {couponCode}
+              </span>
+              <span className="font-body text-xs text-brand-green">
+                (-{formatPrice(discountAmount)})
+              </span>
+            </div>
+            <button
+              onClick={handleRemoveCoupon}
+              className="p-1 hover:bg-brand-green/10 rounded cursor-pointer"
+              style={{ transition: 'background 0.1s' }}
+            >
+              <X className="w-4 h-4 text-brand-green" />
+            </button>
           </div>
-          <button
-            onClick={handleRemoveCoupon}
-            className="p-1 hover:bg-brand-green/10 rounded cursor-pointer"
-            style={{ transition: 'background 0.1s' }}
-          >
-            <X className="w-4 h-4 text-brand-green" />
-          </button>
+          {appliedFreeItems.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25 }}
+              className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2"
+            >
+              <div className="flex items-center gap-2">
+                <Gift className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                <p className="text-[11px] font-semibold text-emerald-700">
+                  🎉 {appliedFreeItems.length === 1 ? '1 free item' : `${appliedFreeItems.length} free items`} added!
+                </p>
+              </div>
+              {appliedFreeItems.map((fi, i) => {
+                const prod = typeof fi.product === 'object' ? fi.product : null;
+                const name = prod?.name ?? 'Free item';
+                const image = prod?.images?.[0];
+                return (
+                  <div key={i} className="flex items-center gap-2.5">
+                    {image ? (
+                      <img src={image} alt={name} className="w-8 h-8 object-cover rounded-md flex-shrink-0" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-md bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                        <Gift className="w-4 h-4 text-emerald-600" />
+                      </div>
+                    )}
+                    <span className="text-xs text-emerald-800 font-medium flex-1 truncate">{name}</span>
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full flex-shrink-0">×{fi.quantity} FREE</span>
+                  </div>
+                );
+              })}
+            </motion.div>
+          )}
         </div>
       )}
 
