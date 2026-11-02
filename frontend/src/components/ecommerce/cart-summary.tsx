@@ -119,15 +119,21 @@ export function CartSummary({
       const productIds = items.map((item) => item.productId);
       const validationResult = await api.validateCoupon(code, subtotal, undefined, productIds);
       const savedAmount = validationResult.discountAmount || 0;
+      const hasFreeItems = (validationResult.freeItems?.length ?? 0) > 0;
 
       if (validationResult.valid) {
-        if (savedAmount <= 0) {
+        if (savedAmount <= 0 && !hasFreeItems) {
           setCouponHint({ type: 'error', message: 'This coupon provides no discount on your current order' });
         } else {
           // Apply locally immediately for instant feedback, sync with server in background
           setLocalCoupon(code, savedAmount, 'fixed');
           setCouponInput('');
-          toast({ title: 'Coupon applied!', description: `You saved ${formatPrice(savedAmount)}` });
+          const desc = savedAmount > 0 && hasFreeItems
+            ? `${formatPrice(savedAmount)} off + free item(s) added`
+            : savedAmount > 0
+            ? `You saved ${formatPrice(savedAmount)}`
+            : `Free item(s) added to your order`;
+          toast({ title: 'Coupon applied!', description: desc });
           applyCoupon(code).then((result) => {
             // Guests get 401 — keep local coupon for guest checkout
             if (!result.success && result.message !== 'Unauthorized') {
