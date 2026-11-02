@@ -209,7 +209,7 @@ export default function CouponsPage() {
     setEditingCoupon(coupon);
     const existingProducts = coupon.allowedProducts || [];
     const existingUsers = coupon.allowedUsers || [];
-    const existingFreeItems = (coupon.freeItems || []).map((fi) => ({ productId: fi.product, variantSku: fi.variantSku, quantity: fi.quantity }));
+    const existingFreeItems = (coupon.freeItems || []).map((fi) => ({ productId: typeof fi.product === 'object' ? fi.product._id : fi.product, variantSku: fi.variantSku, quantity: fi.quantity }));
     setFormData({
       code: coupon.code,
       description: coupon.description,
