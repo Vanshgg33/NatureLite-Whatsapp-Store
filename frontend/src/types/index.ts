@@ -325,7 +325,7 @@ export interface Coupon {
   allowedUsers?: string[];
   allowedCategories?: string[];
   allowedProducts?: string[];
-  freeItems?: Array<{ product: string; variantSku?: string; quantity: number }>;
+  freeItems?: Array<{ product: string | { _id: string; name: string; images: string[] }; variantSku?: string; quantity: number }>;
   validFrom: string;
   validUntil: string;
   isActive: boolean;

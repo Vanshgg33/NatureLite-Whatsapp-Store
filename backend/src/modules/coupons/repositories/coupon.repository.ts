@@ -73,6 +73,6 @@ export class CouponRepository extends BaseRepository<CouponDocument> {
         { maxUsageCount: null },
         { $expr: { $lt: ['$usedCount', '$maxUsageCount'] } },
       ],
-    }).exec();
+    }).populate('freeItems.product', 'name images').exec();
   }
 }

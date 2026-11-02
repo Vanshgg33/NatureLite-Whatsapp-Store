@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -186,6 +186,17 @@ export function CartSummary({
       title: 'Coupon removed',
     });
   };
+
+  const autoAppliedRef = useRef(false);
+  useEffect(() => {
+    if (couponCode || activeCoupons.length === 0 || items.length === 0 || autoAppliedRef.current) return;
+    const best = activeCoupons.find((c) => c.isAutoApply && subtotal >= (c.minOrderAmount || 0));
+    if (best) {
+      autoAppliedRef.current = true;
+      handleApplyCoupon(best.code);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCoupons, couponCode]);
 
   return (
     <div className={cn('bg-white rounded-2xl p-6 shadow-brand-sm', className)}>

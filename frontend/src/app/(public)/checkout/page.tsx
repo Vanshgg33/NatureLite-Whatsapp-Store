@@ -769,6 +769,27 @@ export default function CheckoutPage() {
                       variant="compact"
                     />
                   ))}
+                  {appliedFreeItems.map((fi, i) => {
+                    const prod = typeof fi.product === 'object' ? fi.product : null;
+                    const name = prod?.name ?? 'Free item';
+                    const image = prod?.images?.[0];
+                    return (
+                      <div key={i} className="flex items-center gap-3 py-2 border-t border-dashed border-emerald-200">
+                        {image ? (
+                          <img src={image} alt={name} className="w-10 h-10 object-cover rounded-lg flex-shrink-0" />
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                            <Gift className="w-5 h-5 text-emerald-600" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-brand-charcoal truncate">{name}</p>
+                          <p className="text-xs text-brand-muted">Qty: {fi.quantity}</p>
+                        </div>
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full flex-shrink-0">FREE</span>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {/* Coupon */}
@@ -883,26 +904,12 @@ export default function CheckoutPage() {
                         initial={{ opacity: 0, y: -4 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.25 }}
-                        className="flex items-center gap-2.5 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl"
+                        className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl"
                       >
-                        <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                          <Gift className="w-3.5 h-3.5 text-emerald-600" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[11px] font-semibold text-emerald-700 leading-tight">
-                            🎉 {appliedFreeItems.length === 1 ? '1 free item' : `${appliedFreeItems.length} free items`} added to your order!
-                          </p>
-                          <p className="text-[10px] text-emerald-600 mt-0.5">
-                            {appliedFreeItems.map((fi, i) => (
-                              <span key={i}>
-                                {i > 0 && <span className="mx-1 opacity-40">·</span>}
-                                <span className="font-medium">×{fi.quantity}</span> item
-                              </span>
-                            ))}
-                            {' '}will appear in your order
-                          </p>
-                        </div>
-                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full flex-shrink-0">FREE</span>
+                        <Gift className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                        <p className="text-[11px] font-semibold text-emerald-700">
+                          🎉 {appliedFreeItems.length === 1 ? '1 free item' : `${appliedFreeItems.length} free items`} included — shown above
+                        </p>
                       </motion.div>
                     )}
                   </div>
