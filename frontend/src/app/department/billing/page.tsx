@@ -23,6 +23,7 @@ export default function BillingDashboardPage() {
 
   const [selectedRider, setSelectedRider] = useState<Record<string, string>>({});
   const [reassignRider, setReassignRider] = useState<Record<string, string>>({});
+  const [showRiderOverride, setShowRiderOverride] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
 
   const { data, isLoading } = useQuery({
@@ -91,9 +92,11 @@ export default function BillingDashboardPage() {
       if (context?.prev) queryClient.setQueryData(['department', 'billing', 'orders'], context.prev);
       toast({ title: 'Failed to send order', variant: 'destructive' });
     },
-    onSuccess: (_, { orderId }) => {
+    onSuccess: (_, { orderId, riderId }) => {
       setSelectedRider((prev) => { const n = { ...prev }; delete n[orderId]; return n; });
-      toast({ title: 'Sent for delivery', description: 'Delivery staff has been notified.' });
+      setShowRiderOverride((prev) => { const n = new Set(prev); n.delete(orderId); return n; });
+      const riderName = activeRiders.find((r) => r._id === riderId)?.name ?? 'delivery staff';
+      toast({ title: 'Order billed & dispatched', description: `Assigned to ${riderName}.` });
       queryClient.invalidateQueries({ queryKey: ['department', 'billing', 'dispatched'] });
     },
     onSettled: () => {
@@ -218,7 +221,11 @@ export default function BillingDashboardPage() {
               const riderId = selectedRider[order._id] ?? order.assignedDeliveryUserId ?? '';
               const canSend = !!riderId;
               const userId = typeof order.user === 'string' ? order.user : (order.user as any)?._id;
-              const isDefaultRider = !!riderId && riderId === order.assignedDeliveryUserId && !selectedRider[order._id];
+              const hasDefault = !!order.assignedDeliveryUserId && !selectedRider[order._id];
+              const isOverriding = showRiderOverride.has(order._id);
+              const defaultRiderName = hasDefault
+                ? (activeRiders.find((r) => r._id === order.assignedDeliveryUserId)?.name ?? 'Unknown rider')
+                : null;
 
               return (
                 <Card key={order._id} className="border-sky-50 shadow-sm">
@@ -283,42 +290,62 @@ export default function BillingDashboardPage() {
                       </div>
                     </div>
 
-                    {/* Rider selector */}
+                    {/* Delivery person */}
                     <div className="space-y-1.5">
-                      <p className="text-xs font-medium text-gray-600 flex items-center gap-1">
-                        <Truck className="h-3 w-3" /> Delivery person
-                      </p>
-                      <Select
-                        value={riderId}
-                        onValueChange={(v) => setSelectedRider((prev) => ({ ...prev, [order._id]: v }))}
-                        disabled={activeRiders.length === 0}
-                      >
-                        <SelectTrigger className="h-11 text-sm">
-                          <SelectValue placeholder={activeRiders.length === 0 ? 'No riders available' : 'Select rider…'} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {activeRiders.map((rider) => (
-                            <SelectItem key={rider._id} value={rider._id}>
-                              {rider.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {isDefaultRider ? (
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                          <Truck className="h-3 w-3" /> Delivery person
+                        </p>
+                        {hasDefault && (
+                          <button
+                            type="button"
+                            onClick={() => setShowRiderOverride((prev) => {
+                              const n = new Set(prev);
+                              if (n.has(order._id)) n.delete(order._id); else n.add(order._id);
+                              return n;
+                            })}
+                            className="text-[11px] text-sky-600 hover:underline"
+                          >
+                            {isOverriding ? 'Cancel' : 'Change'}
+                          </button>
+                        )}
+                      </div>
+
+                      {hasDefault && !isOverriding ? (
                         <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 font-medium">
-                          <Pin className="h-3.5 w-3.5 fill-current" /> Default rider
+                          <Pin className="h-3.5 w-3.5 fill-current" /> {defaultRiderName}
                         </div>
-                      ) : riderId && userId ? (
-                        <button
-                          type="button"
-                          onClick={() => setPermanent.mutate({ userId, riderId })}
-                          disabled={setPermanent.isPending}
-                          className="w-full flex items-center justify-center gap-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg px-3 py-2 disabled:opacity-50"
-                        >
-                          <Pin className="h-3.5 w-3.5" />
-                          {setPermanent.isPending ? 'Saving…' : `Make default for ${order.shippingAddress.name.split(' ')[0]}`}
-                        </button>
-                      ) : null}
+                      ) : (
+                        <>
+                          <Select
+                            value={riderId}
+                            onValueChange={(v) => setSelectedRider((prev) => ({ ...prev, [order._id]: v }))}
+                            disabled={activeRiders.length === 0}
+                          >
+                            <SelectTrigger className="h-11 text-sm">
+                              <SelectValue placeholder={activeRiders.length === 0 ? 'No riders available' : 'Select rider…'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {activeRiders.map((rider) => (
+                                <SelectItem key={rider._id} value={rider._id}>
+                                  {rider.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {riderId && userId && (
+                            <button
+                              type="button"
+                              onClick={() => setPermanent.mutate({ userId, riderId })}
+                              disabled={setPermanent.isPending}
+                              className="w-full flex items-center justify-center gap-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg px-3 py-2 disabled:opacity-50"
+                            >
+                              <Pin className="h-3.5 w-3.5" />
+                              {setPermanent.isPending ? 'Saving…' : `Make default for ${order.shippingAddress.name.split(' ')[0]}`}
+                            </button>
+                          )}
+                        </>
+                      )}
                     </div>
 
                     <div className="flex gap-2">
@@ -328,7 +355,7 @@ export default function BillingDashboardPage() {
                         onClick={() => markBilled.mutate({ orderId: order._id, riderId })}
                       >
                         <CheckCircle2 className="h-4 w-4 shrink-0" />
-                        {!riderId ? 'Select rider first' : 'Send for delivery'}
+                        {!riderId ? 'Select rider first' : 'Mark as Billed'}
                       </Button>
                       <Link href={`/department/order/${order._id}`}>
                         <Button variant="outline" className="h-12 px-3 flex items-center gap-1">
