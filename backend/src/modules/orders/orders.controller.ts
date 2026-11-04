@@ -90,8 +90,12 @@ export class OrdersController {
     if ((user.departmentType === 'packing' || user.departmentType === 'billing') && user.storeName) {
       const stores = await this.storesService.findAll();
       const store = stores.find((s) => s.name === user.storeName);
-      query.cities = store?.cities ?? [];
-      delete query.city;
+      if (store?.cities?.length) {
+        query.cities = store.cities;
+        delete query.city;
+      }
+      // If store not found or has no cities, don't apply a city filter at all —
+      // { $in: [] } would silently return zero orders.
     }
     return this.ordersService.findAll(query);
   }
