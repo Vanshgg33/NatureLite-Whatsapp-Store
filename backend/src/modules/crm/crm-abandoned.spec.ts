@@ -8,7 +8,7 @@ const q = (rows: any[]) => {
   return c;
 };
 
-function build(d: { sessions?: any[]; unpaid?: any[]; settled?: any[]; carts?: any[]; users?: any[]; stats?: any[] }) {
+function build(d: { sessions?: any[]; unpaid?: any[]; settled?: any[]; carts?: any[]; users?: any[]; stats?: any[]; convos?: any[] }) {
   const svc: any = Object.create(CrmService.prototype);
   svc.chatSessionModel = { find: () => q(d.sessions ?? []) };
   // 1st orderModel.find = unpaid, 2nd = settled (call order in getAbandoned)
@@ -17,6 +17,7 @@ function build(d: { sessions?: any[]; unpaid?: any[]; settled?: any[]; carts?: a
   svc.cartModel = { find: () => q(d.carts ?? []) };
   svc.userModel = { find: () => q(d.users ?? []) };
   svc.statsModel = { find: () => q(d.stats ?? []) };
+  svc.messageLogModel = { aggregate: async () => d.convos ?? [] };
   return svc as CrmService;
 }
 
@@ -42,6 +43,21 @@ describe('CrmService.getAbandoned', () => {
     });
     const r = await svc.getAbandoned();
     expect(r[0]).toMatchObject({ userId: u.toString(), step: 'browsing' });
+  });
+
+  it('finds a customer from chats: bot asked for the address and they never answered', async () => {
+    const u = oid();
+    const svc = build({
+      // sessions here are matched by phone; no cart exists at all
+      sessions: [{ user: u, phone: '91', currentState: 'main_menu' }],
+      convos: [
+        { _id: '91', last: { createdAt: minsAgo(60), content: { text: 'Please share your delivery address' } } },
+        { _id: '92', last: { createdAt: minsAgo(60), content: { text: 'Order confirmed, thank you!' } } },
+      ],
+    });
+    const r = await svc.getAbandoned();
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ userId: u.toString(), step: 'address_input', total: 0 });
   });
 
   it('skips someone who was active in the last 30 minutes', async () => {

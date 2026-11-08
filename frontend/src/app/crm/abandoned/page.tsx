@@ -79,7 +79,7 @@ function ChatPanel({ item, onClose }: { item: any; onClose: () => void }) {
 export default function AbandonedPage() {
   const [logCallItem, setLogCallItem] = useState<any | null>(null);
   const [chatItem, setChatItem] = useState<any | null>(null);
-  const { data = [], isLoading } = useQuery({
+  const { data = [], isLoading, error } = useQuery({
     queryKey: ['crm-queue', 'abandoned'],
     queryFn: () => api.getCrmAbandoned(),
     refetchInterval: 60_000,
@@ -95,7 +95,11 @@ export default function AbandonedPage() {
       </div>
 
       <div className="p-7 space-y-2.5">
-        {isLoading ? null : !data.length ? (
+        {isLoading ? null : error ? (
+          <p className="text-[13px] text-center py-16" style={{ color: 'var(--crm-danger)' }}>
+            Could not load abandoned carts ({(error as any)?.response?.status ?? 'network error'}). Restart the backend if this is a 404.
+          </p>
+        ) : !data.length ? (
           <EmptyState icon={ShoppingCart} title="All clear" body="No abandoned carts right now" />
         ) : (
           data.map((item: any) => (
@@ -114,8 +118,11 @@ export default function AbandonedPage() {
                   <span className="text-[11px]" style={{ color: 'var(--crm-muted)' }}>{ago(item.leftAt)}</span>
                 </div>
                 <div className="mt-0.5 text-[11px] truncate" style={{ color: 'var(--crm-muted)' }}>
-                  <span className="font-mono">{item.user?.phone}</span> · <span className="font-semibold">{formatINR(item.total)}</span> ·{' '}
-                  {item.items.map((i: any) => `${i.name} ×${i.quantity}`).join(', ')}
+                  <span className="font-mono">{item.user?.phone}</span>
+                  {item.total > 0 && <> · <span className="font-semibold">{formatINR(item.total)}</span></>}
+                  {item.items.length > 0
+                    ? <> · {item.items.map((i: any) => `${i.name} ×${i.quantity}`).join(', ')}</>
+                    : item.lastBotMessage && <> · Bot asked: “{item.lastBotMessage}”</>}
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">

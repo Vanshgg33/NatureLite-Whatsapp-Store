@@ -183,7 +183,8 @@ export class CrmService {
    * Shoppers who left before paying, idle 30+ min, within `days`. Two sources:
    * (a) an unpaid online order (pay link sent, never paid) - order creation
    *     clears the cart and resets the bot to the menu, so only the order shows it;
-   * (b) items sitting in the cart while the customer's WhatsApp chat went quiet, at any bot step.
+   * (b) items sitting in the cart while the customer's WhatsApp chat went quiet, at any bot step;
+   * (c) a chat whose last message is a bot purchase prompt that was never answered.
    * Anyone with a later settled order (paid or COD) is excluded.
    */
   async getAbandoned(opts: { days?: number; agentId?: string } = {}) {
@@ -225,7 +226,7 @@ export class CrmService {
     }
     const boughtSince = (uid: string, at: Date) => (lastSettled.get(uid) ?? 0) >= at;
 
-    type Row = { userId: string; step: string; leftAt: Date; total: number; items: { name: string; quantity: number }[]; phone?: string };
+    type Row = { userId: string; step: string; leftAt: Date; total: number; items: { name: string; quantity: number }[]; phone?: string; lastBotMessage?: string };
     const rows = new Map<string, Row>();
     for (const o of unpaidOrders as any[]) {
       const uid = o.user.toString();
@@ -254,6 +255,39 @@ export class CrmService {
         items: cart.items.map((i: any) => ({ name: i.name, quantity: i.quantity })),
       });
     }
+    // (c) Chat-driven: the bot's last message was a purchase prompt and the customer never answered.
+    // shortcut: keyword match on the bot's own copy, no cart/total known; upgrade to an AI classifier if too noisy.
+    const stepOf = (t: string) =>
+      /confirmed|thank|delivered|shipped|tracking/i.test(t) ? null
+        : /payment|\bpay\b/i.test(t) ? 'payment_selection'
+        : /address/i.test(t) ? 'address_input'
+        : /coupon/i.test(t) ? 'coupon_prompt'
+        : /checkout/i.test(t) ? 'checkout'
+        : /cart/i.test(t) ? 'cart'
+        : null;
+    const convos: any[] = await this.messageLogModel.aggregate([
+      { $match: { createdAt: { $gte: since } } },
+      { $sort: { createdAt: -1 } },
+      { $group: { _id: '$phone', last: { $first: '$$ROOT' } } },
+      { $match: { 'last.direction': 'outbound', 'last.createdAt': { $lt: idleBefore } } },
+      { $sort: { 'last.createdAt': -1 } },
+      { $limit: 300 },
+    ]);
+    const prompts = convos
+      .map((c) => ({ phone: c._id as string, at: c.last.createdAt as Date, text: (c.last.content?.text ?? '') as string }))
+      .map((p) => ({ ...p, step: stepOf(p.text) }))
+      .filter((p) => p.step);
+    if (prompts.length) {
+      const byPhone = new Map(prompts.map((p) => [p.phone, p]));
+      const chatSessions = await this.chatSessionModel.find({ phone: { $in: [...byPhone.keys()] }, user: { $exists: true } }).select('user phone').lean();
+      for (const s of chatSessions as any[]) {
+        const uid = s.user.toString();
+        const p = byPhone.get(s.phone)!;
+        if (rows.has(uid) || boughtSince(uid, p.at)) continue;
+        rows.set(uid, { userId: uid, step: p.step!, leftAt: p.at, total: 0, items: [], phone: s.phone, lastBotMessage: p.text.slice(0, 200) });
+      }
+    }
+
     // Agents only see their own customers, same as the call queue.
     if (opts.agentId) {
       const mine = await this.statsModel
