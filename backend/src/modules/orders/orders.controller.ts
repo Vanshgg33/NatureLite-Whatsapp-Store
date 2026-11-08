@@ -211,6 +211,15 @@ export class OrdersController {
     return this.ordersService.markPacked(id, user.sub, user.departmentType, body?.packedByName);
   }
 
+  @Put(':id/reopen')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  async reopenOrder(@Param('id') id: string, @CurrentUser() user: JwtPayload): Promise<Order> {
+    // Department staff (packing, delivery...) also hold the admin role, but only real admins may undo a cancellation.
+    if (user.departmentType) throw new ForbiddenException('Only admins can reopen an order.');
+    return this.ordersService.reopenOrder(id, user.sub);
+  }
+
   @Put(':id/payment-status')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')

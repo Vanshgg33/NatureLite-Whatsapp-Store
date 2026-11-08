@@ -306,6 +306,11 @@ export class StoreSalesService {
     await this.storeSaleRepository.voidByLinkedOrder(orderIdObj, reason);
   }
 
+  /** Undo a cancellation void. Only touches sales voided by `order_cancelled`, never manual voids. */
+  async unvoidByLinkedOrder(orderId: string): Promise<void> {
+    await this.storeSaleRepository.unvoidByLinkedOrder(parseObjectId(orderId, 'orderId'));
+  }
+
   async getSaleStats(
     storeId: string,
     startDate: Date,

@@ -206,6 +206,12 @@ export class StoreSaleRepository extends BaseRepository<StoreSaleDocument> {
       .exec();
   }
 
+  async unvoidByLinkedOrder(orderId: Types.ObjectId): Promise<void> {
+    await this.model
+      .updateOne({ linkedOrder: orderId, voidedReason: 'order_cancelled' }, { $unset: { voidedAt: '', voidedReason: '' } })
+      .exec();
+  }
+
   async findOneBySaleNumberPrefix(prefix: string): Promise<StoreSaleDocument | null> {
     return this.model
       .findOne({ saleNumber: { $regex: `^${prefix}` } })

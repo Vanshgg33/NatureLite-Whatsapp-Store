@@ -36,11 +36,12 @@ import { OrderStatus, Product, Order } from '@/types';
 const statusOptions = [
   { value: '', label: 'All Statuses' },
   { value: 'placed', label: 'Placed' },
-  { value: 'confirmed', label: 'Packed' },
-  { value: 'preparing', label: 'Preparing' },
+  { value: 'preparing', label: 'Packed' },
   { value: 'out_for_delivery', label: 'Out for delivery' },
   { value: 'delivered', label: 'Delivered' },
+  { value: 'unpaid', label: 'Unpaid (delivered, not paid)' },
   { value: 'cancelled', label: 'Cancelled' },
+  { value: 'confirmed', label: 'Confirmed (old)' },
   { value: 'returned', label: 'Returned' },
   { value: 'refunded', label: 'Refunded' },
 ];
@@ -104,6 +105,8 @@ export default function OrdersPage() {
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofMarkPaid, setProofMarkPaid] = useState(true);
   const [proofUploading, setProofUploading] = useState(false);
+  const [reopenEnabled, setReopenEnabled] = useState(false);
+  const [reopening, setReopening] = useState(false);
   const [cityFilter, setCityFilter] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -177,8 +180,9 @@ export default function OrdersPage() {
         page,
         limit: 20,
         search: debouncedSearch,
-        status: (status || undefined) as OrderStatus | undefined,
-        paymentStatus: paymentFilter || undefined,
+        // "Unpaid" is a stage, not a stored status: delivered orders whose payment is still pending.
+        status: (status === 'unpaid' ? 'delivered' : status || undefined) as OrderStatus | undefined,
+        paymentStatus: status === 'unpaid' ? 'pending' : paymentFilter || undefined,
         city: cityFilter || undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
@@ -468,7 +472,23 @@ export default function OrdersPage() {
     }
   }
 
+  async function handleReopen() {
+    if (!editingOrder) return;
+    setReopening(true);
+    try {
+      await api.reopenOrder(editingOrder._id);
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      toast({ title: 'Order reopened', description: `${editingOrder.orderNumber} is back in Placed.` });
+      setEditingOrder(null);
+    } catch (err) {
+      toast({ title: 'Could not reopen order', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
+    } finally {
+      setReopening(false);
+    }
+  }
+
   function startEditing(order: Order) {
+    setReopenEnabled(false);
     setProofFile(null);
     setProofMarkPaid(true);
     setEditingOrder(order);
@@ -745,11 +765,15 @@ export default function OrdersPage() {
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-col gap-1">
-                              <Badge className={getStatusColor(order.status)}>{
-                            order.status === 'confirmed' ? 'Packed' :
-                            order.status === 'out_for_delivery' ? 'Out for Delivery' :
-                            order.status.charAt(0).toUpperCase() + order.status.slice(1)
-                          }</Badge>
+                              {order.status === 'delivered' && order.paymentStatus === 'pending' ? (
+                                <Badge className="bg-amber-100 text-amber-800">Unpaid</Badge>
+                              ) : (
+                                <Badge className={getStatusColor(order.status)}>{
+                                  order.status === 'preparing' ? 'Packed' :
+                                  order.status === 'out_for_delivery' ? 'Out for Delivery' :
+                                  order.status.charAt(0).toUpperCase() + order.status.slice(1)
+                                }</Badge>
+                              )}
                               {order.scheduledFor && (
                                 <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold leading-none bg-amber-100 text-amber-700 border border-amber-300 w-fit">
                                   SCHEDULED
@@ -1295,18 +1319,43 @@ export default function OrdersPage() {
           </DialogHeader>
 
           <div className="space-y-5 py-2">
+            {/* Reopen: off by default so a cancelled order is never reopened by accident */}
+            {editingOrder?.status === 'cancelled' && (
+              <div className="rounded-md border border-red-200 bg-red-50 p-3 space-y-2">
+                <p className="text-sm text-red-800">
+                  This order is cancelled{editingOrder.cancelReason ? `: ${editingOrder.cancelReason}` : ''}.
+                </p>
+                <label className="flex items-center gap-2 text-sm">
+                  <Switch checked={reopenEnabled} onCheckedChange={setReopenEnabled} />
+                  Enable reopen
+                </label>
+                {reopenEnabled && (
+                  <>
+                    <p className="text-xs text-red-700">
+                      Moves the order back to Placed and takes the stock, wallet money and coupon use back again. It fails if stock or wallet balance is short.
+                    </p>
+                    <Button type="button" size="sm" variant="destructive" onClick={handleReopen} disabled={reopening}>
+                      {reopening ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                      Reopen order
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+
             {/* Status options */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="text-sm font-medium block mb-1">Order Status</label>
                 <select
                   value={editStatus}
+                  disabled={editingOrder?.status === 'cancelled'}
                   onChange={(e) => setEditStatus(e.target.value)}
                   className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 >
                   <option value="placed">Placed</option>
-                  <option value="confirmed">Packed</option>
-                  <option value="preparing">Preparing</option>
+                  <option value="confirmed">Confirmed (old)</option>
+                  <option value="preparing">Packed</option>
                   <option value="out_for_delivery">Out for Delivery</option>
                   <option value="delivered">Delivered</option>
                   <option value="cancelled">Cancelled</option>

@@ -1170,6 +1170,10 @@ export class OrdersService implements OnModuleInit {
       throw new BadRequestException('A delivery proof photo is required.');
     }
 
+    if (dto.status === 'customer_cancelled' && !dto.note?.trim()) {
+      throw new BadRequestException('A reason is required to cancel an order.');
+    }
+
     const previousStatus = order.status;
     const metadata: OrderMetadata = order.metadata || {};
     const workflow: DeliveryWorkflowMetadata = {
@@ -1287,6 +1291,11 @@ export class OrdersService implements OnModuleInit {
       }
     }
 
+    // The delivery boy's "Cancelled" really cancels the order (stock, wallet and coupon are given back).
+    if (dto.status === 'customer_cancelled') {
+      return this.cancelOrder(id, { reason: dto.note!.trim() }, updatedBy);
+    }
+
     return saved;
   }
 
@@ -1399,6 +1408,75 @@ export class OrdersService implements OnModuleInit {
     return savedOrder;
   }
 
+  /**
+   * Admin-only undo of a cancellation: puts the order back to `placed` (it goes through packing again)
+   * and re-takes what cancelOrder gave back (stock, wallet, coupon slot, store sale).
+   * Each step is rolled back if a later one fails, so a failed reopen leaves the order cancelled.
+   */
+  async reopenOrder(id: string, reopenedBy?: string): Promise<Order> {
+    const idObj = parseObjectId(id, 'id');
+    const order = await this.orderRepository.findById(idObj);
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== 'cancelled') throw new BadRequestException('Only cancelled orders can be reopened.');
+
+    const undo: Array<() => Promise<unknown>> = [];
+    const rollback = async () => {
+      for (const step of undo.reverse()) {
+        await step().catch((e: Error) => this.logger.error(`reopenOrder rollback step failed for ${id}: ${e.message}`));
+      }
+    };
+
+    try {
+      let mainStoreId: string | undefined;
+      try {
+        mainStoreId = (await this.storesService.findMainStore())._id.toString();
+      } catch {
+        // No main store: cancelOrder restored no stock either, so there is nothing to re-take.
+      }
+      if (mainStoreId) {
+        for (const item of order.items) {
+          const productId = item.product.toString();
+          const product = await this.productsService.findById(productId).catch(() => null);
+          if (product?.trackStock === false) continue;
+          if (!(await this.storeStockService.getStockForStoreProduct(mainStoreId, productId))) continue;
+          await this.storeStockService.decrementStock(mainStoreId, productId, item.quantity, item.variantSku);
+          undo.push(() => this.storeStockService.incrementStock(mainStoreId!, productId, item.quantity, item.variantSku));
+        }
+      }
+      if (order.walletUsed && order.walletUsed > 0) {
+        await this.walletService.debit(order.user.toString(), order.walletUsed, 'order_reopened', { orderId: order._id as Types.ObjectId });
+        undo.push(() => this.walletService.credit(order.user.toString(), order.walletUsed, 'order_reopen_failed', { orderId: order._id as Types.ObjectId }));
+      }
+      if (order.couponCode) {
+        await this.couponsService.incrementUsageCount(order.couponCode);
+        undo.push(() => this.couponsService.decrementUsageCount(order.couponCode!));
+      }
+
+      // Atomic guard against a double click / concurrent reopen.
+      const reopened = await this.orderRepository.getModel().findOneAndUpdate(
+        { _id: idObj, status: 'cancelled' },
+        {
+          $set: { status: 'placed' },
+          $unset: { cancelledAt: '', cancelReason: '', packedAt: '', packedBy: '', packedByName: '' },
+        },
+        { new: true },
+      ).exec();
+      if (!reopened) throw new ConflictException('Order was changed by someone else. Refresh and try again.');
+
+      this.pushTimelineEntry(reopened, { status: 'placed', message: 'Order reopened by admin', updatedBy: reopenedBy });
+      const saved = await reopened.save();
+
+      this.storeSalesService.unvoidByLinkedOrder(id).catch((e: Error) => {
+        this.logger.warn(`Failed to restore store sale for reopened order ${id}: ${e.message}`);
+      });
+      this.clearChatbotCache();
+      return saved;
+    } catch (err) {
+      await rollback();
+      throw err;
+    }
+  }
+
   async addNote(id: string, dto: AddOrderNoteDto): Promise<Order> {
     const idObj = parseObjectId(id, 'id');
     const order = await this.orderRepository.findById(idObj);
@@ -1475,6 +1553,9 @@ export class OrdersService implements OnModuleInit {
     }
 
     if (dto.status && order.status !== dto.status) {
+      if (order.status === 'cancelled') {
+        throw new BadRequestException('A cancelled order must be reopened with the Reopen action.');
+      }
       order.status = dto.status as OrderStatus;
       this.pushTimelineEntry(order, {
         status: order.status,

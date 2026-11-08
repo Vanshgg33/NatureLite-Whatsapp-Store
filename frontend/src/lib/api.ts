@@ -825,6 +825,11 @@ class ApiClient {
     return response.data.data;
   }
 
+  async reopenOrder(id: string): Promise<Order> {
+    const response = await this.client.put<ApiResponse<Order>>(`/orders/${id}/reopen`, {});
+    return response.data.data;
+  }
+
   async markOrderPacked(id: string, packedByName?: string): Promise<Order> {
     const response = await this.client.put<ApiResponse<Order>>(`/orders/${id}/mark-packed`, { packedByName });
     return response.data.data;

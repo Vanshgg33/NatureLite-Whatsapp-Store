@@ -623,7 +623,8 @@ export default function DeliveryDashboardPage() {
   const uploading = uploadingPayment || uploadingDelivery;
   const partialAmountsValid = !isPartial || (parseFloat(cashAmount) || 0) + (parseFloat(upiAmount) || 0) > 0;
   const canOpenConfirm = !uploading && !!order && needsDeliveryProof && !!deliveryProofUrl && partialAmountsValid && (!isDone || !orderIsCod || !!paymentProofUrl);
-  const canSubmitOther = !updateDelivery.isPending && !uploading && !!order && !needsDeliveryProof;
+  // A cancelled order needs a reason: the backend rejects it without one.
+  const canSubmitOther = !updateDelivery.isPending && !uploading && !!order && !needsDeliveryProof && (status !== 'customer_cancelled' || !!note.trim());
   // BUG 23: also block when submittingIds already has this order
   const isOrderSubmitting = !!order && submittingIds.has(order._id);
 
@@ -1114,7 +1115,12 @@ export default function DeliveryDashboardPage() {
 
             {/* Notes */}
             <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-2">
-              <p className="text-sm font-medium text-gray-800">Notes <span className="text-gray-400 font-normal">(optional)</span></p>
+              <p className="text-sm font-medium text-gray-800">
+                Notes{' '}
+                {status === 'customer_cancelled'
+                  ? <span className="text-red-600 font-normal">(reason required to cancel)</span>
+                  : <span className="text-gray-400 font-normal">(optional)</span>}
+              </p>
               <Textarea
                 rows={3}
                 placeholder="Any details about this delivery…"
