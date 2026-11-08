@@ -115,6 +115,8 @@ export class OrderRepository extends BaseRepository<OrderDocument> {
       }
     }
     if (paymentStatus) filter.paymentStatus = paymentStatus;
+    // "Unpaid" view: a cancelled order is not money owed, so hide those unless a status was chosen.
+    if (paymentStatus === 'pending' && filter.status === undefined) filter.status = { $ne: 'cancelled' };
     const searchOr = buildSearchOrFilter(search, ['orderNumber', 'shippingAddress.name', 'shippingAddress.phone', 'shippingAddress.alternatePhone']);
     if (searchOr.length) {
       if (filter.$or) {

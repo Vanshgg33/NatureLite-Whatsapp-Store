@@ -100,6 +100,10 @@ export default function OrdersPage() {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 250);
   const [status, setStatus] = useState('');
+  const [paymentFilter, setPaymentFilter] = useState<'' | 'pending' | 'paid'>('');
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofMarkPaid, setProofMarkPaid] = useState(true);
+  const [proofUploading, setProofUploading] = useState(false);
   const [cityFilter, setCityFilter] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -167,13 +171,14 @@ export default function OrdersPage() {
   const debouncedEditProductSearch = useDebouncedValue(editProductSearch, 300);
 
   const { data: ordersData, isLoading, isFetching } = useQuery({
-    queryKey: ['orders', page, debouncedSearch, status, cityFilter, startDate, endDate],
+    queryKey: ['orders', page, debouncedSearch, status, cityFilter, startDate, endDate, paymentFilter],
     queryFn: () =>
       api.getOrders({
         page,
         limit: 20,
         search: debouncedSearch,
         status: (status || undefined) as OrderStatus | undefined,
+        paymentStatus: paymentFilter || undefined,
         city: cityFilter || undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
@@ -387,8 +392,8 @@ export default function OrdersPage() {
     mutationFn: (data: { id: string; payload: any }) => api.updateOrder(data.id, data.payload),
     onMutate: async (data) => {
       await queryClient.cancelQueries({ queryKey: ['orders'] });
-      const prev = queryClient.getQueryData(['orders', page, debouncedSearch, status, cityFilter, startDate, endDate]);
-      queryClient.setQueryData(['orders', page, debouncedSearch, status, cityFilter, startDate, endDate], (old: any) => {
+      const prev = queryClient.getQueryData(['orders', page, debouncedSearch, status, cityFilter, startDate, endDate, paymentFilter]);
+      queryClient.setQueryData(['orders', page, debouncedSearch, status, cityFilter, startDate, endDate, paymentFilter], (old: any) => {
         if (!old?.items) return old;
         return { ...old, items: old.items.map((o: any) => o._id === data.id ? { ...o, ...data.payload } : o) };
       });
@@ -399,7 +404,7 @@ export default function OrdersPage() {
       setEditingOrder(null);
     },
     onError: (err: unknown, _vars, context: any) => {
-      if (context?.prev) queryClient.setQueryData(['orders', page, debouncedSearch, status, cityFilter, startDate, endDate], context.prev);
+      if (context?.prev) queryClient.setQueryData(['orders', page, debouncedSearch, status, cityFilter, startDate, endDate, paymentFilter], context.prev);
       setEditError(getApiError(err, 'Failed to update order'));
     },
     onSettled: () => {
@@ -411,8 +416,8 @@ export default function OrdersPage() {
     mutationFn: (id: string) => api.deleteOrder(id),
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: ['orders'] });
-      const prev = queryClient.getQueryData(['orders', page, debouncedSearch, status, cityFilter, startDate, endDate]);
-      queryClient.setQueryData(['orders', page, debouncedSearch, status, cityFilter, startDate, endDate], (old: any) => {
+      const prev = queryClient.getQueryData(['orders', page, debouncedSearch, status, cityFilter, startDate, endDate, paymentFilter]);
+      queryClient.setQueryData(['orders', page, debouncedSearch, status, cityFilter, startDate, endDate, paymentFilter], (old: any) => {
         if (!old?.items) return old;
         return { ...old, items: old.items.filter((o: any) => o._id !== id) };
       });
@@ -423,7 +428,7 @@ export default function OrdersPage() {
       setDeletingOrder(null);
     },
     onError: (err: unknown, _id, context: any) => {
-      if (context?.prev) queryClient.setQueryData(['orders', page, debouncedSearch, status, cityFilter, startDate, endDate], context.prev);
+      if (context?.prev) queryClient.setQueryData(['orders', page, debouncedSearch, status, cityFilter, startDate, endDate, paymentFilter], context.prev);
       toast({ title: 'Delete failed', description: getApiError(err, 'Failed to delete order'), variant: 'destructive' });
     },
     onSettled: () => {
@@ -443,7 +448,29 @@ export default function OrdersPage() {
     },
   });
 
+  // Saves on its own (not via the big Save) so a late screenshot never resends the order's items.
+  async function handleUploadProof() {
+    if (!editingOrder || !proofFile) return;
+    setProofUploading(true);
+    try {
+      const up = await api.uploadImage(proofFile, 'payment-proofs');
+      const url = up.secureUrl || up.url;
+      await api.updateOrder(editingOrder._id, { paymentProofUrl: url, ...(proofMarkPaid ? { paymentStatus: 'paid' as const } : {}) });
+      setEditingOrder({ ...editingOrder, paymentProofUrl: url, ...(proofMarkPaid ? { paymentStatus: 'paid' as const } : {}) });
+      if (proofMarkPaid) setEditPaymentStatus('paid'); // otherwise the main Save would put it back to pending
+      setProofFile(null);
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      toast({ title: 'Payment screenshot saved', description: proofMarkPaid ? 'Order marked as paid.' : undefined });
+    } catch (err) {
+      toast({ title: 'Upload failed', description: getApiError(err, 'Please try again.'), variant: 'destructive' });
+    } finally {
+      setProofUploading(false);
+    }
+  }
+
   function startEditing(order: Order) {
+    setProofFile(null);
+    setProofMarkPaid(true);
     setEditingOrder(order);
     setEditStatus(order.status || '');
     setEditPaymentStatus(order.paymentStatus || '');
@@ -566,6 +593,19 @@ export default function OrdersPage() {
                         {option.label}
                       </option>
                     ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">Payment:</span>
+                  <select
+                    value={paymentFilter}
+                    onChange={(e) => { setPaymentFilter(e.target.value as '' | 'pending' | 'paid'); setPage(1); }}
+                    className={`h-10 rounded-md border px-3 py-2 text-sm focus:outline-none ${paymentFilter === 'pending' ? 'border-amber-500 bg-amber-50 text-amber-900' : 'border-input bg-background text-foreground'}`}
+                  >
+                    <option value="">All</option>
+                    <option value="pending">Unpaid</option>
+                    <option value="paid">Paid</option>
                   </select>
                 </div>
 
@@ -1304,6 +1344,30 @@ export default function OrdersPage() {
                   <option value="wallet">Wallet</option>
                 </select>
               </div>
+            </div>
+
+            {/* Payment screenshot: can arrive days after delivery */}
+            <div className="rounded-md border p-3 space-y-2">
+              <label className="text-sm font-medium block">Payment Screenshot</label>
+              {editingOrder?.paymentProofUrl && (
+                <a href={editingOrder.paymentProofUrl} target="_blank" rel="noreferrer" className="text-sm text-blue-600 underline block">
+                  View current screenshot
+                </a>
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
+                className="block w-full text-sm"
+              />
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={proofMarkPaid} onChange={(e) => setProofMarkPaid(e.target.checked)} />
+                Also mark this order as paid
+              </label>
+              <Button type="button" size="sm" onClick={handleUploadProof} disabled={!proofFile || proofUploading}>
+                {proofUploading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                {editingOrder?.paymentProofUrl ? 'Replace screenshot' : 'Upload screenshot'}
+              </Button>
             </div>
 
             {/* Notes */}
