@@ -192,8 +192,9 @@ export class CrmService {
     const now = Date.now();
     const since = new Date(now - days * 86_400_000);
     const idleBefore = new Date(now - 30 * 60_000);
+    const agentScoped = !!opts.agentId;
 
-    const [carts, unpaidOrders, settledOrders] = await Promise.all([
+    const [carts, unpaidOrders, settledOrders, placed] = await Promise.all([
       this.cartModel
         .find({ 'items.0': { $exists: true }, updatedAt: { $gte: since } })
         .sort({ updatedAt: -1 })
@@ -217,6 +218,11 @@ export class CrmService {
         })
         .select('user createdAt')
         .lean(),
+      // WhatsApp orders that actually went through: paid online or COD, not cancelled.
+      this.orderModel.countDocuments({
+        source: 'whatsapp', status: { $ne: 'cancelled' }, createdAt: { $gte: since },
+        $nor: [{ paymentStatus: 'pending', paymentMethod: { $ne: 'cod' } }],
+      }),
     ]);
 
     const lastSettled = new Map<string, Date>();
@@ -224,7 +230,8 @@ export class CrmService {
       const k = o.user.toString();
       if (!lastSettled.has(k) || o.createdAt > lastSettled.get(k)!) lastSettled.set(k, o.createdAt);
     }
-    const boughtSince = (uid: string, at: Date) => (lastSettled.get(uid) ?? 0) >= at;
+    // graceMs: a pay-link order is created before the customer pays, so a "payment" chat can follow its own settled order.
+    const boughtSince = (uid: string, at: Date, graceMs = 0) => (lastSettled.get(uid)?.getTime() ?? 0) >= at.getTime() - graceMs;
 
     type Row = { userId: string; step: string; leftAt: Date; total: number; items: { name: string; quantity: number }[]; phone?: string; lastBotMessage?: string };
     const rows = new Map<string, Row>();
@@ -251,7 +258,7 @@ export class CrmService {
       if (rows.has(uid) || !lastAt || lastAt >= idleBefore || lastAt < since || boughtSince(uid, lastAt)) continue;
       const cart = cartMap.get(uid);
       rows.set(uid, {
-        userId: uid, step: s.currentState, leftAt: lastAt, total: cart.total, phone: s.phone,
+        userId: uid, step: s.currentState, leftAt: lastAt, total: cart.total ?? 0, phone: s.phone,
         items: cart.items.map((i: any) => ({ name: i.name, quantity: i.quantity })),
       });
     }
@@ -277,13 +284,16 @@ export class CrmService {
       .map((c) => ({ phone: c._id as string, at: c.last.createdAt as Date, text: (c.last.content?.text ?? '') as string }))
       .map((p) => ({ ...p, step: stepOf(p.text) }))
       .filter((p) => p.step);
+    let matchedChatSessions = 0;
     if (prompts.length) {
       const byPhone = new Map(prompts.map((p) => [p.phone, p]));
       const chatSessions = await this.chatSessionModel.find({ phone: { $in: [...byPhone.keys()] }, user: { $exists: true } }).select('user phone').lean();
+      matchedChatSessions = chatSessions.length;
       for (const s of chatSessions as any[]) {
         const uid = s.user.toString();
         const p = byPhone.get(s.phone)!;
-        if (rows.has(uid) || boughtSince(uid, p.at)) continue;
+        // 48h = how long a pay link stays valid.
+        if (rows.has(uid) || boughtSince(uid, p.at, p.step === 'payment_selection' ? 48 * 3_600_000 : 0)) continue;
         rows.set(uid, { userId: uid, step: p.step!, leftAt: p.at, total: 0, items: [], phone: s.phone, lastBotMessage: p.text.slice(0, 200) });
       }
     }
@@ -297,16 +307,30 @@ export class CrmService {
       const ok = new Set(mine.map((m: any) => m.userId.toString()));
       for (const k of [...rows.keys()]) if (!ok.has(k)) rows.delete(k);
     }
-    if (!rows.size) return [];
 
-    const users = await this.userModel
-      .find({ _id: { $in: [...rows.keys()].map((id) => new Types.ObjectId(id)) } })
-      .select('name phone tags')
-      .lean();
+    const users = rows.size
+      ? await this.userModel
+          .find({ _id: { $in: [...rows.keys()].map((id) => new Types.ObjectId(id)) } })
+          .select('name phone tags')
+          .lean()
+      : [];
     const userMap = new Map((users as any[]).map((u) => [u._id.toString(), u]));
-    return [...rows.values()]
+    const list = [...rows.values()]
       .map(({ phone, ...r }) => ({ ...r, user: userMap.get(r.userId) ?? { phone } }))
       .sort((a, b) => b.leftAt.getTime() - a.leftAt.getTime());
+
+    const abandoned = list.length;
+    return {
+      rows: list,
+      stats: {
+        days,
+        placed: agentScoped ? null : placed, // order counts are shop-wide, so hidden from scoped agents
+        abandoned,
+        successRate: agentScoped || placed + abandoned === 0 ? null : Math.round((placed / (placed + abandoned)) * 100),
+        // Shows which source came up empty when the list is unexpectedly blank.
+        scanned: { cartsWithItems: carts.length, unpaidOnlineOrders: unpaidOrders.length, idleBotChats: convos.length, purchasePrompts: prompts.length, matchedChatSessions },
+      },
+    };
   }
 
   /** Last 100 WhatsApp messages with a customer, oldest first, so the agent sees where the chat stopped. */

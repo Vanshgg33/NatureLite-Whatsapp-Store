@@ -18,6 +18,7 @@ function build(d: { sessions?: any[]; unpaid?: any[]; settled?: any[]; carts?: a
   svc.userModel = { find: () => q(d.users ?? []) };
   svc.statsModel = { find: () => q(d.stats ?? []) };
   svc.messageLogModel = { aggregate: async () => d.convos ?? [] };
+  svc.orderModel.countDocuments = async () => 3;
   return svc as CrmService;
 }
 
@@ -30,7 +31,7 @@ describe('CrmService.getAbandoned', () => {
       sessions: [{ user: u, phone: '91', currentState: 'address_input', lastMessageAt: minsAgo(60) }],
       carts: [{ user: u, total: 500, items }],
     });
-    const r = await svc.getAbandoned();
+    const r = (await svc.getAbandoned()).rows;
     expect(r).toHaveLength(1);
     expect(r[0]).toMatchObject({ userId: u.toString(), step: 'address_input', total: 500 });
   });
@@ -41,7 +42,7 @@ describe('CrmService.getAbandoned', () => {
       sessions: [{ user: u, phone: '91', currentState: 'browsing', updatedAt: minsAgo(45) }],
       carts: [{ user: u, total: 300, items }],
     });
-    const r = await svc.getAbandoned();
+    const r = (await svc.getAbandoned()).rows;
     expect(r[0]).toMatchObject({ userId: u.toString(), step: 'browsing' });
   });
 
@@ -55,9 +56,32 @@ describe('CrmService.getAbandoned', () => {
         { _id: '92', last: { createdAt: minsAgo(60), content: { text: 'Order confirmed, thank you!' } } },
       ],
     });
-    const r = await svc.getAbandoned();
+    const r = (await svc.getAbandoned()).rows;
     expect(r).toHaveLength(1);
     expect(r[0]).toMatchObject({ userId: u.toString(), step: 'address_input', total: 0 });
+  });
+
+  it('reports success rate and what each source scanned', async () => {
+    const u = oid();
+    const svc = build({
+      sessions: [{ user: u, phone: '91', currentState: 'cart', lastMessageAt: minsAgo(60) }],
+      carts: [{ user: u, total: 500, items }],
+    });
+    const { stats } = await svc.getAbandoned(); // 3 placed (mock) + 1 abandoned
+    expect(stats).toMatchObject({ placed: 3, abandoned: 1, successRate: 75 });
+    expect(stats.scanned.cartsWithItems).toBe(1);
+    const scoped = build({});
+    expect((await scoped.getAbandoned({ agentId: oid().toString() })).stats.successRate).toBeNull();
+  });
+
+  it('does not flag someone who paid after the pay link (order made before the last payment message)', async () => {
+    const u = oid();
+    const svc = build({
+      sessions: [{ user: u, phone: '91', currentState: 'main_menu' }],
+      convos: [{ _id: '91', last: { createdAt: minsAgo(60), content: { text: 'Payment received, thanks' } } }],
+      settled: [{ user: u, createdAt: minsAgo(120) }], // order created 2h ago, paid ~1h ago
+    });
+    expect((await svc.getAbandoned()).rows).toHaveLength(0);
   });
 
   it('skips someone who was active in the last 30 minutes', async () => {
@@ -66,7 +90,7 @@ describe('CrmService.getAbandoned', () => {
       sessions: [{ user: u, phone: '91', currentState: 'cart', lastMessageAt: minsAgo(5) }],
       carts: [{ user: u, total: 300, items }],
     });
-    expect(await svc.getAbandoned()).toHaveLength(0);
+    expect((await svc.getAbandoned()).rows).toHaveLength(0);
   });
 
   it('skips a session whose user ordered after leaving', async () => {
@@ -76,13 +100,13 @@ describe('CrmService.getAbandoned', () => {
       carts: [{ user: u, total: 500, items }],
       settled: [{ user: u, createdAt: minsAgo(10) }],
     });
-    expect(await svc.getAbandoned()).toHaveLength(0);
+    expect((await svc.getAbandoned()).rows).toHaveLength(0);
   });
 
   it('lists an unpaid pay-link order even with no session or cart', async () => {
     const u = oid();
     const svc = build({ unpaid: [{ user: u, createdAt: minsAgo(90), total: 700, items }] });
-    const r = await svc.getAbandoned();
+    const r = (await svc.getAbandoned()).rows;
     expect(r[0]).toMatchObject({ userId: u.toString(), step: 'payment_pending', total: 700 });
   });
 
@@ -92,7 +116,7 @@ describe('CrmService.getAbandoned', () => {
       unpaid: [{ user: u, createdAt: minsAgo(90), total: 700, items }],
       settled: [{ user: u, createdAt: minsAgo(30) }],
     });
-    expect(await svc.getAbandoned()).toHaveLength(0);
+    expect((await svc.getAbandoned()).rows).toHaveLength(0);
   });
 
   it('getChat returns oldest-first messages with readable text', async () => {
@@ -126,7 +150,7 @@ describe('CrmService.getAbandoned', () => {
       ],
       stats: [{ userId: mine }],
     });
-    const r = await svc.getAbandoned({ agentId: oid().toString() });
+    const r = (await svc.getAbandoned({ agentId: oid().toString() })).rows;
     expect(r.map((x: any) => x.userId)).toEqual([mine.toString()]);
   });
 });
