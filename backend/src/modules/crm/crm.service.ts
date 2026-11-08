@@ -183,7 +183,7 @@ export class CrmService {
    * Shoppers who left before paying, idle 30+ min, within `days`. Two sources:
    * (a) an unpaid online order (pay link sent, never paid) - order creation
    *     clears the cart and resets the bot to the menu, so only the order shows it;
-   * (b) a chat session stuck on a cart/checkout step with items still in the cart.
+   * (b) items sitting in the cart while the customer's WhatsApp chat went quiet, at any bot step.
    * Anyone with a later settled order (paid or COD) is excluded.
    */
   async getAbandoned(opts: { days?: number; agentId?: string } = {}) {
@@ -192,16 +192,12 @@ export class CrmService {
     const since = new Date(now - days * 86_400_000);
     const idleBefore = new Date(now - 30 * 60_000);
 
-    const [sessions, unpaidOrders, settledOrders] = await Promise.all([
-      this.chatSessionModel
-        .find({
-          user: { $exists: true },
-          currentState: { $in: ['cart', 'coupon_prompt', 'coupon_input', 'checkout', 'address_input', 'payment_selection'] },
-          lastMessageAt: { $lt: idleBefore, $gte: since },
-        })
-        .sort({ lastMessageAt: -1 })
-        .limit(200)
-        .select('user phone currentState lastMessageAt')
+    const [carts, unpaidOrders, settledOrders] = await Promise.all([
+      this.cartModel
+        .find({ 'items.0': { $exists: true }, updatedAt: { $gte: since } })
+        .sort({ updatedAt: -1 })
+        .limit(500)
+        .select('user items total')
         .lean(),
       this.orderModel
         .find({
@@ -240,16 +236,21 @@ export class CrmService {
       });
     }
 
-    const candidates = (sessions as any[]).filter((s) => !rows.has(s.user.toString()) && !boughtSince(s.user.toString(), s.lastMessageAt));
-    const carts = candidates.length
-      ? await this.cartModel.find({ user: { $in: candidates.map((s) => s.user) }, 'items.0': { $exists: true } }).select('user items total').lean()
-      : [];
+    // Items in the cart plus a WhatsApp chat that went quiet, wherever they stopped (browsing, product page, cart, checkout...).
     const cartMap = new Map((carts as any[]).map((c) => [c.user.toString(), c]));
-    for (const s of candidates) {
-      const cart = cartMap.get(s.user.toString());
-      if (!cart) continue;
-      rows.set(s.user.toString(), {
-        userId: s.user.toString(), step: s.currentState, leftAt: s.lastMessageAt, total: cart.total, phone: s.phone,
+    const sessions = cartMap.size
+      ? await this.chatSessionModel
+          .find({ user: { $in: [...cartMap.values()].map((c) => c.user) } })
+          .select('user phone currentState lastMessageAt updatedAt')
+          .lean()
+      : [];
+    for (const s of sessions as any[]) {
+      const uid = s.user.toString();
+      const lastAt: Date | undefined = s.lastMessageAt ?? s.updatedAt;
+      if (rows.has(uid) || !lastAt || lastAt >= idleBefore || lastAt < since || boughtSince(uid, lastAt)) continue;
+      const cart = cartMap.get(uid);
+      rows.set(uid, {
+        userId: uid, step: s.currentState, leftAt: lastAt, total: cart.total, phone: s.phone,
         items: cart.items.map((i: any) => ({ name: i.name, quantity: i.quantity })),
       });
     }

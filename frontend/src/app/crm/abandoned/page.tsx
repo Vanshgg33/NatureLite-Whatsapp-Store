@@ -12,6 +12,9 @@ import { EmptyState } from '@/components/crm/EmptyState';
 import { LogCallPanel } from '@/components/crm/LogCallPanel';
 
 const STEP_LABEL: Record<string, string> = {
+  main_menu: 'Menu',
+  browsing: 'Browsing',
+  product_detail: 'Product page',
   cart: 'Cart',
   coupon_prompt: 'Coupon',
   coupon_input: 'Coupon',

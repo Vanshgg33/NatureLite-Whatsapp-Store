@@ -34,6 +34,25 @@ describe('CrmService.getAbandoned', () => {
     expect(r[0]).toMatchObject({ userId: u.toString(), step: 'address_input', total: 500 });
   });
 
+  it('lists someone who left while still browsing, and falls back to updatedAt', async () => {
+    const u = oid();
+    const svc = build({
+      sessions: [{ user: u, phone: '91', currentState: 'browsing', updatedAt: minsAgo(45) }],
+      carts: [{ user: u, total: 300, items }],
+    });
+    const r = await svc.getAbandoned();
+    expect(r[0]).toMatchObject({ userId: u.toString(), step: 'browsing' });
+  });
+
+  it('skips someone who was active in the last 30 minutes', async () => {
+    const u = oid();
+    const svc = build({
+      sessions: [{ user: u, phone: '91', currentState: 'cart', lastMessageAt: minsAgo(5) }],
+      carts: [{ user: u, total: 300, items }],
+    });
+    expect(await svc.getAbandoned()).toHaveLength(0);
+  });
+
   it('skips a session whose user ordered after leaving', async () => {
     const u = oid();
     const svc = build({
