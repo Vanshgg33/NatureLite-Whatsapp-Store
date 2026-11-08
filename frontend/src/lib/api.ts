@@ -2187,8 +2187,14 @@ class ApiClient {
     return res.data.data;
   }
 
-  async getCrmAbandoned(): Promise<any[]> {
-    const res = await this.client.get<ApiResponse<any[]>>('/crm/abandoned');
+  async getCrmAbandoned(): Promise<{
+    rows: any[];
+    stats: {
+      days: number; placed: number | null; abandoned: number; successRate: number | null;
+      scanned: { cartsWithItems: number; unpaidOnlineOrders: number; idleBotChats: number; purchasePrompts: number; matchedChatSessions: number };
+    };
+  }> {
+    const res = await this.client.get<ApiResponse<any>>('/crm/abandoned');
     return res.data.data;
   }
 

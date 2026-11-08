@@ -79,19 +79,41 @@ function ChatPanel({ item, onClose }: { item: any; onClose: () => void }) {
 export default function AbandonedPage() {
   const [logCallItem, setLogCallItem] = useState<any | null>(null);
   const [chatItem, setChatItem] = useState<any | null>(null);
-  const { data = [], isLoading, error } = useQuery({
+  const { data: result, isLoading, error } = useQuery({
     queryKey: ['crm-queue', 'abandoned'],
     queryFn: () => api.getCrmAbandoned(),
     refetchInterval: 60_000,
   });
+  const data = result?.rows ?? [];
+  const stats = result?.stats;
+  const sc = stats?.scanned;
 
   return (
     <div className="min-h-full" style={{ background: 'var(--crm-sand)' }}>
       <div className="px-7 py-5" style={{ background: 'var(--crm-paper)', borderBottom: '1px solid var(--crm-line)' }}>
         <h1 className="text-[20px] font-semibold" style={{ color: 'var(--crm-ink)' }}>Abandoned Carts</h1>
         <p className="text-[12px] mt-0.5" style={{ color: 'var(--crm-muted)' }}>
-          {isLoading ? 'Loading…' : `${data.length} WhatsApp shoppers left before paying (last 7 days)`}
+          {isLoading ? 'Loading…' : `${data.length} WhatsApp shoppers left before paying (last ${stats?.days ?? 7} days)`}
         </p>
+        {stats && (
+          <div className="grid grid-cols-3 gap-3 mt-4 max-w-xl">
+            {[
+              { label: 'Orders placed', value: stats.placed ?? '—' },
+              { label: 'Left before paying', value: stats.abandoned },
+              { label: 'Success rate', value: stats.successRate == null ? '—' : `${stats.successRate}%` },
+            ].map(s => (
+              <div key={s.label} className="px-3 py-2.5 rounded-xl" style={{ background: 'var(--crm-sand)', border: '1px solid var(--crm-line)' }}>
+                <p className="text-[18px] font-semibold crm-tabular" style={{ color: 'var(--crm-ink)' }}>{s.value}</p>
+                <p className="text-[11px]" style={{ color: 'var(--crm-muted)' }}>{s.label}</p>
+              </div>
+            ))}
+          </div>
+        )}
+        {sc && (
+          <p className="text-[11px] mt-3" style={{ color: 'var(--crm-muted)' }}>
+            Checked: {sc.cartsWithItems} carts with items · {sc.unpaidOnlineOrders} unpaid online orders · {sc.idleBotChats} chats waiting on the customer ({sc.purchasePrompts} with a cart/address/payment prompt, {sc.matchedChatSessions} matched to a customer)
+          </p>
+        )}
       </div>
 
       <div className="p-7 space-y-2.5">
