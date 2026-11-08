@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
-import { Clock, Phone, PhoneCall, Users, MessageCircle, BarChart3, Settings, LogOut, Menu, X, ShieldCheck, Package, type LucideIcon } from 'lucide-react';
+import { Clock, Phone, PhoneCall, Users, MessageCircle, BarChart3, Settings, LogOut, Menu, X, ShieldCheck, Package, ShoppingCart, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { api } from '@/lib/api';
@@ -14,6 +14,7 @@ type NavItem = { name: string; href: string; icon: LucideIcon; adminOnly?: boole
 const NAV: NavItem[] = [
   { name: 'Today',       href: '/crm',            icon: Clock },
   { name: 'Call queue',  href: '/crm/queue',      icon: Phone },
+  { name: 'Abandoned',   href: '/crm/abandoned',  icon: ShoppingCart },
   { name: 'Caller mode', href: '/crm/caller',     icon: PhoneCall },
   { name: 'Customers',   href: '/crm/customers',  icon: Users },
   { name: 'Campaigns',   href: '/crm/campaigns',  icon: MessageCircle },

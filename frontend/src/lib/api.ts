@@ -2187,6 +2187,16 @@ class ApiClient {
     return res.data.data;
   }
 
+  async getCrmAbandoned(): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>('/crm/abandoned');
+    return res.data.data;
+  }
+
+  async getCrmChat(userId: string): Promise<{ step: string | null; lastMessageAt: string | null; messages: { id: string; direction: 'inbound' | 'outbound'; at: string; text: string }[] }> {
+    const res = await this.client.get<ApiResponse<any>>(`/crm/chat/${userId}`);
+    return res.data.data;
+  }
+
   async snoozeCrmCustomer(userId: string, until: string): Promise<any> {
     const res = await this.client.patch<ApiResponse<any>>(`/crm/queue/${userId}/snooze`, { until });
     return res.data.data;

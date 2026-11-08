@@ -28,6 +28,9 @@ export class CrmService {
     @InjectModel('Order') private orderModel: Model<any>,
     @InjectModel(CrmActivityEvent.name) private activityModel: Model<CrmActivityEventDocument>,
     @InjectModel(Product.name) private productModel: Model<ProductDocument>,
+    @InjectModel('ChatSession') private chatSessionModel: Model<any>,
+    @InjectModel('Cart') private cartModel: Model<any>,
+    @InjectModel('MessageLog') private messageLogModel: Model<any>,
     private readonly engine: CrmEngineService,
     private readonly whatsapp: WhatsAppService,
     private readonly media: MediaService,
@@ -174,6 +177,131 @@ export class CrmService {
     const users = await this.userModel.find({ _id: { $in: userIds } }).select('name phone tags').lean();
     const userMap = new Map(users.map((u: any) => [u._id.toString(), u]));
     return stats.map((s: any) => ({ ...s, user: userMap.get(s.userId.toString()) }));
+  }
+
+  /**
+   * Shoppers who left before paying, idle 30+ min, within `days`. Two sources:
+   * (a) an unpaid online order (pay link sent, never paid) - order creation
+   *     clears the cart and resets the bot to the menu, so only the order shows it;
+   * (b) a chat session stuck on a cart/checkout step with items still in the cart.
+   * Anyone with a later settled order (paid or COD) is excluded.
+   */
+  async getAbandoned(opts: { days?: number; agentId?: string } = {}) {
+    const days = Math.min(Math.max(opts.days || 7, 1), 30);
+    const now = Date.now();
+    const since = new Date(now - days * 86_400_000);
+    const idleBefore = new Date(now - 30 * 60_000);
+
+    const [sessions, unpaidOrders, settledOrders] = await Promise.all([
+      this.chatSessionModel
+        .find({
+          user: { $exists: true },
+          currentState: { $in: ['cart', 'coupon_prompt', 'coupon_input', 'checkout', 'address_input', 'payment_selection'] },
+          lastMessageAt: { $lt: idleBefore, $gte: since },
+        })
+        .sort({ lastMessageAt: -1 })
+        .limit(200)
+        .select('user phone currentState lastMessageAt')
+        .lean(),
+      this.orderModel
+        .find({
+          source: 'whatsapp', status: { $ne: 'cancelled' }, paymentStatus: 'pending', paymentMethod: { $ne: 'cod' },
+          createdAt: { $gte: since, $lt: idleBefore },
+        })
+        .sort({ createdAt: -1 })
+        .limit(200)
+        .select('user createdAt total items')
+        .lean(),
+      // Any other live order (paid or COD) after the user left means they did buy.
+      this.orderModel
+        .find({
+          status: { $ne: 'cancelled' }, createdAt: { $gte: since },
+          $nor: [{ paymentStatus: 'pending', paymentMethod: { $ne: 'cod' } }],
+        })
+        .select('user createdAt')
+        .lean(),
+    ]);
+
+    const lastSettled = new Map<string, Date>();
+    for (const o of settledOrders as any[]) {
+      const k = o.user.toString();
+      if (!lastSettled.has(k) || o.createdAt > lastSettled.get(k)!) lastSettled.set(k, o.createdAt);
+    }
+    const boughtSince = (uid: string, at: Date) => (lastSettled.get(uid) ?? 0) >= at;
+
+    type Row = { userId: string; step: string; leftAt: Date; total: number; items: { name: string; quantity: number }[]; phone?: string };
+    const rows = new Map<string, Row>();
+    for (const o of unpaidOrders as any[]) {
+      const uid = o.user.toString();
+      if (rows.has(uid) || boughtSince(uid, o.createdAt)) continue;
+      rows.set(uid, {
+        userId: uid, step: 'payment_pending', leftAt: o.createdAt, total: o.total,
+        items: o.items.map((i: any) => ({ name: i.name, quantity: i.quantity })),
+      });
+    }
+
+    const candidates = (sessions as any[]).filter((s) => !rows.has(s.user.toString()) && !boughtSince(s.user.toString(), s.lastMessageAt));
+    const carts = candidates.length
+      ? await this.cartModel.find({ user: { $in: candidates.map((s) => s.user) }, 'items.0': { $exists: true } }).select('user items total').lean()
+      : [];
+    const cartMap = new Map((carts as any[]).map((c) => [c.user.toString(), c]));
+    for (const s of candidates) {
+      const cart = cartMap.get(s.user.toString());
+      if (!cart) continue;
+      rows.set(s.user.toString(), {
+        userId: s.user.toString(), step: s.currentState, leftAt: s.lastMessageAt, total: cart.total, phone: s.phone,
+        items: cart.items.map((i: any) => ({ name: i.name, quantity: i.quantity })),
+      });
+    }
+    // Agents only see their own customers, same as the call queue.
+    if (opts.agentId) {
+      const mine = await this.statsModel
+        .find({ userId: { $in: [...rows.keys()].map((id) => new Types.ObjectId(id)) }, assignedAgentId: new Types.ObjectId(opts.agentId) })
+        .select('userId')
+        .lean();
+      const ok = new Set(mine.map((m: any) => m.userId.toString()));
+      for (const k of [...rows.keys()]) if (!ok.has(k)) rows.delete(k);
+    }
+    if (!rows.size) return [];
+
+    const users = await this.userModel
+      .find({ _id: { $in: [...rows.keys()].map((id) => new Types.ObjectId(id)) } })
+      .select('name phone tags')
+      .lean();
+    const userMap = new Map((users as any[]).map((u) => [u._id.toString(), u]));
+    return [...rows.values()]
+      .map(({ phone, ...r }) => ({ ...r, user: userMap.get(r.userId) ?? { phone } }))
+      .sort((a, b) => b.leftAt.getTime() - a.leftAt.getTime());
+  }
+
+  /** Last 100 WhatsApp messages with a customer, oldest first, so the agent sees where the chat stopped. */
+  async getChat(userId: string, agentId?: string) {
+    if (!Types.ObjectId.isValid(userId)) throw new BadRequestException('Invalid customer id');
+    const uid = new Types.ObjectId(userId);
+    if (agentId && !(await this.statsModel.exists({ userId: uid, assignedAgentId: new Types.ObjectId(agentId) }))) {
+      throw new NotFoundException('Customer not found');
+    }
+    const [user, session] = await Promise.all([
+      this.userModel.findById(uid).select('phone').lean(),
+      this.chatSessionModel.findOne({ user: uid }).select('phone currentState lastMessageAt').lean(),
+    ]);
+    const phones = [(user as any)?.phone, (session as any)?.phone].filter(Boolean);
+    const logs = await this.messageLogModel
+      .find({ $or: [{ user: uid }, { phone: { $in: phones } }] })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .select('direction messageType content createdAt')
+      .lean();
+    const messages = (logs as any[]).reverse().map((m) => {
+      const c = m.content ?? {};
+      return {
+        id: m._id,
+        direction: m.direction,
+        at: m.createdAt,
+        text: c.text ?? c.buttonText ?? c.listTitle ?? c.caption ?? `[${c.templateName ?? m.messageType}]`,
+      };
+    });
+    return { step: (session as any)?.currentState ?? null, lastMessageAt: (session as any)?.lastMessageAt ?? null, messages };
   }
 
   async assignCustomer(userId: string, agentId: string) {

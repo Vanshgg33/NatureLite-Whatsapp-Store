@@ -54,6 +54,18 @@ export class CrmController {
     return this.crm.getQueue({ agentId, tab: (tab as any) ?? 'all' });
   }
 
+  @Get('abandoned')
+  getAbandoned(@Query('days') days: string, @CurrentUser() user: JwtPayload) {
+    const agentId = user.departmentType === 'crm_senior' ? user.sub : undefined;
+    return this.crm.getAbandoned({ days: parseInt(days), agentId });
+  }
+
+  @Get('chat/:userId')
+  getChat(@Param('userId') userId: string, @CurrentUser() user: JwtPayload) {
+    const agentId = user.departmentType === 'crm_senior' ? user.sub : undefined;
+    return this.crm.getChat(userId, agentId);
+  }
+
   @Patch('queue/:userId/snooze')
   snoozeCustomer(@Param('userId') userId: string, @Body() body: { until: string }) {
     return this.crm.snoozeCustomer(userId, body.until);

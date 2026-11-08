@@ -11,6 +11,9 @@ import { User, UserSchema } from '../users/schemas/user.schema';
 import { Order, OrderSchema } from '../orders/schemas/order.schema';
 import { AdminUser, AdminUserSchema } from '../admin/schemas/admin-user.schema';
 import { Product, ProductSchema } from '../products/schemas/product.schema';
+import { ChatSession, ChatSessionSchema } from '../chatbot/schemas/chat-session.schema';
+import { Cart, CartSchema } from '../cart/schemas/cart.schema';
+import { MessageLog, MessageLogSchema } from '../whatsapp/schemas/message-log.schema';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { MediaModule } from '../media/media.module';
 import { CrmEngineService } from './crm-engine.service';
@@ -31,6 +34,9 @@ import { CrmController } from './crm.controller';
       { name: Order.name, schema: OrderSchema },
       { name: AdminUser.name, schema: AdminUserSchema },
       { name: Product.name, schema: ProductSchema },
+      { name: ChatSession.name, schema: ChatSessionSchema },
+      { name: Cart.name, schema: CartSchema },
+      { name: MessageLog.name, schema: MessageLogSchema },
     ]),
     WhatsAppModule,
     MediaModule,
