@@ -134,6 +134,14 @@ export class TaxSettingsService {
     return param?.value ?? null
   }
 
+  /** Period lock: no bill may be created or cancelled on or before the filed-until date (param gstr1FiledUntil). */
+  async assertPeriodOpen(date: Date) {
+    const p = await this.paramModel.findOne({ key: 'gstr1FiledUntil' }).sort({ effectiveFrom: -1 })
+    if (p && date <= new Date(p.value as string)) {
+      throw new BadRequestException(`Books are locked until ${String(p.value).slice(0, 10)} (GSTR-1 filed). Use a later date.`)
+    }
+  }
+
   async getAllParams() {
     return this.paramModel.find().sort({ key: 1, effectiveFrom: -1 }).lean()
   }
@@ -142,13 +150,18 @@ export class TaxSettingsService {
     return this.changelogModel.find().sort({ at: -1 }).limit(500).lean()
   }
 
-  async resolveRateForInvoice(item: ItemDescriptor, docDate: Date): Promise<RateResult> {
+  /** Rate for the invoice date from the rule master, or null when no rule matches. */
+  async findRate(item: ItemDescriptor, docDate: Date): Promise<RateResult | null> {
     const rules = await this.ruleModel.find({
       effectiveFrom: { $lte: docDate },
       $or: [{ effectiveTo: null }, { effectiveTo: { $gt: docDate } }],
       status: { $ne: 'cancelled' },
     }).lean() as unknown as TaxRateRuleLike[]
-    const result = selectRate(rules, item, docDate)
+    return selectRate(rules, item, docDate)
+  }
+
+  async resolveRateForInvoice(item: ItemDescriptor, docDate: Date): Promise<RateResult> {
+    const result = await this.findRate(item, docDate)
     if (!result) throw new BadRequestException(`No GST rate set for item ${item._id} on ${docDate.toISOString().slice(0,10)}. Ask Admin.`)
     return result
   }

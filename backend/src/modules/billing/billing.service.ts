@@ -9,6 +9,7 @@ import { BillingCounter, BillingCounterDocument } from './schemas/billing-counte
 import { Godown } from './schemas/godown.schema';
 import { AuditLog } from './schemas/audit-log.schema';
 import { User } from '../users/schemas/user.schema';
+import { TaxSettingsService } from './tax-settings/tax-settings.service';
 
 function validateInvoiceNo(no: string): boolean {
   return /^[A-Za-z0-9/\-]{1,16}$/.test(no);
@@ -25,6 +26,7 @@ export class BillingService {
     @InjectModel(Godown.name) private godownModel: Model<any>,
     @InjectModel(AuditLog.name) private auditLogModel: Model<any>,
     private readonly crmEngine: CrmEngineService,
+    private readonly taxSettings: TaxSettingsService,
   ) {}
 
   // Map a User document to the billing customer shape the frontend expects
@@ -811,6 +813,7 @@ export class BillingService {
     if (!dto.items?.length) throw new BadRequestException('Bill must have at least one item');
 
     const docType = dto.docType ?? 'SALE';
+    await this.taxSettings.assertPeriodOpen(dto.invoiceDate ? new Date(dto.invoiceDate) : new Date());
 
     // 1. Invoice number
     const providedNo = dto.invoiceNo?.trim();
@@ -841,6 +844,22 @@ export class BillingService {
       .populate('category', 'name')
       .lean() as any[];
     const productById = new Map(productDocs.map(p => [String(p._id), p]));
+
+    // Rates come from the effective-dated rule master for the invoice date, not from the client.
+    // shortcut: no matching rule keeps the client's rate so billing works until the master is seeded; cess is not billed yet.
+    const rateDate = dto.invoiceDate ? new Date(dto.invoiceDate) : new Date();
+    const TREATMENT = { taxable: 'TAXABLE', nil: 'NIL_RATED', exempt: 'EXEMPT', non_gst: 'NON_GST' } as const;
+    for (const item of dto.items) {
+      const prod = productById.get(item.productId);
+      const rule = await this.taxSettings.findRate(
+        { _id: item.productId, hsnCode: item.hsnCode ?? '', categoryId: prod?.category?._id ? String(prod.category._id) : undefined },
+        rateDate,
+      );
+      if (!rule) continue;
+      item.gstRate = rule.taxability === 'taxable' ? rule.gstRate : 0;
+      const t = TREATMENT[rule.taxability as keyof typeof TREATMENT];
+      if (t) productById.set(item.productId, { ...(prod ?? {}), gstTreatment: t });
+    }
 
     // 4. Pre-discount taxables (for proportional allocation)
     const preTaxables = dto.items.map(item => {
@@ -1032,6 +1051,7 @@ export class BillingService {
     const bill = await this.billModel.findById(id).setOptions({ allDocTypes: true }).lean() as any;
     if (!bill) throw new NotFoundException('Bill not found');
     if (bill.status === 'cancelled') throw new BadRequestException('Already cancelled');
+    await this.taxSettings.assertPeriodOpen(new Date(bill.invoiceDate ?? bill.createdAt));
 
     await this.billModel.updateOne({ _id: id }, { $set: { status: 'cancelled', cancelReason: reason.trim() } });
     await this.auditLogModel.create({

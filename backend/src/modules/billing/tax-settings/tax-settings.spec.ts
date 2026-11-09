@@ -42,6 +42,22 @@ describe('TaxSettings R5-R9', () => {
     expect(throwForbidden).toThrow(ForbiddenException)
   })
 
+  it('period lock – blocks a date on or before gstr1FiledUntil, allows later', async () => {
+    paramModel.findOne.mockReturnValue({ sort: jest.fn().mockResolvedValue({ value: '2026-09-30' }) })
+    await expect(service.assertPeriodOpen(new Date('2026-09-30'))).rejects.toThrow(/locked/)
+    await expect(service.assertPeriodOpen(new Date('2026-10-01'))).resolves.toBeUndefined()
+  })
+
+  it('findRate – picks the rate valid on the invoice date (ghee 12% -> 5% on 22 Sep 2025)', async () => {
+    const mk = (gstRate: number, from: string, to: string | null) => ({ _id: String(gstRate), scope: 'hsn', hsnPrefix: '0405', gstRate, cessRate: 0, taxability: 'taxable', effectiveFrom: from, effectiveTo: to, status: 'active' })
+    const rules = [mk(12, '2020-01-01', '2025-09-22'), mk(5, '2025-09-22', null)]
+    ruleModel.find = jest.fn().mockImplementation(() => ({ lean: () => Promise.resolve(rules) }))
+    const item = { _id: 'p1', hsnCode: '04059020' }
+    expect((await service.findRate(item, new Date('2025-09-21')))?.gstRate).toBe(12)
+    expect((await service.findRate(item, new Date('2025-09-22')))?.gstRate).toBe(5)
+    expect(await service.findRate({ _id: 'p2', hsnCode: '1515' }, new Date('2025-09-22'))).toBeNull()
+  })
+
   it('R6 – createRule rejects effectiveFrom inside a filed period', async () => {
     paramModel.findOne.mockReturnValue({ sort: jest.fn().mockResolvedValue({ value: '2026-09-30' }) })
     allowedRateModel.findOne.mockResolvedValue({ rate: 5, active: true })

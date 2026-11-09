@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { PageTransition, Skeleton } from '@/components/motion'
 import { formatINR } from '@/lib/billing/utils/formatINR'
+import { api } from '@/lib/api'
 
 interface TaxRule {
   _id: string; scope: string; hsnPrefix?: string; gstRate: number; cessRate: number
@@ -13,14 +14,9 @@ interface TaxRule {
 interface Param { _id: string; key: string; value: number | string | boolean; unit: string; effectiveFrom: string }
 interface ChangeLog { _id: string; entity: string; action: string; reason: string; userId: string; at: string }
 
-async function fetchJSON<T>(url: string): Promise<T> {
-  const r = await fetch(url)
-  if (!r.ok) throw new Error(`${r.status}`)
-  return r.json()
-}
-async function fetchRules()    { return fetchJSON<TaxRule[]>('/api/settings/tax/rules') }
-async function fetchParams()   { return fetchJSON<Param[]>('/api/settings/tax/params') }
-async function fetchChangelog(){ return fetchJSON<ChangeLog[]>('/api/settings/tax/changelog') }
+async function fetchRules()    { return api.billingTax('rules') as Promise<TaxRule[]> }
+async function fetchParams()   { return api.billingTax('params') as Promise<Param[]> }
+async function fetchChangelog(){ return api.billingTax('changelog') as Promise<ChangeLog[]> }
 
 const STATUS_COLOR: Record<string, string> = {
   active:    'bg-green-100 text-green-800',

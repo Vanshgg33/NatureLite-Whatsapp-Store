@@ -2105,6 +2105,12 @@ class ApiClient {
     return res.data.data;
   }
 
+  /** GST rate rules, compliance params and change history (/settings/tax/<rules|params|changelog>). */
+  async billingTax(path: 'rules' | 'params' | 'changelog'): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>(`/settings/tax/${path}`);
+    return res.data.data;
+  }
+
   async getBillingReport(report: BillingReportKey, params: Record<string, string>): Promise<any> {
     const res = await this.client.get<ApiResponse<any>>(`/billing/reports/${report}`, { params });
     return res.data.data;

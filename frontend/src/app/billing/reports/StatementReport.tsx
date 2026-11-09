@@ -49,8 +49,13 @@ export function StatementReport({ kind, from, to }: { kind: StatementKind; from:
           </Button>
         </div>
         <div className="overflow-auto max-h-[70vh]">
-          {q.isLoading && <div className="text-center py-10 text-gray-400">Loading…</div>}
-          {q.isError && <div className="text-center py-10 text-red-500">Could not load this report.</div>}
+          {q.isLoading && <div className="text-center py-10 text-gray-400">Loading… the server can take up to a minute to wake up.</div>}
+          {q.isError && (
+            <div className="text-center py-10 text-red-500">
+              Could not load this report.{' '}
+              <button type="button" className="underline" onClick={() => q.refetch()}>Retry</button>
+            </div>
+          )}
           {sheets.map(sh => (
             <table key={sh.name} className="w-full mb-6">
               <caption className="text-left px-4 py-2 text-xs font-semibold text-gray-400">{sh.name}</caption>

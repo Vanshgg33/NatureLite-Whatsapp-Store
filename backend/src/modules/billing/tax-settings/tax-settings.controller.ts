@@ -3,13 +3,14 @@ import { TaxSettingsService } from './tax-settings.service'
 import { CreateRuleDto } from './dto/create-rule.dto'
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard'
 
-@Controller('api/settings/tax')
+// The global prefix already adds api/v1, so this serves /api/v1/settings/tax.
+@Controller('settings/tax')
 @UseGuards(JwtAuthGuard)
 export class TaxSettingsController {
   constructor(private readonly svc: TaxSettingsService) {}
 
   private requireAdmin(req: any) {
-    if (req.user?.role !== 'admin') throw new ForbiddenException('Admin only')
+    if (!['admin', 'superadmin'].includes(req.user?.role)) throw new ForbiddenException('Admin only')
   }
 
   @Get('rules')
@@ -21,13 +22,13 @@ export class TaxSettingsController {
   @Post('rules')
   createRule(@Body() dto: CreateRuleDto, @Req() req: any) {
     this.requireAdmin(req)
-    return this.svc.createRule(dto, req.user.id, req.ip)
+    return this.svc.createRule(dto, req.user.sub, req.ip)
   }
 
   @Post('rules/:id/cancel')
   cancelRule(@Param('id') id: string, @Body('reason') reason: string, @Req() req: any) {
     this.requireAdmin(req)
-    return this.svc.cancelRule(id, reason, req.user.id, req.ip)
+    return this.svc.cancelRule(id, reason, req.user.sub, req.ip)
   }
 
   @Get('params')
