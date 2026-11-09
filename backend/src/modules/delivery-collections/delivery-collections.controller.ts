@@ -4,6 +4,7 @@ import { GetLedgerDto, SettleCollectionDto } from './dto/delivery-collections.dt
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
+import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
 @Controller('delivery-collections')
 @UseGuards(RolesGuard)
@@ -12,6 +13,7 @@ export class DeliveryCollectionsController {
   constructor(private readonly service: DeliveryCollectionsService) {}
 
   @Get('summary')
+  @RequireAccess('delivery_collections.view')
   getSummary(
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
@@ -20,11 +22,13 @@ export class DeliveryCollectionsController {
   }
 
   @Get('ledger')
+  @RequireAccess('delivery_collections.view', 'delivery_history.view')
   getLedger(@Query() dto: GetLedgerDto) {
     return this.service.getLedger(dto);
   }
 
   @Get('breakdown')
+  @RequireAccess('delivery_collections.view', 'delivery_history.view')
   getBreakdown(
     @Query('deliveryUserId') deliveryUserId: string,
     @Query('startDate') startDate?: string,
@@ -34,11 +38,13 @@ export class DeliveryCollectionsController {
   }
 
   @Get('pending')
+  @RequireAccess('delivery_collections.view')
   getPending(@Query('deliveryUserId') deliveryUserId: string) {
     return this.service.getPendingOrdersForUser(deliveryUserId);
   }
 
   @Post('settle')
+  @RequireAccess('delivery_collections.settle')
   settle(@Body() dto: SettleCollectionDto, @CurrentUser() user: JwtPayload) {
     return this.service.settle(dto, user.sub);
   }

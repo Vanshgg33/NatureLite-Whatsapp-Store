@@ -15,6 +15,8 @@ import { hasPermission } from '@/lib/fms/permissions';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { AccessGate } from '@/components/access-gate';
+import { useAdminAccess } from '@/lib/admin-access';
 
 const fraunces  = Fraunces({ subsets: ['latin'], variable: '--font-fraunces', display: 'swap', axes: ['opsz'] });
 const jakarta   = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-jakarta', display: 'swap' });
@@ -200,22 +202,25 @@ export default function FmsLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user, hasHydrated } = useAdminAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const access = useAdminAccess();
   const isSuperadmin = user?.role === 'superadmin';
   const hasFmsAccess =
     user?.departmentType === 'fms' ||
     (user?.purchaseRole != null && !user?.departmentType) ||
-    isSuperadmin;
+    isSuperadmin ||
+    (access.restricted && access.can('purchase.view')); // custom access role
 
   useEffect(() => {
     if (!hasHydrated) return;
     if (!isAuthenticated) { router.push('/admin-login'); return; }
+    if (access.isLoading) return; // role grants not known yet
     if (!hasFmsAccess) { router.push('/admin/dashboard'); return; }
     if (user?.mustChangePassword && pathname !== '/fms/change-password') {
       router.push('/fms/change-password');
     }
-  }, [hasHydrated, isAuthenticated, hasFmsAccess, user?.mustChangePassword, pathname, router]);
+  }, [hasHydrated, isAuthenticated, hasFmsAccess, access.isLoading, user?.mustChangePassword, pathname, router]);
 
-  if (!hasHydrated || !isAuthenticated || !hasFmsAccess) return null;
+  if (!hasHydrated || !isAuthenticated || access.isLoading || !hasFmsAccess) return null;
   if (user?.mustChangePassword && pathname !== '/fms/change-password') return null;
 
   return (
@@ -234,7 +239,9 @@ export default function FmsLayout({ children }: { children: React.ReactNode }) {
         </div>
         {/* main — add bottom padding on mobile for the tab bar */}
         <main className="flex-1 overflow-auto pb-0 md:pb-0" style={{ paddingBottom: 0 }}>
-          <ErrorBoundary>{children}</ErrorBoundary>
+          <AccessGate>
+            <ErrorBoundary>{children}</ErrorBoundary>
+          </AccessGate>
         </main>
       </div>
 

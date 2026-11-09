@@ -1,5 +1,7 @@
 'use client';
 
+import { useAdminAccess } from '@/lib/admin-access';
+
 import { useEffect, useMemo, useState } from 'react';
 import { getApiError } from '@/lib/api-error';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -26,6 +28,8 @@ import type { CatalogSettings, RemoteCatalog, UcmDashboardSnapshot, UcmSyncSumma
 import { useToast } from '@/components/ui/use-toast';
 
 export default function UcmPage() {
+  const { can } = useAdminAccess();
+  const canSync = can('ucm.sync');
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [config, setConfig] = useState<CatalogSettings>({
@@ -285,6 +289,7 @@ export default function UcmPage() {
             </label>
 
             <div className="flex flex-wrap gap-3 md:col-span-2">
+              {canSync && (<>
               <Button onClick={handleSave} disabled={saveMutation.isPending}>
                 <Save className="mr-2 h-4 w-4" />
                 {saveMutation.isPending ? 'Saving...' : 'Save UCM settings'}
@@ -297,6 +302,7 @@ export default function UcmPage() {
                 <Sparkles className="mr-2 h-4 w-4" />
                 {pushMutation.isPending ? 'Pushing...' : 'Push catalog'}
               </Button>
+              </>)}
               <Button
                 variant="outline"
                 onClick={() => queryClient.invalidateQueries({ queryKey: ['ucm-dashboard'] })}
@@ -337,6 +343,7 @@ export default function UcmPage() {
                           {catalog.vertical && <p className="mt-1 text-xs text-muted-foreground">Vertical: {catalog.vertical}</p>}
                         </div>
                         <div className="flex flex-col gap-2">
+                          {canSync && (<>
                           <Button variant="outline" size="sm" onClick={() => handleSelectCatalog(catalog)}>
                             <Link2 className="mr-2 h-4 w-4" />
                             Use this catalog
@@ -351,6 +358,7 @@ export default function UcmPage() {
                             <Trash2 className="mr-2 h-4 w-4" />
                             Delete
                           </Button>
+                          </>)}
                         </div>
                       </div>
                     </div>

@@ -13,6 +13,8 @@ import { useAdminAuthStore } from '@/lib/admin-store';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { AccessGate } from '@/components/access-gate';
+import { useAdminAccess, pageForPath } from '@/lib/admin-access';
 import { MotionConfig } from 'framer-motion';
 
 type NavItem = { name: string; href: string; icon: LucideIcon; soon?: boolean };
@@ -63,6 +65,7 @@ function BillingSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; on
   const { user, logout } = useAdminAuthStore();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+  const access = useAdminAccess();
 
   const userInitial = user?.name?.[0]?.toUpperCase() ?? user?.email?.[0]?.toUpperCase() ?? 'A';
 
@@ -90,7 +93,13 @@ function BillingSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; on
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-2 scrollbar-thin">
-        {BILLING_NAV.map((group, gi) => (
+        {BILLING_NAV.map((g) => ({
+          ...g,
+          items: g.items.filter((i) => {
+            const page = pageForPath(i.href);
+            return !page || access.can(`${page}.view`); // unlisted pages (e.g. How it works) stay visible
+          }),
+        })).filter((g) => g.items.length > 0).map((group, gi) => (
           <div key={gi} className="mt-2 first:mt-1">
             <p className="px-4 pt-2 pb-1 text-[9px] font-semibold text-white/25 uppercase tracking-[0.15em] select-none">
               {group.label}
@@ -194,7 +203,9 @@ export default function BillingLayout({ children }: { children: React.ReactNode 
             <span className="font-semibold text-sm text-gray-800">Billing</span>
           </div>
           <main className="flex-1 overflow-auto">
-            <ErrorBoundary>{children}</ErrorBoundary>
+            <AccessGate>
+              <ErrorBoundary>{children}</ErrorBoundary>
+            </AccessGate>
           </main>
         </div>
       </div>

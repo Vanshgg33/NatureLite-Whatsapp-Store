@@ -1,5 +1,7 @@
 'use client';
 
+import { useAdminAccess } from '@/lib/admin-access';
+
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Plus, Pencil, X, MapPin } from 'lucide-react';
@@ -177,6 +179,7 @@ function CustomerForm({
 }
 
 export default function BillingCustomersPage() {
+  const { can } = useAdminAccess();
   const [search, setSearch] = useState('');
   const [tagFilter, setTagFilter] = useState<CTag | null>(null);
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -295,6 +298,7 @@ export default function BillingCustomersPage() {
 
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-xs text-gray-400 font-mono">{filtered.length} customers</span>
+          {can('billing_customers.create') && (
           <Button
             onClick={() => setEditing({})}
             size="sm"
@@ -302,6 +306,7 @@ export default function BillingCustomersPage() {
           >
             <Plus className="h-3.5 w-3.5" /> New Customer
           </Button>
+          )}
         </div>
       </div>
 
@@ -360,6 +365,7 @@ export default function BillingCustomersPage() {
                   )}
                 </td>
                 <td className="px-4 py-2.5">
+                  {can('billing_customers.edit') && (
                   <button
                     onClick={() => openEdit(c)}
                     className="text-gray-300 hover:text-[#2d7a4f] transition-colors p-0.5"
@@ -367,6 +373,7 @@ export default function BillingCustomersPage() {
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
+                  )}
                 </td>
               </tr>
             ))}

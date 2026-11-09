@@ -17,6 +17,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { PaginatedResult } from '../../common/types/pagination.types';
+import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
 @Controller('categories')
 export class CategoriesController {
@@ -25,6 +26,7 @@ export class CategoriesController {
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('categories.create')
   async create(@Body() dto: CreateCategoryDto): Promise<Category> {
     return this.categoriesService.create(dto);
   }
@@ -68,6 +70,7 @@ export class CategoriesController {
   @Put(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('categories.edit')
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateCategoryDto,
@@ -78,6 +81,7 @@ export class CategoriesController {
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('categories.delete')
   async delete(@Param('id') id: string): Promise<{ message: string }> {
     await this.categoriesService.delete(id);
     return { message: 'Category deleted successfully' };

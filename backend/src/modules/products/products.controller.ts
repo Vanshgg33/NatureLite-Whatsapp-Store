@@ -31,6 +31,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { PaginatedResult } from '../../common/types/pagination.types';
+import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
 @Controller('products')
 export class ProductsController {
@@ -39,6 +40,7 @@ export class ProductsController {
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('products.create')
   async create(@Body() dto: CreateProductDto): Promise<Product> {
     return this.productsService.create(dto);
   }
@@ -58,6 +60,7 @@ export class ProductsController {
   @Get('low-stock')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('products.view')
   async getLowStockProducts(): Promise<Product[]> {
     return this.productsService.getLowStockProducts();
   }
@@ -104,6 +107,7 @@ export class ProductsController {
   @Put(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('products.edit')
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateProductDto,
@@ -114,6 +118,7 @@ export class ProductsController {
   @Put(':id/stock')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('products.stock')
   async updateStock(
     @Param('id') id: string,
     @Body() dto: UpdateStockDto,
@@ -124,6 +129,7 @@ export class ProductsController {
   @Patch('bulk-category')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('products.edit')
   async bulkUpdateCategory(@Body() dto: BulkUpdateCategoryDto): Promise<{ modifiedCount: number }> {
     return this.productsService.bulkUpdateCategory(dto.productIds, dto.categoryId);
   }
@@ -131,6 +137,7 @@ export class ProductsController {
   @Post('bulk-delete')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('products.delete')
   async bulkDelete(@Body() dto: BulkDeleteProductsDto): Promise<{ deletedCount: number }> {
     return this.productsService.deleteMany(dto.productIds);
   }
@@ -138,6 +145,7 @@ export class ProductsController {
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('products.delete')
   async delete(@Param('id') id: string): Promise<{ message: string }> {
     await this.productsService.delete(id);
     return { message: 'Product deleted successfully' };
@@ -146,6 +154,7 @@ export class ProductsController {
   @Get('csv/template')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('products.import')
   getCsvTemplate(@Res() res: Response): void {
     const csv = this.productsService.getCsvTemplate();
     res.setHeader('Content-Type', 'text/csv');
@@ -156,6 +165,7 @@ export class ProductsController {
   @Get('export/csv')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('products.export')
   async exportCsv(
     @Query('category') category: string | undefined,
     @Res() res: Response,
@@ -170,6 +180,7 @@ export class ProductsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  @RequireAccess('products.import')
   async importCsvFile(
     @UploadedFile() file: Express.Multer.File,
     @Body('defaultCategoryId') defaultCategoryId: string,
@@ -184,6 +195,7 @@ export class ProductsController {
   @Post('import/csv')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('products.import')
   async importCsv(
     @Body() body: { rows: Record<string, string>[]; defaultCategoryId: string },
   ): Promise<{ created: number; skipped: number; errors: string[] }> {

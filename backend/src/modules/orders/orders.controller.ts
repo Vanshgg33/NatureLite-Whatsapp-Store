@@ -37,6 +37,7 @@ import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.de
 import { PaginatedResult } from '../../common/types/pagination.types';
 import { Public } from '../../common/decorators/public.decorator';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
 /** Get order owner id whether user ref is populated or raw ObjectId. */
 function getOrderUserId(order: Order): string {
@@ -72,6 +73,7 @@ export class OrdersController {
   @Post('admin-create')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.create')
   async createAdminOrder(@Body() dto: GuestCreateOrderDto): Promise<Order> {
     return this.ordersService.createGuestOrder(dto, true);
   }
@@ -79,6 +81,7 @@ export class OrdersController {
   @Get()
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.view', 'customers.view')
   async findAll(
     @Query() query: OrderQueryDto,
     @CurrentUser() user: JwtPayload,
@@ -115,6 +118,7 @@ export class OrdersController {
   @Get('stats')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.view', 'dashboard.view')
   async getOrderStats(
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
@@ -128,6 +132,7 @@ export class OrdersController {
   @Get('by-status')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.view', 'dashboard.view')
   async getOrdersByStatus(): Promise<Record<string, number>> {
     return this.ordersService.getOrdersByStatus();
   }
@@ -177,6 +182,7 @@ export class OrdersController {
   @Put(':id/status')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.edit')
   async updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateOrderStatusDto,
@@ -189,6 +195,7 @@ export class OrdersController {
   @Put(':id/assign-delivery')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.assign_delivery')
   async assignDelivery(
     @Param('id') id: string,
     @Body() dto: AssignDeliveryDto,
@@ -203,6 +210,7 @@ export class OrdersController {
   @Put(':id/mark-packed')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.edit')
   async markPacked(
     @Param('id') id: string,
     @Body() body: { packedByName?: string },
@@ -214,6 +222,7 @@ export class OrdersController {
   @Put(':id/reopen')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.reopen')
   async reopenOrder(@Param('id') id: string, @CurrentUser() user: JwtPayload): Promise<Order> {
     // Department staff (packing, delivery...) also hold the admin role, but only real admins may undo a cancellation.
     if (user.departmentType) throw new ForbiddenException('Only admins can reopen an order.');
@@ -223,6 +232,7 @@ export class OrdersController {
   @Put(':id/payment-status')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.payments')
   async updatePaymentStatus(
     @Param('id') id: string,
     @Body() dto: UpdatePaymentStatusDto,
@@ -233,6 +243,7 @@ export class OrdersController {
   @Patch(':id/payment-proof')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.payments')
   async addPaymentProof(
     @Param('id') id: string,
     @Body() dto: AddPaymentProofDto,
@@ -244,6 +255,7 @@ export class OrdersController {
   @Put(':id/delivery-workflow')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.edit')
   async updateDeliveryWorkflow(
     @Param('id') id: string,
     @Body() dto: UpdateDeliveryWorkflowDto,
@@ -255,6 +267,7 @@ export class OrdersController {
   @Patch(':id/dismiss-view')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.edit')
   async dismissFromView(
     @Param('id') id: string,
     @Body('view') view: string,
@@ -265,6 +278,7 @@ export class OrdersController {
   @Patch(':id/restore-view')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.edit')
   async restoreToView(
     @Param('id') id: string,
     @Body('view') view: string,
@@ -300,6 +314,7 @@ export class OrdersController {
   @Post(':id/return/approve')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.returns')
   async approveReturn(@Param('id') id: string): Promise<Order> {
     return this.ordersService.approveReturn(id);
   }
@@ -307,6 +322,7 @@ export class OrdersController {
   @Post(':id/return/reject')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.returns')
   async rejectReturn(@Param('id') id: string): Promise<Order> {
     return this.ordersService.rejectReturn(id);
   }
@@ -314,6 +330,7 @@ export class OrdersController {
   @Post(':id/return/complete')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.returns')
   async completeReturn(@Param('id') id: string): Promise<Order> {
     return this.ordersService.completeReturn(id);
   }
@@ -321,6 +338,7 @@ export class OrdersController {
   @Post(':id/notes')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.edit')
   async addNote(
     @Param('id') id: string,
     @Body() dto: AddOrderNoteDto,
@@ -331,6 +349,7 @@ export class OrdersController {
   @Put(':id/shipping')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.edit')
   async updateShipping(
     @Param('id') id: string,
     @Body() dto: UpdateShippingDto,
@@ -341,6 +360,7 @@ export class OrdersController {
   @Put(':id')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.edit')
   async updateOrder(
     @Param('id') id: string,
     @Body() dto: UpdateOrderDto,
@@ -351,6 +371,7 @@ export class OrdersController {
   @Delete(':id')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.delete')
   async deleteOrder(@Param('id') id: string): Promise<{ deleted: boolean }> {
     return this.ordersService.deleteOrder(id);
   }
@@ -358,6 +379,7 @@ export class OrdersController {
   @Put(':id/priority-tags')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.edit')
   async setPriorityTags(
     @Param('id') id: string,
     @Body('tags') tags: string[],
@@ -376,6 +398,7 @@ export class OrdersController {
   @Post(':id/invoice')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.invoice')
   async storeInvoice(
     @Param('id') id: string,
     @Body('pdfBase64') pdfBase64: string,
@@ -388,6 +411,7 @@ export class OrdersController {
   @Post(':id/send-invoice')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
+  @RequireAccess('orders.invoice')
   async sendInvoice(@Param('id') id: string): Promise<{ sent: boolean }> {
     return this.ordersService.sendOrderInvoiceToCustomer(id);
   }

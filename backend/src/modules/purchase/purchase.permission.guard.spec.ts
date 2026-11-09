@@ -2,6 +2,7 @@ import { PermissionGuard } from '../../common/guards/permission.guard';
 import { Reflector } from '@nestjs/core';
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 
+const mockRoleModel = { findById: jest.fn() };
 const mockAdminModel = {
   findById: jest.fn(),
 };
@@ -22,7 +23,7 @@ describe('PermissionGuard', () => {
 
   beforeEach(() => {
     reflector = new Reflector();
-    guard = new PermissionGuard(reflector, mockAdminModel as any);
+    guard = new PermissionGuard(reflector, mockAdminModel as any, mockRoleModel as any);
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -55,5 +56,17 @@ describe('PermissionGuard', () => {
     mockAdminModel.findById.mockReturnValue(mockQuery({ isActive: true, permissions: ['po.approve', 'request.close'], role: 'admin' }));
     const result = await guard.canActivate(makeCtx({ sub: 'id1', role: 'admin' }));
     expect(result).toBe(true);
+  });
+
+  it('allows a permission granted by the access role, and honours a per-user denial', async () => {
+    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue('po.approve');
+    mockRoleModel.findById.mockReturnValue(mockQuery({ permissions: ['po.approve'] }));
+    mockAdminModel.findById.mockReturnValue(mockQuery({ isActive: true, permissions: [], role: 'admin', accessRole: 'r1' }));
+    expect(await guard.canActivate(makeCtx({ sub: 'id1', role: 'admin' }))).toBe(true);
+
+    mockAdminModel.findById.mockReturnValue(
+      mockQuery({ isActive: true, permissions: [], role: 'admin', accessRole: 'r1', deniedPermissions: ['po.approve'] }),
+    );
+    await expect(guard.canActivate(makeCtx({ sub: 'id1', role: 'admin' }))).rejects.toThrow(ForbiddenException);
   });
 });

@@ -22,6 +22,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { PaginatedResult } from '../../common/types/pagination.types';
+import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
 @Controller('coupons')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -30,12 +31,14 @@ export class CouponsController {
 
   @Post()
   @Roles('admin', 'superadmin')
+  @RequireAccess('coupons.create')
   async create(@Body() dto: CreateCouponDto): Promise<Coupon> {
     return this.couponsService.create(dto);
   }
 
   @Get()
   @Roles('admin', 'superadmin')
+  @RequireAccess('coupons.view')
   async findAll(@Query() query: CouponQueryDto): Promise<PaginatedResult<Coupon>> {
     return this.couponsService.findAll(query);
   }
@@ -56,18 +59,21 @@ export class CouponsController {
 
   @Get('code/:code')
   @Roles('admin', 'superadmin')
+  @RequireAccess('coupons.view')
   async findByCode(@Param('code') code: string): Promise<Coupon> {
     return this.couponsService.findByCode(code);
   }
 
   @Get(':id')
   @Roles('admin', 'superadmin')
+  @RequireAccess('coupons.view')
   async findOne(@Param('id') id: string): Promise<Coupon> {
     return this.couponsService.findById(id);
   }
 
   @Put(':id')
   @Roles('admin', 'superadmin')
+  @RequireAccess('coupons.edit')
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateCouponDto,
@@ -77,6 +83,7 @@ export class CouponsController {
 
   @Delete(':id')
   @Roles('admin', 'superadmin')
+  @RequireAccess('coupons.delete')
   async delete(@Param('id') id: string): Promise<{ message: string }> {
     await this.couponsService.delete(id);
     return { message: 'Coupon deleted successfully' };

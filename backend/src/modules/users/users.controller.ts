@@ -24,6 +24,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult } from '../../common/types/pagination.types';
+import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -32,12 +33,14 @@ export class UsersController {
 
   @Post()
   @Roles('admin', 'superadmin')
+  @RequireAccess('customers.create')
   async create(@Body() dto: CreateUserDto): Promise<User> {
     return this.usersService.create(dto);
   }
 
   @Get()
   @Roles('admin', 'superadmin')
+  @RequireAccess('customers.view')
   async findAll(@Query() query: UserQueryDto): Promise<PaginatedResult<User>> {
     return this.usersService.findAll(query);
   }
@@ -49,6 +52,7 @@ export class UsersController {
 
   @Put('bulk-assign-delivery')
   @Roles('admin', 'superadmin')
+  @RequireAccess('customers.edit')
   async bulkAssignDelivery(
     @Body('userIds') userIds: string[],
     @Body('deliveryUserId') deliveryUserId: string,
@@ -58,6 +62,7 @@ export class UsersController {
 
   @Get(':id')
   @Roles('admin', 'superadmin')
+  @RequireAccess('customers.view')
   async findOne(@Param('id') id: string): Promise<User> {
     return this.usersService.findById(id);
   }
@@ -72,6 +77,7 @@ export class UsersController {
 
   @Put(':id')
   @Roles('admin', 'superadmin')
+  @RequireAccess('customers.edit')
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateUserDto,
@@ -81,6 +87,7 @@ export class UsersController {
 
   @Patch(':id/default-delivery')
   @Roles('admin', 'superadmin')
+  @RequireAccess('customers.edit')
   async setDefaultDelivery(
     @Param('id') id: string,
     @Body('deliveryUserId') deliveryUserId: string,
@@ -115,6 +122,7 @@ export class UsersController {
 
   @Post(':id/block')
   @Roles('admin', 'superadmin')
+  @RequireAccess('customers.block')
   async blockUser(
     @Param('id') id: string,
     @Body('reason') reason: string,
@@ -124,6 +132,7 @@ export class UsersController {
 
   @Post(':id/unblock')
   @Roles('admin', 'superadmin')
+  @RequireAccess('customers.block')
   async unblockUser(@Param('id') id: string): Promise<User> {
     return this.usersService.unblockUser(id);
   }

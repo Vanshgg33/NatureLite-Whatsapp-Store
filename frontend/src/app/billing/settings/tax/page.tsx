@@ -1,4 +1,5 @@
 'use client'
+import { useAdminAccess } from '@/lib/admin-access';
 import { useEffect, useState } from 'react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -26,6 +27,7 @@ const STATUS_COLOR: Record<string, string> = {
 }
 
 export default function TaxSettingsPage() {
+  const { can } = useAdminAccess();
   const [rules, setRules]   = useState<TaxRule[] | null>(null)
   const [params, setParams] = useState<Param[] | null>(null)
   const [changelog, setLog] = useState<ChangeLog[] | null>(null)
@@ -52,9 +54,11 @@ export default function TaxSettingsPage() {
           <TabsContent value="rates">
             <div className="flex justify-between items-center mb-4">
               <p className="text-sm text-muted-foreground">All rate rules, effective-dated. Admin only to change.</p>
+              {can('billing_tax.edit') && (
               <Button size="sm" onClick={() => alert('Rate change drawer — Phase 1 Tax console')}>
                 + Schedule rate change
               </Button>
+              )}
             </div>
             {rules === null ? (
               <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>

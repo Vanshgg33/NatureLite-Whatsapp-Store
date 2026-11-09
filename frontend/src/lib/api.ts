@@ -6,6 +6,9 @@ import {
   AuthResponse,
   User,
   type AdminUser,
+  type AccessRole,
+  type AdminPageDef,
+  type MyAccess,
   Product,
   Category,
   Order,
@@ -356,8 +359,42 @@ class ApiClient {
     role?: 'admin' | 'superadmin';
     departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_manager' | 'crm_senior' | 'crm_viewer' | 'fms';
     purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver';
+    accessRole?: string;
   }): Promise<AdminUser> {
     const response = await this.client.post<ApiResponse<AdminUser>>('/admin/users', data);
+    return response.data.data;
+  }
+
+  // ==================== ACCESS ROLES ====================
+  async getAccessRegistry(): Promise<AdminPageDef[]> {
+    const response = await this.client.get<ApiResponse<AdminPageDef[]>>('/admin/roles/registry');
+    return response.data.data;
+  }
+
+  async getAccessRoles(): Promise<AccessRole[]> {
+    const response = await this.client.get<ApiResponse<AccessRole[]>>('/admin/roles');
+    return response.data.data;
+  }
+
+  async createAccessRole(data: { name: string; description?: string; permissions: string[] }): Promise<AccessRole> {
+    const response = await this.client.post<ApiResponse<AccessRole>>('/admin/roles', data);
+    return response.data.data;
+  }
+
+  async updateAccessRole(
+    id: string,
+    data: { name?: string; description?: string; permissions?: string[] },
+  ): Promise<AccessRole> {
+    const response = await this.client.put<ApiResponse<AccessRole>>(`/admin/roles/${id}`, data);
+    return response.data.data;
+  }
+
+  async deleteAccessRole(id: string): Promise<void> {
+    await this.client.delete(`/admin/roles/${id}`);
+  }
+
+  async getMyAccess(): Promise<MyAccess> {
+    const response = await this.client.get<ApiResponse<MyAccess>>('/admin/access/me');
     return response.data.data;
   }
 
@@ -371,6 +408,8 @@ class ApiClient {
       permissions?: string[];
       departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_manager' | 'crm_senior' | 'crm_viewer' | 'fms';
       purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver' | null;
+      accessRole?: string | null;
+      deniedPermissions?: string[];
     }
   ): Promise<AdminUser> {
     const response = await this.client.put<ApiResponse<AdminUser>>(`/admin/users/${id}`, data);

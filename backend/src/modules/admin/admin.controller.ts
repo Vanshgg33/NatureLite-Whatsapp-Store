@@ -56,6 +56,8 @@ export class AdminController {
       role?: 'admin' | 'superadmin';
       departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
       purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver';
+      accessRole?: string;
+      deniedPermissions?: string[];
     },
   ): Promise<AdminUser> {
     return this.adminService.create(body);
@@ -73,6 +75,8 @@ export class AdminController {
       permissions?: string[];
       departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
       purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver' | null;
+      accessRole?: string | null;
+      deniedPermissions?: string[];
     },
   ): Promise<AdminUser> {
     return this.adminService.update(id, body);

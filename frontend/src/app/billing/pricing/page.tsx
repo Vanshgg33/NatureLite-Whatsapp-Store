@@ -1,5 +1,7 @@
 'use client';
 
+import { useAdminAccess } from '@/lib/admin-access';
+
 import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Upload, Save, X } from 'lucide-react';
@@ -23,6 +25,7 @@ const TAG_COLORS: Record<CTag, string> = {
 };
 
 export default function BillingPricingPage() {
+  const { can } = useAdminAccess();
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
   const qc = useQueryClient();
@@ -133,14 +136,16 @@ export default function BillingPricingPage() {
             />
           </div>
 
+          {can('billing_pricing.edit') && (
           <label className="cursor-pointer">
             <input type="file" accept=".csv" className="sr-only" onChange={handleCsvUpload} />
             <Button variant="outline" asChild>
               <span><Upload className="h-4 w-4 mr-1.5" /> Upload CSV</span>
             </Button>
           </label>
+          )}
 
-          {hasDirty && (
+          {hasDirty && can('billing_pricing.edit') && (
             <Button onClick={handleSaveAll} disabled={saveMutation.isPending} className="bg-[#2d7a4f] hover:bg-[#245f3e] text-white">
               <Save className="h-4 w-4 mr-1.5" />
               {saveMutation.isPending ? 'Saving…' : `Save ${dirty.size} change${dirty.size > 1 ? 's' : ''}`}

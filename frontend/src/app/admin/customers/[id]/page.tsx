@@ -1,5 +1,7 @@
 'use client';
 
+import { useAdminAccess } from '@/lib/admin-access';
+
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
@@ -53,6 +55,7 @@ import { formatCurrency, getStatusColor } from '@/lib/utils';
 import { Order } from '@/types';
 
 export default function CustomerDetailPage() {
+  const { can } = useAdminAccess();
   const params = useParams();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -206,7 +209,7 @@ export default function CustomerDetailPage() {
           Back
         </Button>
         <div className="flex-1" />
-        {customer.isBlocked ? (
+        {!can('customers.block') ? null : customer.isBlocked ? (
           <Button onClick={() => unblockMutation.mutate()} disabled={unblockMutation.isPending}>
             <CheckCircle className="mr-2 h-4 w-4" />
             {unblockMutation.isPending ? 'Unblocking...' : 'Unblock Customer'}
@@ -417,7 +420,8 @@ export default function CustomerDetailPage() {
                 disabled={
                   !walletAmountInput ||
                   Number(walletAmountInput) <= 0 ||
-                  creditWalletMutation.isPending
+                  creditWalletMutation.isPending ||
+                  !can('customers.edit')
                 }
                 onClick={() => creditWalletMutation.mutate()}
               >
@@ -428,7 +432,8 @@ export default function CustomerDetailPage() {
                 disabled={
                   !walletAmountInput ||
                   Number(walletAmountInput) <= 0 ||
-                  debitWalletMutation.isPending
+                  debitWalletMutation.isPending ||
+                  !can('customers.edit')
                 }
                 onClick={() => debitWalletMutation.mutate()}
               >

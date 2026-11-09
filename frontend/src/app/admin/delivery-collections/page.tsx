@@ -1,5 +1,7 @@
 'use client';
 
+import { useAdminAccess } from '@/lib/admin-access';
+
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -102,6 +104,8 @@ function BreakdownDialog({
       setSelected(new Set(allPendingIds));
     }
   };
+
+  const { can } = useAdminAccess();
 
   const handleSettle = () => {
     if (selected.size === 0) return;
@@ -214,6 +218,7 @@ function BreakdownDialog({
             <p className="text-xs text-gray-500">
               {selected.size} of {allPendingIds.length} pending selected
             </p>
+            {can('delivery_collections.settle') && (
             <button
               onClick={handleSettle}
               disabled={selected.size === 0 || settle.isPending}
@@ -221,6 +226,7 @@ function BreakdownDialog({
             >
               {settle.isPending ? 'Settling…' : 'Mark as Settled'}
             </button>
+            )}
           </div>
         )}
       </div>

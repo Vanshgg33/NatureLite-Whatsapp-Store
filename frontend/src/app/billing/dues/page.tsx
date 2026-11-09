@@ -1,5 +1,7 @@
 'use client';
 
+import { useAdminAccess } from '@/lib/admin-access';
+
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, IndianRupee, Clock, CheckCircle, ArrowDownUp } from 'lucide-react';
@@ -96,6 +98,7 @@ const PRESETS: { key: DatePreset; label: string }[] = [
 ];
 
 export default function DuesPage() {
+  const { can } = useAdminAccess();
   const [preset, setPreset] = useState<DatePreset>('today');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -283,6 +286,7 @@ export default function DuesPage() {
                                     </span>
                                   </td>
                                   <td className="px-4 py-2.5 text-right">
+                                    {can('billing_dues.record') && (
                                     <Button
                                       size="sm"
                                       className="text-xs h-7 bg-[#2d7a4f] hover:bg-[#245f3d] text-white"
@@ -290,6 +294,7 @@ export default function DuesPage() {
                                     >
                                       Pay
                                     </Button>
+                                    )}
                                   </td>
                                 </tr>
                               );

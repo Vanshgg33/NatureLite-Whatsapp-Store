@@ -3,6 +3,7 @@ import * as bcrypt from 'bcrypt';
 import { AdminUser } from './schemas/admin-user.schema';
 import { AdminUserRepository } from './repositories/admin-user.repository';
 import { parseObjectId } from '../../common/utils/objectid.util';
+import { isValidAdminPermission } from '../../common/permissions/admin-pages';
 
 @Injectable()
 export class AdminService {
@@ -33,6 +34,8 @@ export class AdminService {
     role?: 'admin' | 'superadmin';
     departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
     purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver';
+    accessRole?: string;
+    deniedPermissions?: string[];
   }): Promise<AdminUser> {
     const existing = await this.adminUserRepository.findOneByEmail(data.email.toLowerCase());
     if (existing) {
@@ -56,6 +59,8 @@ export class AdminService {
       departmentType: data.departmentType,
       purchaseRole: data.purchaseRole,
     };
+    if (data.accessRole) payload.accessRole = parseObjectId(data.accessRole, 'accessRole');
+    if (data.deniedPermissions) payload.deniedPermissions = this.cleanPerms(data.deniedPermissions);
     if (data.phone?.trim()) {
       payload.phone = data.phone.trim();
     }
@@ -74,14 +79,28 @@ export class AdminService {
       permissions?: string[];
       departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior';
       purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver' | null;
+      accessRole?: string | null;
+      deniedPermissions?: string[];
     },
   ): Promise<AdminUser> {
     const idObj = parseObjectId(id, 'id');
-    const admin = await this.adminUserRepository.findByIdAndUpdateExcludePassword(idObj, data);
+    const { accessRole, ...rest } = data;
+    const update: Record<string, unknown> = { ...rest };
+    if (accessRole !== undefined) update.accessRole = accessRole ? parseObjectId(accessRole, 'accessRole') : null;
+    if (data.permissions) update.permissions = this.cleanPerms(data.permissions);
+    if (data.deniedPermissions) update.deniedPermissions = this.cleanPerms(data.deniedPermissions);
+    const admin = await this.adminUserRepository.findByIdAndUpdateExcludePassword(idObj, update);
     if (!admin) {
       throw new NotFoundException('Admin not found');
     }
     return admin;
+  }
+
+  // Per-user grants/denials may mix page permissions with the legacy purchase keys stored in `permissions`.
+  private cleanPerms(perms: string[]): string[] {
+    const bad = perms.filter((p) => p.startsWith('admin.') && !isValidAdminPermission(p));
+    if (bad.length) throw new BadRequestException(`Unknown permissions: ${bad.join(', ')}`);
+    return [...new Set(perms)];
   }
 
   async resetPassword(id: string, newPassword: string): Promise<void> {

@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, Search, Package, Tag, X, CheckSquare, Download, Upload, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { useAdminAccess } from '@/lib/admin-access';
 import {
   Dialog,
   DialogContent,
@@ -36,6 +37,7 @@ function SortIcon({ field, current, dir }: { field: SortField; current: SortFiel
 }
 
 export default function ProductsPage() {
+  const { can } = useAdminAccess();
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
@@ -226,18 +228,24 @@ export default function ProductsPage() {
         description="Manage your product catalog"
         action={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting}>
-              <Download className="mr-1.5 h-4 w-4" />
-              {exporting ? 'Exporting…' : 'Export CSV'}
-            </Button>
-            <Link href="/admin/products/import">
-              <Button variant="outline" size="sm">
-                <Upload className="mr-1.5 h-4 w-4" /> Import CSV
+            {can('products.export') && (
+              <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting}>
+                <Download className="mr-1.5 h-4 w-4" />
+                {exporting ? 'Exporting…' : 'Export CSV'}
               </Button>
-            </Link>
-            <Link href="/admin/products/new">
-              <Button><Plus className="mr-2 h-4 w-4" /> Add Product</Button>
-            </Link>
+            )}
+            {can('products.import') && (
+              <Link href="/admin/products/import">
+                <Button variant="outline" size="sm">
+                  <Upload className="mr-1.5 h-4 w-4" /> Import CSV
+                </Button>
+              </Link>
+            )}
+            {can('products.create') && (
+              <Link href="/admin/products/new">
+                <Button><Plus className="mr-2 h-4 w-4" /> Add Product</Button>
+              </Link>
+            )}
           </div>
         }
       />
@@ -251,6 +259,7 @@ export default function ProductsPage() {
               {selected.size} product{selected.size !== 1 ? 's' : ''} selected
             </span>
             <div className="flex items-center gap-2 ml-auto">
+              {can('products.edit') && (<>
               <Tag className="h-4 w-4 text-muted-foreground flex-shrink-0" />
               <select
                 value={bulkCategoryId}
@@ -265,7 +274,9 @@ export default function ProductsPage() {
               <Button size="sm" disabled={!bulkCategoryId || bulkCategoryMutation.isPending} onClick={handleBulkCategory}>
                 {bulkCategoryMutation.isPending ? 'Updating…' : 'Apply'}
               </Button>
-              <span className="w-px h-6 bg-border mx-1" />
+              </>)}
+              {can('products.edit') && can('products.delete') && <span className="w-px h-6 bg-border mx-1" />}
+              {can('products.delete') && (
               <Button
                 size="sm"
                 variant="destructive"
@@ -276,6 +287,7 @@ export default function ProductsPage() {
                 <Trash2 className="h-4 w-4" />
                 {bulkDeleteMutation.isPending ? 'Deleting…' : 'Delete'}
               </Button>
+              )}
               <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
                 <X className="h-4 w-4" />
               </Button>
@@ -459,19 +471,23 @@ export default function ProductsPage() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <Link href={`/admin/products/${product._id}`}>
-                                <Button variant="ghost" size="icon" aria-label="Edit product">
-                                  <Pencil className="h-4 w-4" />
+                              {can('products.edit') && (
+                                <Link href={`/admin/products/${product._id}`}>
+                                  <Button variant="ghost" size="icon" aria-label="Edit product">
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                </Link>
+                              )}
+                              {can('products.delete') && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  aria-label="Delete product"
+                                  onClick={() => handleDelete(product)}
+                                >
+                                  <Trash2 className="h-4 w-4 text-red-500" />
                                 </Button>
-                              </Link>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                aria-label="Delete product"
-                                onClick={() => handleDelete(product)}
-                              >
-                                <Trash2 className="h-4 w-4 text-red-500" />
-                              </Button>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>

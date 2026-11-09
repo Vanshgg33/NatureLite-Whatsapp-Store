@@ -1,5 +1,7 @@
 'use client';
 
+import { useAdminAccess } from '@/lib/admin-access';
+
 import { useState, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, FolderTree, Image as ImageIcon } from 'lucide-react';
@@ -45,6 +47,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
 
 export default function CategoriesPage() {
+  const { can } = useAdminAccess();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -179,10 +182,12 @@ export default function CategoriesPage() {
             Organize your products into categories
           </p>
         </div>
-        <Button onClick={openCreateDialog}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Category
-        </Button>
+        {can('categories.create') && (
+          <Button onClick={openCreateDialog}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Category
+          </Button>
+        )}
       </div>
 
       <Card>
@@ -204,10 +209,12 @@ export default function CategoriesPage() {
               <p className="text-muted-foreground">
                 Get started by creating your first category.
               </p>
-              <Button onClick={openCreateDialog} className="mt-4">
-                <Plus className="mr-2 h-4 w-4" />
-                Add Category
-              </Button>
+              {can('categories.create') && (
+                <Button onClick={openCreateDialog} className="mt-4">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Category
+                </Button>
+              )}
             </div>
           ) : (
             <Table>
@@ -253,20 +260,24 @@ export default function CategoriesPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openEditDialog(category)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDeleteConfirm(category._id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                        {can('categories.edit') && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openEditDialog(category)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {can('categories.delete') && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDeleteConfirm(category._id)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                     {getSubcategories(category._id).map((sub) => (
@@ -298,20 +309,24 @@ export default function CategoriesPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openEditDialog(sub)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setDeleteConfirm(sub._id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                          {can('categories.edit') && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openEditDialog(sub)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {can('categories.delete') && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setDeleteConfirm(sub._id)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}

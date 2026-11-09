@@ -1,5 +1,7 @@
 'use client';
 
+import { useAdminAccess } from '@/lib/admin-access';
+
 import { useState } from 'react';
 import { getApiError } from '@/lib/api-error';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -43,6 +45,7 @@ import { formatCurrency, formatShortDate } from '@/lib/utils';
 import { Coupon, CreateCouponDto, Product, Category, User } from '@/types';
 
 export default function CouponsPage() {
+  const { can } = useAdminAccess();
   const [page, setPage] = useState(1);
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -299,9 +302,11 @@ export default function CouponsPage() {
         title="Coupons"
         description="Manage discount coupons"
         action={
-          <Button onClick={openCreateDialog}>
-            <Plus className="mr-2 h-4 w-4" /> Create Coupon
-          </Button>
+          can('coupons.create') ? (
+            <Button onClick={openCreateDialog}>
+              <Plus className="mr-2 h-4 w-4" /> Create Coupon
+            </Button>
+          ) : undefined
         }
       />
 
@@ -319,10 +324,12 @@ export default function CouponsPage() {
                 <p className="text-muted-foreground">
                   Create your first coupon to offer discounts.
                 </p>
-                <Button onClick={openCreateDialog} className="mt-4">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Coupon
-                </Button>
+                {can('coupons.create') && (
+                  <Button onClick={openCreateDialog} className="mt-4">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create Coupon
+                  </Button>
+                )}
               </div>
             ) : (
               <Table>
@@ -371,7 +378,7 @@ export default function CouponsPage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <Switch
                             checked={coupon.isActive}
-                            disabled={toggleStatusMutation.isPending}
+                            disabled={toggleStatusMutation.isPending || !can('coupons.edit')}
                             onCheckedChange={(checked) =>
                               toggleStatusMutation.mutate({
                                 id: coupon._id,
@@ -398,20 +405,24 @@ export default function CouponsPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => openEditDialog(coupon)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setDeleteConfirm(coupon)}
-                          >
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
+                          {can('coupons.edit') && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => openEditDialog(coupon)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {can('coupons.delete') && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setDeleteConfirm(coupon)}
+                            >
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

@@ -1,5 +1,7 @@
 'use client';
 
+import { useAdminAccess } from '@/lib/admin-access';
+
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Plus, X } from 'lucide-react';
@@ -209,6 +211,7 @@ function PaymentsTab() {
 // ── Expenses ─────────────────────────────────────────────────────────────────
 
 function ExpensesTab() {
+  const canDelete = useAdminAccess().can('billing_books.delete');
   const list = useBooks('expenses');
   const save = useSave('expenses');
   const qc = useQueryClient();
@@ -233,7 +236,7 @@ function ExpensesTab() {
           <tbody>{(list.data ?? []).map((e: any) => (
             <tr key={e._id} className="border-t"><td className={TD}>{day(e.date)}</td><td className={TD}>{e.category}</td><td className={TD}>{e.isIncome ? 'Income' : e.direct ? 'Direct' : 'Indirect'}</td>
               <td className={`${TD} text-right`}>{inr(e.amountPaise)}</td><td className={TD}>{e.mode}</td>
-              <td className={TD}><button className="text-gray-400 hover:text-red-500" onClick={() => del.mutate(e._id)}><X className="h-3.5 w-3.5" /></button></td></tr>
+              <td className={TD}>{canDelete && <button className="text-gray-400 hover:text-red-500" onClick={() => del.mutate(e._id)}><X className="h-3.5 w-3.5" /></button>}</td></tr>
           ))}</tbody></table>
       </div>
     </div>
@@ -245,6 +248,7 @@ function ExpensesTab() {
 const blankItem = () => ({ product: { id: '', name: '' }, hsnCode: '', qty: '1', rate: '', gstRate: '5', priceInclTax: false });
 
 function PurchasesTab() {
+  const canDelete = useAdminAccess().can('billing_books.delete');
   const list = useBooks('purchases');
   const save = useSave('purchases');
   const qc = useQueryClient();
@@ -293,7 +297,7 @@ function PurchasesTab() {
           <tbody>{(list.data ?? []).map((p: any) => (
             <tr key={p._id} className={`border-t ${p.status === 'cancelled' ? 'opacity-50' : ''}`}><td className={TD}>{day(p.date)}</td><td className={`${TD} font-mono text-xs`}>{p.docNo}</td><td className={TD}>{p.supplierName}</td>
               <td className={`${TD} text-right`}>{inr(p.totalPaise)}</td><td className={`${TD} text-right`}>{inr(p.paidPaise)}</td><td className={TD}>{p.itcEligibility}{p.reverseCharge ? ' · RCM' : ''}</td><td className={TD}>{p.status}</td>
-              <td className={TD}>{p.status !== 'cancelled' && <button className="text-xs text-red-600 underline" onClick={() => cancel.mutate(p._id)}>Cancel</button>}</td></tr>
+              <td className={TD}>{canDelete && p.status !== 'cancelled' && <button className="text-xs text-red-600 underline" onClick={() => cancel.mutate(p._id)}>Cancel</button>}</td></tr>
           ))}</tbody></table>
       </div>
     </div>
@@ -333,6 +337,7 @@ function StockTab() {
 
 export default function BooksPage() {
   const [tab, setTab] = useState<Tab>('accounts');
+  const canEdit = useAdminAccess().can('billing_books.edit');
   return (
     <div className="min-h-screen bg-[#faf9f6]">
       <Header title="Books & Stock" description="Accounts, payments, expenses, purchases and stock that feed P&L, Trial Balance and Balance Sheet" icon={<BookOpen className="h-6 w-6 text-[#2d7a4f]" />} />
@@ -343,11 +348,14 @@ export default function BooksPage() {
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${tab === t.key ? 'bg-[#2d7a4f] text-white shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}>{t.label}</button>
           ))}
         </div>
-        {tab === 'accounts' && <AccountsTab />}
-        {tab === 'payments' && <PaymentsTab />}
-        {tab === 'expenses' && <ExpensesTab />}
-        {tab === 'purchases' && <PurchasesTab />}
-        {tab === 'stock' && <StockTab />}
+        {/* Without edit access every form control and button in the tab is disabled */}
+        <fieldset disabled={!canEdit} className="contents">
+          {tab === 'accounts' && <AccountsTab />}
+          {tab === 'payments' && <PaymentsTab />}
+          {tab === 'expenses' && <ExpensesTab />}
+          {tab === 'purchases' && <PurchasesTab />}
+          {tab === 'stock' && <StockTab />}
+        </fieldset>
       </div>
     </div>
   );

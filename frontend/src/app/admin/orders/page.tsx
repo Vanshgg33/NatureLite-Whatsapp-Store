@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useAdminAccess } from '@/lib/admin-access';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Eye, Plus, Trash2, ShoppingCart, MessageCircle, Globe, Download, Send, Loader2, Edit, Phone, Receipt, Building2, Truck, Bell, RotateCcw, Printer } from 'lucide-react';
 import Link from 'next/link';
@@ -94,6 +95,7 @@ function flattenProductRows(products: Product[]): ProductRow[] {
 }
 
 export default function OrdersPage() {
+  const { can } = useAdminAccess();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -579,10 +581,12 @@ export default function OrdersPage() {
               </span>
             )}
           </div>
-          <Button onClick={() => setShowCreate(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Order
-          </Button>
+          {can('orders.create') && (
+            <Button onClick={() => setShowCreate(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Order
+            </Button>
+          )}
         </div>
 
         <Card>
@@ -811,6 +815,7 @@ export default function OrdersPage() {
                               >
                                 {printLoadingId === order._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
                               </Button>
+                              {can('orders.invoice') && (
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -820,6 +825,8 @@ export default function OrdersPage() {
                               >
                                 {sendLoadingId === order._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                               </Button>
+                              )}
+                              {can('orders.edit') && (
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -828,7 +835,8 @@ export default function OrdersPage() {
                               >
                                 <Edit className="h-4 w-4" />
                               </Button>
-                              {order.dismissedFromViews?.includes('packing') && (
+                              )}
+                              {can('orders.edit') && order.dismissedFromViews?.includes('packing') && (
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -839,7 +847,7 @@ export default function OrdersPage() {
                                   <RotateCcw className="h-4 w-4" />
                                 </Button>
                               )}
-                              {order.dismissedFromViews?.includes('billing') && (
+                              {can('orders.edit') && order.dismissedFromViews?.includes('billing') && (
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -850,6 +858,7 @@ export default function OrdersPage() {
                                   <RotateCcw className="h-4 w-4" />
                                 </Button>
                               )}
+                              {can('orders.delete') && (
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -859,6 +868,7 @@ export default function OrdersPage() {
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
+                              )}
                               <Link href={`/admin/orders/${order._id}`}>
                                 <Button variant="ghost" size="icon" aria-label="View order">
                                   <Eye className="h-4 w-4" />
@@ -1320,7 +1330,7 @@ export default function OrdersPage() {
 
           <div className="space-y-5 py-2">
             {/* Reopen: off by default so a cancelled order is never reopened by accident */}
-            {editingOrder?.status === 'cancelled' && (
+            {editingOrder?.status === 'cancelled' && can('orders.reopen') && (
               <div className="rounded-md border border-red-200 bg-red-50 p-3 space-y-2">
                 <p className="text-sm text-red-800">
                   This order is cancelled{editingOrder.cancelReason ? `: ${editingOrder.cancelReason}` : ''}.
@@ -1396,6 +1406,7 @@ export default function OrdersPage() {
             </div>
 
             {/* Payment screenshot: can arrive days after delivery */}
+            {can('orders.payments') && (
             <div className="rounded-md border p-3 space-y-2">
               <label className="text-sm font-medium block">Payment Screenshot</label>
               {editingOrder?.paymentProofUrl && (
@@ -1418,6 +1429,7 @@ export default function OrdersPage() {
                 {editingOrder?.paymentProofUrl ? 'Replace screenshot' : 'Upload screenshot'}
               </Button>
             </div>
+            )}
 
             {/* Notes */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -32,11 +32,13 @@ import {
   Truck,
   ShoppingBag,
   FileText,
+  ShieldCheck,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { api } from '@/lib/api';
+import { useAdminAccess, pageForPath } from '@/lib/admin-access';
 
 type NavItem = { name: string; href: string; icon: LucideIcon };
 type NavGroup = { label: string; items: NavItem[] };
@@ -123,6 +125,7 @@ const SUPERADMIN_NAV_GROUPS: NavGroup[] = [
     label: 'System',
     items: [
       { name: 'Logins', href: '/admin/logins', icon: KeyRound },
+      { name: 'Roles & Access', href: '/admin/roles', icon: ShieldCheck },
       { name: 'WhatsApp', href: '/admin/whatsapp', icon: MessageCircle },
       { name: 'Campaigns', href: '/admin/campaigns', icon: Megaphone },
       { name: 'Feedback', href: '/admin/feedback', icon: MessageSquare },
@@ -160,7 +163,20 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const isCrm = user?.departmentType === 'crm_head' || user?.departmentType === 'crm_senior';
   const isFms = user?.departmentType === 'fms';
 
-  const navGroups: NavGroup[] = isFms
+  const access = useAdminAccess();
+
+  // Custom-role users only see pages their role grants View on (no superadmin/store groups, no unlisted pages).
+  const restrictedGroups: NavGroup[] = BASE_NAV_GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((i) => {
+      const page = pageForPath(i.href);
+      return page ? access.can(`${page}.view`) : false;
+    }),
+  })).filter((g) => g.items.length > 0);
+
+  const navGroups: NavGroup[] = access.restricted
+    ? restrictedGroups
+    : isFms
     ? FMS_NAV_GROUPS
     : isCrm
     ? CRM_NAV_GROUPS
@@ -189,6 +205,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
     ? 'CRM Head'
     : user?.departmentType === 'crm_senior'
     ? 'CRM Senior'
+    : access.restricted && access.roleName
+    ? access.roleName
     : user?.storeName
     ? user.storeName
     : 'admin';

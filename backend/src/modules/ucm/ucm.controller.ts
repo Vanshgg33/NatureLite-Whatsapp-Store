@@ -7,6 +7,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { UpdateUcmCatalogConfigDto } from './dto/ucm.dto';
 import { UcmService } from './ucm.service';
+import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
 @Controller('ucm')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -15,41 +16,49 @@ export class UcmController {
   constructor(private readonly ucmService: UcmService) {}
 
   @Get('dashboard')
+  @RequireAccess('ucm.view')
   async getDashboard() {
     return this.ucmService.getDashboardSnapshot();
   }
 
   @Get('catalogs')
+  @RequireAccess('ucm.view')
   async listCatalogs() {
     return this.ucmService.listRemoteCatalogs();
   }
 
   @Get('config')
+  @RequireAccess('ucm.view')
   async getConfig() {
     return this.ucmService.getCatalogState();
   }
 
   @Put('config')
+  @RequireAccess('ucm.sync')
   async updateConfig(@Body() dto: UpdateUcmCatalogConfigDto, @CurrentUser('sub') userId: string) {
     return this.ucmService.updateCatalogConfig(dto, userId);
   }
 
   @Post('sync')
+  @RequireAccess('ucm.sync')
   async syncAll(@CurrentUser() user: JwtPayload, @Req() req: Request) {
     return this.ucmService.pushCatalogToMeta('manual_sync', this.extractActor(user, req));
   }
 
   @Post('sync/pull')
+  @RequireAccess('ucm.sync')
   async pullCatalog() {
     return this.ucmService.pullCatalogToDatabase('manual_pull');
   }
 
   @Post('sync/push')
+  @RequireAccess('ucm.sync')
   async pushCatalog(@CurrentUser() user: JwtPayload, @Req() req: Request) {
     return this.ucmService.pushCatalogToMeta('manual_push', this.extractActor(user, req));
   }
 
   @Post('sync/:productId')
+  @RequireAccess('ucm.sync')
   async syncProduct(
     @Param('productId') productId: string,
     @CurrentUser() user: JwtPayload,
@@ -60,6 +69,7 @@ export class UcmController {
   }
 
   @Delete('catalogs/:catalogId')
+  @RequireAccess('ucm.sync')
   async deleteCatalog(@Param('catalogId') catalogId: string) {
     await this.ucmService.deleteRemoteCatalog(catalogId);
     return { success: true };

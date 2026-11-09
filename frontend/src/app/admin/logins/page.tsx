@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { getApiError } from '@/lib/api-error';
 import type { AdminUser } from '@/types';
 import { Header } from '@/components/layout/header';
+import { UserAccessDialog } from '@/components/admin/user-access-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -21,6 +22,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 
+const isFieldStaff = (d?: string | null) => d === 'packing' || d === 'billing' || d === 'delivery';
+
 export default function AdminLoginsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -31,6 +34,13 @@ export default function AdminLoginsPage() {
     queryFn: () => api.getAdminUsers(),
   });
 
+  const { data: accessRoles } = useQuery({
+    queryKey: ['access-roles'],
+    queryFn: () => api.getAccessRoles(),
+  });
+  const [accessRole, setAccessRole] = useState('none');
+  const { data: registry = [] } = useQuery({ queryKey: ['access-registry'], queryFn: () => api.getAccessRegistry() });
+  const [accessUser, setAccessUser] = useState<AdminUser | null>(null);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -105,6 +115,7 @@ export default function AdminLoginsPage() {
         role,
         departmentType: departmentType === 'none' ? undefined : departmentType as 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior',
         purchaseRole: purchaseRole === 'none' ? undefined : purchaseRole as 'requester' | 'po_creator' | 'approver' | 'receiver',
+        accessRole: accessRole === 'none' ? undefined : accessRole,
       }),
     onSuccess: () => {
       toast({
@@ -118,6 +129,7 @@ export default function AdminLoginsPage() {
       setRole('admin');
       setDepartmentType('none');
       setPurchaseRole('none');
+      setAccessRole('none');
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
     },
     onError: (err: unknown) => {
@@ -138,9 +150,13 @@ export default function AdminLoginsPage() {
         isActive: payload.data.isActive,
         departmentType: payload.data.departmentType,
         purchaseRole: (payload.data as any).purchaseRole,
+        accessRole: payload.data.accessRole,
+        permissions: payload.data.permissions,
+        deniedPermissions: payload.data.deniedPermissions,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+      queryClient.invalidateQueries({ queryKey: ['access-roles'] });
     },
   });
 
@@ -191,7 +207,7 @@ export default function AdminLoginsPage() {
       <div className="flex-1 overflow-auto p-6 space-y-6">
         <form
           onSubmit={handleCreate}
-          className="bg-white rounded-xl border border-gray-100 p-4 grid gap-4 md:grid-cols-[1.8fr,2fr,1.5fr,1.5fr,1.5fr,auto]"
+          className="bg-white rounded-xl border border-gray-100 p-4 grid gap-4 md:grid-cols-[1.8fr,2fr,1.5fr,1.5fr,1.5fr,1.5fr,1.5fr,auto]"
         >
           <div className="space-y-1">
             <label className="text-xs font-medium text-gray-700">Name</label>
@@ -231,9 +247,10 @@ export default function AdminLoginsPage() {
             <label className="text-xs font-medium text-gray-700">Department type</label>
             <Select
               value={departmentType}
-              onValueChange={(v) =>
-                setDepartmentType(v as 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior' | 'none')
-              }
+              onValueChange={(v) => {
+                setDepartmentType(v as 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior' | 'none');
+                if (isFieldStaff(v)) setAccessRole('none');
+              }}
             >
               <SelectTrigger className="h-9 text-xs">
                 <SelectValue placeholder="Select department (optional)" />
@@ -265,6 +282,23 @@ export default function AdminLoginsPage() {
                 <SelectItem value="receiver">Receiver (Gate)</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-700">Access role</label>
+            <Select value={accessRole} onValueChange={setAccessRole} disabled={isFieldStaff(departmentType)}>
+              <SelectTrigger className="h-9 text-xs">
+                <SelectValue placeholder="Custom role (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Default (legacy)</SelectItem>
+                {(accessRoles ?? []).map((r) => (
+                  <SelectItem key={r._id} value={r._id}>{r.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {isFieldStaff(departmentType) && (
+              <p className="text-[10px] text-gray-400">Packing / billing / delivery use their own portal.</p>
+            )}
           </div>
           <div className="flex flex-col justify-end gap-2">
             <Select
@@ -313,6 +347,7 @@ export default function AdminLoginsPage() {
                     <th className="px-4 py-2 text-left font-medium text-gray-700">Password</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-700">Department</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-700">Purchase Role</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-700">Access role</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-700">Role</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-700">Active</th>
                     <th className="px-4 py-2 text-right font-medium text-gray-700">Actions</th>
@@ -474,6 +509,35 @@ export default function AdminLoginsPage() {
                           </SelectContent>
                         </Select>
                       </td>
+                      <td className="px-4 py-2">
+                        {user.role === 'superadmin' ? (
+                          <span className="text-xs text-gray-400">Full access</span>
+                        ) : isFieldStaff(user.departmentType) ? (
+                          <span className="text-xs text-gray-400">Department portal</span>
+                        ) : (
+                          <Select
+                            value={user.accessRole || 'none'}
+                            onValueChange={(v) =>
+                              updateUser.mutate({ id: user._id, data: { accessRole: v === 'none' ? null : v } })
+                            }
+                          >
+                            <SelectTrigger className="h-7 text-xs w-36">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Default (legacy)</SelectItem>
+                              {(accessRoles ?? []).map((r) => (
+                                <SelectItem key={r._id} value={r._id}>{r.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                        {user.role !== 'superadmin' && !isFieldStaff(user.departmentType) && (
+                          <button className="mt-1 text-[11px] text-amber-700 hover:underline" onClick={() => setAccessUser(user)}>
+                            Customize{(user.deniedPermissions?.length || user.permissions?.length) ? ' •' : ''}
+                          </button>
+                        )}
+                      </td>
                       <td className="px-4 py-2 capitalize">{user.role}</td>
                       <td className="px-4 py-2">
                         <div className="flex items-center gap-2">
@@ -513,6 +577,27 @@ export default function AdminLoginsPage() {
           )}
         </div>
       </div>
+
+      <UserAccessDialog
+        user={accessUser}
+        roles={accessRoles ?? []}
+        registry={registry}
+        saving={updateUser.isPending}
+        onClose={() => setAccessUser(null)}
+        onSave={(data) =>
+          updateUser.mutate(
+            { id: accessUser!._id, data },
+            {
+              onSuccess: () => {
+                toast({ title: 'Access updated', description: 'Changes apply on the user’s next action.' });
+                setAccessUser(null);
+              },
+              onError: (err: unknown) =>
+                toast({ title: 'Failed to update access', description: getApiError(err, 'Please try again.'), variant: 'destructive' }),
+            },
+          )
+        }
+      />
 
       <Dialog open={!!deleteConfirmUser} onOpenChange={(open) => { if (!open) setDeleteConfirmUser(null); }}>
         <DialogContent>

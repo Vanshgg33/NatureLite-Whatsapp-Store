@@ -1,5 +1,7 @@
 'use client';
 
+import { useAdminAccess } from '@/lib/admin-access';
+
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -97,6 +99,7 @@ function CancelDialog({ billId, onClose }: { billId: string; onClose: () => void
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function InvoicePage() {
+  const { can } = useAdminAccess();
   const { id } = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -148,7 +151,7 @@ export default function InvoicePage() {
         <Button size="sm" onClick={() => window.print()} className="bg-[#2d7a4f] hover:bg-[#245f3e] text-white">
           <Printer className="h-4 w-4 mr-1.5" /> Print
         </Button>
-        {!isCancelled && (
+        {!isCancelled && can('billing_new.cancel') && (
           <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50"
             onClick={() => setShowCancel(true)}>
             <XCircle className="h-4 w-4 mr-1.5" /> Cancel Invoice

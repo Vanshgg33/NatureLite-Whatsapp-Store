@@ -45,6 +45,14 @@ export class AdminUser {
   @Prop({ type: [String], default: [] })
   permissions: string[];
 
+  // Custom access role (see AccessRole). Users without one keep their legacy access.
+  @Prop({ type: Types.ObjectId, ref: 'AccessRole' })
+  accessRole?: Types.ObjectId;
+
+  // Permissions removed from this user even if their role grants them.
+  @Prop({ type: [String], default: [] })
+  deniedPermissions: string[];
+
   @Prop()
   avatar?: string;
 

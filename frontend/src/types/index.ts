@@ -29,9 +29,34 @@ export interface AdminUser {
   departmentType?: 'packing' | 'billing' | 'delivery' | 'crm_head' | 'crm_senior' | 'fms';
   purchaseRole?: 'requester' | 'po_creator' | 'approver' | 'receiver';
   permissions: string[];
+  accessRole?: string | null;
+  deniedPermissions?: string[];
   plainPassword?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AdminPageDef {
+  page: string;
+  label: string;
+  group: string;
+  href: string;
+  enforced: boolean;
+  actions: { key: string; label: string; permission: string }[];
+}
+
+export interface AccessRole {
+  _id: string;
+  name: string;
+  description: string;
+  permissions: string[];
+  userCount?: number;
+}
+
+export interface MyAccess {
+  restricted: boolean;
+  roleName?: string;
+  permissions: string[];
 }
 
 export interface Address {

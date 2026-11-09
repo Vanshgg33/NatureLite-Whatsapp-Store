@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Menu } from 'lucide-react';
+import { useAdminAccess } from '@/lib/admin-access';
+import { AccessGate } from '@/components/access-gate';
 import { Sidebar } from '@/components/layout/sidebar';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -17,6 +19,7 @@ export default function AdminLayout({
   const pathname = usePathname();
   const { isAuthenticated, user, hasHydrated } = useAdminAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const access = useAdminAccess();
 
   // Field staff (packing/billing/delivery) belong on /department/... not /admin/...
   // CRM staff (crm_head, crm_senior) are admin-panel users with restricted access.
@@ -61,20 +64,22 @@ export default function AdminLayout({
       return;
     }
 
-    if (isFms) {
+    if (access.isLoading) return; // wait for the role before applying fixed department redirects
+
+    if (isFms && !access.restricted) {
       router.replace('/fms/purchase');
       return;
     }
 
-    if (isCrm) {
+    if (isCrm && !access.restricted) {
       const allowed = CRM_ALLOWED.some((p) => pathname.startsWith(p));
       if (!allowed) {
         router.replace('/admin/orders');
       }
     }
-  }, [hasHydrated, isAuthenticated, isFieldDept, isCrm, isFms, user, pathname, router]);
+  }, [hasHydrated, isAuthenticated, isFieldDept, isCrm, isFms, access.isLoading, access.restricted, user, pathname, router]);
 
-  if (!hasHydrated || !isAuthenticated || isFieldDept) {
+  if (!hasHydrated || !isAuthenticated || isFieldDept || access.isLoading) {
     return null;
   }
 
@@ -98,7 +103,9 @@ export default function AdminLayout({
           <span className="font-semibold text-gray-900">Admin</span>
         </div>
         <main className="flex-1 overflow-auto">
-          <ErrorBoundary>{children}</ErrorBoundary>
+          <AccessGate blockUnlisted>
+            <ErrorBoundary>{children}</ErrorBoundary>
+          </AccessGate>
         </main>
       </div>
     </div>

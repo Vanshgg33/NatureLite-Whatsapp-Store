@@ -5,6 +5,7 @@ import { BillingService } from './billing.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CustomerTag } from './schemas/billing-customer.schema';
+import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
 @Controller('billing')
 @UseGuards(RolesGuard)
@@ -15,16 +16,19 @@ export class BillingController {
   // ─── Customers ────────────────────────────────────────────────────────────
 
   @Get('customers')
+  @RequireAccess('billing_customers.view', 'billing_new.view', 'billing_reports.view')
   searchCustomers(@Query('q') q: string) {
     return this.billingService.searchCustomers(q);
   }
 
   @Get('customers/:id')
+  @RequireAccess('billing_customers.view', 'billing_new.view', 'billing_reports.view')
   getCustomer(@Param('id') id: string) {
     return this.billingService.getCustomer(id);
   }
 
   @Post('customers')
+  @RequireAccess('billing_customers.create', 'billing_new.create')
   createCustomer(@Body() body: {
     name: string;
     phone: string;
@@ -37,6 +41,7 @@ export class BillingController {
   }
 
   @Patch('customers/:id')
+  @RequireAccess('billing_customers.edit', 'billing_new.create')
   updateCustomer(
     @Param('id') id: string,
     @Body() body: Partial<{
@@ -50,6 +55,7 @@ export class BillingController {
   }
 
   @Post('customers/:id/addresses')
+  @RequireAccess('billing_customers.create', 'billing_new.create')
   addAddress(
     @Param('id') id: string,
     @Body() body: { label: string; line: string; isDefault?: boolean },
@@ -72,16 +78,19 @@ export class BillingController {
   }
 
   @Post('tag-prices')
+  @RequireAccess('billing_pricing.edit')
   upsertTagPrice(@Body() body: { productId: string; tag: CustomerTag; price: number }) {
     return this.billingService.upsertTagPrice(body.productId, body.tag, body.price);
   }
 
   @Delete('tag-prices/:id')
+  @RequireAccess('billing_pricing.edit')
   deleteTagPrice(@Param('id') id: string) {
     return this.billingService.deleteTagPrice(id);
   }
 
   @Post('tag-prices/bulk')
+  @RequireAccess('billing_pricing.edit')
   bulkUpsert(@Body() body: Array<{ productId: string; tag: CustomerTag; price: number }>) {
     return this.billingService.bulkUpsertTagPrices(body);
   }
@@ -96,6 +105,7 @@ export class BillingController {
   // ─── Bills ────────────────────────────────────────────────────────────────
 
   @Patch('customers/:id/default-delivery')
+  @RequireAccess('billing_customers.edit', 'billing_new.create')
   setDefaultDelivery(
     @Param('id') id: string,
     @Body() body: { deliveryUserId: string | null },
@@ -104,6 +114,7 @@ export class BillingController {
   }
 
   @Post('bills')
+  @RequireAccess('billing_new.create')
   createBill(@Body() body: {
     customerId: string;
     billingAddress?: string;
@@ -126,6 +137,7 @@ export class BillingController {
   }
 
   @Post('bills/v1')
+  @RequireAccess('billing_new.create')
   createBillV1(@Body() body: any, @Req() req: any) {
     const userId = req.user?._id?.toString() ?? 'system';
     const ip = req.ip ?? '';
@@ -133,6 +145,7 @@ export class BillingController {
   }
 
   @Patch('bills/:id/cancel')
+  @RequireAccess('billing_new.cancel')
   cancelBill(@Param('id') id: string, @Body('reason') reason: string, @Req() req: any) {
     const userId = req.user?._id?.toString() ?? 'system';
     const ip = req.ip ?? '';
@@ -162,6 +175,7 @@ export class BillingController {
   }
 
   @Post('bills/:id/payment')
+  @RequireAccess('billing_dues.record')
   recordPayment(@Param('id') id: string, @Body() body: { amount: number; mode?: string }) {
     return this.billingService.recordPayment(id, body.amount, body.mode);
   }
@@ -169,6 +183,7 @@ export class BillingController {
   // ─── Dues ──────────────────────────────────────────────────────────────────
 
   @Get('dues')
+  @RequireAccess('billing_dues.view')
   getDues(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
     return this.billingService.getDues(startDate || endDate ? { startDate, endDate } : undefined);
   }
@@ -176,6 +191,7 @@ export class BillingController {
   // ─── Insights ──────────────────────────────────────────────────────────────
 
   @Get('insights/customers')
+  @RequireAccess('billing_insights.view')
   getTopCustomers(
     @Query('limit') limit?: string,
     @Query('sortBy') sortBy?: 'totalPurchase' | 'orderCount',
@@ -186,6 +202,7 @@ export class BillingController {
   }
 
   @Get('insights/top-products')
+  @RequireAccess('billing_insights.view')
   getTopProductPerCustomer(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
     return this.billingService.getTopProductPerCustomer(startDate, endDate);
   }
@@ -193,6 +210,7 @@ export class BillingController {
   // ─── GSTR-1 ────────────────────────────────────────────────────────────────
 
   @Get('gstr1')
+  @RequireAccess('billing_gstr1.view')
   getGstr1(@Query('month') month?: string) {
     return this.billingService.getGstr1(month);
   }
@@ -200,6 +218,7 @@ export class BillingController {
   // ─── Dashboard ─────────────────────────────────────────────────────────────
 
   @Get('dashboard')
+  @RequireAccess('billing_dashboard.view')
   getDashboard() {
     return this.billingService.getDashboard();
   }
@@ -207,11 +226,13 @@ export class BillingController {
   // ─── Reports ───────────────────────────────────────────────────────────────
 
   @Get('reports/products')
+  @RequireAccess('billing_reports.view')
   getProductReport(@Query() q: { startDate?: string; endDate?: string; orderTag?: string; customerId?: string }) {
     return this.billingService.getProductReport(q);
   }
 
   @Get('reports/customers')
+  @RequireAccess('billing_reports.view')
   getCustomerReport(@Query() q: { startDate?: string; endDate?: string; orderTag?: string; productSku?: string; customerId?: string }) {
     return this.billingService.getCustomerReport(q);
   }

@@ -1,5 +1,7 @@
 'use client';
 
+import { useAdminAccess } from '@/lib/admin-access';
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -32,6 +34,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { User } from '@/types';
 
 export default function CustomersPage() {
+  const { can } = useAdminAccess();
   const router = useRouter();
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -204,7 +207,7 @@ export default function CustomersPage() {
                   ))}
                 </SelectContent>
               </Select>
-              {selectedIds.size > 0 && (
+              {selectedIds.size > 0 && can('customers.edit') && (
                 <Button variant="outline" size="sm" onClick={openBulkReassign}>
                   <Truck className="h-4 w-4 mr-2" />
                   Reassign {selectedIds.size} customer(s)
@@ -315,6 +318,7 @@ export default function CustomersPage() {
                               >
                                 <Eye className="h-4 w-4" />
                               </Button>
+                              {can('customers.edit') && (
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -324,7 +328,8 @@ export default function CustomersPage() {
                               >
                                 <Truck className="h-4 w-4" />
                               </Button>
-                              {user.isBlocked ? (
+                              )}
+                              {!can('customers.block') ? null : user.isBlocked ? (
                                 <Button
                                   variant="ghost"
                                   size="icon"
