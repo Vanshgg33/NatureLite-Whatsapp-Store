@@ -75,7 +75,7 @@ export class CrmEngineService implements OnModuleInit {
     const [user, orderRows, billRows] = await Promise.all([
       this.userModel.findById(uid).select('name phone').lean<{ name?: string; phone?: string }>(),
       this.orderModel.aggregate([
-        { $match: { user: uid, status: 'delivered' } },
+        { $match: { user: uid, status: 'delivered', orderType: { $ne: 'replacement' } } },
         { $sort: { createdAt: -1 } },
         { $unwind: '$items' },
         {

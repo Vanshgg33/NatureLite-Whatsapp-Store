@@ -2022,6 +2022,79 @@ export class OrdersService implements OnModuleInit {
     return saved;
   }
 
+  /**
+   * ₹0 order that re-ships items from a complaint. It goes through normal packing/delivery;
+   * orderType 'replacement' keeps it out of CRM reorder-cycle and LTV maths.
+   * shortcut: stock decrement is best-effort and non-transactional, make it transactional if replacements get frequent.
+   */
+  async createReplacementOrder(
+    originalOrderId: string,
+    ticketNo: string,
+    createdBy: string,
+    only?: { productId: string; quantity: number }[],
+  ): Promise<Order> {
+    const original = await this.orderRepository.findById(parseObjectId(originalOrderId, 'orderId'));
+    if (!original) throw new NotFoundException('Original order not found');
+
+    const items = original.items
+      .map((i) => {
+        const pick = only?.find((o) => o.productId === i.product.toString());
+        const quantity = only ? Math.min(pick?.quantity ?? 0, i.quantity) : i.quantity;
+        return { i, quantity };
+      })
+      .filter((x) => x.quantity > 0)
+      .map(({ i, quantity }) => ({
+        product: i.product, name: i.name, variantSku: i.variantSku, variantName: i.variantName,
+        quantity, price: 0, total: 0, image: i.image, hsnCode: i.hsnCode, gstRate: 0, gstAmount: 0,
+      }));
+    if (!items.length) throw new BadRequestException('No items selected for replacement');
+
+    const data: Omit<Partial<Order>, 'orderNumber'> = {
+      user: original.user,
+      items: items as unknown as Order['items'],
+      shippingAddress: ((original.shippingAddress as any).toObject?.() ?? original.shippingAddress) as Order['shippingAddress'],
+      source: 'replacement',
+      orderType: 'replacement',
+      status: 'placed',
+      // Not COD: a COD ₹0 order would sit in the cash ledger as uncollected and make the delivery person upload a payment photo.
+      paymentStatus: 'paid',
+      paymentMethod: 'prepaid',
+      subtotal: 0, discount: 0, shippingCharge: 0, gstTotal: 0, total: 0,
+      adminNotes: `Replacement for ${original.orderNumber} (${ticketNo})`,
+      timeline: [{
+        status: 'placed',
+        message: `Replacement order for ${original.orderNumber} (complaint ${ticketNo})`,
+        timestamp: new Date(),
+        updatedBy: createdBy,
+      }],
+    };
+
+    let saved: OrderDocument | null = null;
+    for (let attempt = 0; attempt < OrdersService.MAX_ORDER_NUMBER_RETRIES && !saved; attempt += 1) {
+      const orderNumber = await this.generateOrderNumber();
+      try {
+        saved = await this.orderRepository.create({ ...data, orderNumber } as Partial<OrderDocument>);
+      } catch (err) {
+        if ((err as { code?: number }).code !== 11000) throw err;
+      }
+    }
+    if (!saved) throw new BadRequestException('Failed to generate a unique order number. Please try again.');
+
+    try {
+      const store = await this.inventoryService.resolveFulfilmentStore(original.shippingAddress?.city);
+      if (store) {
+        await Promise.all(items.map(async (it) => {
+          const pid = it.product.toString();
+          if (!(await this.storeStockService.getStockForStoreProduct(store._id.toString(), pid))) return;
+          await this.storeStockService.decrementStock(store._id.toString(), pid, it.quantity, it.variantSku);
+        }));
+      }
+    } catch (err) {
+      this.logger.warn(`Replacement ${saved.orderNumber}: stock decrement failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    }
+    return saved;
+  }
+
   private async generateOrderNumber(): Promise<string> {
     const today = new Date();
     const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');

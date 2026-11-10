@@ -45,6 +45,7 @@ export const ADMIN_PAGE_HREFS: { page: string; href: string }[] = [
   { page: 'crm_caller', href: '/crm/caller' },
   { page: 'crm_customers', href: '/crm/customers' },
   { page: 'crm_campaigns', href: '/crm/campaigns' },
+  { page: 'crm_complaints', href: '/crm/complaints' },
   { page: 'crm_products', href: '/crm/products' },
   { page: 'crm_analytics', href: '/crm/analytics' },
   { page: 'crm_analytics', href: '/crm/leaderboard' },

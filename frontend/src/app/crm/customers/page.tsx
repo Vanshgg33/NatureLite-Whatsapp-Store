@@ -84,11 +84,12 @@ function CustomerRow({ item }: { item: any }) {
         </div>
 
         {/* Segment */}
-        <div>
+        <div className="flex flex-col items-start gap-1">
           {segment
             ? <Pill variant={segPillVariant(segment)}>{segmentLabel(segment)}</Pill>
             : <span className="text-[12px]" style={{ color: 'var(--crm-line)' }}>—</span>
           }
+          {item.hasOpenComplaint && <Pill variant="danger">Open complaint</Pill>}
         </div>
 
         {/* LTV */}

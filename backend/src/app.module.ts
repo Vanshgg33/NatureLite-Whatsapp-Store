@@ -47,6 +47,7 @@ import { RedisModule } from './modules/redis/redis.module';
 import { PurchaseModule } from './modules/purchase/purchase.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { CrmModule } from './modules/crm/crm.module';
+import { ComplaintsModule } from './modules/complaints/complaints.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { HealthController } from './health.controller';
@@ -153,6 +154,7 @@ import { HealthController } from './health.controller';
     PurchaseModule,
     BillingModule,
     CrmModule,
+    ComplaintsModule,
     InventoryModule,
     ReportsModule,
   ],

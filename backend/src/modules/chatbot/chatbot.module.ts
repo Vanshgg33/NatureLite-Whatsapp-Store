@@ -20,6 +20,9 @@ import { StoresModule } from '../stores/stores.module';
 import { StoreStockModule } from '../store-stock/store-stock.module';
 import { CouponsModule } from '../coupons/coupons.module';
 import { UcmModule } from '../ucm/ucm.module';
+import { ComplaintsModule } from '../complaints/complaints.module';
+import { MediaModule } from '../media/media.module';
+import { ComplaintFlow } from './complaint-flow';
 
 @Module({
   imports: [
@@ -38,9 +41,11 @@ import { UcmModule } from '../ucm/ucm.module';
     StoreStockModule,
     CouponsModule,
     forwardRef(() => UcmModule),
+    forwardRef(() => ComplaintsModule),
+    MediaModule,
   ],
   controllers: [ChatbotController],
-  providers: [ChatSessionRepository, ChatbotService, ChatbotAnalyticsService, ChatbotAiService],
+  providers: [ChatSessionRepository, ChatbotService, ChatbotAnalyticsService, ChatbotAiService, ComplaintFlow],
   exports: [ChatSessionRepository, ChatbotService],
 })
 export class ChatbotModule {}

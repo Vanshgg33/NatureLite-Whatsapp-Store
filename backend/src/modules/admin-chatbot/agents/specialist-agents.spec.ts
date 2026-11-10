@@ -99,10 +99,10 @@ describe('domain tool sets', () => {
     return mockChatsCreate.mock.calls.at(-1)![0].config.tools[0].functionDeclarations.map((d: any) => d.name) as string[];
   };
 
-  it('BillingCrmAgent offers the 7 billing and CRM tools', async () => {
+  it('BillingCrmAgent offers the 8 billing and CRM tools', async () => {
     expect((await declaredBy(new BillingCrmAgent(tools as any))).sort()).toEqual([
       'get_billing_bills', 'get_billing_customers', 'get_billing_godowns',
-      'get_crm_call_logs', 'get_crm_campaigns', 'get_crm_customer_detail', 'get_crm_overview',
+      'get_crm_call_logs', 'get_crm_campaigns', 'get_crm_complaints', 'get_crm_customer_detail', 'get_crm_overview',
     ]);
   });
 

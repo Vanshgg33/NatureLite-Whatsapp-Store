@@ -42,6 +42,15 @@ export interface ChatSessionContext {
    * placing two orders.
    */
   checkoutLockedAt?: number;
+  /** In-progress "Report a problem" flow; cleared on submit/cancel. */
+  complaintDraft?: {
+    /** Epoch ms of the last step; drafts older than 30 minutes are discarded. */
+    at: number;
+    step: 'category' | 'details' | 'media';
+    orderId?: string;
+    category?: string;
+    description?: string;
+  };
 }
 
 export function mergeChatContext(

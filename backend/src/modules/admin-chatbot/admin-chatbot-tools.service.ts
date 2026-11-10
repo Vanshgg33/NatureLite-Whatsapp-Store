@@ -30,6 +30,7 @@ import { BillingCustomer } from '../billing/schemas/billing-customer.schema';
 import { Godown } from '../billing/schemas/godown.schema';
 import { CrmCustomerStats } from '../crm/schemas/crm-customer-stats.schema';
 import { CrmCallLog } from '../crm/schemas/crm-call-log.schema';
+import { Complaint } from '../complaints/schemas/complaint.schema';
 import { CrmCampaign } from '../crm/schemas/crm-campaign.schema';
 import { PurchaseRequest } from '../purchase/schemas/purchase-request.schema';
 import { PurchaseVendor } from '../purchase/schemas/purchase-vendor.schema';
@@ -55,7 +56,7 @@ const TOOL_TTL: Record<string, number> = {
   // billing
   get_billing_bills: 45, get_billing_customers: 120, get_billing_godowns: 300,
   // crm
-  get_crm_overview: 60, get_crm_customer_detail: 60, get_crm_call_logs: 60, get_crm_campaigns: 120,
+  get_crm_overview: 60, get_crm_customer_detail: 60, get_crm_call_logs: 60, get_crm_campaigns: 120, get_crm_complaints: 60,
   // purchase
   get_purchase_requests: 45, get_purchase_request_detail: 30,
   get_purchase_vendors: 300, get_purchase_materials: 300,
@@ -97,6 +98,7 @@ export class AdminChatbotToolsService {
     @InjectModel(CrmCustomerStats.name) private readonly crmStatsModel: Model<any>,
     @InjectModel(CrmCallLog.name) private readonly crmCallLogModel: Model<any>,
     @InjectModel(CrmCampaign.name) private readonly crmCampaignModel: Model<any>,
+    @InjectModel(Complaint.name) private readonly complaintModel: Model<any>,
     @InjectModel(PurchaseRequest.name) private readonly purchaseRequestModel: Model<any>,
     @InjectModel(PurchaseVendor.name) private readonly purchaseVendorModel: Model<any>,
     @InjectModel(PurchaseMaterial.name) private readonly purchaseMaterialModel: Model<any>,
@@ -273,6 +275,7 @@ export class AdminChatbotToolsService {
       case 'get_crm_customer_detail':  return this.toolCrmCustomerDetail(args);
       case 'get_crm_call_logs':        return this.toolCrmCallLogs(args);
       case 'get_crm_campaigns':        return this.toolCrmCampaigns(args);
+      case 'get_crm_complaints':       return this.toolCrmComplaints(args);
 
       // Purchase
       case 'get_purchase_requests':        return this.toolPurchaseRequests(args);
@@ -1712,6 +1715,40 @@ export class AdminChatbotToolsService {
         sentAt: this.toIST(c.sentAt),
         createdBy: c.createdBy?.name ?? '',
         approvedBy: c.approvedBy?.name ?? '',
+        createdAt: this.toIST(c.createdAt),
+      })),
+    };
+  }
+
+  private async toolCrmComplaints(args: Record<string, unknown>) {
+    const open = ['new', 'investigating', 'awaiting_customer', 'reopened'];
+    const filter: Record<string, unknown> = {};
+    if (args.status === 'open') filter.status = { $in: open };
+    else if (args.status === 'resolved') filter.status = { $in: ['resolved', 'closed'] };
+    if (args.category) filter.category = args.category;
+    if (args.overdue) { filter.status = { $in: open }; filter.resolutionDueAt = { $lt: new Date() }; }
+    if (args.days) filter.createdAt = { $gte: new Date(Date.now() - Number(args.days) * 86_400_000) };
+    if (args.orderNumber) filter.orderNumber = String(args.orderNumber);
+
+    const [byCategory, complaints, openCount, overdueCount] = await Promise.all([
+      this.complaintModel.aggregate([{ $match: filter }, { $group: { _id: '$category', count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+      this.complaintModel.find(filter).populate('customerId', 'name phone').sort({ createdAt: -1 }).limit(this.clampLimit(args.limit)).lean(),
+      this.complaintModel.countDocuments({ status: { $in: open } }),
+      this.complaintModel.countDocuments({ status: { $in: open }, resolutionDueAt: { $lt: new Date() } }),
+    ]);
+
+    return {
+      openNow: openCount,
+      overdueNow: overdueCount,
+      byCategory: byCategory.map((r: any) => ({ category: r._id, count: r.count })),
+      complaints: complaints.map((c: any) => ({
+        ticketNo: c.ticketNo,
+        customer: c.customerId?.name ?? c.customerId?.phone ?? '',
+        orderNumber: c.orderNumber,
+        category: c.category,
+        status: c.status,
+        assignedTo: c.assignedToName,
+        resolution: c.resolution ? { type: c.resolution.type, amount: c.resolution.amount, replacementOrder: c.resolution.replacementOrderNumber } : null,
         createdAt: this.toIST(c.createdAt),
       })),
     };

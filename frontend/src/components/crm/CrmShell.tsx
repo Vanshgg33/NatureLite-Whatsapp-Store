@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
-import { Clock, Phone, PhoneCall, Users, MessageCircle, BarChart3, Settings, LogOut, Menu, X, ShieldCheck, Package, ShoppingCart, type LucideIcon } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Clock, Phone, PhoneCall, Users, MessageCircle, BarChart3, Settings, LogOut, Menu, X, ShieldCheck, Package, ShoppingCart, AlertTriangle, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { api } from '@/lib/api';
@@ -18,6 +19,7 @@ const NAV: NavItem[] = [
   { name: 'Call queue',  href: '/crm/queue',           page: 'crm_queue',     icon: Phone },
   { name: 'Abandoned',   href: '/crm/abandoned',       page: 'crm_abandoned', icon: ShoppingCart },
   { name: 'Caller mode', href: '/crm/caller',          page: 'crm_caller',    icon: PhoneCall },
+  { name: 'Complaints',  href: '/crm/complaints',      page: 'crm_complaints', icon: AlertTriangle },
   { name: 'Customers',   href: '/crm/customers',       page: 'crm_customers', icon: Users },
   { name: 'Campaigns',   href: '/crm/campaigns',       page: 'crm_campaigns', icon: MessageCircle },
   { name: 'Products',    href: '/crm/products',        page: 'crm_products',  icon: Package },
@@ -43,6 +45,12 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   useEffect(() => setMounted(true), []);
 
   const access = useAdminAccess();
+  const { data: complaintSummary } = useQuery({
+    queryKey: ['crm-complaints', 'summary'],
+    queryFn: () => api.getCrmComplaintSummary(),
+    enabled: mounted && (!access.restricted || access.can('crm_complaints.view')),
+    refetchInterval: 60_000,
+  });
   const isAdmin = user?.role === 'superadmin' || user?.departmentType === 'crm_head' || !user?.departmentType;
   const initial = (user?.name?.[0] ?? user?.email?.[0] ?? 'C').toUpperCase();
   const roleLabel = ROLE_LABEL[user?.departmentType ?? user?.role ?? ''] ?? 'Staff';
@@ -123,6 +131,12 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
             >
               <item.icon className="h-[15px] w-[15px] flex-shrink-0" />
               <span className="flex-1">{item.name}</span>
+              {item.page === 'crm_complaints' && (complaintSummary?.open ?? 0) > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none"
+                  style={{ background: complaintSummary!.overdue > 0 ? 'var(--crm-danger)' : active ? 'var(--crm-forest)' : 'var(--crm-gold)', color: active ? 'var(--crm-gold)' : '#fff' }}>
+                  {complaintSummary!.open}
+                </span>
+              )}
             </Link>
           );
         })}

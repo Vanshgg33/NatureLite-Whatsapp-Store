@@ -258,15 +258,20 @@ export const CHATBOT_FLOWS: Record<SessionState, FlowStep> = {
   support: {
     state: 'support',
     action: {
-      type: 'text',
+      type: 'buttons',
+      header: 'Live support',
       content:
-        `*Live support*\n\n` +
-        `For any issues, please contact us on *8962021112*.\n\n` +
-        `Or describe your issue below and our team will respond shortly.\n\n` +
-        `_Type *menu* anytime to return._`,
+        `Problem with an order? Tap *Report a problem* and we'll sort it out.\n\n` +
+        `Or call us on *8962021112*, or just type your question below.`,
+      footer: 'Type menu anytime to return',
+      buttons: [
+        { id: 'report_issue', title: '⚠ Report a problem' },
+        { id: BTN.MENU, title: '🏠 Menu' },
+      ],
     },
     transitions: {
       menu: 'main_menu',
+      report_issue: 'support',
     },
   },
   account: {
@@ -365,7 +370,7 @@ export const FAQ_RESPONSES: Record<string, string> = {
     `*Returns & Refunds*\n\n` +
     `\u2022 Returns accepted within *7 days* of delivery\n` +
     `\u2022 Items must be unused & in original packaging\n` +
-    `\u2022 Contact support to initiate a return`,
+    `\u2022 Damaged or wrong item? Reply *report issue* and send a photo, we'll replace it`,
   faq_payment:
     `*Payment Methods*\n\n` +
     `\u2022 Cash on Delivery (COD)\n` +

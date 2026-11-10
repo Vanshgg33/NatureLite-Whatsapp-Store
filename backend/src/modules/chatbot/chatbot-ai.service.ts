@@ -189,6 +189,7 @@ If the user's query has NO Hindi, pass it to search_products as-is.
 - **NEVER say** "I will place your order" — only initiate_checkout() places orders
 - **NEVER confirm payment** — the payment flow handles confirmation
 - **NEVER call a tool and send a waiting message** — run all tools first, then send ONE reply
+- **Order problems** (damaged, leaked, wrong/missing item, quality, late, billing): call report_problem immediately. Never promise a refund or replacement yourself.
 - **Chain tools** in a single turn when needed (search → add → get_cart all in one turn)
 - If a tool returns an error or empty result → tell the user honestly, suggest alternatives
 
@@ -413,6 +414,12 @@ const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     name: 'initiate_checkout',
     description:
       'Start checkout (address → payment). Call when user says "order", "buy", "checkout", "place order", or confirms they want to purchase.',
+    parameters: { type: 'OBJECT' as any, properties: {} },
+  },
+  {
+    name: 'report_problem',
+    description:
+      'Start the complaint flow. Call when the user reports a problem with an order: damaged, leaked, wrong or missing item, bad quality, expired, late delivery, rude delivery person, wrong charge. Do not try to solve it yourself.',
     parameters: { type: 'OBJECT' as any, properties: {} },
   },
   {
@@ -730,6 +737,11 @@ Text: ${raw}`;
           if (name === 'reorder_last') {
             await this.saveHistory(session, history, turnAdditions, phone);
             await this.chatbotService.reorderLastForAi(phone, session);
+            return;
+          }
+          if (name === 'report_problem') {
+            await this.saveHistory(session, history, turnAdditions, phone);
+            await this.chatbotService.startComplaintForAi(phone, session);
             return;
           }
           if (name === 'request_human_support') {

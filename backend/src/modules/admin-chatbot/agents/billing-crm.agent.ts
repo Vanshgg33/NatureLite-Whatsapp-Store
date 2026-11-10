@@ -81,6 +81,21 @@ const BILLING_CRM_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'get_crm_complaints',
+    description: 'Customer complaint tickets. Use for: "complaints", "open complaints", "overdue tickets", "damaged / leaked complaints", "how many replacements", "complaints for order X".',
+    parameters: {
+      type: O,
+      properties: {
+        status: { type: S, description: 'open | resolved (omit for all)' },
+        category: { type: S, description: 'damaged | wrong_item | missing_item | quality | late_delivery | delivery_behaviour | payment | other' },
+        overdue: { type: B, description: 'Only open tickets past their resolution deadline' },
+        days: { type: N, description: 'Only tickets created in the last N days' },
+        orderNumber: { type: S, description: 'Exact order number' },
+        limit: { type: N, description: 'Max tickets listed, default 20' },
+      },
+    },
+  },
+  {
     name: 'get_crm_campaigns',
     description: 'WhatsApp CRM campaign list. Use for: "campaigns", "marketing campaigns", "sent campaigns", "draft campaigns", "campaign performance".',
     parameters: {
@@ -117,6 +132,7 @@ Call multiple tools in a single turn when a question spans several lookups.
 - "call log / contact history for [customer]" → get_crm_call_logs(customerName=...)
 - "callbacks due / pending callbacks" → get_crm_call_logs(outcome="callback")
 - "campaigns / WhatsApp campaigns" → get_crm_campaigns
+- "complaints / tickets / damaged or leaked reports / replacements given" → get_crm_complaints
 
 ## Precision rules — billing figures
 

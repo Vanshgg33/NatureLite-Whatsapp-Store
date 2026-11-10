@@ -32,6 +32,7 @@ function makeService(over: Record<string, unknown> = {}): any {
       crmStatsModel: fakeModel(),
       crmCallLogModel: fakeModel(),
       crmCampaignModel: fakeModel(),
+      complaintModel: fakeModel(),
       purchaseRequestModel: fakeModel(),
       purchaseVendorModel: fakeModel(),
       purchaseMaterialModel: fakeModel(),
@@ -280,6 +281,19 @@ describe('CRM tools', () => {
     const res: any = await svc.execute('get_crm_campaigns', { status: 'sent' });
     expect(svc.crmCampaignModel.find.mock.calls[0][0]).toEqual({ status: 'sent' });
     expect(res.campaigns[0]).toMatchObject({ name: 'Diwali', recipientCount: 120, sentCount: 118, createdBy: 'Priya', approvedBy: '' });
+  });
+});
+
+describe('get_crm_complaints', () => {
+  it('scopes to overdue open tickets and reports category counts', async () => {
+    const svc = makeService();
+    svc.complaintModel.aggregate = jest.fn().mockResolvedValue([{ _id: 'damaged', count: 3 }]);
+    svc.complaintModel.find.mockReturnValue(query([{ ticketNo: 'CMP-2026-0001', customerId: { name: 'Asha' }, category: 'damaged', status: 'new', assignedToName: 'Ravi', createdAt: new Date('2026-01-15T00:00:00Z') }]));
+    svc.complaintModel.countDocuments = jest.fn().mockResolvedValue(2);
+    const res: any = await svc.execute('get_crm_complaints', { overdue: true });
+    expect(svc.complaintModel.find.mock.calls[0][0]).toMatchObject({ status: { $in: expect.arrayContaining(['new']) }, resolutionDueAt: { $lt: expect.any(Date) } });
+    expect(res).toMatchObject({ openNow: 2, byCategory: [{ category: 'damaged', count: 3 }] });
+    expect(res.complaints[0]).toMatchObject({ ticketNo: 'CMP-2026-0001', customer: 'Asha', assignedTo: 'Ravi' });
   });
 });
 

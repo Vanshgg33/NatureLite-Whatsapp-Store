@@ -14,6 +14,7 @@ import { formatINR, segmentLabel, formatPhone } from '@/lib/crm/format';
 import { formatIST } from '@/lib/time';
 import { CustomerAvatar } from '@/components/crm/CustomerAvatar';
 import { Pill } from '@/components/crm/Pill';
+import { ComplaintsCard } from '@/components/crm/ComplaintsCard';
 import { CALL_OUTCOMES } from '@/components/crm/LogCallPanel';
 import type { PillVariant } from '@/components/crm/Pill';
 
@@ -381,6 +382,8 @@ export default function Customer360Page() {
 
           {/* Tags */}
           <TagsCard customerId={id} tags={stats?.tags ?? []} onSaved={invalidate} />
+
+          <ComplaintsCard customerId={id} orders={orders as any[]} />
 
           {/* Action panels */}
           <div className="crm-card-v2 overflow-hidden">

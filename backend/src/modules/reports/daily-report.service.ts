@@ -7,6 +7,7 @@ import { ReportConfig, ReportConfigDocument } from './schemas/report-config.sche
 import { MediaService } from '../media/media.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { EmailService } from '../email/email.service';
+import { Complaint, ComplaintDocument } from '../complaints/schemas/complaint.schema';
 
 interface DailyReportData {
   date: string;
@@ -29,6 +30,7 @@ interface DailyReportData {
   topProducts: Array<{ name: string; qty: number; revenue: number }>;
   topCities:   Array<{ city: string; orders: number; revenue: number }>;
   trend:       Array<{ label: string; orders: number; revenue: number }>;
+  complaints:  { opened: number; resolved: number; open: number; overdue: number; replacements: number };
 }
 
 @Injectable()
@@ -39,6 +41,7 @@ export class DailyReportService {
     @InjectModel(ReportConfig.name) private configModel: Model<ReportConfigDocument>,
     @InjectModel('Order') private orderModel: Model<any>,
     @InjectModel('User') private userModel: Model<any>,
+    @InjectModel(Complaint.name) private complaintModel: Model<ComplaintDocument>,
     private readonly media: MediaService,
     private readonly whatsapp: WhatsAppService,
     private readonly email: EmailService,
@@ -94,7 +97,7 @@ export class DailyReportService {
 
     const [todayAgg, yestAgg, topProducts, topCities, trendRaw] = await Promise.all([
       this.orderModel.aggregate([
-        { $match: { createdAt: { $gte: todayStart, $lte: todayEnd } } },
+        { $match: { orderType: { $ne: 'replacement' }, createdAt: { $gte: todayStart, $lte: todayEnd } } },
         { $group: {
           _id:            null,
           count:          { $sum: 1 },
@@ -121,7 +124,7 @@ export class DailyReportService {
         }},
       ]),
       this.orderModel.aggregate([
-        { $match: { createdAt: { $gte: yestStart, $lte: yestEnd } } },
+        { $match: { orderType: { $ne: 'replacement' }, createdAt: { $gte: yestStart, $lte: yestEnd } } },
         { $group: {
           _id:       null,
           count:     { $sum: 1 },
@@ -138,20 +141,20 @@ export class DailyReportService {
         }},
       ]),
       this.orderModel.aggregate([
-        { $match: { createdAt: { $gte: todayStart, $lte: todayEnd } } },
+        { $match: { orderType: { $ne: 'replacement' }, createdAt: { $gte: todayStart, $lte: todayEnd } } },
         { $unwind: '$items' },
         { $group: { _id: '$items.name', qty: { $sum: '$items.quantity' }, revenue: { $sum: '$items.total' } } },
         { $sort: { revenue: -1 } },
         { $limit: 7 },
       ]),
       this.orderModel.aggregate([
-        { $match: { createdAt: { $gte: todayStart, $lte: todayEnd } } },
+        { $match: { orderType: { $ne: 'replacement' }, createdAt: { $gte: todayStart, $lte: todayEnd } } },
         { $group: { _id: '$shippingAddress.city', orders: { $sum: 1 }, revenue: { $sum: '$total' } } },
         { $sort: { orders: -1 } },
         { $limit: 5 },
       ]),
       this.orderModel.aggregate([
-        { $match: { createdAt: { $gte: sevenAgo, $lte: todayEnd } } },
+        { $match: { orderType: { $ne: 'replacement' }, createdAt: { $gte: sevenAgo, $lte: todayEnd } } },
         { $group: {
           _id:     { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: '+05:30' } },
           orders:  { $sum: 1 },
@@ -200,6 +203,15 @@ export class DailyReportService {
       trend.push({ label, ...entry });
     }
 
+    const openStatuses = ['new', 'investigating', 'awaiting_customer', 'reopened'];
+    const [cOpened, cResolved, cOpen, cOverdue, cReplacements] = await Promise.all([
+      this.complaintModel.countDocuments({ createdAt: { $gte: todayStart, $lte: todayEnd } }),
+      this.complaintModel.countDocuments({ resolvedAt: { $gte: todayStart, $lte: todayEnd } }),
+      this.complaintModel.countDocuments({ status: { $in: openStatuses } }),
+      this.complaintModel.countDocuments({ status: { $in: openStatuses }, resolutionDueAt: { $lt: now } }),
+      this.complaintModel.countDocuments({ resolvedAt: { $gte: todayStart, $lte: todayEnd }, 'resolution.type': 'replacement' }),
+    ]);
+
     return {
       date:            todayStart.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }),
       orders:          { today: t.count,     yesterday: y.count },
@@ -221,6 +233,7 @@ export class DailyReportService {
       topProducts: topProducts.map((p: any) => ({ name: p._id, qty: p.qty, revenue: p.revenue })),
       topCities:   topCities.map((c: any) => ({ city: c._id || 'Unknown', orders: c.orders, revenue: c.revenue })),
       trend,
+      complaints: { opened: cOpened, resolved: cResolved, open: cOpen, overdue: cOverdue, replacements: cReplacements },
     };
   }
 
@@ -565,6 +578,13 @@ export class DailyReportService {
           .text(`Cancellations:  ${data.cancelled.today} today  (yesterday: ${data.cancelled.yesterday})   ·   Revenue lost: ${fmtR(data.cancelled.revenueLost)}`, 54, y + 8, { width: W - 108 });
         y += 26;
       }
+
+      // Complaints
+      doc.roundedRect(40, y, W - 80, 26).fill('#FEF2F2');
+      doc.roundedRect(40, y, W - 80, 26).stroke('#FECACA');
+      doc.fontSize(9).font('Helvetica').fillColor('#991B1B')
+        .text(`Complaints:  ${data.complaints.opened} new  ·  ${data.complaints.resolved} resolved  ·  ${data.complaints.replacements} replacements sent  ·  ${data.complaints.open} open (${data.complaints.overdue} overdue)`, 54, y + 8, { width: W - 108 });
+      y += 26 + 8;
 
       // Page 2 footer
       doc.rect(0, PH - 26, W, 26).fill(FOREST);

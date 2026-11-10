@@ -20,6 +20,7 @@ import { StoresService } from '../stores/stores.service';
 import { StoreStockService } from '../store-stock/store-stock.service';
 import { CouponsService } from '../coupons/coupons.service';
 import { UcmService } from '../ucm/ucm.service';
+import { ComplaintFlow, COMPLAINT_BTN } from './complaint-flow';
 import { WhatsAppMessage } from '../whatsapp/dto/whatsapp.dto';
 import { CHATBOT_FLOWS, FAQ_RESPONSES } from './chatbot.flows';
 import {
@@ -119,6 +120,8 @@ export class ChatbotService implements OnModuleInit {
     private readonly redisService: RedisService,
     @Inject(forwardRef(() => ChatbotAiService))
     private readonly chatbotAiService: ChatbotAiService,
+    @Inject(forwardRef(() => ComplaintFlow))
+    private readonly complaintFlow: ComplaintFlow,
   ) {
     // Loud boot-time warning if FRONTEND_URL is unset while Razorpay is wired
     // up. Without it, the chatbot prepaid flow falls back to a "sign in to
@@ -166,6 +169,14 @@ export class ChatbotService implements OnModuleInit {
         `We'll respond shortly. For urgent help call ${bold('8962021112')}.\n\n` +
         `_Type *menu* anytime to return to the bot._`,
     });
+  }
+
+  async startComplaintForAi(phone: string, session: ChatSessionDocument): Promise<void> {
+    if (!session.user) {
+      await this.whatsappService.sendTextMessage({ phone, message: 'Please share your name first (type *menu*), then try again.' });
+      return;
+    }
+    await this.complaintFlow.start(phone, session.user.toString());
   }
 
   async reorderLastForAi(phone: string, session: ChatSessionDocument): Promise<void> {
@@ -599,6 +610,9 @@ export class ChatbotService implements OnModuleInit {
     const buttonId = message.content.buttonId || message.content.listId;
     const transitionKey = buttonId || this.mapTextToTransitionKey(currentState, inputText);
     const normalizedInput = this.normalizeInput(inputText);
+
+    // "Report a problem" runs ahead of normal routing so its free-text steps never reach the AI.
+    if (await this.complaintFlow.handle(session, message, inputText, () => this.saveSession(session))) return;
 
     // Catalog "send cart" → arrives as type=order with productItems[]. One product tap arrives
     // as interactive=product or product_list_reply (productItems often has length 1).
@@ -3044,7 +3058,9 @@ export class ChatbotService implements OnModuleInit {
           ]
         : [
             { id: BTN.REORDER_CURRENT, title: '\uD83D\uDD01 Reorder' },
-            { id: BTN.SUPPORT, title: '\uD83D\uDCAC Help' },
+            order.status === 'delivered' || order.status === 'out_for_delivery'
+              ? { id: COMPLAINT_BTN.order(orderId), title: '\u26A0 Report issue' }
+              : { id: BTN.SUPPORT, title: '\uD83D\uDCAC Help' },
             { id: BTN.BACK, title: '\u21A9 Back' },
           ];
 

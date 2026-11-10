@@ -102,6 +102,7 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   def('crm_campaigns', 'CRM Campaigns', 'CRM', '/crm/campaigns', true, [
     a('view', 'View'), a('create', 'Create'), a('approve', 'Approve'), a('send', 'Send'), a('delete', 'Delete'),
   ]),
+  def('crm_complaints', 'CRM Complaints', 'CRM', '/crm/complaints', true, [a('view', 'View'), a('act', 'Reply, resolve & reassign')]),
   def('crm_products', 'CRM Products', 'CRM', '/crm/products', true, [a('view', 'View')]),
   def('crm_analytics', 'CRM Performance', 'CRM', '/crm/analytics', true, [a('view', 'View')]),
   def('crm_settings', 'CRM Settings', 'CRM', '/crm/settings', true, [a('view', 'View'), a('edit', 'Edit')]),

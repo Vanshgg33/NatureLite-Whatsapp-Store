@@ -1162,6 +1162,19 @@ export class WhatsAppService implements OnModuleInit {
     }
   }
 
+  /** Downloads an inbound media file. shortcut: untested against 360dialog URL rewriting, verify with a real photo before relying on it. */
+  async downloadMedia(mediaId: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
+    const url = await this.getMediaUrl(mediaId);
+    if (!url) return null;
+    try {
+      const res = await this.httpClient.get<ArrayBuffer>(url, { responseType: 'arraybuffer' });
+      return { buffer: Buffer.from(res.data), mimeType: String(res.headers['content-type'] ?? 'image/jpeg') };
+    } catch (error) {
+      this.logger.error('Failed to download media', error);
+      return null;
+    }
+  }
+
   private async logMessage(
     message: WhatsAppMessage,
     direction: 'inbound' | 'outbound',

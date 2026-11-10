@@ -23,6 +23,7 @@ import { Godown, GodownSchema } from '../billing/schemas/godown.schema';
 import { CrmCustomerStats, CrmCustomerStatsSchema } from '../crm/schemas/crm-customer-stats.schema';
 import { CrmCallLog, CrmCallLogSchema } from '../crm/schemas/crm-call-log.schema';
 import { CrmCampaign, CrmCampaignSchema } from '../crm/schemas/crm-campaign.schema';
+import { Complaint, ComplaintSchema } from '../complaints/schemas/complaint.schema';
 import { PurchaseRequest, PurchaseRequestSchema } from '../purchase/schemas/purchase-request.schema';
 import { PurchaseVendor, PurchaseVendorSchema } from '../purchase/schemas/purchase-vendor.schema';
 import { PurchaseMaterial, PurchaseMaterialSchema } from '../purchase/schemas/purchase-material.schema';
@@ -61,6 +62,7 @@ import { AdminModule } from '../admin/admin.module';
       { name: CrmCustomerStats.name, schema: CrmCustomerStatsSchema },
       { name: CrmCallLog.name, schema: CrmCallLogSchema },
       { name: CrmCampaign.name, schema: CrmCampaignSchema },
+      { name: Complaint.name, schema: ComplaintSchema },
       { name: PurchaseRequest.name, schema: PurchaseRequestSchema },
       { name: PurchaseVendor.name, schema: PurchaseVendorSchema },
       { name: PurchaseMaterial.name, schema: PurchaseMaterialSchema },

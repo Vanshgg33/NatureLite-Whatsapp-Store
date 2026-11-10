@@ -15,6 +15,7 @@ import { istDateKey } from '../../common/utils/ist-time';
 import { CrmActivityEvent, CrmActivityEventDocument } from './schemas/crm-activity-event.schema';
 import { MediaService } from '../media/media.service';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
+import { Complaint, ComplaintDocument } from '../complaints/schemas/complaint.schema';
 
 @Injectable()
 export class CrmService {
@@ -28,6 +29,7 @@ export class CrmService {
     @InjectModel('Order') private orderModel: Model<any>,
     @InjectModel(CrmActivityEvent.name) private activityModel: Model<CrmActivityEventDocument>,
     @InjectModel(Product.name) private productModel: Model<ProductDocument>,
+    @InjectModel(Complaint.name) private complaintModel: Model<ComplaintDocument>,
     @InjectModel('ChatSession') private chatSessionModel: Model<any>,
     @InjectModel('Cart') private cartModel: Model<any>,
     @InjectModel('MessageLog') private messageLogModel: Model<any>,
@@ -62,6 +64,7 @@ export class CrmService {
     const { segment, search, agentId, isEscalated } = opts;
     const page = opts.page ?? 1;
     const limit = Math.min(opts.limit ?? 50, 100);
+    const complaining = new Set((await this.openComplaintUserIds()).map(String));
 
     // When filtering by agent, stats must exist — use stats-first path
     if (agentId) {
@@ -82,7 +85,7 @@ export class CrmService {
       stats = stats.filter((s: any) => userMap.has(s.userId.toString()));
       const total = stats.length;
       return {
-        data: stats.slice((page - 1) * limit, page * limit).map((s: any) => ({ ...s, user: userMap.get(s.userId.toString()) })),
+        data: stats.slice((page - 1) * limit, page * limit).map((s: any) => ({ ...s, user: userMap.get(s.userId.toString()), hasOpenComplaint: complaining.has(s.userId.toString()) })),
         total, page, pages: Math.ceil(total / limit),
       };
     }
@@ -122,6 +125,7 @@ export class CrmService {
       data: filtered.slice((page - 1) * limit, page * limit).map((u: any) => ({
         ...(statsMap.get(u._id.toString()) ?? { userId: u._id }),
         user: u,
+        hasOpenComplaint: complaining.has(u._id.toString()),
       })),
       total, page, pages: Math.ceil(total / limit),
     };
@@ -137,6 +141,11 @@ export class CrmService {
     ]);
     if (!user) throw new NotFoundException('Customer not found');
     return { user, stats, calls, orders };
+  }
+
+  /** Customers with an unresolved complaint: no sales calls or campaigns until it is closed out. */
+  private async openComplaintUserIds(): Promise<Types.ObjectId[]> {
+    return this.complaintModel.distinct('customerId', { status: { $in: ['new', 'investigating', 'awaiting_customer', 'reopened'] } });
   }
 
   // ─── Queue ───────────────────────────────────────────────────────────────
@@ -172,6 +181,7 @@ export class CrmService {
     filter.isDismissed = { $ne: true };
     filter.snoozedUntil = { $not: { $gt: now } };
 
+    filter.userId = { $nin: await this.openComplaintUserIds() };
     const stats = await this.statsModel.find(filter).sort({ priorityScore: -1 }).limit(200).lean();
     const userIds = stats.map((s: any) => s.userId);
     const users = await this.userModel.find({ _id: { $in: userIds } }).select('name phone tags').lean();
@@ -509,7 +519,9 @@ export class CrmService {
   private async _doSendCampaign(id: string, segmentFilter: string[], waMessage: string) {
     const stats = await this.statsModel.find({ segment: { $in: segmentFilter } }).select('userId').lean();
     const userIds = stats.map((s: any) => s.userId);
-    const users = await this.userModel.find({ _id: { $in: userIds }, isBlocked: { $ne: true } }).select('phone').lean();
+    const complaining = new Set((await this.openComplaintUserIds()).map(String));
+    const users = (await this.userModel.find({ _id: { $in: userIds }, isBlocked: { $ne: true } }).select('phone').lean())
+      .filter((u: any) => !complaining.has(String(u._id)));
 
     let sent = 0;
     for (let i = 0; i < users.length; i++) {

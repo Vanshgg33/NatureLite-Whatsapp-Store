@@ -2417,6 +2417,72 @@ class ApiClient {
     return res.data.data ?? [];
   }
 
+  async getCrmComplaints(params: { status?: string; mine?: boolean; overdue?: boolean; search?: string; page?: number }): Promise<any> {
+    const qs = new URLSearchParams();
+    if (params.status) qs.set('status', params.status);
+    if (params.mine) qs.set('mine', 'true');
+    if (params.overdue) qs.set('overdue', 'true');
+    if (params.search) qs.set('search', params.search);
+    if (params.page) qs.set('page', String(params.page));
+    const res = await this.client.get<ApiResponse<any>>(`/crm/complaints?${qs}`);
+    return res.data.data;
+  }
+
+  async reportDeliveryIssue(data: { orderId: string; issue: string; note?: string; photoUrl?: string }): Promise<{ ticketNo: string }> {
+    const res = await this.client.post<ApiResponse<any>>('/complaints/delivery-issue', data);
+    return res.data.data;
+  }
+
+  async getCrmComplaintSummary(): Promise<{ open: number; overdue: number; mine: number }> {
+    const res = await this.client.get<ApiResponse<any>>('/crm/complaints/summary');
+    return res.data.data;
+  }
+
+  async getCrmComplaintAgents(): Promise<{ _id: string; name: string; open: number }[]> {
+    const res = await this.client.get<ApiResponse<any>>('/crm/complaints/agents');
+    return res.data.data ?? [];
+  }
+
+  async assignCrmComplaint(id: string, agentId: string): Promise<any> {
+    const res = await this.client.patch<ApiResponse<any>>(`/crm/complaints/${id}/assign`, { agentId });
+    return res.data.data;
+  }
+
+  async getCrmComplaint(id: string): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>(`/crm/complaints/${id}`);
+    return res.data.data;
+  }
+
+  async getCrmCustomerComplaints(customerId: string): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>(`/crm/complaints/customer/${customerId}`);
+    return res.data.data ?? [];
+  }
+
+  async createCrmComplaint(data: { customerId: string; orderId?: string; category: string; description?: string }): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>('/crm/complaints', data);
+    return res.data.data;
+  }
+
+  async replyCrmComplaint(id: string, text: string, internal: boolean): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>(`/crm/complaints/${id}/reply`, { text, internal });
+    return res.data.data;
+  }
+
+  async setCrmComplaintStatus(id: string, status: string): Promise<any> {
+    const res = await this.client.patch<ApiResponse<any>>(`/crm/complaints/${id}/status`, { status });
+    return res.data.data;
+  }
+
+  async setCrmComplaintRootCause(id: string, rootCause: string): Promise<any> {
+    const res = await this.client.patch<ApiResponse<any>>(`/crm/complaints/${id}/root-cause`, { rootCause });
+    return res.data.data;
+  }
+
+  async resolveCrmComplaint(id: string, data: { type: string; reason: string; amount?: number }): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>(`/crm/complaints/${id}/resolve`, data);
+    return res.data.data;
+  }
+
   async crmHeartbeat(): Promise<void> {
     await this.client.post('/crm/heartbeat', {});
   }

@@ -20,6 +20,7 @@ import {
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { Header } from '@/components/layout/header';
+import { ReportDeliveryIssue } from '@/components/department/ReportDeliveryIssue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -869,6 +870,8 @@ export default function DeliveryDashboardPage() {
             >
               ← Back to list
             </button>
+
+            <ReportDeliveryIssue orderId={order._id} />
 
             {/* Order summary card */}
             <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
