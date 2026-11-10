@@ -10,3 +10,9 @@ export const ACCESS_KEY = 'requiredAccess';
  */
 export const RequireAccess = (...keys: string[]) =>
   applyDecorators(SetMetadata(ACCESS_KEY, keys.map((k) => `admin.${k}`)), UseGuards(AccessGuard));
+
+/**
+ * Superadmins and admins with no access role only. The key is deliberately absent from ADMIN_PAGES,
+ * so no role can ever be granted it (use for audit logs, destructive resets, ...).
+ */
+export const NoRoleAccess = () => RequireAccess('__unrestricted__');

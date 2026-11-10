@@ -4,6 +4,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { WalletService } from './wallet.service';
 import { AdminAdjustWalletDto, WalletBalanceResponse, WalletTransactionResponse } from './dto/wallet.dto';
+import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
 @Controller('admin/wallet')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -12,6 +13,7 @@ export class AdminWalletController {
   constructor(private readonly walletService: WalletService) {}
 
   @Get(':userId')
+  @RequireAccess('customers.view')
   async getUserWallet(
     @Param('userId') userId: string,
   ): Promise<WalletBalanceResponse & { transactions: WalletTransactionResponse[] }> {
@@ -33,6 +35,7 @@ export class AdminWalletController {
   }
 
   @Post(':userId/credit')
+  @RequireAccess('customers.edit')
   async creditUserWallet(
     @Param('userId') userId: string,
     @Body() dto: AdminAdjustWalletDto,
@@ -47,6 +50,7 @@ export class AdminWalletController {
   }
 
   @Post(':userId/debit')
+  @RequireAccess('customers.edit')
   async debitUserWallet(
     @Param('userId') userId: string,
     @Body() dto: AdminAdjustWalletDto,

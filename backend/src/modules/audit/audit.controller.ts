@@ -2,10 +2,12 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AuditService } from './audit.service';
+import { NoRoleAccess } from '../../common/decorators/require-access.decorator';
 
 @Controller('audit')
 @UseGuards(RolesGuard)
 @Roles('admin', 'superadmin')
+@NoRoleAccess()
 export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 

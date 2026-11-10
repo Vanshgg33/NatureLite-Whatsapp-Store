@@ -30,6 +30,27 @@ export const ADMIN_PAGE_HREFS: { page: string; href: string }[] = [
   { page: 'billing_insights', href: '/billing/insights' },
   { page: 'billing_gstr1', href: '/billing/gstr1' },
   { page: 'billing_tax', href: '/billing/settings/tax' },
+  { page: 'analytics', href: '/admin/analytics' },
+  { page: 'whatsapp', href: '/admin/whatsapp' },
+  { page: 'campaigns', href: '/admin/campaigns' },
+  { page: 'feedback', href: '/admin/feedback' },
+  { page: 'appearance', href: '/admin/appearance' },
+  { page: 'settings', href: '/admin/settings' },
+  { page: 'reports', href: '/admin/reports' },
+  { page: 'stores_dashboard', href: '/admin/stores/dashboard' }, // before 'stores': pageForPath returns the first prefix match
+  { page: 'stores', href: '/admin/stores' },
+  // CRM: more specific hrefs first; '/crm' (Today) is a prefix of every CRM path so it goes last.
+  { page: 'crm_queue', href: '/crm/queue' },
+  { page: 'crm_abandoned', href: '/crm/abandoned' },
+  { page: 'crm_caller', href: '/crm/caller' },
+  { page: 'crm_customers', href: '/crm/customers' },
+  { page: 'crm_campaigns', href: '/crm/campaigns' },
+  { page: 'crm_products', href: '/crm/products' },
+  { page: 'crm_analytics', href: '/crm/analytics' },
+  { page: 'crm_analytics', href: '/crm/leaderboard' },
+  { page: 'crm_settings', href: '/crm/settings' },
+  { page: 'crm_team', href: '/crm/admin' },
+  { page: 'crm_today', href: '/crm' },
 ];
 
 export const pageForPath = (pathname: string): string | undefined =>

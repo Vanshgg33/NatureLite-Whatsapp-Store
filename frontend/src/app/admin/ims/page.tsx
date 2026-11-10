@@ -8,6 +8,7 @@ import {
   TrendingDown, TrendingUp, CheckCircle2, Calendar, ChevronDown, ChevronRight,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useAdminAccess } from '@/lib/admin-access';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +32,7 @@ const BASE_STOCK_KEY = '__base__';
 export default function IMSPage() {
   const { user } = useAdminAuthStore();
   const queryClient = useQueryClient();
+  const { can } = useAdminAccess();
   const { toast } = useToast();
   const [selectedStoreId, setSelectedStoreId] = useState<string>(user?.storeId || '');
   const [search, setSearch] = useState('');
@@ -56,6 +58,10 @@ export default function IMSPage() {
   }
 
   function openEditDialog(item: StoreStockItem, variantKey: string = BASE_STOCK_KEY) {
+    if (!can('ims.edit')) {
+      toast({ title: 'No permission', description: 'Your role cannot update stock.', variant: 'destructive' });
+      return;
+    }
     setEditItem(item);
     setEditVariantKey(variantKey);
     setEditStockIn('');

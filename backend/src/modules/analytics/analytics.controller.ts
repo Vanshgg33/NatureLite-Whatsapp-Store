@@ -14,11 +14,13 @@ import { EmailService } from '../email/email.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { SnapshotPeriod } from './schemas/analytics-snapshot.schema';
+import { SnapshotPeriod } from './schemas/analytics-snapshot.schema';
+import { RequireAccess, NoRoleAccess } from '../../common/decorators/require-access.decorator';
 
 @Controller('analytics')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin', 'superadmin')
+@RequireAccess('analytics.view', 'dashboard.view', 'stores_dashboard.view')
 export class AnalyticsController {
   constructor(
     private readonly analyticsService: AnalyticsService,
@@ -171,6 +173,7 @@ export class AnalyticsController {
   }
 
   @Post('send-report-email')
+  @RequireAccess('analytics.view', 'dashboard.view', 'ims.view', 'pms.view', 'rms.view')
   async sendReportEmail(
     @Body() body: { email: string; subject: string; filename: string; pdfBase64: string },
   ): Promise<{ success: boolean }> {
@@ -187,11 +190,13 @@ export class AnalyticsController {
   }
 
   @Delete('reset/dashboard')
+  @NoRoleAccess()
   async resetDashboardMetrics(): Promise<{ deletedSnapshots: number }> {
     return this.analyticsService.resetDashboardMetrics();
   }
 
   @Delete('reset/customers')
+  @NoRoleAccess()
   async resetCustomerMetrics(): Promise<{ usersReset: number; productsReset: number }> {
     return this.analyticsService.resetCustomerMetrics();
   }

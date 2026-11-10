@@ -298,14 +298,14 @@ export class PurchaseController {
 
   @Post('users')
   @RequirePermission('users.manage')
-  createFmsUser(@Body() body: any) {
-    return this.purchaseService.createFmsUser(body);
+  createFmsUser(@Body() body: any, @CurrentUser() user: JwtPayload) {
+    return this.purchaseService.createFmsUser(user, body);
   }
 
   @Patch('users/:id')
   @RequirePermission('users.manage')
-  updateFmsUser(@Param('id') id: string, @Body() body: any) {
-    return this.purchaseService.updateFmsUser(id, body);
+  updateFmsUser(@Param('id') id: string, @Body() body: any, @CurrentUser() user: JwtPayload) {
+    return this.purchaseService.updateFmsUser(user, id, body);
   }
 
   @Post('users/:id/photo')

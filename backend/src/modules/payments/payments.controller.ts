@@ -10,6 +10,7 @@ import {
   WhatsAppCheckoutPrepareDto,
   WhatsAppCheckoutVerifyDto,
 } from './dto/whatsapp-pay.dto';
+import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
 @Controller('payments')
 export class PaymentsController {
@@ -70,6 +71,7 @@ export class PaymentsController {
   }
 
   @Post(':orderId/refund')
+  @RequireAccess('orders.payments', 'orders.returns')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
   async initiateRefund(

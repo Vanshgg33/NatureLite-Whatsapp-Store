@@ -12,11 +12,18 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Public } from '../../common/decorators/public.decorator';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
+import { AccessGuard } from '../../common/guards/access.guard';
+
+// Appearance page keys; everything else needs settings.edit.
+const APPEARANCE_KEYS = ['appearance', 'banners'];
 
 @Controller('settings')
 export class SettingsController {
-  constructor(private readonly settingsService: SettingsService) {}
+  constructor(
+    private readonly settingsService: SettingsService,
+    private readonly access: AccessGuard,
+  ) {}
 
   @Public()
   @Get('public')
@@ -55,8 +62,9 @@ export class SettingsController {
   async updateSettings(
     @Param('key') key: string,
     @Body() updates: Record<string, unknown>,
-    @CurrentUser('sub') userId: string,
+    @CurrentUser() user: JwtPayload,
   ): Promise<Settings> {
-    return this.settingsService.update(key, updates, userId);
+    await this.access.assertAccess(user, [APPEARANCE_KEYS.includes(key) ? 'admin.appearance.edit' : 'admin.settings.edit']);
+    return this.settingsService.update(key, updates, user.sub);
   }
 }

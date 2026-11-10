@@ -5,6 +5,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { StoresService } from '../stores/stores.service';
+import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
 @Controller('reminders')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -16,6 +17,7 @@ export class RemindersController {
   ) {}
 
   @Get('due')
+  @RequireAccess('dashboard.view', 'orders.view')
   async getDueReminders(@CurrentUser() user: JwtPayload) {
     let storeIds: string[] = [];
     if (user.storeId) {
@@ -28,6 +30,7 @@ export class RemindersController {
   }
 
   @Post('order')
+  @RequireAccess('orders.edit')
   async createForOrder(
     @Body() body: { orderId: string; message: string; dueAt: string },
     @CurrentUser() user: JwtPayload,
@@ -42,6 +45,7 @@ export class RemindersController {
   }
 
   @Post(':id/dismiss')
+  @RequireAccess('dashboard.view', 'orders.edit')
   async dismiss(@Param('id') id: string) {
     return this.remindersService.dismiss(id);
   }

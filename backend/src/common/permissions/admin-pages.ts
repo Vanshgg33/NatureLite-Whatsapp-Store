@@ -32,7 +32,8 @@ const def = (
 
 export const ADMIN_PAGES: AdminPageDef[] = [
   def('dashboard', 'Dashboard', 'Overview', '/admin/dashboard', false, [a('view', 'View')]),
-  def('chatbot', 'AI Chatbot', 'Overview', '/admin/chatbot', false, [a('view', 'View')]),
+  // The chatbot's tools read orders, customers, wallets, payments and audit logs, so View here is effectively read access to everything.
+  def('chatbot', 'AI Chatbot (can read all business data)', 'Overview', '/admin/chatbot', true, [a('view', 'View')]),
 
   def('products', 'Products', 'Catalogue', '/admin/products', true, [
     a('view', 'View'), a('create', 'Create'), a('edit', 'Edit'), a('stock', 'Update stock'), a('delete', 'Delete'),
@@ -43,7 +44,9 @@ export const ADMIN_PAGES: AdminPageDef[] = [
     a('view', 'View'), a('create', 'Create'), a('edit', 'Edit'), a('delete', 'Delete'),
   ]),
 
-  def('sales', 'Sales Log', 'Operations', '/admin/sales', false, [a('view', 'View')]),
+  def('sales', 'Sales Log', 'Operations', '/admin/sales', true, [
+    a('view', 'View'), a('create', 'Log sale'), a('edit', 'Edit sale'), a('invoice', 'Upload / send invoice'),
+  ]),
   def('orders', 'Orders', 'Operations', '/admin/orders', true, [
     a('view', 'View'), a('create', 'Create order'), a('edit', 'Edit / change status'), a('assign_delivery', 'Assign delivery'),
     a('payments', 'Payment status & proof'), a('returns', 'Handle returns'), a('reopen', 'Reopen order'),
@@ -52,11 +55,13 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   def('delivery_collections', 'Cash Ledger', 'Operations', '/admin/delivery-collections', true, [
     a('view', 'View'), a('settle', 'Settle collections'),
   ]),
-  def('delivery_history', 'Delivery History', 'Operations', '/admin/delivery-history', false, [a('view', 'View')]),
+  def('delivery_history', 'Delivery History', 'Operations', '/admin/delivery-history', true, [a('view', 'View')]),
 
-  def('ims', 'IMS', 'Factory', '/admin/ims', false, [a('view', 'View')]),
-  def('pms', 'PMS', 'Factory', '/admin/pms', false, [a('view', 'View')]),
-  def('rms', 'RMS', 'Factory', '/admin/rms', false, [a('view', 'View')]),
+  def('ims', 'IMS', 'Factory', '/admin/ims', true, [a('view', 'View'), a('edit', 'Update stock')]),
+  def('pms', 'PMS', 'Factory', '/admin/pms', true, [
+    a('view', 'View'), a('create', 'Add material'), a('edit', 'Edit entries'), a('delete', 'Delete'),
+  ]),
+  def('rms', 'RMS', 'Factory', '/admin/rms', true, [a('view', 'View'), a('edit', 'Edit entries')]),
   // Purchase FMS actions reuse the legacy keys already enforced by PermissionGuard; only "View" is UI-level.
   def('purchase', 'Purchase FMS', 'Factory', '/fms/purchase', true, [
     a('view', 'View'),
@@ -88,6 +93,30 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   def('billing_insights', 'Customer Insights', 'Billing', '/billing/insights', true, [a('view', 'View')]),
   def('billing_gstr1', 'GSTR-1', 'Billing', '/billing/gstr1', true, [a('view', 'View')]),
   def('billing_tax', 'Tax & Compliance', 'Billing', '/billing/settings/tax', true, [a('view', 'View'), a('edit', 'Edit rules')]),
+
+  def('crm_today', 'CRM Today', 'CRM', '/crm', true, [a('view', 'View')]),
+  def('crm_queue', 'Call Queue', 'CRM', '/crm/queue', true, [a('view', 'View'), a('act', 'Snooze / dismiss / escalate / assign')]),
+  def('crm_abandoned', 'Abandoned Carts', 'CRM', '/crm/abandoned', true, [a('view', 'View')]),
+  def('crm_caller', 'Caller Mode', 'CRM', '/crm/caller', true, [a('view', 'View'), a('log', 'Log calls')]),
+  def('crm_customers', 'CRM Customers', 'CRM', '/crm/customers', true, [a('view', 'View'), a('edit', 'Notes, tags & nudges')]),
+  def('crm_campaigns', 'CRM Campaigns', 'CRM', '/crm/campaigns', true, [
+    a('view', 'View'), a('create', 'Create'), a('approve', 'Approve'), a('send', 'Send'), a('delete', 'Delete'),
+  ]),
+  def('crm_products', 'CRM Products', 'CRM', '/crm/products', true, [a('view', 'View')]),
+  def('crm_analytics', 'CRM Performance', 'CRM', '/crm/analytics', true, [a('view', 'View')]),
+  def('crm_settings', 'CRM Settings', 'CRM', '/crm/settings', true, [a('view', 'View'), a('edit', 'Edit')]),
+  def('crm_team', 'CRM Team', 'CRM', '/crm/admin', true, [a('view', 'View'), a('manage', 'Manage employees')]),
+
+  // Logins and Roles & Access stay superadmin-only on purpose: delegating them lets a role grant itself everything.
+  def('analytics', 'Analytics', 'System', '/admin/analytics', true, [a('view', 'View')]),
+  def('whatsapp', 'WhatsApp', 'System', '/admin/whatsapp', true, [a('view', 'View'), a('send', 'Send messages')]),
+  def('campaigns', 'Campaigns', 'System', '/admin/campaigns', true, [a('view', 'View'), a('manage', 'Broadcast / retry / cancel / delete')]),
+  def('feedback', 'Feedback', 'System', '/admin/feedback', true, [a('view', 'View'), a('manage', 'Respond / change status')]),
+  def('appearance', 'Appearance', 'System', '/admin/appearance', true, [a('view', 'View'), a('edit', 'Edit appearance & banners')]),
+  def('settings', 'Settings', 'System', '/admin/settings', true, [a('view', 'View'), a('edit', 'Edit store / WhatsApp / chatbot settings')]),
+  def('reports', 'Reports', 'System', '/admin/reports', true, [a('view', 'View'), a('edit', 'Edit config / send now')]),
+  def('stores_dashboard', 'Stores Dashboard', 'System', '/admin/stores/dashboard', false, [a('view', 'View')]),
+  def('stores', 'Manage Stores', 'System', '/admin/stores', false, [a('view', 'View')]),
 ];
 
 export const ALL_ADMIN_PERMISSIONS: string[] = ADMIN_PAGES.flatMap((p) => p.actions.map((x) => x.permission));

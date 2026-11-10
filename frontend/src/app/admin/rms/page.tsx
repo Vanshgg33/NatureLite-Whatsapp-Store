@@ -8,6 +8,7 @@ import {
   Calendar, ClipboardList, Droplets,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useAdminAccess } from '@/lib/admin-access';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,6 +40,7 @@ export default function RMSPage() {
   const { user } = useAdminAuthStore();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { can } = useAdminAccess();
   const [selectedStoreId, setSelectedStoreId] = useState<string>(user?.storeId || '');
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -106,6 +108,10 @@ export default function RMSPage() {
   });
 
   async function openEntryDialog(m: RawMaterial) {
+    if (!can('rms.edit')) {
+      toast({ title: 'No permission', description: 'Your role cannot edit RMS entries.', variant: 'destructive' });
+      return;
+    }
     const rid = ++prefillRequestRef.current;
     setEditMaterial(m); setPrefill(null);
     setEntryOpening(''); setEntryStockIn(''); setEntryProcessed(''); setEntryOutput('');

@@ -14,6 +14,7 @@ import { PurchaseTag, PurchaseTagDocument } from './schemas/purchase-tag.schema'
 import { AdminUser, AdminUserDocument } from '../admin/schemas/admin-user.schema';
 import { EmailService } from '../email/email.service';
 import { JwtPayload } from '../../common/decorators/current-user.decorator';
+import { parseObjectId } from '../../common/utils/objectid.util';
 import { ActorSnapshot } from './schemas/purchase-request.schema';
 import {
   Stage,
@@ -863,17 +864,36 @@ export class PurchaseService {
     return this.adminModel
       .find({ $or: [{ departmentType: 'fms' }, { purchaseRole: { $exists: true, $ne: null } }] })
       .select('-password')
+      .populate('accessRole', 'name')
       .lean();
   }
 
-  async createFmsUser(body: {
+  /** users.manage must not reach superadmins or non-FMS logins (it could otherwise reset their password or lock them out). */
+  private async assertFmsTarget(id: string) {
+    const ok = await this.adminModel.exists({
+      _id: parseObjectId(id, 'id'),
+      role: { $ne: 'superadmin' },
+      $or: [{ departmentType: 'fms' }, { purchaseRole: { $exists: true, $ne: null } }],
+    });
+    if (!ok) throw new NotFoundException('User not found');
+  }
+
+  /** Permissions come from the Roles & Access page, so only a superadmin may point a user at a role. */
+  private assertCanAssignRole(actor: JwtPayload, accessRole: unknown) {
+    if (accessRole && actor.role !== 'superadmin') throw new ForbiddenException('Only a superadmin can assign an access role');
+  }
+
+  async createFmsUser(actor: JwtPayload, body: {
     loginId: string;
     name: string;
     designation?: string;
-    rolePreset?: string;
     tempPassword: string;
-    permissions?: string[];
+    accessRole?: string | null;
   }) {
+    this.assertCanAssignRole(actor, body.accessRole);
+    if (!body.name?.trim() || !body.loginId?.trim() || (body.tempPassword ?? '').length < 8) {
+      throw new BadRequestException('name, loginId and a temp password of at least 8 characters are required');
+    }
     const bcrypt = require('bcrypt');
     const loginId = body.loginId.toLowerCase().trim();
     const exists = await this.adminModel.findOne({ loginId });
@@ -887,32 +907,39 @@ export class PurchaseService {
       password: hash,
       role: 'admin',
       departmentType: 'fms',
-      rolePreset: body.rolePreset || 'CUSTOM',
-      permissions: body.permissions || [],
+      accessRole: (body.accessRole ? parseObjectId(body.accessRole, 'accessRole') : undefined),
       mustChangePassword: true,
       isActive: true,
     });
   }
 
-  async updateFmsUser(id: string, body: Partial<{
+  async updateFmsUser(actor: JwtPayload, id: string, body: Partial<{
     name: string;
     designation: string;
-    rolePreset: string;
-    permissions: string[];
     isActive: boolean;
+    accessRole: string | null;
   }>) {
-    const user = await this.adminModel.findByIdAndUpdate(id, { $set: body }, { new: true }).select('-password');
+    this.assertCanAssignRole(actor, body.accessRole);
+    await this.assertFmsTarget(id);
+    // Whitelist: this endpoint used to `$set` the raw body, which let callers write any field (role, password, ...).
+    const update: Record<string, unknown> = {};
+    for (const k of ['name', 'designation', 'isActive'] as const) if (body[k] !== undefined) update[k] = body[k];
+    if (body.accessRole !== undefined) update.accessRole = (body.accessRole ? parseObjectId(body.accessRole, 'accessRole') : null);
+    const user = await this.adminModel.findByIdAndUpdate(id, { $set: update }, { new: true }).select('-password');
     if (!user) throw new NotFoundException('User not found');
     return user;
   }
 
   async setUserPhoto(id: string, photoUrl: string) {
+    await this.assertFmsTarget(id);
     const user = await this.adminModel.findByIdAndUpdate(id, { $set: { avatar: photoUrl } }, { new: true }).select('-password');
     if (!user) throw new NotFoundException('User not found');
     return user;
   }
 
   async resetFmsUserPassword(id: string, newPassword: string) {
+    await this.assertFmsTarget(id);
+    if ((newPassword ?? '').length < 8) throw new BadRequestException('Password must be at least 8 characters');
     const bcrypt = require('bcrypt');
     const hash = await bcrypt.hash(newPassword, 12);
     const user = await this.adminModel.findByIdAndUpdate(id, { $set: { password: hash, mustChangePassword: true } }, { new: true }).select('-password');

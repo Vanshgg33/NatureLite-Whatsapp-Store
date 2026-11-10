@@ -4,34 +4,13 @@ import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, KeyRound, Camera, ToggleLeft, ToggleRight, X, RefreshCw } from 'lucide-react';
 import { api } from '@/lib/api';
-import { usePermission, PURCHASE_PERMISSIONS, ROLE_PRESETS, type PurchasePermission } from '@/lib/fms/permissions';
+import Link from 'next/link';
+import { usePermission } from '@/lib/fms/permissions';
+import { useAdminAuthStore } from '@/lib/admin-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { getApiError } from '@/lib/api-error';
-
-const PRESET_LABELS: Record<string, string> = {
-  SUPER_ADMIN: 'Super Admin',
-  REQUESTER: 'Requester',
-  APPROVER: 'Approver',
-  RECEIVER: 'Receiver',
-  PURCHASE_OFFICER: 'Purchase Officer',
-  CUSTOM: 'Custom',
-};
-
-const PERM_LABELS: Record<PurchasePermission, string> = {
-  'pr.create': 'Create PR',
-  'po.raise': 'Raise PO',
-  'po.approve': 'Approve PO',
-  'delivery.receive': 'Receive Goods',
-  'request.close': 'Close Request',
-  'request.cancel': 'Cancel Request',
-  'deadline.set': 'Set Deadline',
-  'materials.manage': 'Manage Materials',
-  'tags.manage': 'Manage Tags',
-  'vendors.manage': 'Manage Vendors',
-  'users.manage': 'Manage Users',
-};
 
 function genPassword() {
   const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789@#$';
@@ -53,9 +32,9 @@ function UserCard({ u, onEdit }: { u: any; onEdit: () => void }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="font-semibold text-[#18211C] font-jakarta text-sm">{u.name}</p>
-            {u.rolePreset && u.rolePreset !== 'CUSTOM' && (
+            {u.accessRole?.name && (
               <span className="text-[10px] px-2 py-0.5 rounded-full font-jakarta font-medium" style={{ background: '#EAF3EE', color: '#1E5E3F' }}>
-                {PRESET_LABELS[u.rolePreset] ?? u.rolePreset}
+                {u.accessRole.name}
               </span>
             )}
             {!u.isActive && (
@@ -70,7 +49,7 @@ function UserCard({ u, onEdit }: { u: any; onEdit: () => void }) {
         </button>
       </div>
       {u.permissions?.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-3">
+        <div className="flex flex-wrap gap-1 mt-3" title="Direct permissions set before roles existed. Assign an access role to manage them from Roles & Access.">
           {(u.permissions as string[]).map((p) => (
             <span key={p} className="text-[10px] px-1.5 py-0.5 rounded font-jetbrains" style={{ background: '#F7F6F2', color: '#3E4A43' }}>{p}</span>
           ))}
@@ -86,15 +65,16 @@ type DrawerUser = {
   loginId: string;
   designation: string;
   tempPassword: string;
-  rolePreset: string;
-  permissions: PurchasePermission[];
+  accessRole: string;
+  legacyPermissions: string[];
   isActive: boolean;
 };
 
-const BLANK: DrawerUser = { name: '', loginId: '', designation: '', tempPassword: '', rolePreset: 'CUSTOM', permissions: [], isActive: true };
+const BLANK: DrawerUser = { name: '', loginId: '', designation: '', tempPassword: '', accessRole: '', legacyPermissions: [], isActive: true };
 
 export default function FmsUsersPage() {
   const canManage = usePermission('users.manage');
+  const isSuperadmin = useAdminAuthStore((s) => s.user?.role === 'superadmin');
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -130,11 +110,16 @@ export default function FmsUsersPage() {
     enabled: canManage,
   });
 
+  // Only a superadmin can assign a role (the server enforces it too), so only they need the role list.
+  const { data: roles = [] } = useQuery({ queryKey: ['access-roles'], queryFn: () => api.getAccessRoles(), enabled: canManage && isSuperadmin });
+
   const saveMut = useMutation({
-    mutationFn: (f: DrawerUser) =>
-      f._id
-        ? api.updateFmsUser(f._id, { name: f.name, designation: f.designation, rolePreset: f.rolePreset, permissions: f.permissions, isActive: f.isActive })
-        : api.createFmsUser({ name: f.name, loginId: f.loginId, designation: f.designation, rolePreset: f.rolePreset, permissions: f.permissions, tempPassword: f.tempPassword }),
+    mutationFn: (f: DrawerUser) => {
+      const role = isSuperadmin ? { accessRole: f.accessRole || null } : {};
+      return f._id
+        ? api.updateFmsUser(f._id, { name: f.name, designation: f.designation, isActive: f.isActive, ...role })
+        : api.createFmsUser({ name: f.name, loginId: f.loginId, designation: f.designation, tempPassword: f.tempPassword, ...role });
+    },
     onSuccess: () => {
       toast({ title: form._id ? 'User updated' : 'User created' });
       queryClient.invalidateQueries({ queryKey: ['fms-users'] });
@@ -176,23 +161,10 @@ export default function FmsUsersPage() {
 
   const openCreate = () => { setForm(BLANK); setResetting(false); setPhotoPreview(''); setDrawerOpen(true); };
   const openEdit   = (u: any) => {
-    setForm({ _id: u._id, name: u.name, loginId: u.loginId ?? '', designation: u.designation ?? '', tempPassword: '', rolePreset: u.rolePreset ?? 'CUSTOM', permissions: u.permissions ?? [], isActive: u.isActive ?? true });
+    setForm({ _id: u._id, name: u.name, loginId: u.loginId ?? '', designation: u.designation ?? '', tempPassword: '', accessRole: u.accessRole?._id ?? '', legacyPermissions: u.permissions ?? [], isActive: u.isActive ?? true });
     setResetting(false);
     setPhotoPreview('');
     setDrawerOpen(true);
-  };
-
-  const setPreset = (preset: string) => {
-    const perms = (ROLE_PRESETS[preset] ?? []) as PurchasePermission[];
-    setForm((f) => ({ ...f, rolePreset: preset, permissions: perms }));
-  };
-
-  const togglePerm = (p: PurchasePermission) => {
-    setForm((f) => ({
-      ...f,
-      rolePreset: 'CUSTOM',
-      permissions: f.permissions.includes(p) ? f.permissions.filter((x) => x !== p) : [...f.permissions, p],
-    }));
   };
 
   if (!canManage) {
@@ -300,29 +272,31 @@ export default function FmsUsersPage() {
               )}
 
               <div>
-                <label className="text-xs font-semibold text-[#66706A] font-jakarta mb-1.5 block">Role Preset</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {Object.keys(ROLE_PRESETS).map((preset) => (
-                    <button key={preset} type="button"
-                      onClick={() => setPreset(preset)}
-                      className={`text-xs px-2.5 py-1 rounded-full font-jakarta border transition-colors ${form.rolePreset === preset ? 'border-[#1E5E3F] bg-[#EAF3EE] text-[#1E5E3F]' : 'border-[#ECE9E1] text-[#66706A] hover:border-[#1E5E3F]'}`}>
-                      {PRESET_LABELS[preset]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-[#66706A] font-jakarta mb-1.5 block">Permissions</label>
-                <div className="space-y-1">
-                  {PURCHASE_PERMISSIONS.map((p) => (
-                    <label key={p} className="flex items-center gap-2 cursor-pointer py-0.5">
-                      <input type="checkbox" checked={form.permissions.includes(p)} onChange={() => togglePerm(p)} className="accent-[#1E5E3F]" />
-                      <span className="text-xs font-jakarta text-[#18211C]">{PERM_LABELS[p]}</span>
-                      <span className="text-[10px] font-jetbrains text-[#8A9490] ml-auto">{p}</span>
-                    </label>
-                  ))}
-                </div>
+                <label className="text-xs font-semibold text-[#66706A] font-jakarta mb-1 block">Access role</label>
+                {isSuperadmin ? (
+                  <select
+                    value={form.accessRole}
+                    onChange={(e) => setForm((f) => ({ ...f, accessRole: e.target.value }))}
+                    className="h-9 w-full rounded-md border border-input bg-white px-2 text-sm font-jakarta"
+                  >
+                    <option value="">No role (direct permissions only)</option>
+                    {roles.map((r) => <option key={r._id} value={r._id}>{r.name}</option>)}
+                  </select>
+                ) : (
+                  <p className="text-sm font-jakarta text-[#18211C]">
+                    {(users as any[]).find((u: any) => u._id === form._id)?.accessRole?.name ?? 'None'}
+                  </p>
+                )}
+                <p className="text-[11px] text-[#8A9490] font-jakarta mt-1">
+                  What this user can do is set on{' '}
+                  {isSuperadmin ? <Link href="/admin/roles" className="text-[#1E5E3F] underline">Roles &amp; Access</Link> : 'the Roles & Access page'}
+                  , not here.
+                </p>
+                {form.legacyPermissions.length > 0 && (
+                  <p className="text-[11px] text-[#A3741A] font-jakarta mt-1.5">
+                    Also has direct permissions from before roles existed ({form.legacyPermissions.join(', ')}). Move them into a role to manage them centrally.
+                  </p>
+                )}
               </div>
 
               {form._id && (

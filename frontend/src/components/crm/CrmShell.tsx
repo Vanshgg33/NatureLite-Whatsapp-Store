@@ -8,20 +8,22 @@ import { cn } from '@/lib/utils';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { api } from '@/lib/api';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { AccessGate } from '@/components/access-gate';
+import { useAdminAccess } from '@/lib/admin-access';
 
-type NavItem = { name: string; href: string; icon: LucideIcon; adminOnly?: boolean };
+type NavItem = { name: string; href: string; icon: LucideIcon; adminOnly?: boolean; page: string };
 
 const NAV: NavItem[] = [
-  { name: 'Today',       href: '/crm',            icon: Clock },
-  { name: 'Call queue',  href: '/crm/queue',      icon: Phone },
-  { name: 'Abandoned',   href: '/crm/abandoned',  icon: ShoppingCart },
-  { name: 'Caller mode', href: '/crm/caller',     icon: PhoneCall },
-  { name: 'Customers',   href: '/crm/customers',  icon: Users },
-  { name: 'Campaigns',   href: '/crm/campaigns',  icon: MessageCircle },
-  { name: 'Products',    href: '/crm/products',   icon: Package },
-  { name: 'Performance', href: '/crm/analytics',  icon: BarChart3 },
-  { name: 'Settings',    href: '/crm/settings',   icon: Settings, adminOnly: true },
-  { name: 'Team',        href: '/crm/admin/employees', icon: ShieldCheck, adminOnly: true },
+  { name: 'Today',       href: '/crm',                 page: 'crm_today',     icon: Clock },
+  { name: 'Call queue',  href: '/crm/queue',           page: 'crm_queue',     icon: Phone },
+  { name: 'Abandoned',   href: '/crm/abandoned',       page: 'crm_abandoned', icon: ShoppingCart },
+  { name: 'Caller mode', href: '/crm/caller',          page: 'crm_caller',    icon: PhoneCall },
+  { name: 'Customers',   href: '/crm/customers',       page: 'crm_customers', icon: Users },
+  { name: 'Campaigns',   href: '/crm/campaigns',       page: 'crm_campaigns', icon: MessageCircle },
+  { name: 'Products',    href: '/crm/products',        page: 'crm_products',  icon: Package },
+  { name: 'Performance', href: '/crm/analytics',       page: 'crm_analytics', icon: BarChart3 },
+  { name: 'Settings',    href: '/crm/settings',        page: 'crm_settings',  icon: Settings, adminOnly: true },
+  { name: 'Team',        href: '/crm/admin/employees', page: 'crm_team',      icon: ShieldCheck, adminOnly: true },
 ];
 
 const ROLE_LABEL: Record<string, string> = {
@@ -40,6 +42,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  const access = useAdminAccess();
   const isAdmin = user?.role === 'superadmin' || user?.departmentType === 'crm_head' || !user?.departmentType;
   const initial = (user?.name?.[0] ?? user?.email?.[0] ?? 'C').toUpperCase();
   const roleLabel = ROLE_LABEL[user?.departmentType ?? user?.role ?? ''] ?? 'Staff';
@@ -100,7 +103,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-3 scrollbar-hide" aria-label="CRM navigation">
-        {NAV.filter(item => !item.adminOnly || isAdmin).map(item => {
+        {NAV.filter(item => (access.restricted ? access.can(`${item.page}.view`) : !item.adminOnly || isAdmin)).map(item => {
           const active = isActive(item.href);
           return (
             <Link
@@ -250,7 +253,9 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <main className="flex-1 overflow-auto">
-          <ErrorBoundary>{children}</ErrorBoundary>
+          <AccessGate>
+            <ErrorBoundary>{children}</ErrorBoundary>
+          </AccessGate>
         </main>
       </div>
     </div>

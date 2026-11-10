@@ -33,7 +33,8 @@ import {
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { Public } from '../../common/decorators/public.decorator';
+import { Public } from '../../common/decorators/public.decorator';
+import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
 /** Per-phone sliding-window rate limiter (in-memory, no external deps). */
 class PhoneRateLimiter {
@@ -222,6 +223,7 @@ export class WhatsAppController implements OnModuleDestroy {
   }
 
   @Post('send/text')
+  @RequireAccess('whatsapp.send')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   async sendTextMessage(
@@ -232,6 +234,7 @@ export class WhatsAppController implements OnModuleDestroy {
   }
 
   @Post('send/template')
+  @RequireAccess('whatsapp.send')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   async sendTemplateMessage(
@@ -249,6 +252,7 @@ export class WhatsAppController implements OnModuleDestroy {
   }
 
   @Post('send/buttons')
+  @RequireAccess('whatsapp.send')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   async sendInteractiveButtons(
@@ -259,6 +263,7 @@ export class WhatsAppController implements OnModuleDestroy {
   }
 
   @Post('send/list')
+  @RequireAccess('whatsapp.send')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   async sendInteractiveList(
@@ -269,6 +274,7 @@ export class WhatsAppController implements OnModuleDestroy {
   }
 
   @Post('send/media')
+  @RequireAccess('whatsapp.send')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   async sendMediaMessage(
@@ -286,6 +292,7 @@ export class WhatsAppController implements OnModuleDestroy {
   }
 
   @Get('messages/:phone')
+  @RequireAccess('whatsapp.view')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   async getMessageLogs(
@@ -299,6 +306,7 @@ export class WhatsAppController implements OnModuleDestroy {
   }
 
   @Get('templates')
+  @RequireAccess('whatsapp.view', 'campaigns.view')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   async getTemplate(@Query('name') name: string): Promise<Record<string, any> | null> {
@@ -307,6 +315,7 @@ export class WhatsAppController implements OnModuleDestroy {
   }
 
   @Get('conversations')
+  @RequireAccess('whatsapp.view')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   async listConversations(
@@ -318,6 +327,7 @@ export class WhatsAppController implements OnModuleDestroy {
   }
 
   @Patch('contacts/:phone')
+  @RequireAccess('whatsapp.send')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   async updateContactName(

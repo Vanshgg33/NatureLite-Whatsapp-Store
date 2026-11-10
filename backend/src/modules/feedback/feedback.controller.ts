@@ -15,7 +15,8 @@ import {
   RespondToFeedbackDto,
   UpdateFeedbackStatusDto,
   FeedbackQueryDto,
-} from './dto/feedback.dto';
+} from './dto/feedback.dto';
+import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
 @Controller('feedback')
 export class FeedbackController {
@@ -38,6 +39,7 @@ export class FeedbackController {
   }
 
   @Post('admin-create')
+  @RequireAccess('feedback.manage')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
   async adminCreate(@Body() dto: AdminCreateReviewDto) {
@@ -64,6 +66,7 @@ export class FeedbackController {
   }
 
   @Get()
+  @RequireAccess('feedback.view')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
   async findAll(@Query() query: FeedbackQueryDto) {
@@ -71,6 +74,7 @@ export class FeedbackController {
   }
 
   @Get(':id')
+  @RequireAccess('feedback.view')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
   async findById(@Param('id') id: string) {
@@ -78,6 +82,7 @@ export class FeedbackController {
   }
 
   @Put(':id/respond')
+  @RequireAccess('feedback.manage')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
   async respond(
@@ -89,6 +94,7 @@ export class FeedbackController {
   }
 
   @Put(':id/status')
+  @RequireAccess('feedback.manage')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
   async updateStatus(

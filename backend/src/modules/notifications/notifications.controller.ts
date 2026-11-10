@@ -13,7 +13,8 @@ import { IsArray, IsOptional, IsString, IsNotEmpty } from 'class-validator';
 import { NotificationsService } from './notifications.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
 class BroadcastDto {
   @IsArray()
@@ -90,6 +91,7 @@ export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
   @Post('broadcast')
+  @RequireAccess('campaigns.manage')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   async sendBroadcast(
@@ -108,6 +110,7 @@ export class NotificationsController {
   }
 
   @Post('broadcast/media')
+  @RequireAccess('campaigns.manage')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   async sendMediaBroadcast(
@@ -117,6 +120,7 @@ export class NotificationsController {
   }
 
   @Get('campaigns')
+  @RequireAccess('campaigns.view')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   async listCampaigns(
@@ -127,6 +131,7 @@ export class NotificationsController {
   }
 
   @Delete('campaigns')
+  @RequireAccess('campaigns.manage')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
@@ -135,6 +140,7 @@ export class NotificationsController {
   }
 
   @Post('campaigns/:id/retry')
+  @RequireAccess('campaigns.manage')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   async retryCampaign(@Param('id') id: string): Promise<{ campaignId: string }> {
@@ -142,6 +148,7 @@ export class NotificationsController {
   }
 
   @Post('campaigns/:id/cancel')
+  @RequireAccess('campaigns.manage')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
@@ -150,6 +157,7 @@ export class NotificationsController {
   }
 
   @Get('template-presets')
+  @RequireAccess('campaigns.view')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   async listTemplatePresets(): Promise<unknown[]> {
@@ -157,6 +165,7 @@ export class NotificationsController {
   }
 
   @Post('template-presets')
+  @RequireAccess('campaigns.manage')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   async upsertTemplatePreset(@Body() body: {
@@ -172,6 +181,7 @@ export class NotificationsController {
   }
 
   @Delete('template-presets/:id')
+  @RequireAccess('campaigns.manage')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   async deleteTemplatePreset(@Param('id') id: string): Promise<void> {

@@ -5,6 +5,7 @@ import { useDebouncedValue } from '@/lib/utils';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Receipt, Plus, Search, ShoppingBag, Trash2, Camera, Upload, X, Bell, Pencil, FileText, Printer, Download, Send, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useAdminAccess } from '@/lib/admin-access';
 import { getApiError } from '@/lib/api-error';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { captureInvoicePdf, billFilename, base64ToBlob } from '@/lib/bill-pdf';
@@ -345,6 +346,7 @@ interface CartLineItem {
 
 export default function SalesPage() {
   const queryClient = useQueryClient();
+  const { can } = useAdminAccess();
   const { toast } = useToast();
   const { user } = useAdminAuthStore();
   const [selectedStoreId, setSelectedStoreId] = useState<string>(user?.storeId || '');
@@ -1079,7 +1081,7 @@ export default function SalesPage() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Sales Log</h1>
           <p className="text-sm sm:text-base text-gray-500 mt-1">Track walk-in, delivery, and website sales</p>
         </div>
-        <Button onClick={() => setShowLogSale(true)} disabled={!selectedStoreId} className="shrink-0 w-full sm:w-auto">
+        <Button onClick={() => setShowLogSale(true)} disabled={!selectedStoreId || !can('sales.create')} className="shrink-0 w-full sm:w-auto">
           <Plus className="mr-2 h-4 w-4" />
           Log Sale
         </Button>
@@ -1206,7 +1208,7 @@ export default function SalesPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="flex-1"
+                    className={can('sales.edit') ? 'flex-1' : 'hidden'}
                     onClick={() => {
                       const sid = typeof sale.store === 'object' ? (sale.store as { _id: string })._id : sale.store;
                       setEditingSaleId(sale._id);
@@ -1361,6 +1363,7 @@ export default function SalesPage() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            className={can('sales.edit') ? undefined : 'hidden'}
                             onClick={() => {
                               const sid = typeof sale.store === 'object' ? (sale.store as { _id: string })._id : sale.store;
                               setEditingSaleId(sale._id);

@@ -17,11 +17,13 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
 @Controller('admin/chatbot')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin', 'superadmin')
+@RequireAccess('chatbot.view')
 export class AdminChatbotController {
   constructor(private readonly chatbotService: AdminChatbotService) {}
 

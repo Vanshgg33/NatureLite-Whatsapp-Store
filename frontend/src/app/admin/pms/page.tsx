@@ -8,6 +8,7 @@ import {
   FileText, Droplets, Calendar,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useAdminAccess } from '@/lib/admin-access';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,6 +33,7 @@ function closingBadge(val: number) {
 export default function PMSPage() {
   const { user } = useAdminAuthStore();
   const queryClient = useQueryClient();
+  const { can } = useAdminAccess();
   const { toast } = useToast();
   const [selectedStoreId, setSelectedStoreId] = useState<string>(user?.storeId || '');
   const [search, setSearch] = useState('');
@@ -58,7 +60,10 @@ export default function PMSPage() {
   const prefillRequestRef = useRef(0);
 
   const isSuperadmin = user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
-  const canEditAnalytics = user?.role === 'superadmin' || (user?.role === 'admin' && !user?.departmentType);
+  const isAdminUser = user?.role === 'superadmin' || (user?.role === 'admin' && !user?.departmentType);
+  const canEditAnalytics = isAdminUser && can('pms.edit');
+  const canCreate = isAdminUser && can('pms.create');
+  const canDelete = isAdminUser && can('pms.delete');
 
   const { data: stores = [] } = useQuery<Store[]>({
     queryKey: ['stores'],
@@ -290,7 +295,7 @@ export default function PMSPage() {
           Daily Log
           {showAnalytics ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
         </Button>
-        <Button onClick={() => setAddDialog(true)} disabled={!selectedStoreId || !canEditAnalytics} className="gap-2">
+        <Button onClick={() => setAddDialog(true)} disabled={!selectedStoreId || !canCreate} className="gap-2">
           <Plus className="h-4 w-4" /> Add Material
         </Button>
         {!canEditAnalytics && (
@@ -382,12 +387,14 @@ export default function PMSPage() {
                         </span>
                       </td>
                       <td className="px-5 py-4 text-right">
-                        {canEditAnalytics ? (
+                        {canEditAnalytics || canDelete ? (
                           <div className="flex items-center justify-end gap-1.5 opacity-70 group-hover:opacity-100">
-                            <Button variant="outline" size="sm" onClick={() => openUpdateDialog(m)} className="h-8 text-xs">Log Entry</Button>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50" onClick={() => setDeleteTarget(m)}>
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                            {canEditAnalytics && <Button variant="outline" size="sm" onClick={() => openUpdateDialog(m)} className="h-8 text-xs">Log Entry</Button>}
+                            {canDelete && (
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50" onClick={() => setDeleteTarget(m)}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                           </div>
                         ) : (
                           <span className="text-xs text-gray-400">View only</span>
@@ -507,7 +514,7 @@ export default function PMSPage() {
       )}
 
       {/* Add Material Dialog */}
-      <Dialog open={addDialog && canEditAnalytics} onOpenChange={(o) => { if (!o) { setAddDialog(false); setNewName(''); setNewUnit('kg'); } }}>
+      <Dialog open={addDialog && canCreate} onOpenChange={(o) => { if (!o) { setAddDialog(false); setNewName(''); setNewUnit('kg'); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>New Raw Material</DialogTitle></DialogHeader>
           <div className="space-y-4 py-1">
@@ -692,7 +699,7 @@ export default function PMSPage() {
       </Dialog>
 
       {/* Delete Confirm */}
-      <Dialog open={!!deleteTarget && canEditAnalytics} onOpenChange={() => setDeleteTarget(null)}>
+      <Dialog open={!!deleteTarget && canDelete} onOpenChange={() => setDeleteTarget(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Delete Raw Material</DialogTitle></DialogHeader>
           <p className="text-sm text-gray-500 py-1">Delete <span className="font-semibold text-gray-800">{deleteTarget?.name}</span>? History remains but it won&apos;t appear in PMS anymore.</p>

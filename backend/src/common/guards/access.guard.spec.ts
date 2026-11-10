@@ -63,3 +63,18 @@ describe('AccessGuard', () => {
     await expect(g.canActivate(ctx({ sub: '1', role: 'admin' }))).rejects.toThrow(ForbiddenException);
   });
 });
+
+describe('AccessGuard.assertAccess / NoRoleAccess', () => {
+  it('NoRoleAccess key can never be granted through a role (not in the registry)', () => {
+    expect(isValidAdminPermission('admin.__unrestricted__')).toBe(false);
+  });
+  it('lets superadmin and legacy admins through, blocks any access role', async () => {
+    const need = ['admin.__unrestricted__'];
+    await expect(makeGuard(null, null).assertAccess({ sub: '1', role: 'superadmin' }, need)).resolves.toBeUndefined();
+    await expect(makeGuard({ isActive: true }, null).assertAccess({ sub: '1', role: 'admin' }, need)).resolves.toBeUndefined();
+    const restricted = makeGuard({ isActive: true, accessRole: 'r' }, { permissions: ['admin.settings.edit'] });
+    await expect(restricted.assertAccess({ sub: '1', role: 'admin' }, need)).rejects.toThrow(ForbiddenException);
+    await expect(restricted.assertAccess({ sub: '1', role: 'admin' }, ['admin.settings.edit'])).resolves.toBeUndefined();
+    await expect(restricted.assertAccess({ sub: '1', role: 'admin' }, ['admin.appearance.edit'])).rejects.toThrow(ForbiddenException);
+  });
+});

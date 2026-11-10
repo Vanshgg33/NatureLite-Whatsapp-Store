@@ -33,12 +33,13 @@ import {
   ShoppingBag,
   FileText,
   ShieldCheck,
+  Phone,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { api } from '@/lib/api';
-import { useAdminAccess, pageForPath } from '@/lib/admin-access';
+import { useAdminAccess, pageForPath, ADMIN_PAGE_HREFS } from '@/lib/admin-access';
 
 type NavItem = { name: string; href: string; icon: LucideIcon };
 type NavGroup = { label: string; items: NavItem[] };
@@ -174,8 +175,22 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
     }),
   })).filter((g) => g.items.length > 0);
 
+  // Pages a role can also be granted beyond BASE_NAV_GROUPS: System/Stores pages and the CRM app.
+  // Logins and Roles & Access have no registry page, so they never show for a restricted role.
+  const systemItems = [...SUPERADMIN_NAV_GROUPS, ...STORE_NAV_GROUPS]
+    .flatMap((g) => g.items)
+    .filter((i) => {
+      const page = pageForPath(i.href);
+      return page ? access.can(`${page}.view`) : false;
+    });
+  const firstCrm = ADMIN_PAGE_HREFS.filter((p) => p.page.startsWith('crm_')).reverse().find((p) => access.can(`${p.page}.view`));
+  const restrictedExtra: NavGroup[] = [
+    ...(firstCrm ? [{ label: 'CRM', items: [{ name: 'CRM', href: firstCrm.href, icon: Phone }] }] : []),
+    ...(systemItems.length ? [{ label: 'System', items: systemItems }] : []),
+  ];
+
   const navGroups: NavGroup[] = access.restricted
-    ? restrictedGroups
+    ? [...restrictedGroups, ...restrictedExtra]
     : isFms
     ? FMS_NAV_GROUPS
     : isCrm
