@@ -24,7 +24,6 @@ import {
   MapPin,
   KeyRound,
   Boxes,
-  Network,
   Factory,
   FlaskConical,
   Cog,
@@ -130,7 +129,6 @@ const SUPERADMIN_NAV_GROUPS: NavGroup[] = [
     items: [
       { name: 'Logins', href: '/admin/logins', icon: KeyRound },
       { name: 'Roles & Access', href: '/admin/roles', icon: ShieldCheck },
-      { name: 'Mindmap', href: '/admin/mindmap', icon: Network },
       { name: 'WhatsApp', href: '/admin/whatsapp', icon: MessageCircle },
       { name: 'Campaigns', href: '/admin/campaigns', icon: Megaphone },
       { name: 'Feedback', href: '/admin/feedback', icon: MessageSquare },
