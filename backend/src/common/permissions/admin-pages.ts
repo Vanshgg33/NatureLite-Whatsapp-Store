@@ -57,6 +57,7 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   ]),
   def('delivery_history', 'Delivery History', 'Operations', '/admin/delivery-history', true, [a('view', 'View')]),
 
+  def('factory_dashboard', 'Factory Dashboard', 'Factory', '/admin/factory-dashboard', true, [a('view', 'View')]),
   def('ims', 'IMS', 'Factory', '/admin/ims', true, [a('view', 'View'), a('edit', 'Update stock')]),
   def('pms', 'PMS', 'Factory', '/admin/pms', true, [
     a('view', 'View'), a('create', 'Add material'), a('edit', 'Edit entries'), a('delete', 'Delete'),

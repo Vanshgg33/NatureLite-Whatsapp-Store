@@ -73,6 +73,7 @@ const BASE_NAV_GROUPS: NavGroup[] = [
   {
     label: 'Factory',
     items: [
+      { name: 'Factory Dashboard', href: '/admin/factory-dashboard', icon: LayoutDashboard },
       { name: 'IMS', href: '/admin/ims', icon: Boxes },
       { name: 'Production', href: '/admin/production', icon: Factory },
       { name: 'PMS', href: '/admin/pms', icon: Cog },
