@@ -1,3 +1,4 @@
+import { istDateKey } from '../../common/utils/ist-time';
 import { createHash } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -648,7 +649,7 @@ export class AdminChatbotToolsService {
     const materialName = String(args.materialName ?? '').trim();
 
     const pipeline: any[] = [
-      { $match: { date: { $gte: from.toISOString().split('T')[0], $lte: to.toISOString().split('T')[0] } } },
+      { $match: { date: { $gte: istDateKey(from), $lte: istDateKey(to) } } },
       { $lookup: { from: 'rawmaterials', localField: 'rawMaterial', foreignField: '_id', pipeline: [{ $project: { name: 1, unit: 1 } }], as: 'mat' } },
       { $unwind: { path: '$mat', preserveNullAndEmptyArrays: true } },
       { $lookup: { from: 'stores', localField: 'store', foreignField: '_id', pipeline: [{ $project: { name: 1, code: 1 } }], as: 'storeInfo' } },

@@ -1,4 +1,5 @@
 'use client';
+import { istDateTimeLocal } from '@/lib/time';
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useDebouncedValue } from '@/lib/utils';
@@ -1683,7 +1684,7 @@ export default function SalesPage() {
                 <Input value={reminderMessage} onChange={(e) => setReminderMessage(e.target.value)} placeholder="e.g. Deliver by 3 p.m." className="sm:col-span-2" />
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1">Due date & time</label>
-                  <Input type="datetime-local" value={reminderDueAt} onChange={(e) => setReminderDueAt(e.target.value)} min={new Date().toISOString().slice(0, 16)} />
+                  <Input type="datetime-local" value={reminderDueAt} onChange={(e) => setReminderDueAt(e.target.value)} min={istDateTimeLocal()} />
                 </div>
               </div>
             </div>

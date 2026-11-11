@@ -1,3 +1,4 @@
+import { istDateKey } from '../../common/utils/ist-time';
 import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { StoreSale, SaleItem } from './schemas/store-sale.schema';
@@ -353,7 +354,7 @@ export class StoreSalesService {
   private async generateSaleNumber(storeCode: string): Promise<string> {
     const prefix = storeCode.toUpperCase().slice(0, 3);
     const today = new Date();
-    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+    const dateStr = istDateKey(today).replace(/-/g, '');
     const pattern = `${prefix}${dateStr}`;
     const lastSale = await this.storeSaleRepository.findOneBySaleNumberPrefix(pattern);
     let sequence = 1;

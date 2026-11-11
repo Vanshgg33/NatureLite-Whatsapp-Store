@@ -6,6 +6,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, IndianRupee, Clock, CheckCircle, ArrowDownUp } from 'lucide-react';
 import { api } from '@/lib/api';
+import { istDateKey, istDaysAgoKey, istWeekStartKey, istMonthKey, startOfDayIST, endOfDayIST } from '@/lib/time';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 
@@ -21,21 +22,13 @@ type DatePreset = 'today' | 'yesterday' | 'week' | 'month' | 'custom';
 type SortMode = 'amount' | 'alpha';
 
 function getRange(preset: DatePreset, customStart: string, customEnd: string) {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  if (preset === 'custom') return { startDate: customStart || undefined, endDate: customEnd ? customEnd + 'T23:59:59' : undefined };
-  if (preset === 'today') return { startDate: today.toISOString(), endDate: undefined };
-  if (preset === 'yesterday') {
-    const y = new Date(today); y.setDate(y.getDate() - 1);
-    return { startDate: y.toISOString(), endDate: today.toISOString() };
-  }
-  if (preset === 'week') {
-    const w = new Date(today); w.setDate(w.getDate() - w.getDay() + (w.getDay() === 0 ? -6 : 1));
-    return { startDate: w.toISOString(), endDate: undefined };
-  }
-  if (preset === 'month') {
-    return { startDate: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(), endDate: undefined };
-  }
+  // IST midnights, independent of the browser's timezone
+  const at = (key: string) => startOfDayIST(key).toISOString();
+  if (preset === 'custom') return { startDate: customStart ? at(customStart) : undefined, endDate: customEnd ? endOfDayIST(customEnd).toISOString() : undefined };
+  if (preset === 'today') return { startDate: at(istDateKey()), endDate: undefined };
+  if (preset === 'yesterday') return { startDate: at(istDaysAgoKey(1)), endDate: at(istDateKey()) };
+  if (preset === 'week') return { startDate: at(istWeekStartKey()), endDate: undefined };
+  if (preset === 'month') return { startDate: at(`${istMonthKey()}-01`), endDate: undefined };
   return {};
 }
 

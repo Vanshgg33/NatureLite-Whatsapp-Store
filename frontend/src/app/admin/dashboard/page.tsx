@@ -272,7 +272,7 @@ export default function DashboardPage() {
       ];
 
   const greeting = (() => {
-    const h = new Date().getHours();
+    const h = Number(new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', hour12: false }).format(new Date())) % 24;
     if (h < 12) return 'Good morning';
     if (h < 17) return 'Good afternoon';
     return 'Good evening';

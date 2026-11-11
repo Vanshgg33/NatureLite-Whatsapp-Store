@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Trophy, TrendingUp, AlertCircle, X } from 'lucide-react';
 import { api } from '@/lib/api';
+import { istDateKey, istDaysAgoKey, istWeekStartKey, istMonthKey, startOfDayIST, endOfDayIST } from '@/lib/time';
 import { Header } from '@/components/layout/header';
 
 function fmt(n: number) {
@@ -24,16 +25,12 @@ const MEDALS = ['🥇', '🥈', '🥉'];
 type DatePreset = 'all' | 'month' | 'last30' | 'week' | 'custom';
 
 function getRange(preset: DatePreset, customStart: string, customEnd: string): { startDate?: string; endDate?: string } {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const at = (key: string) => startOfDayIST(key).toISOString();
   if (preset === 'all') return {};
-  if (preset === 'custom') return { startDate: customStart || undefined, endDate: customEnd ? customEnd + 'T23:59:59' : undefined };
-  if (preset === 'month') return { startDate: new Date(now.getFullYear(), now.getMonth(), 1).toISOString() };
-  if (preset === 'last30') { const d = new Date(today); d.setDate(d.getDate() - 30); return { startDate: d.toISOString() }; }
-  if (preset === 'week') {
-    const w = new Date(today); w.setDate(w.getDate() - w.getDay() + (w.getDay() === 0 ? -6 : 1));
-    return { startDate: w.toISOString() };
-  }
+  if (preset === 'custom') return { startDate: customStart ? at(customStart) : undefined, endDate: customEnd ? endOfDayIST(customEnd).toISOString() : undefined };
+  if (preset === 'month') return { startDate: at(`${istMonthKey()}-01`) };
+  if (preset === 'last30') return { startDate: at(istDaysAgoKey(30)) };
+  if (preset === 'week') return { startDate: at(istWeekStartKey()) };
   return {};
 }
 

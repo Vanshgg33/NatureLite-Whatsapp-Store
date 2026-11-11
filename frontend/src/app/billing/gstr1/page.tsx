@@ -1,4 +1,5 @@
 'use client';
+import { istMonthKey } from '@/lib/time';
 
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -13,7 +14,7 @@ function fmt(n: number) {
 }
 function fmtRs(n: number) { return '₹' + fmt(n); }
 
-function currentMonth() { return new Date().toISOString().slice(0, 7); }
+function currentMonth() { return istMonthKey(); }
 
 function monthLabel(m: string) {
   const [y, mo] = m.split('-').map(Number);

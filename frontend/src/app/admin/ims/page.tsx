@@ -1,4 +1,5 @@
 'use client';
+import { istDateKey } from '@/lib/time';
 
 import { useState, useEffect, Fragment } from 'react';
 import { useDebouncedValue } from '@/lib/utils';
@@ -207,7 +208,7 @@ export default function IMSPage() {
           return [i.productName ?? '-', i.productSku ?? '-', stock, i.lowStockThreshold, status];
         }),
       },
-      filename: `IMS-Inventory-Report-${storeName}-${now.toISOString().split('T')[0]}.pdf`,
+      filename: `IMS-Inventory-Report-${storeName}-${istDateKey(now)}.pdf`,
     };
   }
 

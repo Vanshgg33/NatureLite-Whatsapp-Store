@@ -1,4 +1,5 @@
 'use client';
+import { istDateKey } from '@/lib/time';
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -18,7 +19,7 @@ const UNITS = ['kg', 'L', 'pcs'];
 const EVENTS = ['receipt', 'issue', 'return', 'production', 'packing', 'eod', 'lowstock'];
 const newKey = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
 const fmt = (d?: string) => (d ? new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' }) : '');
-const today = () => new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10);
+const today = () => istDateKey();
 const errMsg = (e: any) => {
   const m = e?.response?.data?.message ?? e?.message ?? 'Something went wrong';
   return Array.isArray(m) ? m.join(', ') : typeof m === 'object' ? m.message : m;

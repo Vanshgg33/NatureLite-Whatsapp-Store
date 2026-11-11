@@ -1,4 +1,5 @@
 'use client';
+import { istDaysAgoKey } from '@/lib/time';
 
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -63,7 +64,7 @@ function segPillVariant(segment: string): PillVariant {
 // ─── Customer row ─────────────────────────────────────────────────────────────
 
 function minSnoozeDate() {
-  const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10);
+  return istDaysAgoKey(-1);
 }
 
 function CustomerRow({ item, onLogCall, queueKey, scripts }: {

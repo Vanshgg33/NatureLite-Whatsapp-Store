@@ -1,3 +1,4 @@
+import { istDateKey } from '../../common/utils/ist-time';
 import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { InjectModel } from '@nestjs/mongoose';
@@ -466,7 +467,7 @@ export class NotificationsService {
   }
 
   async sendAbandonedCartReminder(phone: string, cartTotal: number, itemCount: number): Promise<void> {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = istDateKey();
     const idempotencyKey = `abandoned_cart_${phone}_${today}`;
     await this.notifQueue.add(
       NOTIFICATION_JOBS.ABANDONED_CART,

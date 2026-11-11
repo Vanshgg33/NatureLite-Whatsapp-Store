@@ -1,4 +1,5 @@
 'use client';
+import { istDateKey, istDaysAgoKey } from '@/lib/time';
 
 import { useState, useMemo, useEffect, useRef, Fragment } from 'react';
 import { flushSync } from 'react-dom';
@@ -221,8 +222,8 @@ export default function AnalyticsPage() {
   const canEditAnalytics = user?.role === 'superadmin' || (user?.role === 'admin' && !user?.departmentType);
   const defaultStoreId = user?.storeId || '';
 
-  const today = new Date().toISOString().split('T')[0];
-  const startDate = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+  const today = istDateKey();
+  const startDate = istDaysAgoKey(days);
 
   const { data: revenueData, isLoading } = useQuery({
     queryKey: ['revenue-analytics', days],

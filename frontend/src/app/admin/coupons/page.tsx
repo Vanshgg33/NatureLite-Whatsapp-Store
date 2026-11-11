@@ -1,4 +1,5 @@
 'use client';
+import { istDateKey, istDaysAgoKey } from '@/lib/time';
 
 import { useAdminAccess } from '@/lib/admin-access';
 
@@ -61,8 +62,8 @@ export default function CouponsPage() {
     maxDiscount: '',
     minOrderAmount: 0,
     maxUsageCount: '',
-    validFrom: new Date().toISOString().split('T')[0],
-    validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    validFrom: istDateKey(),
+    validUntil: istDaysAgoKey(-30),
     isActive: true,
     isFirstOrderOnly: false,
     isAutoApply: false,
@@ -188,8 +189,8 @@ export default function CouponsPage() {
       maxDiscount: '',
       minOrderAmount: 0,
       maxUsageCount: '',
-      validFrom: new Date().toISOString().split('T')[0],
-      validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      validFrom: istDateKey(),
+      validUntil: istDaysAgoKey(-30),
       isActive: true,
       isFirstOrderOnly: false,
       isAutoApply: false,
@@ -221,8 +222,8 @@ export default function CouponsPage() {
       maxDiscount: coupon.maxDiscount?.toString() || '',
       minOrderAmount: coupon.minOrderAmount,
       maxUsageCount: coupon.maxUsageCount?.toString() || '',
-      validFrom: coupon.validFrom ? new Date(coupon.validFrom).toISOString().split('T')[0] : '',
-      validUntil: coupon.validUntil ? new Date(coupon.validUntil).toISOString().split('T')[0] : '',
+      validFrom: coupon.validFrom ? istDateKey(coupon.validFrom) : '',
+      validUntil: coupon.validUntil ? istDateKey(coupon.validUntil) : '',
       isActive: coupon.isActive,
       isFirstOrderOnly: coupon.isFirstOrderOnly || false,
       isAutoApply: coupon.isAutoApply || false,

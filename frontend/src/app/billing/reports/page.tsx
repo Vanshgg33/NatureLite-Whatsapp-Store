@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { BarChart3, Download, ChevronDown, ChevronRight, ArrowUpDown, X, User } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { api } from '@/lib/api';
+import { istDateKey, istDaysAgoKey, istWeekStartKey, istMonthKey } from '@/lib/time';
 import { useDebouncedValue } from '@/lib/utils';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -27,10 +28,11 @@ function fmt(n: number) {
   return '₹' + (n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function today() { return new Date().toISOString().slice(0, 10); }
-function daysAgo(n: number) { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); }
-function startOfWeek() { const d = new Date(); d.setDate(d.getDate() - d.getDay()); return d.toISOString().slice(0, 10); }
-function startOfMonth() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; }
+// All date keys are IST calendar dates (not UTC / browser-local)
+function today() { return istDateKey(); }
+function daysAgo(n: number) { return istDaysAgoKey(n); }
+function startOfWeek() { return istWeekStartKey(true); }
+function startOfMonth() { return `${istMonthKey()}-01`; }
 function toISO(date: string, time: string, sec = '00') { return date ? `${date}T${time}:${sec}+05:30` : undefined; }
 
 // ── Excel export ──────────────────────────────────────────────────────────────

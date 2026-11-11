@@ -1,4 +1,5 @@
 'use client';
+import { istDateKey } from '@/lib/time';
 
 import { useAdminAccess } from '@/lib/admin-access';
 
@@ -18,7 +19,7 @@ const TABS: Array<{ key: Tab; label: string }> = [
 
 const inr = (paise: number) => '₹' + ((paise ?? 0) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const day = (d: string) => new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => istDateKey();
 const INPUT = 'border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f] w-full';
 const TH = 'px-3 py-2 text-left text-xs font-semibold text-gray-500 bg-gray-50 whitespace-nowrap';
 const TD = 'px-3 py-2 text-sm text-gray-700 whitespace-nowrap';

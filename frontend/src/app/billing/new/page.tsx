@@ -1,4 +1,5 @@
 'use client';
+import { istDateKey } from '@/lib/time';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -32,7 +33,7 @@ export default function NewBillPage() {
 
   const [paymentTerm, setPaymentTerm] = useState<'cash' | 'credit'>('credit');
   const [invoiceNo, setInvoiceNo] = useState('');
-  const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [invoiceDate, setInvoiceDate] = useState(() => istDateKey());
   const [invoiceTime, setInvoiceTime] = useState(() => new Date().toTimeString().slice(0, 5));
   const [godownId, setGodownId] = useState('');
   const [placeOfSupply, setPlaceOfSupply] = useState('22');
@@ -150,7 +151,7 @@ export default function NewBillPage() {
     setAmountPaidRupees(0);
     setNotes('');
     setTerms('');
-    setInvoiceDate(new Date().toISOString().slice(0, 10));
+    setInvoiceDate(istDateKey());
     setBillingAddress('');
     setDeliveryUserId('');
     setDeliveryUserName('');

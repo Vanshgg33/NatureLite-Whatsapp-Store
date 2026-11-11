@@ -1,3 +1,4 @@
+import { istDateKey } from '../../common/utils/ist-time';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -49,7 +50,7 @@ export class AnalyticsService {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const dateKey = yesterday.toISOString().slice(0, 10);
+    const dateKey = istDateKey(yesterday);
     await this.analyticsQueue.add(
       ANALYTICS_JOBS.DAILY_SNAPSHOT,
       { startDate: yesterday.toISOString(), endDate: today.toISOString() },
@@ -67,7 +68,7 @@ export class AnalyticsService {
     const lastWeekEnd = new Date();
     lastWeekEnd.setHours(0, 0, 0, 0);
 
-    const dateKey = lastWeekStart.toISOString().slice(0, 10);
+    const dateKey = istDateKey(lastWeekStart);
     await this.analyticsQueue.add(
       ANALYTICS_JOBS.WEEKLY_SNAPSHOT,
       { startDate: lastWeekStart.toISOString(), endDate: lastWeekEnd.toISOString() },
@@ -87,7 +88,7 @@ export class AnalyticsService {
     lastMonthEnd.setDate(1);
     lastMonthEnd.setHours(0, 0, 0, 0);
 
-    const dateKey = lastMonthStart.toISOString().slice(0, 7);
+    const dateKey = istDateKey(lastMonthStart).slice(0, 7);
     await this.analyticsQueue.add(
       ANALYTICS_JOBS.MONTHLY_SNAPSHOT,
       { startDate: lastMonthStart.toISOString(), endDate: lastMonthEnd.toISOString() },
@@ -217,7 +218,7 @@ export class AnalyticsService {
       const prepaidShare = totalOrders > 0 ? (prepaidOrders / totalOrders) * 100 : 0;
 
       const topSelling = (p.topSellingProducts as Array<{ name: string; quantitySold: number; revenue: number }> | undefined) ?? [];
-      const reportDate = startDate.toISOString().split('T')[0];
+      const reportDate = istDateKey(startDate);
 
       const summary = [
         `Daily Analytics Report (${reportDate})`,
@@ -309,7 +310,7 @@ export class AnalyticsService {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
       const revenue = BASE[i % BASE.length];
-      result.push({ date: d.toISOString().split('T')[0], revenue, orders: Math.round(revenue / 650) });
+      result.push({ date: istDateKey(d), revenue, orders: Math.round(revenue / 650) });
     }
     return result;
   }

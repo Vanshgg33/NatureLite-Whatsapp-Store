@@ -10,7 +10,35 @@ export function formatIST(d: Date | string | number | null | undefined, withTime
 export const istDateKey = (d: Date | string | number = new Date()) =>
   new Intl.DateTimeFormat('en-CA', { timeZone: APP_TZ }).format(new Date(d as any));
 
-export const startOfDayIST = (key: string) => new Date(`${key}T00:00:00+05:30`);
+/** IST "YYYY-MM-DD" for N days before today (default today). Replaces buggy toISOString().slice(0,10) which is UTC. */
+export const istDaysAgoKey = (n = 0) => istDateKey(Date.now() - n * 86400000);
+/** IST "YYYY-MM" */
+export const istMonthKey = () => istDateKey().slice(0, 7);
+/** IST Monday-or-Sunday week start key (sunday=true -> Sunday start). */
+export function istWeekStartKey(sunday = false): string {
+  const d = new Date(`${istDateKey()}T12:00:00Z`).getUTCDay(); // weekday of the IST calendar date
+  const back = sunday ? d : (d + 6) % 7;
+  return istDaysAgoKey(back);
+}
+/** IST "YYYY-MM-DDTHH:mm" for datetime-local inputs */
+export const istDateTimeLocal = (d: Date | number = new Date()) =>
+  new Intl.DateTimeFormat('sv-SE', { timeZone: APP_TZ, dateStyle: 'short', timeStyle: 'short' })
+    .format(d).replace(' ', 'T');
+
+/** Make every Date#toLocale*String default to IST so no screen shows browser-local time. Idempotent. */
+export function installISTDefaults() {
+  const P = Date.prototype as any;
+  if (P.__istPatched) return;
+  for (const m of ['toLocaleString', 'toLocaleDateString', 'toLocaleTimeString'] as const) {
+    const orig = P[m];
+    P[m] = function (loc?: any, opts?: Intl.DateTimeFormatOptions) {
+      return orig.call(this, loc, opts?.timeZone ? opts : { ...opts, timeZone: APP_TZ });
+    };
+  }
+  P.__istPatched = true;
+}
+
+export const startOfDayIST =(key: string) => new Date(`${key}T00:00:00+05:30`);
 export const endOfDayIST   = (key: string) => new Date(`${key}T23:59:59.999+05:30`);
 export const nowIST        = () => ({ date: new Date(), label: formatIST(new Date(), true), key: istDateKey() });
 

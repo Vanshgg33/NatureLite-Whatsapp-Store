@@ -1,3 +1,4 @@
+import { istDateKey } from '../../common/utils/ist-time';
 import {
   Injectable,
   NotFoundException,
@@ -2097,7 +2098,7 @@ export class OrdersService implements OnModuleInit {
 
   private async generateOrderNumber(): Promise<string> {
     const today = new Date();
-    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+    const dateStr = istDateKey(today).replace(/-/g, '');
     // BUG 9 note: this read-then-increment pattern is not atomic. Callers wrap it in a
     // retry loop (MAX_ORDER_NUMBER_RETRIES=10) with jitter so duplicate-key collisions
     // resolve without user-visible errors. TODO: replace with a Counter collection +

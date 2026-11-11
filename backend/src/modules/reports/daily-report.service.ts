@@ -1,3 +1,4 @@
+import { istDateKey } from '../../common/utils/ist-time';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Cron } from '@nestjs/schedule';
@@ -197,7 +198,7 @@ export class DailyReportService {
     for (let i = 6; i >= 0; i--) {
       const d = new Date(todayStart);
       d.setDate(d.getDate() - i);
-      const key   = d.toISOString().slice(0, 10);
+      const key   = istDateKey(d);
       const label = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', timeZone: 'Asia/Kolkata' });
       const entry = trendMap.get(key) ?? { orders: 0, revenue: 0 };
       trend.push({ label, ...entry });

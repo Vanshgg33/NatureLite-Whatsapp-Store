@@ -1,4 +1,5 @@
 'use client';
+import { istDateKey } from '@/lib/time';
 
 import { useState, useEffect, useRef } from 'react';
 import { useDebouncedValue } from '@/lib/utils';
@@ -208,7 +209,7 @@ export default function RMSPage() {
           return [m.name, m.unit, m.totalStock, s.label];
         }),
       },
-      filename: `RMS-Raw-Material-Report-${storeName}-${now.toISOString().split('T')[0]}.pdf`,
+      filename: `RMS-Raw-Material-Report-${storeName}-${istDateKey(now)}.pdf`,
     };
   }
 
