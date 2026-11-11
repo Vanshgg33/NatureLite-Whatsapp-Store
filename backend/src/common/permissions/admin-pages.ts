@@ -61,6 +61,11 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   def('pms', 'PMS', 'Factory', '/admin/pms', true, [
     a('view', 'View'), a('create', 'Add material'), a('edit', 'Edit entries'), a('delete', 'Delete'),
   ]),
+  def('production', 'Production (RMS+PMS ledger)', 'Factory', '/admin/production', true, [
+    a('view', 'View'), a('receive', 'Receive material'), a('issue', 'Issue to production'), a('return', 'Return material'),
+    a('adjust', 'Adjust / waste / count'), a('reverse', 'Reverse entries'), a('produce', 'Production entries'),
+    a('pack', 'Packing issues'), a('master', 'Manage items, machines, locations'), a('settings', 'Email settings & log'),
+  ]),
   def('rms', 'RMS', 'Factory', '/admin/rms', true, [a('view', 'View'), a('edit', 'Edit entries')]),
   // Purchase FMS actions reuse the legacy keys already enforced by PermissionGuard; only "View" is UI-level.
   def('purchase', 'Purchase FMS', 'Factory', '/fms/purchase', true, [

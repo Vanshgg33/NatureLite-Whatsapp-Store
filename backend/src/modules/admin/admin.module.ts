@@ -22,7 +22,7 @@ import { AccessGuard } from '../../common/guards/access.guard';
   ],
   controllers: [AdminController, AccessRolesController, AdminAccessMeController],
   providers: [AdminUserRepository, AdminService, AccessRolesService, AccessGuard],
-  exports: [AdminUserRepository, AdminService, AccessGuard, MongooseModule],
+  exports: [AdminUserRepository, AdminService, AccessRolesService, AccessGuard, MongooseModule],
 })
 export class AdminModule implements OnModuleInit {
   constructor(

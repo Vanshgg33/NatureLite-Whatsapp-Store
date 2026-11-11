@@ -25,6 +25,7 @@ import {
   KeyRound,
   Boxes,
   Network,
+  Factory,
   FlaskConical,
   Cog,
   X,
@@ -74,6 +75,7 @@ const BASE_NAV_GROUPS: NavGroup[] = [
     label: 'Factory',
     items: [
       { name: 'IMS', href: '/admin/ims', icon: Boxes },
+      { name: 'Production', href: '/admin/production', icon: Factory },
       { name: 'PMS', href: '/admin/pms', icon: Cog },
       { name: 'RMS', href: '/admin/rms', icon: FlaskConical },
       { name: 'Purchase', href: '/fms/purchase', icon: ShoppingBag },

@@ -15,6 +15,7 @@ export const ADMIN_PAGE_HREFS: { page: string; href: string }[] = [
   { page: 'delivery_collections', href: '/admin/delivery-collections' },
   { page: 'delivery_history', href: '/admin/delivery-history' },
   { page: 'ims', href: '/admin/ims' },
+  { page: 'production', href: '/admin/production' },
   { page: 'pms', href: '/admin/pms' },
   { page: 'rms', href: '/admin/rms' },
   { page: 'purchase', href: '/fms/purchase' },

@@ -1625,6 +1625,25 @@ class ApiClient {
     return response.data.data;
   }
 
+  // ==================== PRODUCTION (RMS + PMS ledger) ====================
+  async prod<T = any>(method: 'get' | 'post' | 'put', path: string, data?: Record<string, unknown>): Promise<T> {
+    const response = await this.client.request<ApiResponse<T>>({
+      method, url: `/production/${path}`, ...(method === 'get' ? { params: data } : { data }),
+    });
+    return response.data.data;
+  }
+
+  /** Uploads a scale/evidence photo to private storage; returns the key to attach to a movement. */
+  async prodUpload(storeId: string, file: File): Promise<string> {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('storeId', storeId);
+    const response = await this.client.post<ApiResponse<{ key: string }>>('/production/evidence/upload', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120_000,
+    });
+    return response.data.data.key;
+  }
+
   // ==================== RAW MATERIALS ====================
   async getRawMaterials(storeId: string, params?: { search?: string }): Promise<RawMaterial[]> {
     const response = await this.client.get<ApiResponse<RawMaterial[]>>(`/raw-materials/store/${storeId}`, { params });
