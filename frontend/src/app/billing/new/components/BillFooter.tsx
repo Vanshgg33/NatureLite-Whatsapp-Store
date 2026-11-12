@@ -1,15 +1,10 @@
 'use client';
 import { Plus, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import type { BillCharge, PaymentMode } from '../types';
+import type { BillCharge, PaidSplit } from '../types';
 
-const PAYMENT_MODES: { key: PaymentMode; label: string }[] = [
-  { key: 'credit', label: 'Credit' },
+const PAYMENT_MODES: { key: keyof PaidSplit; label: string }[] = [
   { key: 'cash', label: 'Cash' },
   { key: 'upi', label: 'UPI' },
-  { key: 'card', label: 'Card' },
-  { key: 'bank', label: 'Bank' },
-  { key: 'cheque', label: 'Cheque' },
 ];
 
 export interface BillFooterProps {
@@ -19,10 +14,8 @@ export interface BillFooterProps {
   onChargesChange: (c: BillCharge[]) => void;
   roundOffEnabled: boolean;
   onRoundOffEnabledChange: (v: boolean) => void;
-  paymentMode: PaymentMode;
-  onPaymentModeChange: (v: PaymentMode) => void;
-  amountPaidRupees: number;
-  onAmountPaidChange: (v: number) => void;
+  paid: PaidSplit;
+  onPaidChange: (v: PaidSplit) => void;
   terms: string;
   onTermsChange: (v: string) => void;
   notes: string;
@@ -33,8 +26,7 @@ export function BillFooter({
   billDiscountPct, onBillDiscountPctChange,
   charges, onChargesChange,
   roundOffEnabled, onRoundOffEnabledChange,
-  paymentMode, onPaymentModeChange,
-  amountPaidRupees, onAmountPaidChange,
+  paid, onPaidChange,
   terms, onTermsChange,
   notes, onNotesChange,
 }: BillFooterProps) {
@@ -90,32 +82,22 @@ export function BillFooter({
         Round off to nearest rupee
       </label>
 
-      {/* Payment mode */}
+      {/* Payment received: any mix of cash and UPI; whatever is unpaid stays due */}
       <div className="space-y-2">
-        <label className="text-xs text-gray-500">Payment Mode</label>
-        <div className="flex flex-wrap gap-1.5">
-          {PAYMENT_MODES.map(m => (
-            <button key={m.key} type="button"
-              onClick={() => onPaymentModeChange(m.key)}
-              className={cn('px-3 py-1 rounded-full text-xs font-medium border transition-all',
-                paymentMode === m.key
-                  ? 'bg-[#2d7a4f] text-white border-[#2d7a4f]'
-                  : 'bg-white text-gray-500 border-gray-200 hover:border-[#2d7a4f]/50'
-              )}>
-              {m.label}
-            </button>
-          ))}
-        </div>
-        {paymentMode !== 'credit' && (
-          <div className="flex items-center gap-2 mt-1">
-            <label className="text-xs text-gray-500 w-36 shrink-0">Amount Received (₹)</label>
-            <input type="number" min="0" step="1" value={amountPaidRupees || ''}
-              onChange={e => onAmountPaidChange(parseFloat(e.target.value) || 0)}
+        <label className="text-xs text-gray-500">Payment Received</label>
+        {PAYMENT_MODES.map(m => (
+          <div key={m.key} className="flex items-center gap-2">
+            <label className="text-xs text-gray-500 w-36 shrink-0">{m.label} (₹)</label>
+            <input type="number" min="0" step="1" value={paid[m.key] || ''}
+              onChange={e => onPaidChange({ ...paid, [m.key]: Math.max(0, parseFloat(e.target.value) || 0) })}
               className="w-28 text-right border border-gray-200 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-[#2d7a4f]/30 focus:outline-none tabular-nums"
               placeholder="0"
             />
           </div>
-        )}
+        ))}
+        <p className="text-[11px] text-gray-400">
+          Received ₹{(paid.cash + paid.upi).toLocaleString('en-IN')}. Any balance stays due on the bill.
+        </p>
       </div>
 
       {/* Terms */}

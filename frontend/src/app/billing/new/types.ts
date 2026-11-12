@@ -1,4 +1,6 @@
 export type PaymentMode = 'cash' | 'upi' | 'card' | 'bank' | 'cheque' | 'credit';
+/** Rupees received at billing, per mode (new bills accept cash and UPI only). */
+export interface PaidSplit { cash: number; upi: number }
 
 export interface LineItem {
   _key: string;

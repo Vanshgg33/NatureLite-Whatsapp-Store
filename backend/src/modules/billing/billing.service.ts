@@ -805,6 +805,7 @@ export class BillingService {
     charges?: Array<{ label: string; amtRupees: number; hsn?: string; gstRate?: number }>;
     roundOffEnabled?: boolean;
     amountPaidRupees?: number;
+    payments?: Array<{ mode: 'cash' | 'upi'; amountRupees: number }>;
     terms?: string;
     notes?: string;
     deliveryUserId?: string;
@@ -951,13 +952,22 @@ export class BillingService {
       grandTotalPaise = rounded;
     }
 
-    const amountPaidPaise = Math.round((dto.amountPaidRupees ?? 0) * 100);
+    const billedAt = new Date();
+    // split tender (e.g. 500 cash + 600 UPI) comes as dto.payments; amountPaidRupees + paymentMode stays for older callers
+    const splits = dto.payments ?? [];
+    for (const p of splits) {
+      if (!['cash', 'upi'].includes(p.mode) || !(p.amountRupees >= 0)) throw new BadRequestException('Payments must be cash or upi with a valid amount');
+    }
+    const payments = splits.length
+      ? splits.filter(p => p.amountRupees > 0).map(p => ({ mode: p.mode, amountPaise: Math.round(p.amountRupees * 100), at: billedAt, kind: 'INITIAL' as const }))
+      : (dto.amountPaidRupees ?? 0) > 0
+        ? [{ mode: dto.paymentMode ?? 'cash', amountPaise: Math.round(dto.amountPaidRupees! * 100), at: billedAt, kind: 'INITIAL' as const }]
+        : [];
+    const amountPaidPaise = payments.reduce((s, p) => s + p.amountPaise, 0);
+    if (splits.length && amountPaidPaise > grandTotalPaise) throw new BadRequestException('Payments exceed the bill total');
     const amountDuePaise = Math.max(0, grandTotalPaise - amountPaidPaise);
     const paymentStatus: PaymentStatus = amountDuePaise <= 0 ? 'paid' : amountPaidPaise > 0 ? 'partial' : 'unpaid';
-    const billedAt = new Date();
-    const payments = amountPaidPaise > 0
-      ? [{ mode: dto.paymentMode ?? 'cash', amountPaise: amountPaidPaise, at: billedAt, kind: 'INITIAL' as const }]
-      : [];
+    const billPaymentMode = splits.length ? ([...new Set(payments.map(p => p.mode))].join(', ') || 'credit') : (dto.paymentMode ?? 'credit');
 
     // 8. GSTR-1 section
     const gstin = customer.gstNo ?? '';
@@ -1001,7 +1011,7 @@ export class BillingService {
       placeOfSupply: pos,
       isInterState,
       paymentTerm: dto.paymentTerm ?? 'credit',
-      paymentMode: dto.paymentMode ?? 'credit',
+      paymentMode: billPaymentMode,
       items: lines,
       billDiscountPct,
       billDiscountAmtPaise: billDiscAmtPaise,

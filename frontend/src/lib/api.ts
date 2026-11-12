@@ -2220,6 +2220,7 @@ class ApiClient {
     charges?: Array<{ label: string; amtRupees: number }>;
     roundOffEnabled?: boolean;
     amountPaidRupees?: number;
+    payments?: Array<{ mode: 'cash' | 'upi'; amountRupees: number }>;
     terms?: string;
     notes?: string;
     deliveryUserId?: string;

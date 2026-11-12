@@ -13,7 +13,7 @@ import { ItemGrid } from './components/ItemGrid';
 import { BillFooter } from './components/BillFooter';
 import { SummaryPanel } from './components/SummaryPanel';
 import { useBillCalc } from './useBillCalc';
-import type { LineItem, BillCharge, PaymentMode, GodownDto } from './types';
+import type { LineItem, BillCharge, PaidSplit, GodownDto } from './types';
 
 const DELIVERY_TAGS = ['Home Delivery', 'Transport'];
 const TAG_PRIORITY = ['Wholesale', 'B2B', 'Transport', 'Home Delivery', 'Store/Retail', 'Retail'];
@@ -49,8 +49,8 @@ export default function NewBillPage() {
   const [billDiscountPct, setBillDiscountPct] = useState(0);
   const [charges, setCharges] = useState<BillCharge[]>([]);
   const [roundOffEnabled, setRoundOffEnabled] = useState(true);
-  const [paymentMode, setPaymentMode] = useState<PaymentMode>('credit');
-  const [amountPaidRupees, setAmountPaidRupees] = useState(0);
+  const [paid, setPaid] = useState<PaidSplit>({ cash: 0, upi: 0 });
+  const amountPaidRupees = paid.cash + paid.upi;
   const [terms, setTerms] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -148,7 +148,7 @@ export default function NewBillPage() {
     setInvoiceNo('');
     setBillDiscountPct(0);
     setCharges([]);
-    setAmountPaidRupees(0);
+    setPaid({ cash: 0, upi: 0 });
     setNotes('');
     setTerms('');
     setInvoiceDate(istDateKey());
@@ -175,7 +175,7 @@ export default function NewBillPage() {
         shippingAddress: sameAsBilling ? billingAddress : shippingAddress,
         sameAsBilling,
         orderTag,
-        paymentMode,
+        payments: [{ mode: 'cash' as const, amountRupees: paid.cash }, { mode: 'upi' as const, amountRupees: paid.upi }],
         items: rawItems.map(i => ({
           productId: i.productId,
           name: i.name,
@@ -193,7 +193,6 @@ export default function NewBillPage() {
         // additional charges are a taxable service line (SAC 996511) so they flow into the GST reports
         charges: charges.map(c => ({ ...c, hsn: CHARGE_SAC, gstRate: CHARGE_GST_RATE })),
         roundOffEnabled,
-        amountPaidRupees,
         terms,
         notes,
         deliveryUserId: deliveryUserId || undefined,
@@ -333,8 +332,7 @@ export default function NewBillPage() {
               billDiscountPct={billDiscountPct} onBillDiscountPctChange={setBillDiscountPct}
               charges={charges} onChargesChange={setCharges}
               roundOffEnabled={roundOffEnabled} onRoundOffEnabledChange={setRoundOffEnabled}
-              paymentMode={paymentMode} onPaymentModeChange={setPaymentMode}
-              amountPaidRupees={amountPaidRupees} onAmountPaidChange={setAmountPaidRupees}
+              paid={paid} onPaidChange={setPaid}
               terms={terms} onTermsChange={setTerms}
               notes={notes} onNotesChange={setNotes}
             />
