@@ -12,7 +12,8 @@ import { CrmService } from './crm.service';
 import { CrmFoundationService } from './crm-foundation.service';
 import { CrmInsightsService } from './crm-insights.service';
 import { CrmOpsService } from './crm-ops.service';
-import { CallOutcome } from './schemas/crm-call-log.schema';
+import { parseExtraFilters } from './crm-filters';
+import { CallOutcome } from './schemas/crm-call-log.schema';
 import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
 @Controller('crm')
@@ -35,10 +36,12 @@ export class CrmController {
     @Query('page') page: string,
     @Query('limit') limit: string,
     @Query('isEscalated') isEscalated: string,
+    @Query() allQuery: Record<string, string>,
     @CurrentUser() user: JwtPayload,
   ) {
     const agentId = user.departmentType === 'crm_senior' ? user.sub : undefined;
     return this.crm.getCustomers({
+      extra: parseExtraFilters(allQuery),
       segment, search,
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 50,
@@ -425,6 +428,18 @@ export class CrmController {
   @Delete('spend/:id')
   @RequireAccess('crm_acquisition.edit')
   deleteSpend(@Param('id') id: string, @CurrentUser() user: JwtPayload) { this.managersOnly(user); return this.insights.deleteSpend(id); }
+
+  @Get('views')
+  @RequireAccess('crm_customers.view')
+  views(@CurrentUser() user: JwtPayload) { return this.ops.listViews(user.sub); }
+
+  @Post('views')
+  @RequireAccess('crm_customers.view')
+  saveView(@Body() body: any, @CurrentUser() user: JwtPayload) { return this.ops.saveView(user.sub, body, user.departmentType !== 'crm_senior'); }
+
+  @Delete('views/:id')
+  @RequireAccess('crm_customers.view')
+  deleteView(@Param('id') id: string, @CurrentUser() user: JwtPayload) { return this.ops.deleteView(id, user.sub, user.departmentType !== 'crm_senior'); }
 
   @Post('bulk/tag')
   @RequireAccess('crm_customers.edit')

@@ -22,7 +22,7 @@ import { CrmService } from './crm.service';
 import { CrmFoundationService } from './crm-foundation.service';
 import { CrmInsightsService } from './crm-insights.service';
 import { CrmOpsService } from './crm-ops.service';
-import { CrmGoal, CrmGoalSchema, CrmLead, CrmLeadSchema, CrmWalkin, CrmWalkinSchema } from './schemas/crm-ops.schemas';
+import { CrmGoal, CrmGoalSchema, CrmSavedView, CrmSavedViewSchema, CrmLead, CrmLeadSchema, CrmWalkin, CrmWalkinSchema } from './schemas/crm-ops.schemas';
 import { Feedback, FeedbackSchema } from '../feedback/schemas/feedback.schema';
 import { AuditLog, AuditLogSchema } from '../audit/schemas/audit-log.schema';
 import { CrmMarketingSpend, CrmMarketingSpendSchema } from './schemas/crm-marketing-spend.schema';
@@ -41,6 +41,7 @@ import { CrmController } from './crm.controller';
       { name: BillingBill.name, schema: BillingBillSchema },
       { name: CrmMarketingSpend.name, schema: CrmMarketingSpendSchema },
       { name: CrmGoal.name, schema: CrmGoalSchema },
+      { name: CrmSavedView.name, schema: CrmSavedViewSchema },
       { name: CrmLead.name, schema: CrmLeadSchema },
       { name: CrmWalkin.name, schema: CrmWalkinSchema },
       { name: Feedback.name, schema: FeedbackSchema },

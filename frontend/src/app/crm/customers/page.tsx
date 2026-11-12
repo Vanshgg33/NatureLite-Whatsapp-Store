@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { downloadCsv } from '@/lib/crm/csv';
 import { useRouter } from 'next/navigation';
@@ -125,6 +125,9 @@ export default function CustomersPage() {
   const [segment, setSegment] = useState('');
   const [issues, setIssues] = useState(false);
   const [page, setPage] = useState(1);
+  const [extra, setExtra] = useState({ minLtv: '', maxLtv: '', minDaysLate: '', tag: '', complaint: false });
+  const [ready, setReady] = useState(false); // filters are read from the URL after mount (avoids a hydration mismatch)
+  const [viewId, setViewId] = useState('');
   const dSearch = useDebouncedValue(search, 350);
   const qc = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -147,12 +150,54 @@ export default function CustomersPage() {
     setPage(1);
   }
 
+  // Filters live in the URL so a filtered list can be shared by link.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    setSegment(q.get('segment') ?? ''); setSearch(q.get('search') ?? ''); setIssues(q.get('issues') === '1');
+    setExtra({ minLtv: q.get('minLtv') ?? '', maxLtv: q.get('maxLtv') ?? '', minDaysLate: q.get('minDaysLate') ?? '', tag: q.get('tag') ?? '', complaint: q.get('complaint') === '1' });
+    setReady(true);
+  }, []);
+  useEffect(() => {
+    if (!ready) return;
+    const q = new URLSearchParams();
+    if (segment) q.set('segment', segment);
+    if (search) q.set('search', search);
+    if (issues) q.set('issues', '1');
+    if (extra.minLtv) q.set('minLtv', extra.minLtv);
+    if (extra.maxLtv) q.set('maxLtv', extra.maxLtv);
+    if (extra.minDaysLate) q.set('minDaysLate', extra.minDaysLate);
+    if (extra.tag) q.set('tag', extra.tag);
+    if (extra.complaint) q.set('complaint', '1');
+    window.history.replaceState(null, '', q.toString() ? `?${q}` : window.location.pathname);
+  }, [ready, segment, search, issues, extra]);
+
+  const { data: views = [] } = useQuery({ queryKey: ['crm-views'], queryFn: () => api.getCrmViews() });
+  const applyView = (id: string) => {
+    setViewId(id);
+    const f = (views as any[]).find(v => v._id === id)?.filters;
+    if (!f) return;
+    setSegment(f.segment ?? ''); setSearch(f.search ?? ''); setIssues(!!f.isEscalated); setPage(1);
+    setExtra({ minLtv: f.minLtv != null ? String(f.minLtv) : '', maxLtv: f.maxLtv != null ? String(f.maxLtv) : '', minDaysLate: f.minDaysLate != null ? String(f.minDaysLate) : '', tag: f.tag ?? '', complaint: !!f.hasComplaint });
+  };
+  const saveView = useMutation({
+    mutationFn: (name: string) => api.saveCrmView({
+      name, shared: window.confirm('Share this view with the team? (Cancel keeps it private)'),
+      filters: { segment, search, isEscalated: issues, minLtv: extra.minLtv, maxLtv: extra.maxLtv, minDaysLate: extra.minDaysLate, tag: extra.tag, hasComplaint: extra.complaint },
+    }),
+    onSuccess: (v) => { qc.invalidateQueries({ queryKey: ['crm-views'] }); setViewId(v._id); },
+  });
+  const deleteView = useMutation({ mutationFn: (id: string) => api.deleteCrmView(id), onSuccess: () => { setViewId(''); qc.invalidateQueries({ queryKey: ['crm-views'] }); } });
+  const setX = (k: keyof typeof extra, v: string | boolean) => { setExtra(e => ({ ...e, [k]: v })); setPage(1); setViewId(''); };
+
   const { data, isLoading } = useQuery({
-    queryKey: ['crm-customers', segment, dSearch, issues, page],
+    enabled: ready,
+    queryKey: ['crm-customers', segment, dSearch, issues, page, extra],
     queryFn: () => api.getCrmCustomers({
       segment: segment || undefined,
       search: dSearch || undefined,
       isEscalated: issues || undefined,
+      minLtv: extra.minLtv || undefined, maxLtv: extra.maxLtv || undefined, minDaysLate: extra.minDaysLate || undefined,
+      tag: extra.tag || undefined, hasComplaint: extra.complaint || undefined,
       page,
     }),
   });
@@ -247,6 +292,22 @@ export default function CustomersPage() {
               </button>
             );
           })}
+        </div>
+        {/* More filters (combine with AND) and saved views */}
+        <div className="flex items-center gap-2 flex-wrap mt-3 text-[12px]">
+          <input aria-label="Minimum lifetime value" type="number" min={0} placeholder="Min LTV ₹" value={extra.minLtv} onChange={e => setX('minLtv', e.target.value)} className="px-2 py-1.5 rounded-lg w-28" style={{ border: '1px solid var(--crm-line)' }} />
+          <input aria-label="Maximum lifetime value" type="number" min={0} placeholder="Max LTV ₹" value={extra.maxLtv} onChange={e => setX('maxLtv', e.target.value)} className="px-2 py-1.5 rounded-lg w-28" style={{ border: '1px solid var(--crm-line)' }} />
+          <input aria-label="Minimum days late" type="number" min={0} placeholder="Days late ≥" value={extra.minDaysLate} onChange={e => setX('minDaysLate', e.target.value)} className="px-2 py-1.5 rounded-lg w-28" style={{ border: '1px solid var(--crm-line)' }} />
+          <input aria-label="Tag" placeholder="Tag" value={extra.tag} onChange={e => setX('tag', e.target.value)} className="px-2 py-1.5 rounded-lg w-24" style={{ border: '1px solid var(--crm-line)' }} />
+          <label className="flex items-center gap-1"><input type="checkbox" checked={extra.complaint} onChange={e => setX('complaint', e.target.checked)} /> Open complaint</label>
+          <span className="ml-auto flex items-center gap-2">
+            <select aria-label="Saved views" value={viewId} onChange={e => applyView(e.target.value)} className="px-2 py-1.5 rounded-lg" style={{ border: '1px solid var(--crm-line)' }}>
+              <option value="">Saved views…</option>
+              {(views as any[]).map(v => <option key={v._id} value={v._id}>{v.name}{v.shared ? ' (shared)' : ''}</option>)}
+            </select>
+            <button className="underline" onClick={() => { const n = window.prompt('Name this view'); if (n?.trim()) saveView.mutate(n); }}>Save view</button>
+            {viewId && <button className="underline" style={{ color: 'var(--crm-danger)' }} onClick={() => deleteView.mutate(viewId)}>Delete view</button>}
+          </span>
         </div>
       </div>
 

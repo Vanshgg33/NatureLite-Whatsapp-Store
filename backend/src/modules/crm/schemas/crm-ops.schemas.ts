@@ -40,3 +40,13 @@ export class CrmWalkin {
 }
 export const CrmWalkinSchema = SchemaFactory.createForClass(CrmWalkin);
 CrmWalkinSchema.index({ createdAt: -1 });
+
+/** A named, optionally team-shared set of customer filters (M04). filters is sanitised by sanitizeView before saving. */
+@Schema({ timestamps: true })
+export class CrmSavedView {
+  @Prop({ required: true, trim: true, maxlength: 60 }) name: string;
+  @Prop({ type: Object, default: {} }) filters: Record<string, unknown>;
+  @Prop({ type: Types.ObjectId, required: true, index: true }) ownerId: Types.ObjectId;
+  @Prop({ default: false }) shared: boolean;
+}
+export const CrmSavedViewSchema = SchemaFactory.createForClass(CrmSavedView);

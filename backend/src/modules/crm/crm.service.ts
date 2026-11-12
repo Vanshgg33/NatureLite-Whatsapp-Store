@@ -16,6 +16,7 @@ import { CrmActivityEvent, CrmActivityEventDocument } from './schemas/crm-activi
 import { MediaService } from '../media/media.service';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
 import { Complaint, ComplaintDocument } from '../complaints/schemas/complaint.schema';
+import { ExtraFilters, extraStatsFilter, needsStats } from './crm-filters';
 
 @Injectable()
 export class CrmService {
@@ -60,8 +61,10 @@ export class CrmService {
     limit?: number;
     agentId?: string;
     isEscalated?: boolean;
+    extra?: ExtraFilters;
   }) {
     const { segment, search, agentId, isEscalated } = opts;
+    const extra = opts.extra ?? {};
     const page = opts.page ?? 1;
     const limit = Math.min(opts.limit ?? 50, 100);
     const complaining = new Set((await this.openComplaintUserIds()).map(String));
@@ -71,7 +74,9 @@ export class CrmService {
       const statsFilter: any = { assignedAgentId: new Types.ObjectId(agentId) };
       if (segment) statsFilter.segment = segment;
       if (isEscalated) statsFilter.isEscalated = true;
+      Object.assign(statsFilter, extraStatsFilter(extra));
       let stats = await this.statsModel.find(statsFilter).sort({ priorityScore: -1 }).lean();
+      if (extra.hasComplaint) stats = stats.filter((s: any) => complaining.has(s.userId.toString()));
       const userFilter: any = { _id: { $in: stats.map((s: any) => s.userId) } };
       if (search?.trim()) {
         const d = search.replace(/\D/g, '');
@@ -104,11 +109,13 @@ export class CrmService {
     const statsFilter: any = { userId: { $in: users.map((u: any) => u._id) } };
     if (segment) statsFilter.segment = segment;
     if (isEscalated) statsFilter.isEscalated = true;
+    Object.assign(statsFilter, extraStatsFilter(extra));
     const allStats = await this.statsModel.find(statsFilter).lean();
     const statsMap = new Map(allStats.map((s: any) => [s.userId.toString(), s]));
 
-    // If segment filter active, keep only users that have a matching stats doc
-    let filtered = segment ? users.filter((u: any) => statsMap.has(u._id.toString())) : users;
+    // If a segment or score filter is active, keep only users that have a matching stats doc
+    let filtered = segment || needsStats(extra) ? users.filter((u: any) => statsMap.has(u._id.toString())) : users;
+    if (extra.hasComplaint) filtered = filtered.filter((u: any) => complaining.has(u._id.toString()));
 
     // Sort: stats users by priorityScore desc, unseen users at end
     filtered.sort((a: any, b: any) => {

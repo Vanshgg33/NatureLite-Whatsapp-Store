@@ -3,7 +3,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { CrmCallLog } from './schemas/crm-call-log.schema';
 import { CrmCustomerStats } from './schemas/crm-customer-stats.schema';
-import { CrmGoal, CrmLead, CrmWalkin, GOAL_METRICS, LEAD_STAGES } from './schemas/crm-ops.schemas';
+import { CrmGoal, CrmLead, CrmSavedView, CrmWalkin, GOAL_METRICS, LEAD_STAGES } from './schemas/crm-ops.schemas';
+import { sanitizeView } from './crm-filters';
 import { Feedback } from '../feedback/schemas/feedback.schema';
 import { AuditLog } from '../audit/schemas/audit-log.schema';
 import { MessageLog } from '../whatsapp/schemas/message-log.schema';
@@ -28,10 +29,32 @@ export class CrmOpsService {
     @InjectModel(CrmGoal.name) private readonly goalModel: Model<any>,
     @InjectModel(CrmLead.name) private readonly leadModel: Model<any>,
     @InjectModel(CrmWalkin.name) private readonly walkinModel: Model<any>,
+    @InjectModel(CrmSavedView.name) private readonly viewModel: Model<any>,
     @InjectModel(Feedback.name) private readonly feedbackModel: Model<any>,
     @InjectModel(AuditLog.name) private readonly auditModel: Model<any>,
     @InjectModel(MessageLog.name) private readonly msgModel: Model<any>,
   ) {}
+
+  // ─── Saved customer views (M04) ──────────────────────────────────────────
+  async listViews(userId: string) {
+    const me = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : null;
+    return this.viewModel.find({ $or: [{ shared: true }, ...(me ? [{ ownerId: me }] : [])] }).sort({ name: 1 }).limit(100).lean();
+  }
+
+  async saveView(userId: string, body: { name?: string; filters?: Record<string, unknown>; shared?: boolean }, canShare: boolean) {
+    const name = body.name?.trim();
+    if (!name || name.length > 60) throw new BadRequestException('A view name of 1-60 characters is required');
+    if (!Types.ObjectId.isValid(userId)) throw new BadRequestException('Unknown user');
+    return this.viewModel.create({ name, filters: sanitizeView(body.filters), ownerId: new Types.ObjectId(userId), shared: !!body.shared && canShare });
+  }
+
+  async deleteView(id: string, userId: string, isManager: boolean) {
+    const view: any = await this.viewModel.findById(oid(id));
+    if (!view) throw new NotFoundException();
+    if (!isManager && String(view.ownerId) !== userId) throw new BadRequestException('Only the owner can delete this view');
+    await view.deleteOne();
+    return { ok: true };
+  }
 
   // ─── Bulk actions (M13): add one tag to many customers ──────────────────
   async bulkAddTag(ids: unknown, tag: unknown) {

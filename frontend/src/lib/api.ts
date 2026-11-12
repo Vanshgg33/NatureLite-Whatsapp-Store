@@ -2235,8 +2235,10 @@ class ApiClient {
 
   // ─── CRM ─────────────────────────────────────────────────────────────────
 
-  async getCrmCustomers(params: { segment?: string; search?: string; page?: number; isEscalated?: boolean } = {}): Promise<any> {
+  async getCrmCustomers(params: { segment?: string; search?: string; page?: number; isEscalated?: boolean; minLtv?: string; maxLtv?: string; minDaysLate?: string; tag?: string; hasComplaint?: boolean } = {}): Promise<any> {
     const qs = new URLSearchParams();
+    for (const k of ['minLtv', 'maxLtv', 'minDaysLate', 'tag'] as const) if (params[k]) qs.set(k, params[k]!);
+    if (params.hasComplaint) qs.set('hasComplaint', 'true');
     if (params.segment) qs.set('segment', params.segment);
     if (params.search) qs.set('search', params.search);
     if (params.page) qs.set('page', String(params.page));
@@ -2460,6 +2462,9 @@ class ApiClient {
   async deleteCrmSpend(id: string): Promise<void> { await this.client.delete('/crm/spend/' + id); }
 
   async bulkTagCrmCustomers(ids: string[], tag: string): Promise<{ matched: number; updated: number }> { return (await this.client.post<ApiResponse<any>>('/crm/bulk/tag', { ids, tag })).data.data; }
+  async getCrmViews(): Promise<any[]> { return (await this.client.get<ApiResponse<any[]>>('/crm/views')).data.data ?? []; }
+  async saveCrmView(body: { name: string; filters: Record<string, unknown>; shared: boolean }): Promise<any> { return (await this.client.post<ApiResponse<any>>('/crm/views', body)).data.data; }
+  async deleteCrmView(id: string): Promise<void> { await this.client.delete('/crm/views/' + id); }
   async getCrmGoals(month?: string): Promise<any> { return (await this.client.get<ApiResponse<any>>('/crm/goals', { params: { month } })).data.data; }
   async setCrmGoal(body: { month: string; metric: string; target: number }): Promise<any> { return (await this.client.put<ApiResponse<any>>('/crm/goals', body)).data.data; }
   async getCrmCallbacks(): Promise<any[]> { return (await this.client.get<ApiResponse<any[]>>('/crm/callbacks')).data.data ?? []; }
