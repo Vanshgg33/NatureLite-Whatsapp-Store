@@ -20,6 +20,13 @@ import { MediaModule } from '../media/media.module';
 import { CrmEngineService } from './crm-engine.service';
 import { CrmService } from './crm.service';
 import { CrmFoundationService } from './crm-foundation.service';
+import { CrmInsightsService } from './crm-insights.service';
+import { CrmOpsService } from './crm-ops.service';
+import { CrmGoal, CrmGoalSchema, CrmLead, CrmLeadSchema, CrmWalkin, CrmWalkinSchema } from './schemas/crm-ops.schemas';
+import { Feedback, FeedbackSchema } from '../feedback/schemas/feedback.schema';
+import { AuditLog, AuditLogSchema } from '../audit/schemas/audit-log.schema';
+import { CrmMarketingSpend, CrmMarketingSpendSchema } from './schemas/crm-marketing-spend.schema';
+import { Subscription, SubscriptionSchema } from '../subscriptions/schemas/subscription.schema';
 import { CrmController } from './crm.controller';
 
 @Module({
@@ -32,6 +39,13 @@ import { CrmController } from './crm.controller';
       { name: CrmEngineRun.name, schema: CrmEngineRunSchema },
       { name: CrmActivityEvent.name, schema: CrmActivityEventSchema },
       { name: BillingBill.name, schema: BillingBillSchema },
+      { name: CrmMarketingSpend.name, schema: CrmMarketingSpendSchema },
+      { name: CrmGoal.name, schema: CrmGoalSchema },
+      { name: CrmLead.name, schema: CrmLeadSchema },
+      { name: CrmWalkin.name, schema: CrmWalkinSchema },
+      { name: Feedback.name, schema: FeedbackSchema },
+      { name: AuditLog.name, schema: AuditLogSchema },
+      { name: Subscription.name, schema: SubscriptionSchema },
       { name: User.name, schema: UserSchema },
       { name: Order.name, schema: OrderSchema },
       { name: AdminUser.name, schema: AdminUserSchema },
@@ -45,7 +59,7 @@ import { CrmController } from './crm.controller';
     MediaModule,
   ],
   controllers: [CrmController],
-  providers: [CrmEngineService, CrmService, CrmFoundationService],
+  providers: [CrmEngineService, CrmService, CrmFoundationService, CrmInsightsService, CrmOpsService],
   exports: [CrmEngineService],
 })
 export class CrmModule {}

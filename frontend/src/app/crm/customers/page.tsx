@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { downloadCsv } from '@/lib/crm/csv';
 import { useRouter } from 'next/navigation';
 import { Search, ChevronRight, ChevronLeft, AlertTriangle, SlidersHorizontal } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -125,6 +126,15 @@ export default function CustomersPage() {
   const [issues, setIssues] = useState(false);
   const [page, setPage] = useState(1);
   const dSearch = useDebouncedValue(search, 350);
+  const qc = useQueryClient();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkMsg, setBulkMsg] = useState('');
+  const toggle = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const bulkTag = useMutation({
+    mutationFn: (tag: string) => api.bulkTagCrmCustomers(Array.from(selected), tag),
+    onSuccess: (r) => { setBulkMsg(`Tagged ${r.updated} customers.`); setSelected(new Set()); qc.invalidateQueries({ queryKey: ['crm-customers'] }); },
+    onError: () => setBulkMsg('Could not tag the selected customers.'),
+  });
 
   function setSegmentFilter(s: string) {
     setSegment(s);
@@ -269,11 +279,30 @@ export default function CustomersPage() {
             body={issues ? 'No escalated customers' : segment ? `No customers in ${segmentLabel(segment)}` : 'Try adjusting your filters'}
           />
         ) : (
-          items.map((item: any) => (
-            <CustomerRow key={String(item.userId ?? item._id)} item={item} />
-          ))
+          items.map((item: any) => {
+            const id = String(item.userId?._id ?? item.userId ?? item._id);
+            return (
+              <div key={id} className="flex items-center gap-2">
+                <input type="checkbox" aria-label={`Select ${item.user?.name ?? item.user?.phone ?? 'customer'}`} checked={selected.has(id)} onChange={() => toggle(id)} className="h-4 w-4 flex-shrink-0" />
+                <div className="flex-1 min-w-0"><CustomerRow item={item} /></div>
+              </div>
+            );
+          })
         )}
       </div>
+
+      {(selected.size > 0 || bulkMsg) && (
+        <div className="sticky bottom-0 flex items-center gap-4 px-7 py-3 text-[13px]" style={{ background: 'var(--crm-forest)', color: '#fff' }} role="status">
+          {selected.size > 0 ? (
+            <>
+              <span>{selected.size} selected (this page and earlier pages)</span>
+              <button className="underline" disabled={bulkTag.isPending} onClick={() => { const t = window.prompt('Tag to add to the selected customers'); if (t?.trim()) bulkTag.mutate(t); }}>Add tag</button>
+              <button className="underline" onClick={() => downloadCsv('crm-selected-customers.csv', [['Name', 'Phone', 'Segment', 'LTV'], ...items.filter((i: any) => selected.has(String(i.userId?._id ?? i.userId ?? i._id))).map((i: any) => [i.user?.name, i.user?.phone, i.segment, i.ltv])])}>Export selected on this page</button>
+              <button className="underline ml-auto" onClick={() => { setSelected(new Set()); setBulkMsg(''); }}>Clear</button>
+            </>
+          ) : <span>{bulkMsg}</span>}
+        </div>
+      )}
 
       {/* Pagination */}
       {pages > 1 && !isLoading && (

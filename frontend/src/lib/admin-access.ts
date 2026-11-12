@@ -48,6 +48,21 @@ export const ADMIN_PAGE_HREFS: { page: string; href: string }[] = [
   { page: 'crm_duplicates', href: '/crm/customers/duplicates' }, // before crm_customers (prefix)
   { page: 'crm_customers', href: '/crm/customers' },
   { page: 'crm_orders', href: '/crm/orders' },
+  { page: 'crm_segments', href: '/crm/segments' },
+  { page: 'crm_subscriptions', href: '/crm/subscriptions' },
+  { page: 'crm_attribution', href: '/crm/attribution' },
+  { page: 'crm_investor', href: '/crm/reports/investor' },
+  { page: 'crm_acquisition', href: '/crm/acquisition' },
+  { page: 'crm_goals', href: '/crm/goals' },
+  { page: 'crm_callbacks', href: '/crm/callbacks' },
+  { page: 'crm_leads', href: '/crm/leads' },
+  { page: 'crm_walkins', href: '/crm/walk-ins' },
+  { page: 'crm_feedback', href: '/crm/feedback' },
+  { page: 'crm_inbox', href: '/crm/inbox' },
+  { page: 'crm_intelligence', href: '/crm/intelligence' },
+  { page: 'crm_audit', href: '/crm/admin/audit' }, // before crm_team '/crm/admin'
+  { page: 'crm_integrations', href: '/crm/admin/integrations' },
+  { page: 'crm_reports', href: '/crm/reports' }, // after the more specific /crm/reports/investor
   { page: 'crm_campaigns', href: '/crm/campaigns' },
   { page: 'crm_complaints', href: '/crm/complaints' },
   { page: 'crm_products', href: '/crm/products' },

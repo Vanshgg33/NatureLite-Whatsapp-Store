@@ -2451,6 +2451,30 @@ class ApiClient {
     return res.data.data ?? [];
   }
 
+  async getCrmSegments(): Promise<any[]> { return (await this.client.get<ApiResponse<any[]>>('/crm/segments')).data.data ?? []; }
+  async getCrmSubscriptions(): Promise<any> { return (await this.client.get<ApiResponse<any>>('/crm/subscriptions')).data.data; }
+  async getCrmInvestor(): Promise<any> { return (await this.client.get<ApiResponse<any>>('/crm/reports/investor')).data.data; }
+  async getCrmAttribution(days = 7): Promise<any> { return (await this.client.get<ApiResponse<any>>('/crm/attribution', { params: { days } })).data.data; }
+  async getCrmAcquisition(month?: string): Promise<any> { return (await this.client.get<ApiResponse<any>>('/crm/acquisition', { params: { month } })).data.data; }
+  async addCrmSpend(body: { channel: string; month: string; amount: number; note?: string }): Promise<any> { return (await this.client.post<ApiResponse<any>>('/crm/spend', body)).data.data; }
+  async deleteCrmSpend(id: string): Promise<void> { await this.client.delete('/crm/spend/' + id); }
+
+  async bulkTagCrmCustomers(ids: string[], tag: string): Promise<{ matched: number; updated: number }> { return (await this.client.post<ApiResponse<any>>('/crm/bulk/tag', { ids, tag })).data.data; }
+  async getCrmGoals(month?: string): Promise<any> { return (await this.client.get<ApiResponse<any>>('/crm/goals', { params: { month } })).data.data; }
+  async setCrmGoal(body: { month: string; metric: string; target: number }): Promise<any> { return (await this.client.put<ApiResponse<any>>('/crm/goals', body)).data.data; }
+  async getCrmCallbacks(): Promise<any[]> { return (await this.client.get<ApiResponse<any[]>>('/crm/callbacks')).data.data ?? []; }
+  async getCrmLeads(stage?: string): Promise<any> { return (await this.client.get<ApiResponse<any>>('/crm/leads', { params: { stage } })).data.data; }
+  async addCrmLead(body: { name: string; phone: string; source?: string }): Promise<any> { return (await this.client.post<ApiResponse<any>>('/crm/leads', body)).data.data; }
+  async setCrmLeadStage(id: string, stage: string, lostReason?: string): Promise<any> { return (await this.client.patch<ApiResponse<any>>('/crm/leads/' + id + '/stage', { stage, lostReason })).data.data; }
+  async getCrmWalkinStats(): Promise<any> { return (await this.client.get<ApiResponse<any>>('/crm/walkins/stats')).data.data; }
+  async addCrmWalkin(body: { phone: string; name?: string; interest?: string }): Promise<any> { return (await this.client.post<ApiResponse<any>>('/crm/walkins', body)).data.data; }
+  async getCrmFeedback(): Promise<any> { return (await this.client.get<ApiResponse<any>>('/crm/feedback')).data.data; }
+  async getCrmAudit(action?: string): Promise<any[]> { return (await this.client.get<ApiResponse<any[]>>('/crm/audit', { params: { action } })).data.data ?? []; }
+  async getCrmInbox(): Promise<any[]> { return (await this.client.get<ApiResponse<any[]>>('/crm/inbox')).data.data ?? []; }
+  async getCrmThread(phone: string): Promise<any[]> { return (await this.client.get<ApiResponse<any[]>>('/crm/inbox/' + encodeURIComponent(phone))).data.data ?? []; }
+  async getCrmIntelligence(): Promise<any[]> { return (await this.client.get<ApiResponse<any[]>>('/crm/intelligence')).data.data ?? []; }
+  async getCrmIntegrations(): Promise<any[]> { return (await this.client.get<ApiResponse<any[]>>('/crm/integrations')).data.data ?? []; }
+
   async getCrmComplaints(params: { status?: string; mine?: boolean; overdue?: boolean; search?: string; page?: number }): Promise<any> {
     const qs = new URLSearchParams();
     if (params.status) qs.set('status', params.status);

@@ -5,8 +5,9 @@ import { useQuery } from '@tanstack/react-query';
 import { Receipt, Search } from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatINR, formatPhone } from '@/lib/crm/format';
+import { downloadCsv } from '@/lib/crm/csv';
 
-const STATUSES = ['', 'placed', 'confirmed', 'preparing', 'shipped', 'delivered', 'cancelled'];
+const STATUSES = ['', 'placed', 'confirmed', 'preparing', 'out_for_delivery', 'delivered', 'cancelled', 'returned', 'refunded'];
 const istDate = (d: string) => new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' });
 
 export default function CrmOrdersPage() {
@@ -81,6 +82,10 @@ export default function CrmOrdersPage() {
       </div>
 
       <div className="flex items-center justify-end gap-3 text-[13px]">
+        <button disabled={!data?.items.length} className="underline disabled:opacity-40" onClick={() => downloadCsv('crm-orders.csv', [
+          ['Order', 'Customer', 'Phone', 'Status', 'Payment', 'Source', 'Total', 'Placed'],
+          ...(data?.items ?? []).map((o: any) => [o.orderNumber, o.shippingAddress?.name, o.shippingAddress?.phone, o.status, `${o.paymentMethod} ${o.paymentStatus}`, o.source, o.total, o.createdAt]),
+        ])}>Export this page (CSV)</button>
         <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ background: 'var(--crm-paper)' }}>Previous</button>
         <span>Page {page} of {pages}</span>
         <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} className="px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ background: 'var(--crm-paper)' }}>Next</button>

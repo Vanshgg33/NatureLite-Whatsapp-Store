@@ -12,6 +12,8 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { AccessGate } from '@/components/access-gate';
 import { useAdminAccess } from '@/lib/admin-access';
 import { NAV_GROUPS } from './nav.config';
+import { useNavVisibility } from './useNavVisibility';
+import CommandPalette from './CommandPalette';
 
 const ROLE_LABEL: Record<string, string> = {
   crm_head:    'CRM Head',
@@ -48,7 +50,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
     enabled: mounted && (!access.restricted || access.can('crm_complaints.view')),
     refetchInterval: 60_000,
   });
-  const isAdmin = user?.role === 'superadmin' || user?.departmentType === 'crm_head' || !user?.departmentType;
+  const visible = useNavVisibility();
   const initial = (user?.name?.[0] ?? user?.email?.[0] ?? 'C').toUpperCase();
   const roleLabel = ROLE_LABEL[user?.departmentType ?? user?.role ?? ''] ?? 'Staff';
 
@@ -107,8 +109,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-3 scrollbar-hide" aria-label="CRM navigation">
         {NAV_GROUPS.map(group => {
-          const items = group.items.filter(item =>
-            access.restricted ? !!item.page && access.can(`${item.page}.view`) : !item.adminOnly || isAdmin);
+          const items = group.items.filter(visible);
           if (!items.length) return null;
           // the group holding the active page stays open
           const folded = !rail && prefs.closed.includes(group.label) && !items.some(i => isActive(i.href));
@@ -272,6 +273,7 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="crm-root flex h-screen" style={{ background: 'var(--crm-cream)' }}>
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <CommandPalette />
 
       <div className="flex flex-1 flex-col min-w-0">
         {/* Mobile top bar */}

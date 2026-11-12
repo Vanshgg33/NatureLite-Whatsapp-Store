@@ -10,6 +10,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { CrmService } from './crm.service';
 import { CrmFoundationService } from './crm-foundation.service';
+import { CrmInsightsService } from './crm-insights.service';
+import { CrmOpsService } from './crm-ops.service';
 import { CallOutcome } from './schemas/crm-call-log.schema';
 import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
@@ -17,7 +19,7 @@ import { RequireAccess } from '../../common/decorators/require-access.decorator'
 @UseGuards(RolesGuard)
 @Roles('admin', 'superadmin')
 export class CrmController {
-  constructor(private readonly crm: CrmService, private readonly foundation: CrmFoundationService) {}
+  constructor(private readonly crm: CrmService, private readonly foundation: CrmFoundationService, private readonly insights: CrmInsightsService, private readonly ops: CrmOpsService) {}
 
   private managersOnly(user: JwtPayload) {
     if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') throw new ForbiddenException();
@@ -241,7 +243,7 @@ export class CrmController {
   @Patch('customers/:id/tags')
   @RequireAccess('crm_customers.edit')
   setTags(@Param('id') id: string, @Body() body: { tags: string[] }) {
-    return this.crm.setTags(id, body.tags ?? []);
+    return this.crm.setTags(id, Array.isArray(body?.tags) ? body.tags : []);
   }
 
   // ─── WhatsApp Nudge ──────────────────────────────────────────────────────
@@ -393,6 +395,100 @@ export class CrmController {
     this.managersOnly(user);
     return this.foundation.findDuplicates();
   }
+
+  // ─── Segments, subscriptions, reports, attribution, acquisition (blueprint M09/M07/M27/M26/M20) ──
+
+  @Get('segments')
+  @RequireAccess('crm_segments.view')
+  segments(@CurrentUser() user: JwtPayload) { this.managersOnly(user); return this.insights.segments(); }
+
+  @Get('subscriptions')
+  @RequireAccess('crm_subscriptions.view')
+  subscriptions(@CurrentUser() user: JwtPayload) { this.managersOnly(user); return this.insights.subscriptions(); }
+
+  @Get('reports/investor')
+  @RequireAccess('crm_investor.view')
+  investor(@CurrentUser() user: JwtPayload) { this.managersOnly(user); return this.insights.investor(); }
+
+  @Get('attribution')
+  @RequireAccess('crm_attribution.view')
+  attribution(@Query('days') days: string, @CurrentUser() user: JwtPayload) { this.managersOnly(user); return this.insights.attribution(parseInt(days) || 7); }
+
+  @Get('acquisition')
+  @RequireAccess('crm_acquisition.view')
+  acquisition(@Query('month') month: string, @CurrentUser() user: JwtPayload) { this.managersOnly(user); return this.insights.acquisition(month); }
+
+  @Post('spend')
+  @RequireAccess('crm_acquisition.edit')
+  addSpend(@Body() body: any, @CurrentUser() user: JwtPayload) { this.managersOnly(user); return this.insights.addSpend(body); }
+
+  @Delete('spend/:id')
+  @RequireAccess('crm_acquisition.edit')
+  deleteSpend(@Param('id') id: string, @CurrentUser() user: JwtPayload) { this.managersOnly(user); return this.insights.deleteSpend(id); }
+
+  @Post('bulk/tag')
+  @RequireAccess('crm_customers.edit')
+  bulkTag(@Body() body: any, @CurrentUser() user: JwtPayload) { this.managersOnly(user); return this.ops.bulkAddTag(body?.ids, body?.tag); }
+
+  // ─── Goals, callbacks, leads, walk-ins, feedback, audit, inbox, intelligence, integrations ──
+
+  @Get('goals')
+  @RequireAccess('crm_goals.view')
+  goals(@Query('month') month: string, @CurrentUser() user: JwtPayload) { this.managersOnly(user); return this.ops.goals(month); }
+
+  @Put('goals')
+  @RequireAccess('crm_goals.edit')
+  setGoal(@Body() body: any, @CurrentUser() user: JwtPayload) { this.managersOnly(user); return this.ops.setGoal(body); }
+
+  @Get('callbacks')
+  @RequireAccess('crm_callbacks.view')
+  callbacks(@CurrentUser() user: JwtPayload) {
+    return this.ops.callbacks(user.departmentType === 'crm_senior' ? user.sub : undefined);
+  }
+
+  @Get('leads')
+  @RequireAccess('crm_leads.view')
+  leads(@Query('stage') stage: string) { return this.ops.leads(stage); }
+
+  @Post('leads')
+  @RequireAccess('crm_leads.edit')
+  addLead(@Body() body: any, @CurrentUser() user: JwtPayload) { return this.ops.addLead(body, user.sub); }
+
+  @Patch('leads/:id/stage')
+  @RequireAccess('crm_leads.edit')
+  setLeadStage(@Param('id') id: string, @Body() body: any) { return this.ops.setLeadStage(id, body?.stage, body?.lostReason); }
+
+  @Get('walkins/stats')
+  @RequireAccess('crm_walkins.view')
+  walkinStats() { return this.ops.walkinStats(); }
+
+  @Post('walkins')
+  @RequireAccess('crm_walkins.edit')
+  addWalkin(@Body() body: any, @CurrentUser() user: JwtPayload) { return this.ops.addWalkin(body, user.sub); }
+
+  @Get('feedback')
+  @RequireAccess('crm_feedback.view')
+  feedback(@CurrentUser() user: JwtPayload) { this.managersOnly(user); return this.ops.feedbackSummary(); }
+
+  @Get('audit')
+  @RequireAccess('crm_audit.view')
+  audit(@Query('action') action: string, @CurrentUser() user: JwtPayload) { this.managersOnly(user); return this.ops.audit(action); }
+
+  @Get('inbox')
+  @RequireAccess('crm_inbox.view')
+  inbox(@CurrentUser() user: JwtPayload) { this.managersOnly(user); return this.ops.inbox(); }
+
+  @Get('inbox/:phone')
+  @RequireAccess('crm_inbox.view')
+  thread(@Param('phone') phone: string, @CurrentUser() user: JwtPayload) { this.managersOnly(user); return this.ops.thread(phone); }
+
+  @Get('intelligence')
+  @RequireAccess('crm_intelligence.view')
+  intelligence(@CurrentUser() user: JwtPayload) { this.managersOnly(user); return this.ops.intelligence(); }
+
+  @Get('integrations')
+  @RequireAccess('crm_integrations.view')
+  integrations(@CurrentUser() user: JwtPayload) { this.managersOnly(user); return this.ops.integrations(); }
 
   // ─── Heartbeat ───────────────────────────────────────────────────────────
 
