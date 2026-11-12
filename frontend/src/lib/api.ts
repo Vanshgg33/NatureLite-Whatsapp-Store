@@ -2217,6 +2217,9 @@ class ApiClient {
       priceInclTax?: boolean; discountPct?: number; gstRate: number;
     }>;
     billDiscountPct?: number;
+    billDiscountMode?: 'percent' | 'amount';
+    sendWhatsApp?: boolean;
+    stockLocation?: 'godown' | 'store';
     charges?: Array<{ label: string; amtRupees: number }>;
     roundOffEnabled?: boolean;
     amountPaidRupees?: number;
@@ -2228,6 +2231,10 @@ class ApiClient {
   }): Promise<any> {
     const res = await this.client.post<ApiResponse<any>>('/billing/bills/v1', data);
     return res.data.data;
+  }
+
+  async retryBillingWhatsapp(id: string): Promise<void> {
+    await this.client.post(`/billing/bills/${id}/whatsapp/retry`);
   }
 
   async cancelBillingBill(id: string, reason: string): Promise<void> {

@@ -8,7 +8,7 @@ function calcLineFields(
   isInterState: boolean,
 ): Pick<LineItem, 'discountAmt' | 'taxable' | 'cgst' | 'sgst' | 'igst' | 'total'> {
   const ratePaise = Math.round(item.rate * 100);
-  const gross = ratePaise * item.qty;
+  const gross = Math.round(ratePaise * item.qty);
   const lineDiscAmt = Math.round(gross * item.discountPct / 100);
   const afterLineDisc = gross - lineDiscAmt;
   const taxable = item.priceInclTax
@@ -24,7 +24,7 @@ function calcLineFields(
 
 function preTaxable(item: Pick<LineItem, 'rate' | 'qty' | 'priceInclTax' | 'discountPct' | 'gstRate'>): number {
   const ratePaise = Math.round(item.rate * 100);
-  const gross = ratePaise * item.qty;
+  const gross = Math.round(ratePaise * item.qty);
   const lineDiscAmt = Math.round(gross * item.discountPct / 100);
   const afterLineDisc = gross - lineDiscAmt;
   return item.priceInclTax
@@ -34,15 +34,19 @@ function preTaxable(item: Pick<LineItem, 'rate' | 'qty' | 'priceInclTax' | 'disc
 
 export function billCalcPure(
   items: LineItem[],
-  billDiscountPct: number,
+  billDiscountValue: number,
   charges: BillCharge[],
   roundOffEnabled: boolean,
   isInterState: boolean,
   amountPaidRupees: number,
+  discountMode: 'percent' | 'amount' = 'percent',
 ): { lines: LineItem[]; totals: BillTotals } {
   const preTaxables = items.map(item => preTaxable(item));
   const totalPreTaxable = preTaxables.reduce((s, t) => s + t, 0);
-  const billDiscAmtPaise = Math.round(totalPreTaxable * billDiscountPct / 100);
+  // amount mode: value is rupees, capped at the subtotal
+  const billDiscAmtPaise = discountMode === 'amount'
+    ? Math.min(Math.round(billDiscountValue * 100), totalPreTaxable)
+    : Math.round(totalPreTaxable * billDiscountValue / 100);
 
   const billDiscAlloc = (totalPreTaxable > 0 && billDiscAmtPaise > 0)
     ? preTaxables.map(t => Math.round(billDiscAmtPaise * t / totalPreTaxable))
@@ -90,15 +94,16 @@ export function billCalcPure(
 
 export function useBillCalc(
   items: LineItem[],
-  billDiscountPct: number,
+  billDiscountValue: number,
   charges: BillCharge[],
   roundOffEnabled: boolean,
   isInterState: boolean,
   amountPaidRupees: number,
+  discountMode: 'percent' | 'amount' = 'percent',
 ): { lines: LineItem[]; totals: BillTotals } {
   return useMemo(
-    () => billCalcPure(items, billDiscountPct, charges, roundOffEnabled, isInterState, amountPaidRupees),
+    () => billCalcPure(items, billDiscountValue, charges, roundOffEnabled, isInterState, amountPaidRupees, discountMode),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items, billDiscountPct, charges, roundOffEnabled, isInterState, amountPaidRupees],
+    [items, billDiscountValue, charges, roundOffEnabled, isInterState, amountPaidRupees, discountMode],
   );
 }

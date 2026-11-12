@@ -6,22 +6,56 @@ import { cn } from '@/lib/utils';
 import { useDebouncedValue } from '@/lib/utils';
 import { api } from '@/lib/api';
 import { formatINR } from '@/lib/billing/utils/formatINR';
+import { CHANNEL_TIER, type SalesChannel } from '@/lib/billing/channel';
 import type { LineItem } from '../types';
 
-const TAG_PRIORITY = ['Wholesale', 'B2B', 'Transport', 'Home Delivery', 'Store/Retail', 'Retail'];
-const UNITS = ['KGS', 'LTR', 'NOS', 'PCS', 'BOX', 'PAC', 'BTL', 'GMS', 'MLT'];
-const GST_RATES = [0, 5, 12, 18, 28];
+/** Exactly two tiers exist. A missing tier price is an error, never a silent fallback. */
+const tierPriceOf = (tagPrices: Array<{ tag: string; price: number }>, tier: string) => tagPrices.find(t => t.tag === tier)?.price;
 
-function resolvePrice(basePrice: number, tags: string[], tagPrices: Array<{ tag: string; price: number }>) {
-  for (const tag of TAG_PRIORITY) {
-    if (!tags.includes(tag)) continue;
-    const tp = tagPrices.find(p => p.tag === tag);
-    if (tp) return tp.price;
-  }
-  return basePrice;
+const GST_RATES = [0, 5, 12, 18, 28];
+const WEIGHT_UNITS = ['KGS', 'LTR'];
+
+const roundQty = (n: number) => Math.round(n * 1000) / 1000;
+
+/** Text-backed qty box: typing never snaps back to 1, +/- read the current text (no stale state). */
+function QtyInput({ value, unit, onChange }: { value: number; unit: string; onChange: (n: number) => void }) {
+  const [txt, setTxt] = useState(String(value));
+  const step = WEIGHT_UNITS.includes(unit) ? 0.5 : 1;
+
+  // follow outside changes (e.g. same SKU added again) but not our own typing
+  useEffect(() => {
+    if (roundQty(parseFloat(txt) || 0) !== value) setTxt(String(value));
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const type = (raw: string) => {
+    let s = raw.replace(/[^\d.]/g, '');
+    const dot = s.indexOf('.');
+    if (dot !== -1) s = s.slice(0, dot + 1) + s.slice(dot + 1).replace(/\./g, '').slice(0, 3);
+    s = s.replace(/^0+(?=\d)/, '');
+    setTxt(s);
+    const n = parseFloat(s);
+    if (n > 0) onChange(roundQty(n));
+  };
+  const bump = (d: number) => {
+    const next = Math.max(step, roundQty((parseFloat(txt) || 0) + d));
+    setTxt(String(next));
+    onChange(next);
+  };
+  const btn = 'w-5 h-6 border border-gray-200 rounded text-gray-500 hover:bg-gray-100 leading-none';
+
+  return (
+    <div className="flex items-center gap-0.5">
+      <button type="button" className={btn} onClick={() => bump(-step)}>−</button>
+      <input inputMode="decimal" value={txt} onChange={e => type(e.target.value)}
+        onBlur={() => setTxt(String(value))}
+        className="w-12 text-center border border-gray-200 rounded px-1 py-1 text-sm focus:ring-1 focus:ring-[#2d7a4f]/30 focus:outline-none tabular-nums"
+      />
+      <button type="button" className={btn} onClick={() => bump(step)}>+</button>
+    </div>
+  );
 }
 
-function ProductSearch({ customerTags, onAdd }: { customerTags: string[]; onAdd: (item: Omit<LineItem, 'discountAmt' | 'taxable' | 'cgst' | 'sgst' | 'igst' | 'total'>) => void }) {
+function ProductSearch({ channel, stockLocation, onAdd }: { channel: SalesChannel | ''; stockLocation: 'godown' | 'store'; onAdd: (item: Omit<LineItem, 'discountAmt' | 'taxable' | 'cgst' | 'sgst' | 'igst' | 'total'>) => void }) {
   const [q, setQ] = useState('');
   const dq = useDebouncedValue(q, 250);
   const [results, setResults] = useState<any[]>([]);
@@ -41,8 +75,10 @@ function ProductSearch({ customerTags, onAdd }: { customerTags: string[]; onAdd:
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
+  const tier = channel ? CHANNEL_TIER[channel] : '';
   const add = (p: any) => {
-    const price = resolvePrice(p.price, customerTags, p.tagPrices ?? []);
+    const price = tierPriceOf(p.tagPrices ?? [], tier);
+    if (price === undefined) return;
     onAdd({
       _key: crypto.randomUUID(),
       productId: p._id.toString(),
@@ -56,6 +92,7 @@ function ProductSearch({ customerTags, onAdd }: { customerTags: string[]; onAdd:
       priceInclTax: true,
       discountPct: 0,
       gstRate: p.gstRate ?? 5,
+      tierPrices: Object.fromEntries((p.tagPrices ?? []).map((t: any) => [t.tag, t.price])),
     });
     setQ('');
     setOpen(false);
@@ -70,7 +107,8 @@ function ProductSearch({ customerTags, onAdd }: { customerTags: string[]; onAdd:
           value={q}
           onChange={e => { setQ(e.target.value); setOpen(true); }}
           onFocus={() => q && setOpen(true)}
-          placeholder="Search by product name or SKU to add item…"
+          placeholder={channel ? 'Search by product name or SKU to add item…' : 'Select a sales channel first'}
+          disabled={!channel}
           className="w-full pl-9 pr-4 py-2 border border-dashed border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f]/30 bg-gray-50 hover:bg-white transition-colors focus:bg-white focus:border-solid"
           autoComplete="off"
         />
@@ -78,18 +116,23 @@ function ProductSearch({ customerTags, onAdd }: { customerTags: string[]; onAdd:
       {open && results.length > 0 && (
         <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded shadow-lg overflow-hidden max-h-64 overflow-y-auto">
           {results.map(p => {
-            const price = resolvePrice(p.price, customerTags, p.tagPrices ?? []);
-            const isTagPrice = price !== p.price;
+            const price = tierPriceOf(p.tagPrices ?? [], tier);
             return (
-              <button key={p._id} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#f7faf8] text-left transition-colors"
+              <button key={p._id} disabled={price === undefined} className="w-full flex disabled:opacity-60 disabled:cursor-not-allowed items-center gap-3 px-4 py-2.5 hover:bg-[#f7faf8] text-left transition-colors"
                 onClick={() => add(p)}>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-gray-800 truncate">{p.name}</div>
                   <div className="text-xs text-gray-400 font-mono">{p.sku} · HSN: {p.hsnCode || '—'} · {p.gstRate ?? 5}% GST</div>
+                  {p.stock && (
+                    <div className={cn('text-[11px]', (p.stock[stockLocation] ?? 0) > 0 ? 'text-gray-500' : 'text-red-500')}>
+                      Store {p.stock.store} · Godown {p.stock.godown}
+                    </div>
+                  )}
                 </div>
                 <div className="text-right shrink-0">
-                  <div className={cn('text-sm font-semibold', isTagPrice ? 'text-[#2d7a4f]' : 'text-gray-700')}>₹{price}</div>
-                  {isTagPrice && <div className="text-[10px] text-gray-400 line-through">₹{p.price}</div>}
+                  {price === undefined
+                    ? <div className="text-xs font-medium text-red-500">No {tier} rate set</div>
+                    : <div className="text-sm font-semibold text-[#2d7a4f]">₹{price}</div>}
                 </div>
               </button>
             );
@@ -104,8 +147,9 @@ export interface ItemGridProps {
   lines: LineItem[];
   rawItems: LineItem[];
   isInterState: boolean;
-  customerTags: string[];
-  onUpdate: (idx: number, patch: Partial<Pick<LineItem, 'mrp' | 'qty' | 'unit' | 'rate' | 'priceInclTax' | 'discountPct' | 'gstRate' | 'hsnCode'>>) => void;
+  channel: SalesChannel | '';
+  stockLocation: 'godown' | 'store';
+  onUpdate: (idx: number, patch: Partial<Pick<LineItem, 'mrp' | 'qty' | 'unit' | 'rate' | 'priceInclTax' | 'discountPct' | 'gstRate' | 'hsnCode' | 'manualRate' | 'missingTier'>>) => void;
   onRemove: (idx: number) => void;
   onAdd: (item: Omit<LineItem, 'discountAmt' | 'taxable' | 'cgst' | 'sgst' | 'igst' | 'total'>) => void;
   globalPriceInclTax: boolean;
@@ -113,13 +157,15 @@ export interface ItemGridProps {
 }
 
 export function ItemGrid({
-  lines, rawItems, isInterState, customerTags,
+  lines, rawItems, isInterState, channel, stockLocation,
   onUpdate, onRemove, onAdd,
   globalPriceInclTax, onGlobalInclTaxToggle,
 }: ItemGridProps) {
   const totalQty = lines.reduce((s, l) => s + l.qty, 0);
   const totalDiscAmt = lines.reduce((s, l) => s + l.discountAmt, 0);
-  const totalTaxAmt = lines.reduce((s, l) => s + l.cgst + l.sgst + l.igst, 0);
+  const totalCgst = lines.reduce((s, l) => s + l.cgst, 0);
+  const totalSgst = lines.reduce((s, l) => s + l.sgst, 0);
+  const totalIgst = lines.reduce((s, l) => s + l.igst, 0);
   const totalAmt = lines.reduce((s, l) => s + l.total, 0);
 
   return (
@@ -133,7 +179,6 @@ export function ItemGrid({
               <th className="px-2 py-2 text-left w-24">HSN</th>
               <th className="px-2 py-2 text-right w-20">MRP</th>
               <th className="px-2 py-2 text-center w-16">Qty</th>
-              <th className="px-2 py-2 text-left w-20">Unit</th>
               <th className="px-2 py-2 text-right w-28">
                 <button onClick={onGlobalInclTaxToggle}
                   className="inline-flex items-center gap-1 text-[10px] hover:text-[#2d7a4f] transition-colors">
@@ -147,7 +192,12 @@ export function ItemGrid({
               </th>
               <th className="px-2 py-2 text-center w-20">Tax%</th>
               <th className="px-2 py-2 text-center w-16">Disc%</th>
-              <th className="px-2 py-2 text-right w-24">Tax Amt</th>
+              {isInterState
+                ? <th className="px-2 py-2 text-right w-24">IGST</th>
+                : <>
+                    <th className="px-2 py-2 text-right w-24">CGST</th>
+                    <th className="px-2 py-2 text-right w-24">SGST</th>
+                  </>}
               <th className="px-2 py-2 text-right w-24">Amount</th>
               <th className="w-8" />
             </tr>
@@ -163,6 +213,7 @@ export function ItemGrid({
                   <td className="px-2 py-2">
                     <div className="font-medium text-gray-800">{line.name}</div>
                     <div className="text-[11px] text-gray-400 font-mono">{line.sku}</div>
+                    {line.missingTier && <div className="text-[11px] text-red-500">No {line.missingTier} rate set for this product</div>}
                   </td>
                   <td className="px-2 py-2">
                     <input value={line.hsnCode} onChange={e => onUpdate(idx, { hsnCode: e.target.value })}
@@ -173,20 +224,11 @@ export function ItemGrid({
                     {line.mrp > 0 ? `₹${line.mrp}` : '—'}
                   </td>
                   <td className="px-2 py-2">
-                    <input type="number" min="0.001" step="0.001" value={line.qty}
-                      onChange={e => onUpdate(idx, { qty: parseFloat(e.target.value) || 1 })}
-                      className="w-14 text-center border border-gray-200 rounded px-1.5 py-1 text-sm focus:ring-1 focus:ring-[#2d7a4f]/30 focus:outline-none tabular-nums"
-                    />
-                  </td>
-                  <td className="px-2 py-2">
-                    <select value={line.unit} onChange={e => onUpdate(idx, { unit: e.target.value })}
-                      className="border border-gray-200 rounded px-1 py-1 text-xs focus:ring-1 focus:ring-[#2d7a4f]/30 focus:outline-none bg-white">
-                      {UNITS.map(u => <option key={u}>{u}</option>)}
-                    </select>
+                    <QtyInput value={line.qty} unit={line.unit} onChange={qty => onUpdate(idx, { qty })} />
                   </td>
                   <td className="px-2 py-2">
                     <input type="number" min="0" step="0.5" value={line.rate}
-                      onChange={e => onUpdate(idx, { rate: parseFloat(e.target.value) || 0 })}
+                      onChange={e => onUpdate(idx, { rate: parseFloat(e.target.value) || 0, manualRate: true, missingTier: undefined })}
                       className="w-24 text-right border border-gray-200 rounded px-1.5 py-1 text-sm focus:ring-1 focus:ring-[#2d7a4f]/30 focus:outline-none tabular-nums"
                     />
                   </td>
@@ -203,9 +245,12 @@ export function ItemGrid({
                       placeholder="0"
                     />
                   </td>
-                  <td className="px-2 py-2 text-right text-gray-600 tabular-nums">
-                    {formatINR(line.cgst + line.sgst + line.igst)}
-                  </td>
+                  {isInterState
+                    ? <td className="px-2 py-2 text-right text-gray-600 tabular-nums">{formatINR(line.igst)}</td>
+                    : <>
+                        <td className="px-2 py-2 text-right text-gray-600 tabular-nums">{formatINR(line.cgst)}</td>
+                        <td className="px-2 py-2 text-right text-gray-600 tabular-nums">{formatINR(line.sgst)}</td>
+                      </>}
                   <td className="px-2 py-2 text-right font-semibold text-gray-800 tabular-nums">
                     {formatINR(line.total)}
                   </td>
@@ -224,11 +269,16 @@ export function ItemGrid({
               <tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold text-xs text-gray-600">
                 <td colSpan={4} className="px-3 py-2">{lines.length} item{lines.length !== 1 ? 's' : ''}</td>
                 <td className="px-2 py-2 text-center tabular-nums">{totalQty.toFixed(3).replace(/\.?0+$/, '')}</td>
-                <td colSpan={3} />
+                <td colSpan={2} />
                 <td className="px-2 py-2 text-center text-gray-400 tabular-nums text-[11px]">
                   Disc: {formatINR(totalDiscAmt)}
                 </td>
-                <td className="px-2 py-2 text-right tabular-nums">{formatINR(totalTaxAmt)}</td>
+                {isInterState
+                  ? <td className="px-2 py-2 text-right tabular-nums">{formatINR(totalIgst)}</td>
+                  : <>
+                      <td className="px-2 py-2 text-right tabular-nums">{formatINR(totalCgst)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{formatINR(totalSgst)}</td>
+                    </>}
                 <td className="px-2 py-2 text-right tabular-nums">{formatINR(totalAmt)}</td>
                 <td />
               </tr>
@@ -239,7 +289,7 @@ export function ItemGrid({
 
       {/* Product search row */}
       <div className="p-3 border-t border-gray-100">
-        <ProductSearch customerTags={customerTags} onAdd={onAdd} />
+        <ProductSearch channel={channel} stockLocation={stockLocation} onAdd={onAdd} />
       </div>
     </div>
   );

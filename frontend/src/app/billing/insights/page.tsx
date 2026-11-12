@@ -6,6 +6,7 @@ import { Trophy, TrendingUp, AlertCircle, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import { istDateKey, istDaysAgoKey, istWeekStartKey, istMonthKey, startOfDayIST, endOfDayIST } from '@/lib/time';
 import { Header } from '@/components/layout/header';
+import { CHANNEL_COLORS } from '@/lib/billing/channel';
 
 function fmt(n: number) {
   return '₹' + (n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -18,6 +19,7 @@ const TAG_COLORS: Record<string, string> = {
   'Store/Retail': 'bg-purple-100 text-purple-700',
   Wholesale: 'bg-amber-100 text-amber-700',
   Retail: 'bg-pink-100 text-pink-700',
+  ...CHANNEL_COLORS,
 };
 
 const MEDALS = ['🥇', '🥈', '🥉'];

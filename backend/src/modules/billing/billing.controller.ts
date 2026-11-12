@@ -4,6 +4,7 @@ import {
 import { BillingService } from './billing.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { BillingStockService } from './billing-stock.service';
 import { CustomerTag } from './schemas/billing-customer.schema';
 import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
@@ -11,7 +12,7 @@ import { RequireAccess } from '../../common/decorators/require-access.decorator'
 @UseGuards(RolesGuard)
 @Roles('admin', 'superadmin')
 export class BillingController {
-  constructor(private readonly billingService: BillingService) {}
+  constructor(private readonly billingService: BillingService, private readonly stock: BillingStockService) {}
 
   // ─── Customers ────────────────────────────────────────────────────────────
 
@@ -141,7 +142,21 @@ export class BillingController {
   createBillV1(@Body() body: any, @Req() req: any) {
     const userId = req.user?._id?.toString() ?? 'system';
     const ip = req.ip ?? '';
-    return this.billingService.createBillV1(body, userId, ip);
+    // only a super admin may sell below zero stock, and only with a reason (logged on the bill)
+    const canOverrideStock = String(req.user?.role ?? '').toLowerCase() === 'superadmin';
+    return this.billingService.createBillV1(body, userId, ip, canOverrideStock);
+  }
+
+  @Get('stock/availability')
+  @RequireAccess('billing_new.view')
+  stockAvailability(@Query('ids') ids = '') {
+    return this.stock.availability(ids.split(',').filter(Boolean));
+  }
+
+  @Post('bills/:id/whatsapp/retry')
+  @RequireAccess('billing_new.create')
+  retryWhatsapp(@Param('id') id: string) {
+    return this.billingService.retryWhatsapp(id);
   }
 
   @Patch('bills/:id/cancel')

@@ -60,7 +60,15 @@ export class BillingBill {
   @Prop({ type: [String], default: [] }) customerTags: string[];
 
   @Prop({ required: true })
-  orderTag: string; // B2B | Transport | Home Delivery | Store/Retail | Wholesale | Retail
+  orderTag: string; // sales channel: Transport Order | B2B Order | Home Delivery Order | Store Order
+
+  // WhatsApp auto-send state (queued | retrying | sending | sent | failed | skipped_no_phone | skipped_cancelled)
+  @Prop({ type: Object }) whatsapp?: { status: string; attempts: number; lastError?: string; messageId?: string; sentAt?: Date; nextAttemptAt?: Date };
+
+  @Prop({ enum: ['godown', 'store'], default: 'godown' }) stockLocation: string; // where this bill's stock left from
+  @Prop({ type: Object }) stockOverride?: { reason: string; by: string; short: string[] };
+
+  @Prop() legacyTag?: string; // pre-channel tag, kept by the migration
 
   @Prop({
     type: [{
@@ -162,6 +170,7 @@ BillingBillSchema.index({ paymentStatus: 1, createdAt: -1 });
 BillingBillSchema.index({ createdAt: -1 });
 BillingBillSchema.index({ docType: 1, invoiceDate: 1 });
 BillingBillSchema.index({ orderTag: 1, createdAt: -1 });
+BillingBillSchema.index({ 'items.productId': 1 }); // per-location stock reads
 
 // Credit notes and sale orders live in the same collection but are NOT sales: hide them from every
 // existing sales/dues/insight query unless the caller opts in with .setOptions({ allDocTypes: true }).

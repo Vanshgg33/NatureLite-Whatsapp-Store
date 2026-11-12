@@ -48,6 +48,8 @@ export interface RDoc {
   refInvoiceNo?: string;
   convertedFromOrderNo?: string;
   orderTag: string;
+  /** where the stock left from (sales) or returned to (credit notes) */
+  location?: 'godown' | 'store';
   paidAtCreationPaise: number;
   paymentLabel: string;
   laterPayments: Array<{ mode: string; amountPaise: number; at: Date }>;
@@ -172,6 +174,7 @@ export function toRDoc(bill: any, companyStateCode = '22'): RDoc {
     refInvoiceNo: bill.refInvoiceNo,
     convertedFromOrderNo: bill.convertedFromOrderNo,
     orderTag: bill.orderTag ?? '',
+    location: bill.stockLocation === 'store' ? 'store' : 'godown',
     paidAtCreationPaise: initial,
     paymentLabel,
     laterPayments: payments.filter(p => p.kind === 'LATER').map(p => ({ mode: cap(p.mode), amountPaise: p.amountPaise, at: new Date(p.at) })),

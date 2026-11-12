@@ -17,6 +17,10 @@ import { BillingAccount, BillingAccountSchema, BillingExpense, BillingExpenseSch
 import { ReportsService } from './reports/reports.service';
 import { ReportsController } from './reports/reports.controller';
 import { TaxSettingsModule } from './tax-settings/tax-settings.module';
+import { WhatsAppModule } from '../whatsapp/whatsapp.module';
+import { MediaModule } from '../media/media.module';
+import { BillingWhatsappService } from './billing-whatsapp.service';
+import { BillingStockService } from './billing-stock.service';
 
 @Module({
   imports: [
@@ -38,9 +42,11 @@ import { TaxSettingsModule } from './tax-settings/tax-settings.module';
     ]),
     CrmModule,
     TaxSettingsModule,
+    WhatsAppModule,
+    MediaModule,
   ],
   controllers: [BillingController, ReportsController, BooksController],
-  providers: [BillingService, ReportsService, BooksService],
-  exports: [BillingService],
+  providers: [BillingService, ReportsService, BooksService, BillingWhatsappService, BillingStockService],
+  exports: [BillingService, BillingStockService],
 })
 export class BillingModule {}

@@ -96,13 +96,14 @@ export class BooksService {
 
   // ── stock entries ──
   listStockEntries() { return this.stockEntries.find().sort({ date: -1 }).limit(1000).lean(); }
-  async createStockEntry(d: { productId: string; name: string; kind: 'OPENING' | 'ADJUST'; qty: number; unitCostRupees?: number; date?: string; note?: string }) {
+  async createStockEntry(d: { productId: string; name: string; kind: 'OPENING' | 'ADJUST'; qty: number; unitCostRupees?: number; date?: string; note?: string; location?: 'godown' | 'store' }) {
+    if (d.location && !['godown', 'store'].includes(d.location)) throw new BadRequestException('location must be godown or store');
     if (!d.productId || !d.name || !Number.isFinite(d.qty) || d.qty === 0) throw new BadRequestException('productId, name and a non-zero qty are required');
     if (!['OPENING', 'ADJUST'].includes(d.kind)) throw new BadRequestException('kind must be OPENING or ADJUST');
     const op = await this.getOpening();
     // opening stock lives on the day the books open, so valuations at that instant include it
     const date = d.kind === 'OPENING' ? (op?.asOn ?? asDate(d.date)) : asDate(d.date);
-    return this.stockEntries.create({ productId: d.productId, name: d.name, kind: d.kind, qty: d.qty, unitCostPaise: d.unitCostRupees != null ? Math.round(d.unitCostRupees * 100) : undefined, date, note: d.note });
+    return this.stockEntries.create({ productId: d.productId, name: d.name, kind: d.kind, qty: d.qty, unitCostPaise: d.unitCostRupees != null ? Math.round(d.unitCostRupees * 100) : undefined, date, note: d.note, location: d.location ?? 'godown' });
   }
 
   // ── purchases / debit notes ──

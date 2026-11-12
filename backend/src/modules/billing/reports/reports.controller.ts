@@ -48,8 +48,8 @@ export class ReportsController {
 
   @Get('stock-summary')
   @RequireAccess('billing_reports.view')
-  async stock(@Query('asOn') asOn: string, @Query('format') format: string, @Res() res: Response) {
-    return this.respond(res, format, await this.reports.stockSummary(asOn));
+  async stock(@Query('asOn') asOn: string, @Query('location') location: string, @Query('format') format: string, @Res() res: Response) {
+    return this.respond(res, format, await this.reports.stockSummary(asOn, location));
   }
 
   @Get('trial-balance')

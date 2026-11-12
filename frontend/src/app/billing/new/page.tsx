@@ -13,10 +13,10 @@ import { ItemGrid } from './components/ItemGrid';
 import { BillFooter } from './components/BillFooter';
 import { SummaryPanel } from './components/SummaryPanel';
 import { useBillCalc } from './useBillCalc';
+import { CHANNEL_TIER, channelForCustomer, type SalesChannel } from '@/lib/billing/channel';
 import type { LineItem, BillCharge, PaidSplit, GodownDto } from './types';
 
-const DELIVERY_TAGS = ['Home Delivery', 'Transport'];
-const TAG_PRIORITY = ['Wholesale', 'B2B', 'Transport', 'Home Delivery', 'Store/Retail', 'Retail'];
+const DELIVERY_TAGS = ['Home Delivery Order', 'Transport Order'];
 
 const CHARGE_SAC = '996511';
 const CHARGE_GST_RATE = 18;
@@ -37,7 +37,7 @@ export default function NewBillPage() {
   const [invoiceTime, setInvoiceTime] = useState(() => new Date().toTimeString().slice(0, 5));
   const [godownId, setGodownId] = useState('');
   const [placeOfSupply, setPlaceOfSupply] = useState('22');
-  const [orderTag, setOrderTag] = useState('');
+  const [orderTag, setOrderTag] = useState<SalesChannel | ''>('');
 
   const [billingAddress, setBillingAddress] = useState('');
   const [shippingAddress, setShippingAddress] = useState('');
@@ -46,13 +46,16 @@ export default function NewBillPage() {
   const [rawItems, setRawItems] = useState<LineItem[]>([]);
   const [globalPriceInclTax, setGlobalPriceInclTax] = useState(true);
 
-  const [billDiscountPct, setBillDiscountPct] = useState(0);
+  const [billDiscountPct, setBillDiscountPct] = useState(0); // typed value: % or ₹ per discountMode
+  const [discountMode, setDiscountMode] = useState<'percent' | 'amount'>('percent');
   const [charges, setCharges] = useState<BillCharge[]>([]);
   const [roundOffEnabled, setRoundOffEnabled] = useState(true);
   const [paid, setPaid] = useState<PaidSplit>({ cash: 0, upi: 0 });
   const amountPaidRupees = paid.cash + paid.upi;
   const [terms, setTerms] = useState('');
   const [notes, setNotes] = useState('');
+  const [sendWhatsApp, setSendWhatsApp] = useState(true);
+  const [stockLocation, setStockLocation] = useState<'godown' | 'store'>('store');
 
   // ─── Derived ──────────────────────────────────────────────────────────────
   const isInterState = placeOfSupply !== '22';
@@ -86,7 +89,19 @@ export default function NewBillPage() {
   }, [deliveryUserId, deliveryStaff]);
 
   // ─── Calc ─────────────────────────────────────────────────────────────────
-  const { lines, totals } = useBillCalc(rawItems, billDiscountPct, charges, roundOffEnabled, isInterState, amountPaidRupees);
+  const { lines, totals } = useBillCalc(rawItems, billDiscountPct, charges, roundOffEnabled, isInterState, amountPaidRupees, discountMode);
+
+  // flipping ₹ <-> % keeps the discount the same: re-express the typed value in the new mode
+  const changeDiscountMode = (m: 'percent' | 'amount') => {
+    if (m === discountMode) return;
+    const amt = totals.billDiscAmtPaise;
+    setDiscountMode(m);
+    if (m === 'amount') setBillDiscountPct(amt / 100);
+    else {
+      const pre = lines.reduce((s, l) => s + l.taxable, 0) + amt; // subtotal before bill discount
+      setBillDiscountPct(pre > 0 ? Math.min(100, +(amt * 100 / pre).toFixed(2)) : 0);
+    }
+  };
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
   const toggleGlobalInclTax = () => {
@@ -95,10 +110,23 @@ export default function NewBillPage() {
     setRawItems(prev => prev.map(i => ({ ...i, priceInclTax: next })));
   };
 
+  // changing channel re-prices every line the cashier did not price by hand
+  const changeChannel = (ch: SalesChannel | '') => {
+    setOrderTag(ch);
+    if (!ch) return;
+    // default stock location follows the channel; the cashier can still change it
+    setStockLocation(ch === 'Home Delivery Order' || ch === 'Store Order' ? 'store' : 'godown');
+    const tier = CHANNEL_TIER[ch];
+    setRawItems(prev => prev.map(i => {
+      if (i.manualRate) return i;
+      const price = i.tierPrices?.[tier];
+      return price === undefined ? { ...i, missingTier: tier } : { ...i, rate: price, missingTier: undefined };
+    }));
+  };
+
   const handleCustomerSelect = (c: any) => {
     setCustomer(c);
-    const primary = TAG_PRIORITY.find(t => c.tags?.includes(t)) ?? '';
-    setOrderTag(primary);
+    changeChannel(channelForCustomer(c.tags));
     const defAddr = c.addresses?.find((a: any) => a.isDefault) ?? c.addresses?.[0];
     setBillingAddress(defAddr?.line ?? '');
     const gstin = c.gstNo ?? '';
@@ -147,6 +175,7 @@ export default function NewBillPage() {
     setOrderTag('');
     setInvoiceNo('');
     setBillDiscountPct(0);
+    setDiscountMode('percent');
     setCharges([]);
     setPaid({ cash: 0, upi: 0 });
     setNotes('');
@@ -162,7 +191,9 @@ export default function NewBillPage() {
     mutationFn: async (opts: { print: boolean; saveNew: boolean }) => {
       if (!customer) throw new Error('Select a customer first');
       if (!rawItems.length) throw new Error('Add at least one item');
-      if (!orderTag) throw new Error('Select an order type');
+      if (!orderTag) throw new Error('Select a sales channel');
+      const noRate = rawItems.find(i => i.missingTier);
+      if (noRate) throw new Error(`No ${noRate.missingTier} rate set for ${noRate.name}`);
 
       const bill = await api.createBillingBillV1({
         paymentTerm,
@@ -190,6 +221,9 @@ export default function NewBillPage() {
           gstRate: i.gstRate,
         })),
         billDiscountPct,
+        billDiscountMode: discountMode,
+        stockLocation,
+        sendWhatsApp,
         // additional charges are a taxable service line (SAC 996511) so they flow into the GST reports
         charges: charges.map(c => ({ ...c, hsn: CHARGE_SAC, gstRate: CHARGE_GST_RATE })),
         roundOffEnabled,
@@ -201,7 +235,7 @@ export default function NewBillPage() {
       return { bill, ...opts };
     },
     onSuccess: ({ bill, print, saveNew }) => {
-      toast({ title: `Invoice ${bill.invoiceNo} saved` });
+      toast({ title: `Invoice ${bill.invoiceNo} saved`, description: bill.whatsapp?.status === 'skipped_no_phone' ? 'No WhatsApp number' : sendWhatsApp ? 'WhatsApp queued' : undefined });
       if (saveNew) {
         resetForm();
       } else if (print) {
@@ -273,7 +307,8 @@ export default function NewBillPage() {
               sameAsBilling={sameAsBilling} onSameAsBillingChange={setSameAsBilling}
               placeOfSupply={placeOfSupply} onPlaceOfSupplyChange={setPlaceOfSupply}
               isInterState={isInterState}
-              orderTag={orderTag} onOrderTagChange={setOrderTag}
+              orderTag={orderTag} onOrderTagChange={(v: string) => changeChannel(v as SalesChannel)}
+              stockLocation={stockLocation} onStockLocationChange={setStockLocation}
             />
           </div>
 
@@ -317,7 +352,8 @@ export default function NewBillPage() {
               lines={lines}
               rawItems={rawItems}
               isInterState={isInterState}
-              customerTags={customer?.tags ?? []}
+              channel={orderTag}
+              stockLocation={stockLocation}
               globalPriceInclTax={globalPriceInclTax}
               onGlobalInclTaxToggle={toggleGlobalInclTax}
               onUpdate={(idx, patch) => setRawItems(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it))}
@@ -330,9 +366,12 @@ export default function NewBillPage() {
           <div className="p-4 bg-white border-t border-gray-100">
             <BillFooter
               billDiscountPct={billDiscountPct} onBillDiscountPctChange={setBillDiscountPct}
+              discountMode={discountMode} onDiscountModeChange={changeDiscountMode}
+              billDiscAmtPaise={totals.billDiscAmtPaise}
               charges={charges} onChargesChange={setCharges}
               roundOffEnabled={roundOffEnabled} onRoundOffEnabledChange={setRoundOffEnabled}
               paid={paid} onPaidChange={setPaid}
+              sendWhatsApp={sendWhatsApp} onSendWhatsAppChange={setSendWhatsApp}
               terms={terms} onTermsChange={setTerms}
               notes={notes} onNotesChange={setNotes}
             />

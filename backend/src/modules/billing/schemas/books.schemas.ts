@@ -79,7 +79,9 @@ export class BillingStockEntry extends Document {
   @Prop({ required: true }) productId: string;
   @Prop({ required: true }) name: string;
   @Prop({ required: true }) date: Date;
-  @Prop({ required: true, enum: ['OPENING', 'ADJUST'] }) kind: string;
+  @Prop({ required: true, enum: ['OPENING', 'ADJUST', 'TRANSFER_OUT', 'TRANSFER_IN'] }) kind: string;
+  @Prop({ enum: ['godown', 'store'], default: 'godown' }) location: string;
+  @Prop() transferId?: string;  // links the two halves of a godown <-> store transfer
   @Prop({ required: true }) qty: number;        // signed delta
   @Prop() unitCostPaise?: number;
   @Prop() note?: string;

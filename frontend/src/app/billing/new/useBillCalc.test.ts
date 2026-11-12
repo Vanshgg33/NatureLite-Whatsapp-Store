@@ -98,4 +98,20 @@ describe('billCalcPure', () => {
     const { totals: t2 } = billCalcPure(items, 0, [], false, false, 200);
     expect(t2.amountDuePaise).toBe(0);
   });
+
+  it('B7 – rupee bill discount equals the same % discount and is capped at the subtotal', () => {
+    const items = [mkItem({ rate: 1000, gstRate: 5, priceInclTax: false, qty: 1 })];
+    const pct = billCalcPure(items, 12, [], false, false, 0);
+    const amt = billCalcPure(items, 120, [], false, false, 0, 'amount');
+    expect(amt.totals.billDiscAmtPaise).toBe(12000);
+    expect(amt.totals.grandTotalPaise).toBe(pct.totals.grandTotalPaise);
+    expect(billCalcPure(items, 5000, [], false, false, 0, 'amount').totals.billDiscAmtPaise).toBe(100000);
+  });
+
+  it('B8 – fractional qty yields whole paise', () => {
+    const items = [mkItem({ rate: 33.33, qty: 0.3, gstRate: 5, priceInclTax: false })];
+    const { lines } = billCalcPure(items, 0, [], false, false, 0);
+    expect(Number.isInteger(lines[0].taxable)).toBe(true);
+    expect(lines[0].taxable).toBe(1000);
+  });
 });

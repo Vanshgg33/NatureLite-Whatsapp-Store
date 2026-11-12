@@ -7,6 +7,9 @@ import { BillingTagPrice, BillingTagPriceDocument } from './schemas/billing-tag-
 import { BillingBill, BillingBillDocument, BillLineItem, PaymentStatus } from './schemas/billing-bill.schema';
 import { BillingCounter, BillingCounterDocument } from './schemas/billing-counter.schema';
 import { Godown } from './schemas/godown.schema';
+import { isChannel, PRICE_TIERS } from './channels';
+import { BillingWhatsappService } from './billing-whatsapp.service';
+import { BillingStockService } from './billing-stock.service';
 import { AuditLog } from './schemas/audit-log.schema';
 import { User } from '../users/schemas/user.schema';
 import { TaxSettingsService } from './tax-settings/tax-settings.service';
@@ -14,6 +17,14 @@ import { TaxSettingsService } from './tax-settings/tax-settings.service';
 function validateInvoiceNo(no: string): boolean {
   return /^[A-Za-z0-9/\-]{1,16}$/.test(no);
 }
+
+// Report value in rupees for both legacy (rupee) and v1 (paise) bills: taxable + GST backward-compat fields are always rupees.
+const ITEM_VALUE = { $add: ['$items.taxableAmount', '$items.gstAmount'] };
+// One sale line with the bill's own timestamp (createdAt carries the time of day; invoiceDate is date-only).
+const SALE_LINE = {
+  at: '$createdAt', invoiceNo: '$invoiceNo', customerName: '$customerName', channel: '$orderTag',
+  qty: '$items.qty', rate: '$items.unitPrice', amount: ITEM_VALUE,
+};
 
 @Injectable()
 export class BillingService {
@@ -27,6 +38,8 @@ export class BillingService {
     @InjectModel(AuditLog.name) private auditLogModel: Model<any>,
     private readonly crmEngine: CrmEngineService,
     private readonly taxSettings: TaxSettingsService,
+    private readonly billingWhatsapp: BillingWhatsappService,
+    private readonly billingStock: BillingStockService,
   ) {}
 
   // Map a User document to the billing customer shape the frontend expects
@@ -175,8 +188,10 @@ export class BillingService {
       tpMap[pid].push({ tag: tp.tag, price: tp.price });
     }
 
+    const stock = await this.billingStock.availability(productIds.map(String));
     return products.map(p => ({
       ...p,
+      stock: stock[p._id.toString()],
       tagPrices: tpMap[p._id.toString()] ?? [],
       unit: (p as any).uqc ?? 'NOS',
     }));
@@ -189,7 +204,12 @@ export class BillingService {
     return this.tagPriceModel.find(filter).populate('productId', 'name sku price hsnCode').lean();
   }
 
+  private assertTier(tag: string) {
+    if (!(PRICE_TIERS as readonly string[]).includes(tag)) throw new BadRequestException(`Only ${PRICE_TIERS.join(' and ')} prices are supported`);
+  }
+
   async upsertTagPrice(productId: string, tag: CustomerTag, price: number) {
+    this.assertTier(tag);
     return this.tagPriceModel.findOneAndUpdate(
       { productId: new Types.ObjectId(productId), tag },
       { price },
@@ -204,6 +224,7 @@ export class BillingService {
   }
 
   async bulkUpsertTagPrices(rows: Array<{ productId: string; tag: CustomerTag; price: number }>) {
+    rows.forEach(r => this.assertTier(r.tag));
     const now = new Date();
     const ops = rows.map(r => ({
       updateOne: {
@@ -694,8 +715,9 @@ export class BillingService {
         $group: {
           _id: { sku: '$items.sku', name: '$items.name', hsnCode: '$items.hsnCode' },
           totalQty: { $sum: '$items.qty' },
-          totalValue: { $sum: '$items.total' },
+          totalValue: { $sum: ITEM_VALUE },
           uniqueCustomers: { $addToSet: '$customerId' },
+          lines: { $push: SALE_LINE },
         },
       },
       {
@@ -704,6 +726,7 @@ export class BillingService {
           sku: '$_id.sku',
           name: '$_id.name',
           hsnCode: '$_id.hsnCode',
+          lines: 1,
           totalQty: 1,
           totalValue: 1,
           uniqueCustomerCount: { $size: '$uniqueCustomers' },
@@ -745,7 +768,8 @@ export class BillingService {
           productName: { $first: '$items.name' },
           hsnCode: { $first: '$items.hsnCode' },
           qty: { $sum: '$items.qty' },
-          value: { $sum: '$items.total' },
+          value: { $sum: ITEM_VALUE },
+          lines: { $push: SALE_LINE },
         },
       },
       {
@@ -763,6 +787,7 @@ export class BillingService {
               hsnCode: '$hsnCode',
               qty: '$qty',
               value: '$value',
+              lines: '$lines',
             },
           },
         },
@@ -802,6 +827,7 @@ export class BillingService {
       gstRate: number;
     }>;
     billDiscountPct?: number;
+    billDiscountMode?: 'percent' | 'amount';
     charges?: Array<{ label: string; amtRupees: number; hsn?: string; gstRate?: number }>;
     roundOffEnabled?: boolean;
     amountPaidRupees?: number;
@@ -810,11 +836,24 @@ export class BillingService {
     notes?: string;
     deliveryUserId?: string;
     deliveryUserName?: string;
-  }, userId = 'system', ip = '') {
+    sendWhatsApp?: boolean;
+    stockLocation?: 'godown' | 'store';
+    stockOverrideReason?: string;
+  }, userId = 'system', ip = '', canOverrideStock = false) {
     if (!dto.items?.length) throw new BadRequestException('Bill must have at least one item');
+    if (!isChannel(dto.orderTag)) throw new BadRequestException('Sales channel is required: Transport Order, B2B Order, Home Delivery Order or Store Order');
 
     const docType = dto.docType ?? 'SALE';
     await this.taxSettings.assertPeriodOpen(dto.invoiceDate ? new Date(dto.invoiceDate) : new Date());
+
+    // 0. Stock: a sale may not take its location below zero (credit notes and orders do not check)
+    const stockLocation: 'godown' | 'store' = dto.stockLocation ?? (dto.orderTag === 'Home Delivery Order' || dto.orderTag === 'Store Order' ? 'store' : 'godown');
+    if (!['godown', 'store'].includes(stockLocation)) throw new BadRequestException('stockLocation must be godown or store');
+    let stockOverride: { reason: string; by: string; short: string[] } | undefined;
+    if (docType === 'SALE') {
+      const chk = await this.billingStock.assertAvailable(dto.items.map(i => ({ productId: i.productId, name: i.name, qty: i.qty })), stockLocation, { reason: dto.stockOverrideReason, allowed: canOverrideStock });
+      if (chk.overridden) stockOverride = { reason: dto.stockOverrideReason!.trim(), by: userId, short: chk.short };
+    }
 
     // 1. Invoice number
     const providedNo = dto.invoiceNo?.trim();
@@ -835,8 +874,6 @@ export class BillingService {
     // 3. Tax direction
     const pos = dto.placeOfSupply ?? '22';
     const isInterState = pos !== '22';
-
-    const billDiscountPct = dto.billDiscountPct ?? 0;
 
     // Snapshot per-product reporting attributes (GST treatment, UQC, category, barcode)
     const productDocs = await this.productModel
@@ -865,7 +902,7 @@ export class BillingService {
     // 4. Pre-discount taxables (for proportional allocation)
     const preTaxables = dto.items.map(item => {
       const ratePaise = Math.round(item.rate * 100);
-      const gross = ratePaise * item.qty;
+      const gross = Math.round(ratePaise * item.qty);
       const lineDiscAmt = Math.round(gross * (item.discountPct ?? 0) / 100);
       const afterLineDisc = gross - lineDiscAmt;
       return (item.priceInclTax !== false)
@@ -873,7 +910,15 @@ export class BillingService {
         : afterLineDisc;
     });
     const totalPreTaxable = preTaxables.reduce((s, t) => s + t, 0);
-    const billDiscAmtPaise = Math.round(totalPreTaxable * billDiscountPct / 100);
+    // amount mode: billDiscountPct carries rupees, capped at the subtotal; the % stored for print is derived
+    const rawDisc = dto.billDiscountPct ?? 0;
+    if (!(rawDisc >= 0) || (dto.billDiscountMode !== 'amount' && rawDisc > 100)) throw new BadRequestException('Invalid bill discount');
+    const billDiscAmtPaise = dto.billDiscountMode === 'amount'
+      ? Math.min(Math.round(rawDisc * 100), totalPreTaxable)
+      : Math.round(totalPreTaxable * rawDisc / 100);
+    const billDiscountPct = dto.billDiscountMode === 'amount'
+      ? (totalPreTaxable > 0 ? +(billDiscAmtPaise * 100 / totalPreTaxable).toFixed(2) : 0)
+      : rawDisc;
 
     const billDiscAlloc = (totalPreTaxable > 0 && billDiscAmtPaise > 0)
       ? preTaxables.map(t => Math.round(billDiscAmtPaise * t / totalPreTaxable))
@@ -882,7 +927,7 @@ export class BillingService {
     // 5. Per-line calc
     const lines = dto.items.map((item, i) => {
       const ratePaise = Math.round(item.rate * 100);
-      const gross = ratePaise * item.qty;
+      const gross = Math.round(ratePaise * item.qty);
       const lineDiscAmt = Math.round(gross * (item.discountPct ?? 0) / 100);
       const afterLineDisc = gross - lineDiscAmt;
       const taxable = (item.priceInclTax !== false)
@@ -1008,6 +1053,8 @@ export class BillingService {
       deliveryUserId: dto.deliveryUserId,
       deliveryUserName: dto.deliveryUserName,
       godownId: dto.godownId,
+      stockLocation,
+      stockOverride,
       placeOfSupply: pos,
       isInterState,
       paymentTerm: dto.paymentTerm ?? 'credit',
@@ -1053,7 +1100,13 @@ export class BillingService {
       await this.userModel.findByIdAndUpdate(dto.customerId, { $inc: { outstanding: outstandingDelta / 100 } });
     }
     this.crmEngine.refreshUser(dto.customerId).catch(() => {});
+    // fire and forget: a WhatsApp problem must never fail or delay the bill
+    if (dto.sendWhatsApp !== false && docType !== 'SALE_ORDER') this.billingWhatsapp.queue(String(bill._id)).catch(() => {});
     return bill;
+  }
+
+  retryWhatsapp(id: string) {
+    return this.billingWhatsapp.retry(id);
   }
 
   async cancelBill(id: string, reason: string, userId = 'system', ip = '') {

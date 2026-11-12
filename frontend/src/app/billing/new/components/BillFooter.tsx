@@ -8,14 +8,20 @@ const PAYMENT_MODES: { key: keyof PaidSplit; label: string }[] = [
 ];
 
 export interface BillFooterProps {
-  billDiscountPct: number;
+  billDiscountPct: number; // the typed value: rupees in 'amount' mode, percent otherwise
   onBillDiscountPctChange: (v: number) => void;
+  discountMode: 'percent' | 'amount';
+  /** parent converts the typed value so the discount stays the same */
+  onDiscountModeChange: (m: 'percent' | 'amount') => void;
+  billDiscAmtPaise: number;
   charges: BillCharge[];
   onChargesChange: (c: BillCharge[]) => void;
   roundOffEnabled: boolean;
   onRoundOffEnabledChange: (v: boolean) => void;
   paid: PaidSplit;
   onPaidChange: (v: PaidSplit) => void;
+  sendWhatsApp: boolean;
+  onSendWhatsAppChange: (v: boolean) => void;
   terms: string;
   onTermsChange: (v: string) => void;
   notes: string;
@@ -24,9 +30,11 @@ export interface BillFooterProps {
 
 export function BillFooter({
   billDiscountPct, onBillDiscountPctChange,
+  discountMode, onDiscountModeChange, billDiscAmtPaise,
   charges, onChargesChange,
   roundOffEnabled, onRoundOffEnabledChange,
   paid, onPaidChange,
+  sendWhatsApp, onSendWhatsAppChange,
   terms, onTermsChange,
   notes, onNotesChange,
 }: BillFooterProps) {
@@ -36,13 +44,26 @@ export function BillFooter({
       <div className="flex items-center gap-3">
         <label className="text-xs text-gray-500 w-36 shrink-0">Bill Discount</label>
         <div className="flex items-center gap-1">
-          <input type="number" min="0" max="100" step="0.5"
+          <input type="number" min="0" step="0.01"
             value={billDiscountPct || ''}
-            onChange={e => onBillDiscountPctChange(Math.min(100, parseFloat(e.target.value) || 0))}
-            className="w-16 text-right border border-gray-200 rounded px-1.5 py-1 text-xs focus:ring-2 focus:ring-[#2d7a4f]/30 focus:outline-none tabular-nums"
+            onChange={e => {
+              const v = Math.max(0, parseFloat(e.target.value) || 0);
+              onBillDiscountPctChange(discountMode === 'percent' ? Math.min(100, v) : v);
+            }}
+            className="w-20 text-right border border-gray-200 rounded px-1.5 py-1 text-xs focus:ring-2 focus:ring-[#2d7a4f]/30 focus:outline-none tabular-nums"
             placeholder="0"
           />
-          <span className="text-xs text-gray-400">%</span>
+          <div className="flex rounded border border-gray-200 overflow-hidden text-xs">
+            {(['amount', 'percent'] as const).map(m => (
+              <button key={m} type="button" onClick={() => onDiscountModeChange(m)}
+                className={discountMode === m ? 'px-2 py-1 bg-[#2d7a4f] text-white' : 'px-2 py-1 text-gray-500 hover:bg-gray-100'}>
+                {m === 'amount' ? '₹' : '%'}
+              </button>
+            ))}
+          </div>
+          {billDiscAmtPaise > 0 && (
+            <span className="text-[11px] text-gray-400 ml-1">= ₹{(billDiscAmtPaise / 100).toFixed(2)} off</span>
+          )}
         </div>
       </div>
 
@@ -99,6 +120,12 @@ export function BillFooter({
           Received ₹{(paid.cash + paid.upi).toLocaleString('en-IN')}. Any balance stays due on the bill.
         </p>
       </div>
+
+      <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer">
+        <input type="checkbox" checked={sendWhatsApp} onChange={e => onSendWhatsAppChange(e.target.checked)}
+          className="h-3.5 w-3.5 accent-[#2d7a4f]" />
+        Send bill on WhatsApp
+      </label>
 
       {/* Terms */}
       <div>

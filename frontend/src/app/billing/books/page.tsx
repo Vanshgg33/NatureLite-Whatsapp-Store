@@ -310,26 +310,44 @@ function PurchasesTab() {
 function StockTab() {
   const list = useBooks('stock-entries');
   const save = useSave('stock-entries');
-  const [f, setF] = useState({ kind: 'OPENING', qty: '', cost: '', date: today(), note: '' });
+  const [f, setF] = useState({ kind: 'OPENING', qty: '', cost: '', date: today(), note: '', location: 'godown' });
   const [prod, setProd] = useState({ id: '', name: '' });
+  const transfer = useSave('stock-transfer');
+  const [t, setT] = useState({ qty: '', from: 'godown', note: '' });
+  const [tProd, setTProd] = useState({ id: '', name: '' });
+  const to = t.from === 'godown' ? 'store' : 'godown';
+  const LOC: Record<string, string> = { godown: 'Godown', store: 'Store' };
   return (
     <div className="space-y-4">
+      <Panel title="Transfer stock between Godown and Store">
+        <p className="text-xs text-gray-500">A transfer is not a sale or a purchase: it moves quantity and its cost, so total stock value does not change.</p>
+        <div className="grid sm:grid-cols-5 gap-2 items-end">
+          <div className="sm:col-span-2"><Field label="Product"><ProductPicker value={tProd} onChange={setTProd} /></Field></div>
+          <Field label="From"><select className={INPUT} value={t.from} onChange={e => setT({ ...t, from: e.target.value })}><option value="godown">Godown</option><option value="store">Store</option></select></Field>
+          <Field label="To"><input className={INPUT} value={LOC[to]} disabled /></Field>
+          <Field label="Quantity"><input className={INPUT} type="number" min="0" value={t.qty} onChange={e => setT({ ...t, qty: e.target.value })} /></Field>
+        </div>
+        <Button size="sm" disabled={!tProd.id || !(Number(t.qty) > 0) || transfer.isPending}
+          onClick={() => transfer.mutate({ productId: tProd.id, name: tProd.name, qty: Number(t.qty), from: t.from, to, note: t.note || undefined }, { onSuccess: () => { setTProd({ id: '', name: '' }); setT({ ...t, qty: '' }); } })}>Transfer</Button>
+        {transfer.isError && <div className="text-xs text-red-600">{errMsg(transfer.error)}</div>}
+      </Panel>
       <Panel title="Opening stock / adjustment">
         <p className="text-xs text-gray-500">Purchases and sales move stock automatically. Use this for the opening quantity (dated on the day your books open) and for corrections such as damage or recount (use a negative quantity to reduce).</p>
-        <div className="grid sm:grid-cols-5 gap-2 items-end">
+        <div className="grid sm:grid-cols-6 gap-2 items-end">
+          <Field label="Location"><select className={INPUT} value={f.location} onChange={e => setF({ ...f, location: e.target.value })}><option value="godown">Godown</option><option value="store">Store</option></select></Field>
           <Field label="Kind"><select className={INPUT} value={f.kind} onChange={e => setF({ ...f, kind: e.target.value })}><option value="OPENING">Opening stock</option><option value="ADJUST">Adjustment</option></select></Field>
           <div className="sm:col-span-2"><Field label="Product"><ProductPicker value={prod} onChange={setProd} /></Field></div>
           <Field label="Quantity (± for adjustments)"><input className={INPUT} type="number" value={f.qty} onChange={e => setF({ ...f, qty: e.target.value })} /></Field>
           <Field label="Unit cost ₹ (pre-tax)"><input className={INPUT} type="number" value={f.cost} onChange={e => setF({ ...f, cost: e.target.value })} /></Field>
         </div>
         <Button size="sm" disabled={!prod.id || !Number(f.qty) || save.isPending}
-          onClick={() => save.mutate({ kind: f.kind, productId: prod.id, name: prod.name, qty: Number(f.qty), unitCostRupees: f.cost ? Number(f.cost) : undefined, date: f.date }, { onSuccess: () => { setProd({ id: '', name: '' }); setF({ ...f, qty: '', cost: '' }); } })}>Save</Button>
+          onClick={() => save.mutate({ kind: f.kind, productId: prod.id, name: prod.name, qty: Number(f.qty), unitCostRupees: f.cost ? Number(f.cost) : undefined, date: f.date, location: f.location }, { onSuccess: () => { setProd({ id: '', name: '' }); setF({ ...f, qty: '', cost: '' }); } })}>Save</Button>
         {save.isError && <div className="text-xs text-red-600">{errMsg(save.error)}</div>}
       </Panel>
       <div className="bg-white rounded-xl shadow-sm overflow-auto">
-        <table className="w-full"><thead><tr>{['Date', 'Kind', 'Product', 'Qty', 'Unit cost'].map(h => <th key={h} className={TH}>{h}</th>)}</tr></thead>
+        <table className="w-full"><thead><tr>{['Date', 'Kind', 'Location', 'Product', 'Qty', 'Unit cost'].map(h => <th key={h} className={TH}>{h}</th>)}</tr></thead>
           <tbody>{(list.data ?? []).map((e: any) => (
-            <tr key={e._id} className="border-t"><td className={TD}>{day(e.date)}</td><td className={TD}>{e.kind}</td><td className={TD}>{e.name}</td><td className={`${TD} text-right`}>{e.qty}</td><td className={`${TD} text-right`}>{e.unitCostPaise != null ? inr(e.unitCostPaise) : '—'}</td></tr>
+            <tr key={e._id} className="border-t"><td className={TD}>{day(e.date)}</td><td className={TD}>{e.kind.replace('_', ' ')}</td><td className={TD}>{e.location === 'store' ? 'Store' : 'Godown'}</td><td className={TD}>{e.name}</td><td className={`${TD} text-right`}>{e.qty}</td><td className={`${TD} text-right`}>{e.unitCostPaise != null ? inr(e.unitCostPaise) : '—'}</td></tr>
           ))}</tbody></table>
       </div>
     </div>

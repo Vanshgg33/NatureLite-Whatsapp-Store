@@ -25,6 +25,10 @@ const TAG_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
   'Store/Retail': { bg: 'bg-purple-50', text: 'text-purple-700', dot: 'bg-purple-400' },
   Wholesale:      { bg: 'bg-amber-50',  text: 'text-amber-700',  dot: 'bg-amber-400' },
   Retail:         { bg: 'bg-pink-50',   text: 'text-pink-700',   dot: 'bg-pink-400' },
+  'B2B Order':    { bg: 'bg-blue-50',   text: 'text-blue-700',   dot: 'bg-blue-400' },
+  'Transport Order': { bg: 'bg-orange-50', text: 'text-orange-700', dot: 'bg-orange-400' },
+  'Home Delivery Order': { bg: 'bg-teal-50', text: 'text-teal-700', dot: 'bg-teal-400' },
+  'Store Order':  { bg: 'bg-purple-50', text: 'text-purple-700', dot: 'bg-purple-400' },
 };
 
 function StatCard({ label, value, sub, icon: Icon, color }: { label: string; value: string; sub?: string; icon: any; color: string }) {

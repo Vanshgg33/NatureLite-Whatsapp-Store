@@ -1,6 +1,6 @@
 import { Books } from './books';
 import { RDoc } from './docs';
-import { collectMoves, groupByProduct, StockMove, totalStockValue, valueStock } from './stock';
+import { collectMoves, groupByProduct, movesForLocation, StockMove, totalStockValue, valueStock } from './stock';
 
 /**
  * Double-entry postings derived from the documents. Reports read the books through this single engine,
@@ -131,7 +131,7 @@ export function buildLedger(b: Books, before: Date): Ledger {
 
 /** Closing stock appears twice: as an asset and as a credit in the trading account. */
 export function withClosingStock(b: Books, l: Ledger, before: Date): Posting[] {
-  const v = totalStockValue(groupByProduct(b.moves), before, fallbackCostOf(b));
+  const v = totalStockValue(groupByProduct(movesForLocation(b.moves)), before, fallbackCostOf(b));
   return [...l.postings, { acct: 'STOCK', dr: v, cr: 0, date: before }, { acct: 'CLOSING_STOCK_TR', dr: 0, cr: v, date: before }];
 }
 
@@ -166,7 +166,7 @@ export function computePnl(b: Books, from: Date, to: Date) {
     const k = /loan interest/i.test(e.category) ? 'Loan Interest Expense' : /processing fee/i.test(e.category) ? 'Loan Processing Fee Expense' : /loan charge/i.test(e.category) ? 'Loan Charges Expense' : 'Other Expense';
     indirect.set(k, (indirect.get(k) ?? 0) + e.amountPaise);
   }
-  const groups = groupByProduct(b.moves), fb = fallbackCostOf(b);
+  const groups = groupByProduct(movesForLocation(b.moves)), fb = fallbackCostOf(b);
   const v = {
     sale: sum(sales, d => d.totalPaise), creditNote: sum(cns, d => d.totalPaise),
     purchase: sum(bills, p => p.totalPaise), debitNote: sum(dns, p => p.totalPaise),

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { Fragment, useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart3, Download, ChevronDown, ChevronRight, ArrowUpDown, X, User } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -9,11 +9,12 @@ import { istDateKey, istDaysAgoKey, istWeekStartKey, istMonthKey } from '@/lib/t
 import { useDebouncedValue } from '@/lib/utils';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
+import { CHANNELS, CHANNEL_COLORS } from '@/lib/billing/channel';
 import { StatementReport, STATEMENT_TABS, type StatementKind } from './StatementReport';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const ORDER_TAGS = ['B2B', 'Transport', 'Home Delivery', 'Store/Retail', 'Wholesale', 'Retail'];
+const ORDER_TAGS: readonly string[] = CHANNELS;
 
 const TAG_COLORS: Record<string, string> = {
   B2B: 'bg-blue-100 text-blue-700',
@@ -35,6 +36,12 @@ function startOfWeek() { return istWeekStartKey(true); }
 function startOfMonth() { return `${istMonthKey()}-01`; }
 function toISO(date: string, time: string, sec = '00') { return date ? `${date}T${time}:${sec}+05:30` : undefined; }
 
+// Bill timestamp in IST, e.g. 12 Nov 2026, 07:57:56 pm
+function fmtDT(at: string) {
+  return new Date(at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+}
+const newestFirst = (lines: any[]) => [...(lines ?? [])].sort((a, b) => +new Date(b.at) - +new Date(a.at));
+
 // ── Excel export ──────────────────────────────────────────────────────────────
 
 function exportProducts(data: any[]) {
@@ -43,7 +50,10 @@ function exportProducts(data: any[]) {
     ...data.map(r => [r.sku, r.name, r.hsnCode || '', r.totalQty, r.totalValue, r.uniqueCustomerCount, Number((r.avgRate ?? 0).toFixed(2))]),
   ];
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Product Sales');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Summary');
+  const detail: (string | number)[][] = [['SKU', 'Product', 'Date & time', 'Invoice', 'Customer', 'Channel', 'Qty', 'Rate (₹)', 'Amount (₹)']];
+  for (const r of data) for (const l of newestFirst(r.lines)) detail.push([r.sku, r.name, fmtDT(l.at), l.invoiceNo, l.customerName, l.channel, l.qty, l.rate, l.amount]);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detail), 'Detail');
   XLSX.writeFile(wb, `product-sales-${today()}.xlsx`);
 }
 
@@ -61,7 +71,10 @@ function exportCustomers(data: any[]) {
     }
   }
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Customer Sales');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Summary');
+  const detail: (string | number)[][] = [['Customer', 'Phone', 'SKU', 'Product', 'Date & time', 'Invoice', 'Channel', 'Qty', 'Rate (₹)', 'Amount (₹)']];
+  for (const c of data) for (const p of c.products) for (const l of newestFirst(p.lines)) detail.push([c.customerName, c.customerPhone, p.sku, p.name, fmtDT(l.at), l.invoiceNo, l.channel, l.qty, l.rate, l.amount]);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detail), 'Detail');
   XLSX.writeFile(wb, `customer-sales-${today()}.xlsx`);
 }
 
@@ -194,7 +207,7 @@ function FilterBar({ filters, onChange }: { filters: FilterState; onChange: (f: 
             className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f]" />
         </div>
         <div>
-          <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Order tag</label>
+          <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Sales channel</label>
           <select value={filters.orderTag} onChange={e => set('orderTag', e.target.value)}
             className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f] bg-white">
             <option value="">All tags</option>
@@ -245,10 +258,43 @@ function FilterBar({ filters, onChange }: { filters: FilterState; onChange: (f: 
   );
 }
 
+function SaleLines({ lines, showCustomer }: { lines: any[]; showCustomer?: boolean }) {
+  return (
+    <table className="w-full text-xs">
+      <thead>
+        <tr className="text-gray-400 uppercase tracking-wide">
+          <th className="text-left pb-1.5 font-medium pr-4">Date &amp; time</th>
+          <th className="text-left pb-1.5 font-medium pr-4">Invoice</th>
+          {showCustomer && <th className="text-left pb-1.5 font-medium pr-4">Customer</th>}
+          <th className="text-left pb-1.5 font-medium pr-4">Channel</th>
+          <th className="text-right pb-1.5 font-medium pr-4">Qty</th>
+          <th className="text-right pb-1.5 font-medium pr-4">Rate</th>
+          <th className="text-right pb-1.5 font-medium">Amount</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-gray-100">
+        {newestFirst(lines).map((l, i) => (
+          <tr key={i}>
+            <td className="py-1.5 pr-4 text-gray-600 whitespace-nowrap">{fmtDT(l.at)}</td>
+            <td className="py-1.5 pr-4 font-mono text-gray-500">{l.invoiceNo}</td>
+            {showCustomer && <td className="py-1.5 pr-4 text-gray-700">{l.customerName}</td>}
+            <td className="py-1.5 pr-4 text-gray-500">{l.channel}</td>
+            <td className="py-1.5 pr-4 text-right tabular-nums">{l.qty}</td>
+            <td className="py-1.5 pr-4 text-right tabular-nums">{fmt(l.rate)}</td>
+            <td className="py-1.5 text-right font-semibold text-gray-800 tabular-nums">{fmt(l.amount)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 // ── Product table ─────────────────────────────────────────────────────────────
 
 function ProductReport({ data, loading }: { data: any[]; loading: boolean }) {
   const [sortBy, setSortBy] = useState<'totalValue' | 'totalQty'>('totalValue');
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const toggle = (k: string) => setOpen(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
   const sorted = useMemo(() => [...data].sort((a, b) => b[sortBy] - a[sortBy]), [data, sortBy]);
 
@@ -289,8 +335,11 @@ function ProductReport({ data, loading }: { data: any[]; loading: boolean }) {
           <tbody className="divide-y divide-gray-50">
             {sorted.length === 0 ? (
               <tr><td colSpan={8} className="text-center text-gray-400 py-12">No sales in this period.</td></tr>
-            ) : sorted.map((r, i) => (
-              <tr key={`${r.sku}:${r.name}`} className="hover:bg-gray-50 transition-colors">
+            ) : sorted.map((r, i) => {
+              const k = `${r.sku}:${r.name}`;
+              return (
+              <Fragment key={k}>
+              <tr onClick={() => toggle(k)} className="hover:bg-gray-50 transition-colors cursor-pointer">
                 <td className="px-4 py-3 text-gray-400 text-xs">{i + 1}</td>
                 <td className="px-4 py-3 font-medium text-gray-800">{r.name}</td>
                 <td className="px-4 py-3 text-gray-400 font-mono text-xs">{r.sku}</td>
@@ -300,7 +349,12 @@ function ProductReport({ data, loading }: { data: any[]; loading: boolean }) {
                 <td className="px-4 py-3 text-right text-gray-500">{r.uniqueCustomerCount}</td>
                 <td className="px-4 py-3 text-right text-gray-500">{fmt(r.avgRate ?? 0)}</td>
               </tr>
-            ))}
+              {open.has(k) && (
+                <tr><td colSpan={8} className="bg-gray-50 px-6 pb-3 pt-2 overflow-x-auto"><SaleLines lines={r.lines} showCustomer /></td></tr>
+              )}
+              </Fragment>
+              );
+            })}
           </tbody>
           {sorted.length > 0 && (
             <tfoot className="border-t-2 border-gray-200 bg-gray-50 text-xs font-semibold">
@@ -322,6 +376,8 @@ function ProductReport({ data, loading }: { data: any[]; loading: boolean }) {
 
 function CustomerReport({ data, loading }: { data: any[]; loading: boolean }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [openProd, setOpenProd] = useState<Set<string>>(new Set());
+  const toggleProd = (k: string) => setOpenProd(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
   const toggle = (id: string) => setExpanded(prev => {
     const s = new Set(prev);
@@ -388,13 +444,18 @@ function CustomerReport({ data, loading }: { data: any[]; loading: boolean }) {
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {c.products.map((p: any, pi: number) => (
-                        <tr key={pi}>
+                        <Fragment key={pi}>
+                        <tr onClick={() => toggleProd(`${key}:${p.sku}`)} className="cursor-pointer hover:bg-gray-100">
                           <td className="py-1.5 pr-4 font-mono text-gray-500">{p.sku}</td>
                           <td className="py-1.5 pr-4 text-gray-700">{p.name}</td>
                           <td className="py-1.5 pr-4 text-gray-400">{p.hsnCode || '—'}</td>
                           <td className="py-1.5 pr-4 text-right text-gray-600 tabular-nums">{p.qty}</td>
                           <td className="py-1.5 text-right font-semibold text-gray-800 tabular-nums">{fmt(p.value)}</td>
                         </tr>
+                        {openProd.has(`${key}:${p.sku}`) && (
+                          <tr><td colSpan={5} className="pb-2 pl-4"><SaleLines lines={p.lines} /></td></tr>
+                        )}
+                        </Fragment>
                       ))}
                     </tbody>
                     <tfoot className="border-t border-gray-200">

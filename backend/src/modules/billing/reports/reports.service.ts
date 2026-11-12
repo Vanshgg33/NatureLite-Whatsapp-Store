@@ -169,7 +169,7 @@ export class ReportsService {
       accounts: accounts.map((a: any) => ({ id: String(a._id), name: a.name, kind: a.kind, openingBalancePaise: a.openingBalancePaise ?? 0 })),
       opening: o ? { asOn: new Date(o.asOn), retainedEarningsPaise: o.retainedEarningsPaise ?? 0, partyOpenings: o.partyOpenings ?? [], modeAccountMap: o.modeAccountMap ?? {} } : null,
       products: products.map((x: any) => ({ id: String(x._id), name: x.name, sku: x.sku ?? '', salePricePaise: Math.round((x.price ?? 0) * 100), purchasePricePaise: Math.round((x.purchasePrice ?? 0) * 100) })),
-      moves: collectMoves(docs, pdocs, stockEntries.map((e: any) => ({ productId: e.productId, date: new Date(e.date), kind: e.kind, qty: e.qty, unitCostPaise: e.unitCostPaise }))),
+      moves: collectMoves(docs, pdocs, stockEntries.map((e: any) => ({ productId: e.productId, date: new Date(e.date), kind: e.kind, qty: e.qty, unitCostPaise: e.unitCostPaise, location: e.location }))),
     };
     return { books, co };
   }
@@ -187,10 +187,11 @@ export class ReportsService {
     return { from: r.from, to: r.to, ...p, sheets: pnlSheet(p, r.from, r.to), view: pnlSheet(p, r.from, r.to), _file: `ProfitAndLossReport_${fileDay(r.from)}_to_${fileDay(r.to)}.xlsx` };
   }
 
-  async stockSummary(asOn?: string) {
+  async stockSummary(asOn?: string, location?: string) {
     const a = this.asOn(asOn);
+    if (location && !['all', 'godown', 'store'].includes(location)) throw new BadRequestException('location must be all, godown or store');
     const { books } = await this.loadBooks(a.before);
-    const r = buildStockSummary(books, a.ymd);
+    const r = buildStockSummary(books, a.ymd, (location as any) || 'all');
     return { ...r, sheets: r.sheet, view: r.sheet, _file: `StockSummaryReport_${fileDay(a.ymd)}.xlsx` };
   }
 

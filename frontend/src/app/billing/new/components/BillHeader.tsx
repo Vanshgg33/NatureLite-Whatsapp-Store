@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { GST_STATE_CODES } from '@/lib/billing/constants/stateCodes';
+import { CHANNELS, CHANNEL_COLORS } from '@/lib/billing/channel';
 import type { GodownDto } from '../types';
 
 type CTag = 'B2B' | 'Transport' | 'Home Delivery' | 'Store/Retail' | 'Wholesale' | 'Retail';
@@ -169,6 +170,8 @@ export interface BillHeaderProps {
   isInterState: boolean;
   orderTag: string;
   onOrderTagChange: (v: string) => void;
+  stockLocation: 'godown' | 'store';
+  onStockLocationChange: (v: 'godown' | 'store') => void;
 }
 
 export function BillHeader({
@@ -182,7 +185,7 @@ export function BillHeader({
   shippingAddress, onShippingAddressChange,
   sameAsBilling, onSameAsBillingChange,
   placeOfSupply, onPlaceOfSupplyChange, isInterState,
-  orderTag, onOrderTagChange,
+  orderTag, onOrderTagChange, stockLocation, onStockLocationChange,
 }: BillHeaderProps) {
   return (
     <div className="space-y-3">
@@ -311,17 +314,25 @@ export function BillHeader({
 
       {/* Row 5: Order tag chips */}
       <div className="flex flex-wrap gap-1.5">
-        {ALL_TAGS.map(tag => (
+        {CHANNELS.map(tag => (
           <button key={tag} type="button"
-            onClick={() => onOrderTagChange(orderTag === tag ? '' : tag)}
+            onClick={() => onOrderTagChange(tag)}
             className={cn('px-2.5 py-1 rounded-full text-xs font-medium border transition-all',
               orderTag === tag
-                ? (TAG_COLORS[tag] ?? 'bg-gray-100 text-gray-700') + ' border-current shadow-sm'
+                ? CHANNEL_COLORS[tag] + ' border-current shadow-sm'
                 : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
             )}>
             {tag}
           </button>
         ))}
+        <label className="ml-auto flex items-center gap-1.5 text-xs text-gray-500">
+          Stock from
+          <select value={stockLocation} onChange={e => onStockLocationChange(e.target.value as 'godown' | 'store')}
+            className="border border-gray-200 rounded px-1.5 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#2d7a4f]/30">
+            <option value="store">Store</option>
+            <option value="godown">Godown</option>
+          </select>
+        </label>
       </div>
     </div>
   );

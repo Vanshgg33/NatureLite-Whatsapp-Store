@@ -1,6 +1,6 @@
 import { Books } from './books';
 import { balances, buildLedger, computePnl, fallbackCostOf, Ledger, netIncomeTo, withClosingStock } from './ledger';
-import { groupByProduct, valueStock } from './stock';
+import { groupByProduct, movesForLocation, StockLocation, valueStock } from './stock';
 import { fmtDMY, rs, ymdToDMY } from './period';
 
 // ───────────────────────── Profit & Loss ─────────────────────────
@@ -33,9 +33,9 @@ export function pnlSheet(p: ReturnType<typeof computePnl>, from: string, to: str
 
 // ───────────────────────── Stock Summary ─────────────────────────
 
-export function buildStockSummary(b: Books, asOnYmd: string) {
+export function buildStockSummary(b: Books, asOnYmd: string, location: StockLocation | 'all' = 'all') {
   const before = new Date(new Date(asOnYmd + 'T00:00:00+05:30').getTime() + 86_400_000);
-  const groups = groupByProduct(b.moves);
+  const groups = groupByProduct(movesForLocation(b.moves, location));
   const fb = fallbackCostOf(b);
 
   // Reserved = open sale orders (not converted into a sale yet) up to the as-on date
@@ -62,13 +62,13 @@ export function buildStockSummary(b: Books, asOnYmd: string) {
   const sheet = [{
     name: 'Stock Summary Report',
     rows: [
-      ['Godown', 'All Godown'], [],
+      ['Godown', location === 'all' ? 'All Godown' : location === 'godown' ? 'Godown' : 'Store'], [],
       ['Item Name', 'Sale Price', 'Purchase Price', 'Stock Quantity', 'Available Quantity for Sale', 'Reserved Quantity', 'Stock Value'], [],
       ...rows.map(r => [r.name, rs(r.salePricePaise), rs(r.purchasePricePaise), r.qty, r.available, r.reserved, rs(r.valuePaise)]),
       ['Total', '', '', totals.qty, totals.available, totals.reserved, rs(totals.valuePaise)],
     ],
   }];
-  return { asOn: asOnYmd, rows, totals, sheet };
+  return { asOn: asOnYmd, location, rows, totals, sheet };
 }
 
 // ───────────────────────── tree helpers ─────────────────────────

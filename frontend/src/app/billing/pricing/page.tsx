@@ -12,16 +12,12 @@ import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
-const ALL_TAGS = ['B2B', 'Transport', 'Home Delivery', 'Store/Retail', 'Wholesale', 'Retail'] as const;
+const ALL_TAGS = ['B2B', 'Store/Retail'] as const;
 type CTag = typeof ALL_TAGS[number];
 
 const TAG_COLORS: Record<CTag, string> = {
   B2B: 'bg-blue-50 text-blue-700',
-  Transport: 'bg-orange-50 text-orange-700',
-  'Home Delivery': 'bg-teal-50 text-teal-700',
   'Store/Retail': 'bg-purple-50 text-purple-700',
-  Wholesale: 'bg-amber-50 text-amber-700',
-  Retail: 'bg-pink-50 text-pink-700',
 };
 
 export default function BillingPricingPage() {
@@ -96,7 +92,7 @@ export default function BillingPricingPage() {
       for (const line of lines) {
         const [sku, tag, priceStr] = line.split(',').map(s => s.trim());
         const product = products.find((p: any) => p.sku === sku);
-        if (!product || !tag || !priceStr) continue;
+        if (!product || !(ALL_TAGS as readonly string[]).includes(tag) || !priceStr) continue;
         const price = parseFloat(priceStr);
         if (!isNaN(price)) rows.push({ productId: product._id, tag, price });
       }
@@ -153,7 +149,7 @@ export default function BillingPricingPage() {
           )}
         </div>
 
-        <p className="text-xs text-gray-400">CSV format, one row per line: <code>sku,tag,price</code> — no header row</p>
+        <p className="text-xs text-gray-400">CSV format, one row per line: <code>sku,tag,price</code> — tag is B2B or Store/Retail, no header row</p>
 
         {/* Price grid */}
         <div className="bg-white rounded-xl shadow-sm overflow-x-auto">

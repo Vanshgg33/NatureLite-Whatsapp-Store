@@ -61,6 +61,11 @@ function buildGstSummary(items: any[], isInterState: boolean) {
   return Object.entries(map).map(([rate, v]) => ({ rate: Number(rate), ...v })).filter(v => v.rate > 0);
 }
 
+const WA_LABEL: Record<string, string> = {
+  queued: 'Queued', sending: 'Sending…', retrying: 'Retrying', sent: 'Sent', failed: 'Failed',
+  skipped_no_phone: 'No WhatsApp number', skipped_cancelled: 'Skipped',
+};
+
 // ─── Cancel dialog ────────────────────────────────────────────────────────────
 function CancelDialog({ billId, onClose }: { billId: string; onClose: () => void }) {
   const [reason, setReason] = useState('');
@@ -111,6 +116,12 @@ export default function InvoicePage() {
     queryFn: () => api.getBillingBill(id),
   });
 
+  const qc = useQueryClient();
+  const retryWa = useMutation({
+    mutationFn: () => api.retryBillingWhatsapp(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['billing-bill', id] }),
+  });
+
   useEffect(() => {
     if (bill && autoPrint) {
       const t = setTimeout(() => window.print(), 400);
@@ -156,6 +167,17 @@ export default function InvoicePage() {
             onClick={() => setShowCancel(true)}>
             <XCircle className="h-4 w-4 mr-1.5" /> Cancel Invoice
           </Button>
+        )}
+        {!isCancelled && (
+          <span className="flex items-center gap-1.5 text-xs text-gray-500">
+            WhatsApp: <b className={bill.whatsapp?.status === 'failed' ? 'text-red-600' : 'text-gray-700'}>{WA_LABEL[bill.whatsapp?.status ?? ''] ?? 'Not sent'}</b>
+            {bill.whatsapp?.status === 'failed' && bill.whatsapp?.lastError && <span title={bill.whatsapp.lastError}>ⓘ</span>}
+            {['failed', 'skipped_no_phone', undefined].includes(bill.whatsapp?.status) && can('billing_new.create') && (
+              <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={retryWa.isPending} onClick={() => retryWa.mutate()}>
+                {bill.whatsapp?.status === 'failed' ? 'Retry' : 'Send'}
+              </Button>
+            )}
+          </span>
         )}
         <span className={`ml-auto text-xs px-2.5 py-1 rounded-full border font-medium ${isCancelled ? 'text-gray-500 bg-gray-50 border-gray-200' : STATUS_STYLE[bill.paymentStatus]}`}>
           {isCancelled ? 'Cancelled' : bill.paymentStatus === 'paid' ? 'Paid' : bill.paymentStatus === 'partial' ? 'Partially Paid' : 'Unpaid'}
@@ -255,7 +277,6 @@ export default function InvoicePage() {
                 <th style={TH}>HSN</th>
                 <th style={TH}>MRP</th>
                 <th style={TH}>Qty</th>
-                <th style={TH}>Unit</th>
                 <th style={TH}>Rate (Excl)</th>
                 <th style={TH}>Taxable</th>
                 {isInterState ? (
@@ -271,7 +292,6 @@ export default function InvoicePage() {
               <tr style={{ background: '#d4edda', fontSize: 8 }}>
                 <th style={TH}></th>
                 <th style={{ ...TH, textAlign: 'left' }}></th>
-                <th style={TH}></th>
                 <th style={TH}></th>
                 <th style={TH}></th>
                 <th style={TH}></th>
@@ -304,7 +324,6 @@ export default function InvoicePage() {
                     <td style={{ ...TD, fontFamily: 'monospace' }}>{it.hsnCode || '—'}</td>
                     <td style={TD}>{it.mrp > 0 ? inr(it.mrp) : '—'}</td>
                     <td style={TD}>{it.qty}</td>
-                    <td style={TD}>{it.unit ?? '—'}</td>
                     <td style={{ ...TD, textAlign: 'right' }}>{inr(rate)}</td>
                     <td style={{ ...TD, textAlign: 'right' }}>{inr(taxable)}</td>
                     {isInterState ? (

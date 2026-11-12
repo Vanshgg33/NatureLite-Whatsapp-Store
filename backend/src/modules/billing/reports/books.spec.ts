@@ -1,6 +1,6 @@
 import { Books, toPDoc, toPayRec } from './books';
 import { toRDoc } from './docs';
-import { collectMoves, valueStock } from './stock';
+import { collectMoves, movesForLocation, valueStock } from './stock';
 import { computePnl, netIncomeTo } from './ledger';
 import { buildBalanceSheet, buildStockSummary, buildTrialBalance, pnlSheet } from './statements';
 import { buildGstr3b } from './gstr3b';
@@ -65,21 +65,45 @@ function fixture(): Books {
 }
 
 describe('stock valuation', () => {
-  it('uses moving weighted-average cost, values negative stock at 0 and falls back to the product cost', () => {
+  it('values stock FIFO, values negative stock at 0 and falls back to the product cost', () => {
     const d = (n: number) => new Date(2026, 0, n);
     const moves = [
       { productId: 'p', date: d(1), qty: 10, kind: 'OPENING' as const, unitCostPaise: 100 },
       { productId: 'p', date: d(2), qty: 10, kind: 'PURCHASE' as const, unitCostPaise: 200 },
       { productId: 'p', date: d(3), qty: -5, kind: 'SALE' as const },
     ];
-    expect(valueStock(moves, d(10))).toMatchObject({ qty: 15, costPaise: 150, valuePaise: 2250 });
+    // the sale of 5 takes the oldest layer: 5 @100 + 10 @200 remain
+    expect(valueStock(moves, d(10))).toMatchObject({ qty: 15, valuePaise: 2500 });
     expect(valueStock(moves, d(2))).toMatchObject({ qty: 10, valuePaise: 1000 }); // purchase on the 2nd is excluded (strictly before)
     // unpriced opening stock is averaged at the fallback cost, not at zero
     const unpriced = [{ productId: 'p', date: d(1), qty: 10, kind: 'OPENING' as const }, { productId: 'p', date: d(2), qty: 10, kind: 'PURCHASE' as const, unitCostPaise: 200 }];
-    expect(valueStock(unpriced, d(5), 100)).toMatchObject({ qty: 20, costPaise: 150, valuePaise: 3000 });
+    expect(valueStock(unpriced, d(5), 100)).toMatchObject({ qty: 20, valuePaise: 3000 });
     const neg = [{ productId: 'p', date: d(1), qty: -4, kind: 'SALE' as const }];
     expect(valueStock(neg, d(5), 300)).toMatchObject({ qty: -4, valuePaise: 0 });
     expect(valueStock([{ productId: 'p', date: d(1), qty: 3, kind: 'ADJUST' as const }], d(5), 300).valuePaise).toBe(900);
+  });
+});
+
+describe('stock locations', () => {
+  const d = (n: number) => new Date(2026, 0, n);
+  const mv = [
+    { productId: 'p', date: d(1), qty: 100, kind: 'PURCHASE' as const, unitCostPaise: 50, location: 'godown' as const },
+    { productId: 'p', date: d(2), qty: -10, kind: 'TRANSFER_OUT' as const, location: 'godown' as const },
+    { productId: 'p', date: d(2), qty: 10, kind: 'TRANSFER_IN' as const, unitCostPaise: 50, location: 'store' as const },
+    { productId: 'p', date: d(3), qty: -4, kind: 'SALE' as const, location: 'store' as const },
+  ];
+  it('splits quantity and value per location; a transfer keeps total value and posts no sale', () => {
+    expect(valueStock(movesForLocation(mv, 'godown'), d(9))).toMatchObject({ qty: 90, valuePaise: 4500 });
+    expect(valueStock(movesForLocation(mv, 'store'), d(9))).toMatchObject({ qty: 6, valuePaise: 300 });
+    expect(valueStock(movesForLocation(mv, 'all'), d(9))).toMatchObject({ qty: 96, valuePaise: 4800 });
+    expect(valueStock(movesForLocation(mv.slice(0, 3), 'all'), d(9)).valuePaise).toBe(5000);
+  });
+  it('FIFO: a later receipt first repays a negative balance', () => {
+    const m = [
+      { productId: 'p', date: d(1), qty: -4, kind: 'SALE' as const },
+      { productId: 'p', date: d(2), qty: 10, kind: 'PURCHASE' as const, unitCostPaise: 100 },
+    ];
+    expect(valueStock(m, d(9))).toMatchObject({ qty: 6, valuePaise: 600 });
   });
 });
 

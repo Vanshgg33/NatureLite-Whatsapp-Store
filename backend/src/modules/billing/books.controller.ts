@@ -2,13 +2,14 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuard
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { BooksService } from './books.service';
+import { BillingStockService } from './billing-stock.service';
 import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
 @Controller('billing/books')
 @UseGuards(RolesGuard)
 @Roles('admin', 'superadmin')
 export class BooksController {
-  constructor(private readonly books: BooksService) {}
+  constructor(private readonly books: BooksService, private readonly stock: BillingStockService) {}
 
   @RequireAccess('billing_books.view')
   @Get('accounts') listAccounts() { return this.books.listAccounts(); }
@@ -40,6 +41,9 @@ export class BooksController {
   @Get('stock-entries') listStock() { return this.books.listStockEntries(); }
   @RequireAccess('billing_books.edit')
   @Post('stock-entries') createStock(@Body() b: any) { return this.books.createStockEntry(b); }
+
+  @RequireAccess('billing_books.edit')
+  @Post('stock-transfer') transferStock(@Body() b: any) { return this.stock.transfer(b); }
 
   @RequireAccess('billing_books.view')
   @Get('purchases') listPurchases(@Query() q: any) { return this.books.listPurchases(q); }

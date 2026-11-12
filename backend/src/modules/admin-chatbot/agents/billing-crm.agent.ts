@@ -23,7 +23,7 @@ const BILLING_CRM_TOOL_DECLARATIONS: FunctionDeclaration[] = [
         customerName: { type: S, description: 'Customer name filter' },
         customerPhone: { type: S, description: 'Customer phone filter' },
         paymentStatus: { type: S, description: 'paid | partial | unpaid' },
-        orderTag: { type: S, description: 'B2B | Transport | Home Delivery | Store/Retail | Wholesale | Retail' },
+        orderTag: { type: S, description: 'Transport Order | B2B Order | Home Delivery Order | Store Order' },
         from: { type: S, description: 'ISO date start (use with to)' },
         to: { type: S, description: 'ISO date end (use with from)' },
         limit: { type: N, description: 'Max bills to list, default 20, max 25' },

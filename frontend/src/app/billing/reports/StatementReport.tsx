@@ -23,8 +23,9 @@ function cell(v: unknown) {
 
 /** Renders a server-built statement exactly as laid out in its Excel export (rows of cells). */
 export function StatementReport({ kind, from, to }: { kind: StatementKind; from: string; to: string }) {
+  const [location, setLocation] = useState('all');
   const params: Record<string, string> =
-    kind === 'profit-loss' ? { from, to } : kind === 'gstr3b' ? { month: to.slice(0, 7) } : { asOn: to };
+    kind === 'profit-loss' ? { from, to } : kind === 'gstr3b' ? { month: to.slice(0, 7) } : kind === 'stock-summary' ? { asOn: to, location } : { asOn: to };
   const q = useQuery({ queryKey: ['billing-statement', kind, params], queryFn: () => api.getBillingReport(kind as BillingReportKey, params) });
   const [busy, setBusy] = useState(false);
   const d = q.data;
@@ -43,6 +44,11 @@ export function StatementReport({ kind, from, to }: { kind: StatementKind; from:
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b">
           <div className="text-sm font-medium text-gray-700">{TITLES[kind]}</div>
+          {kind === 'stock-summary' && (
+            <select value={location} onChange={e => setLocation(e.target.value)} className="border border-gray-200 rounded px-2 py-1 text-xs bg-white">
+              <option value="all">All locations</option><option value="godown">Godown</option><option value="store">Store</option>
+            </select>
+          )}
           <Button size="sm" variant="outline" className="text-xs gap-1.5" disabled={busy || !d}
             onClick={async () => { setBusy(true); try { await api.downloadBillingReport(kind as BillingReportKey, params); } finally { setBusy(false); } }}>
             <Download className="h-3.5 w-3.5" /> {busy ? 'Preparing…' : 'Export Excel'}
