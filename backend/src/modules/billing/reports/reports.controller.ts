@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
@@ -68,5 +68,17 @@ export class ReportsController {
   @RequireAccess('billing_reports.view', 'billing_gstr1.view')
   async gstr3b(@Query('month') month: string, @Query('format') format: string, @Res() res: Response) {
     return this.respond(res, format, await this.reports.gstr3b(month));
+  }
+
+  @Post('gstr2b-reconcile')
+  @RequireAccess('billing_reports.view', 'billing_gstr1.view')
+  async gstr2bReconcile(@Body() body: { month: string; json: any }) {
+    return this.reports.gstr2bReconcile(body?.month, body?.json);
+  }
+
+  @Get('gstr9')
+  @RequireAccess('billing_reports.view', 'billing_gstr1.view')
+  async gstr9(@Query('fy') fy: string) {
+    return this.reports.gstr9(fy);
   }
 }

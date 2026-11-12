@@ -10,6 +10,7 @@ import { buildSaleSummaryByHsn, saleSummarySheets } from './hsn-summary';
 import { buildGstr1 } from './gstr1';
 import { buildGstr3b } from './gstr3b';
 import { Books, toPayRec, toPDoc } from './books';
+import { parseGstr2b, reconcileGstr2b } from './gstr2b';
 import { collectMoves } from './stock';
 import { computePnl } from './ledger';
 import { buildBalanceSheet, buildStockSummary, buildTrialBalance, fyStartOf, pnlSheet } from './statements';
@@ -102,6 +103,45 @@ export class ReportsService {
     const result = buildGstr3b(await this.load(m.start, m.end, co.stateCode), m.month, m.start, m.end, purchases, co.stateCode);
     const [y, mm] = m.month.split('-');
     return { ...result, view: result.sheets, _file: `GSTR3B Report_${mm}_${y.slice(2)}_to_${mm}_${y.slice(2)}.xlsx` };
+  }
+
+  /** GSTR-2B JSON (from the portal) vs the purchase register. `month` = YYYY-MM return period. */
+  async gstr2bReconcile(monthStr: string | undefined, json: any) {
+    const m = this.month(monthStr);
+    let govt;
+    try { govt = parseGstr2b(json); } catch (e: any) { throw new BadRequestException(e.message); }
+    const from = new Date(m.start); from.setUTCMonth(from.getUTCMonth() - 6);
+    const purchases = (await this.purchaseModel.find({ date: { $gte: from, $lt: m.end } }).lean()).map(toPDoc);
+    return { month: m.month, ...reconcileGstr2b(govt, purchases, m.start, m.end) };
+  }
+
+  /** GSTR-9: the 12 monthly GSTR-1 / GSTR-3B results of an Indian FY (fy = start year, e.g. 2026 for 2026-27) summed. */
+  async gstr9(fyStr?: string) {
+    const y = Number(fyStr);
+    if (!Number.isInteger(y) || y < 2017 || y > 2100) throw new BadRequestException('fy must be the FY start year, e.g. 2026 for 2026-27');
+    const co = await this.company();
+    const fyStart = monthRange(`${y}-04`).start, fyEnd = monthRange(`${y + 1}-03`).end;
+    const docs = await this.load(fyStart, fyEnd, co.stateCode);
+    const purchases = (await this.purchaseModel.find({ date: { $gte: fyStart, $lt: fyEnd } }).lean()).map(toPDoc);
+    const zero = () => ({ taxable: 0, igst: 0, cgst: 0, sgst: 0, cess: 0 });
+    const out = { gstr1: zero(), t31a: zero(), t31b: zero(), t31c: zero(), t31e: zero(), itc: { igst: 0, cgst: 0, sgst: 0 } };
+    const addRow = (t: ReturnType<typeof zero>, r: any[]) => { t.taxable += r[1]; t.igst += r[2]; t.cgst += r[3]; t.sgst += r[4]; t.cess += r[5]; };
+    const months: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      const mm = ((3 + i) % 12) + 1, yy = mm >= 4 ? y : y + 1;
+      const month = `${yy}-${String(mm).padStart(2, '0')}`;
+      months.push(month);
+      const { start, end } = monthRange(month);
+      const r1 = buildGstr1(docs, month, start, end, { ...co, b2clLimitPaise: Number(await this.taxSettings.getParam('b2clThreshold', start)) || 10_000_000 });
+      const t = r1.totals;
+      out.gstr1.taxable += t.taxable; out.gstr1.igst += t.igst; out.gstr1.cgst += t.cgst; out.gstr1.sgst += t.sgst; out.gstr1.cess += t.cess;
+      const r3 = buildGstr3b(docs, month, start, end, purchases, co.stateCode);
+      addRow(out.t31a, r3.table31.a); addRow(out.t31b, r3.table31.b); addRow(out.t31c, r3.table31.c); addRow(out.t31e, r3.table31.e);
+      out.itc.igst += r3.itcOther.igst; out.itc.cgst += r3.itcOther.cgst; out.itc.sgst += r3.itcOther.sgst;
+    }
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const round = (o: any): any => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === 'number' ? r2(v) : round(v)]));
+    return { fy: `${y}-${String((y + 1) % 100).padStart(2, '0')}`, months, ...round(out) };
   }
 
   /** Everything the books engine needs, cumulative from the beginning up to (excluding) `before`. */

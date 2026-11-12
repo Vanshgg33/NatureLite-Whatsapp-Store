@@ -88,6 +88,7 @@ export function buildGstr3b(allDocs: RDoc[], month: string, start: Date, end: Da
     month,
     table31: { a: rows31[0], b: rows31[1], c: rows31[2], d: rows31[3], e: rows31[4] },
     table32: places.map(([pos, u]) => ({ pos: stateLabel(pos), taxable: rs(u.taxable), igst: rs(u.igst) })),
+    itcOther: { igst: rs(itc.other.igst), cgst: rs(itc.other.cgst), sgst: rs(itc.other.sgst) },
     totals: { taxable: rs(a.taxable + b.taxable + c.taxable + e.taxable), tax: rs(a.igst + a.cgst + a.sgst + a.cess + b.igst + b.cgst + b.sgst + b.cess) },
     sheets: [{ name: '3.1', rows: sheet31 }, { name: '3.2', rows: sheet32 }, { name: '4', rows: sheet4 }, { name: '5', rows: sheet5 }],
   };
