@@ -149,6 +149,9 @@ function ProductCard({ product: p }: { product: any }) {
           >
             {formatINR(p.price)}
           </p>
+          {p.marginPct != null && (
+            <span className="text-[10px] font-semibold crm-tabular" style={{ color: 'var(--crm-muted)' }}>{p.marginPct}% margin</span>
+          )}
           {p.stock !== undefined && (
             <span
               className="text-[10px] font-bold px-1.5 py-0.5 rounded"

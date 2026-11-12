@@ -19,6 +19,7 @@ import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { MediaModule } from '../media/media.module';
 import { CrmEngineService } from './crm-engine.service';
 import { CrmService } from './crm.service';
+import { CrmFoundationService } from './crm-foundation.service';
 import { CrmController } from './crm.controller';
 
 @Module({
@@ -44,7 +45,7 @@ import { CrmController } from './crm.controller';
     MediaModule,
   ],
   controllers: [CrmController],
-  providers: [CrmEngineService, CrmService],
+  providers: [CrmEngineService, CrmService, CrmFoundationService],
   exports: [CrmEngineService],
 })
 export class CrmModule {}

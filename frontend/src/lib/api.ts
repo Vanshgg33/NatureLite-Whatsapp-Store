@@ -2436,6 +2436,21 @@ class ApiClient {
     return res.data.data ?? [];
   }
 
+  async getCrmOrders(params: { status?: string; search?: string; from?: string; to?: string; page?: number }): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>('/crm/orders', { params });
+    return res.data.data;
+  }
+
+  async getCrmSyncHealth(): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>('/crm/sync/health');
+    return res.data.data;
+  }
+
+  async getCrmDuplicates(): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>('/crm/duplicates');
+    return res.data.data ?? [];
+  }
+
   async getCrmComplaints(params: { status?: string; mine?: boolean; overdue?: boolean; search?: string; page?: number }): Promise<any> {
     const qs = new URLSearchParams();
     if (params.status) qs.set('status', params.status);

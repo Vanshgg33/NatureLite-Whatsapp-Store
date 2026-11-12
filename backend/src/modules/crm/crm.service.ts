@@ -879,12 +879,17 @@ export class CrmService {
   async getCrmProducts(search?: string) {
     const filter: any = { isActive: true };
     if (search?.trim()) filter.$text = { $search: search.trim() };
-    return this.productModel
+    const rows = await this.productModel
       .find(filter)
-      .select('name sku images price compareAtPrice stock tags')
+      .select('name sku images price compareAtPrice stock tags purchasePrice')
       .sort({ totalSold: -1, name: 1 })
       .limit(200)
       .lean();
+    // margin = (price - purchase cost) / price; null when no cost is recorded
+    return rows.map((p: any) => ({
+      ...p,
+      marginPct: p.purchasePrice > 0 && p.price > 0 ? Math.round(((p.price - p.purchasePrice) / p.price) * 1000) / 10 : null,
+    }));
   }
 
   // ─── Heartbeat (Phase 5) ─────────────────────────────────────────────────

@@ -29,3 +29,6 @@ Thumbs.db
 
 # TypeScript cache
 *.tsbuildinfo
+
+# Playwright MCP session logs
+.playwright-mcp/

@@ -45,7 +45,9 @@ export const ADMIN_PAGE_HREFS: { page: string; href: string }[] = [
   { page: 'crm_queue', href: '/crm/queue' },
   { page: 'crm_abandoned', href: '/crm/abandoned' },
   { page: 'crm_caller', href: '/crm/caller' },
+  { page: 'crm_duplicates', href: '/crm/customers/duplicates' }, // before crm_customers (prefix)
   { page: 'crm_customers', href: '/crm/customers' },
+  { page: 'crm_orders', href: '/crm/orders' },
   { page: 'crm_campaigns', href: '/crm/campaigns' },
   { page: 'crm_complaints', href: '/crm/complaints' },
   { page: 'crm_products', href: '/crm/products' },

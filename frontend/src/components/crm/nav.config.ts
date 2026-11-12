@@ -26,7 +26,7 @@ export const NAV_GROUPS: NavGroup[] = [
     { label: 'Segments', href: '/crm/segments', icon: Layers, module: 'M09', priority: 'P1' },
     { label: 'Subscriptions', href: '/crm/subscriptions', icon: Repeat, module: 'M07', priority: 'P2' },
     { label: 'Loyalty & Referrals', href: '/crm/loyalty', icon: Gift, module: 'M08', priority: 'P2' },
-    { label: 'Duplicates', href: '/crm/customers/duplicates', icon: GitMerge, module: 'M06', priority: 'P1' },
+    { label: 'Duplicates', href: '/crm/customers/duplicates', icon: GitMerge, module: 'M06', priority: 'P1', page: 'crm_duplicates', adminOnly: true },
   ] },
   { label: 'Calling', items: [
     { label: 'Call queue', href: '/crm/queue', icon: ListChecks, module: 'M10', priority: 'P2', page: 'crm_queue' },
@@ -50,7 +50,7 @@ export const NAV_GROUPS: NavGroup[] = [
     { label: 'Feedback', href: '/crm/feedback', icon: Star, module: 'M23', priority: 'P2' },
   ] },
   { label: 'Revenue', items: [
-    { label: 'Orders', href: '/crm/orders', icon: Receipt, module: 'M24', priority: 'P1' },
+    { label: 'Orders', href: '/crm/orders', icon: Receipt, module: 'M24', priority: 'P1', page: 'crm_orders', adminOnly: true },
     { label: 'Products', href: '/crm/products', icon: Package, module: 'M25', priority: 'P1', page: 'crm_products' },
     { label: 'Attribution & Coupons', href: '/crm/attribution', icon: Ticket, module: 'M26', priority: 'P1' },
   ] },

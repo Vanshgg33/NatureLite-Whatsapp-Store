@@ -111,6 +111,8 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   def('crm_complaints', 'CRM Complaints', 'CRM', '/crm/complaints', true, [a('view', 'View'), a('act', 'Reply, resolve & reassign')]),
   def('crm_products', 'CRM Products', 'CRM', '/crm/products', true, [a('view', 'View')]),
   def('crm_analytics', 'CRM Performance', 'CRM', '/crm/analytics', true, [a('view', 'View')]),
+  def('crm_orders', 'CRM Orders', 'CRM', '/crm/orders', true, [a('view', 'View')]),
+  def('crm_duplicates', 'CRM Duplicates', 'CRM', '/crm/customers/duplicates', true, [a('view', 'View')]),
   def('crm_settings', 'CRM Settings', 'CRM', '/crm/settings', true, [a('view', 'View'), a('edit', 'Edit')]),
   def('crm_team', 'CRM Team', 'CRM', '/crm/admin', true, [a('view', 'View'), a('manage', 'Manage employees')]),
 

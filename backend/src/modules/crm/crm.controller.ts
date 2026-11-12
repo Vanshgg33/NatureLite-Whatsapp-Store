@@ -9,6 +9,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { CrmService } from './crm.service';
+import { CrmFoundationService } from './crm-foundation.service';
 import { CallOutcome } from './schemas/crm-call-log.schema';
 import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
@@ -16,7 +17,11 @@ import { RequireAccess } from '../../common/decorators/require-access.decorator'
 @UseGuards(RolesGuard)
 @Roles('admin', 'superadmin')
 export class CrmController {
-  constructor(private readonly crm: CrmService) {}
+  constructor(private readonly crm: CrmService, private readonly foundation: CrmFoundationService) {}
+
+  private managersOnly(user: JwtPayload) {
+    if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') throw new ForbiddenException();
+  }
 
   // ─── Customers ──────────────────────────────────────────────────────────
 
@@ -360,6 +365,33 @@ export class CrmController {
   @RequireAccess('crm_products.view', 'crm_campaigns.view')
   getCrmProducts(@Query('search') search: string) {
     return this.crm.getCrmProducts(search);
+  }
+
+  // ─── Orders, sync health, duplicates (blueprint Phase 1) ──────────────────
+
+  @Get('orders')
+  @RequireAccess('crm_orders.view')
+  listOrders(
+    @Query('status') status: string, @Query('search') search: string, @Query('from') from: string,
+    @Query('to') to: string, @Query('page') page: string, @Query('limit') limit: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    this.managersOnly(user);
+    return this.foundation.listOrders({ status, search, from, to, page: parseInt(page) || 1, limit: parseInt(limit) || 25 });
+  }
+
+  @Get('sync/health')
+  @RequireAccess('crm_orders.view')
+  syncHealth(@CurrentUser() user: JwtPayload) {
+    this.managersOnly(user);
+    return this.foundation.syncHealth();
+  }
+
+  @Get('duplicates')
+  @RequireAccess('crm_duplicates.view')
+  duplicates(@CurrentUser() user: JwtPayload) {
+    this.managersOnly(user);
+    return this.foundation.findDuplicates();
   }
 
   // ─── Heartbeat ───────────────────────────────────────────────────────────
