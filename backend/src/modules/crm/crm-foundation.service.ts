@@ -55,7 +55,7 @@ export class CrmFoundationService {
     const since = new Date(Date.now() - 90 * 86_400_000);
     const [orders, bills, latestOrder, latestBill, orphan] = await Promise.all([
       this.orderModel.aggregate([{ $match: { createdAt: { $gte: since }, status: { $ne: 'cancelled' } } }, { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$total' } } }]),
-      this.billModel.aggregate([{ $match: { createdAt: { $gte: since } } }, { $group: { _id: null, count: { $sum: 1 } } }]),
+      this.billModel.aggregate([{ $match: { createdAt: { $gte: since }, status: { $ne: 'cancelled' } } }, { $group: { _id: null, count: { $sum: 1 } } }]),
       this.orderModel.findOne().sort({ createdAt: -1 }).select('createdAt').lean(),
       this.billModel.findOne().sort({ createdAt: -1 }).select('createdAt').lean(),
       this.orderModel.aggregate([{ $match: { createdAt: { $gte: since } } }, { $lookup: { from: 'users', localField: 'user', foreignField: '_id', as: 'u' } }, { $match: { u: { $size: 0 } } }, { $count: 'n' }]),
@@ -69,7 +69,7 @@ export class CrmFoundationService {
   }
 
   async findDuplicates() {
-    const users = await this.userModel.find({ phone: { $exists: true, $ne: '' } }).select('name phone email createdAt').lean();
+    const users = await this.userModel.find({ phone: { $exists: true, $ne: '' } }).select('name phone email createdAt').limit(100_000).lean(); // shortcut: capped scan, switch to an aggregation if users pass 100k
     return groupDuplicatePhones(users as any[]);
   }
 }
