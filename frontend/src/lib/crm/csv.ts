@@ -1,7 +1,7 @@
 // Client-side CSV download (blueprint G5). Cells starting with = + - @ are prefixed so Excel cannot run them as formulas.
 const cell = (v: unknown) => {
   let s = v == null ? '' : String(v);
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 

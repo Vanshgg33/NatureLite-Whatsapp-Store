@@ -67,3 +67,20 @@ describe('attributeOrders', () => {
     expect(r.orders).toBe(1);
   });
 });
+
+describe('performance at store scale', () => {
+  it('attribution and investor snapshot stay fast with 30k orders', () => {
+    const rows = Array.from({ length: 30_000 }, (_, i) => o('u' + (i % 5000), '2026-0' + (1 + (i % 9)) + '-10', 100));
+    const touches = Array.from({ length: 30_000 }, (_, i) => ({ user: 'u' + (i % 5000), at: d('2026-0' + (1 + (i % 9)) + '-09') }));
+    const t0 = Date.now();
+    buildInvestorSnapshot(rows, NOW);
+    attributeOrders(touches, rows.map((r, i) => ({ id: String(i), user: r.user, total: r.total, createdAt: r.createdAt })));
+    expect(Date.now() - t0).toBeLessThan(3000);
+  });
+
+  it('attribution ignores a call made after the order even if it is the newest call', () => {
+    const r = attributeOrders([{ user: 'a', at: d('2026-11-01') }, { user: 'a', at: d('2026-11-10') }], [{ id: '1', user: 'a', total: 50, createdAt: d('2026-11-03') }]);
+    expect(r.revenue).toBe(50);
+    expect(r.items[0].touchAt).toEqual(d('2026-11-01'));
+  });
+});

@@ -9,10 +9,10 @@ import { Feedback } from '../feedback/schemas/feedback.schema';
 import { AuditLog } from '../audit/schemas/audit-log.schema';
 import { MessageLog } from '../whatsapp/schemas/message-log.schema';
 import { goalStatus, medianMinutes, monthRange, needsReply } from './crm-ops.logic';
-import { monthKey } from './crm-insights.logic';
+import { monthKey, REVENUE_ORDERS } from './crm-insights.logic';
 import { normalisePhone } from './crm-foundation.service';
 
-const VALID = { status: { $nin: ['cancelled', 'returned', 'refunded'] } };
+const VALID = REVENUE_ORDERS;
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const oid = (id: string) => { if (!Types.ObjectId.isValid(id)) throw new BadRequestException('Invalid id'); return new Types.ObjectId(id); };
 
@@ -73,7 +73,7 @@ export class CrmOpsService {
     const range = { $gte: from, $lt: to };
     if (metric === 'revenue') return (await this.orderModel.aggregate([{ $match: { ...VALID, createdAt: range } }, { $group: { _id: null, v: { $sum: '$total' } } }]))[0]?.v ?? 0;
     if (metric === 'orders') return this.orderModel.countDocuments({ ...VALID, createdAt: range });
-    if (metric === 'calls') return this.callModel.countDocuments({ type: 'call', createdAt: range });
+    if (metric === 'calls') return this.callModel.countDocuments({ type: { $ne: 'whatsapp' }, createdAt: range });
     return this.userModel.countDocuments({ createdAt: range }); // newCustomers
   }
 

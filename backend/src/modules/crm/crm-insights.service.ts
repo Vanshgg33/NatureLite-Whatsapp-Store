@@ -4,9 +4,9 @@ import { Model, Types } from 'mongoose';
 import { CrmCallLog } from './schemas/crm-call-log.schema';
 import { CrmMarketingSpend } from './schemas/crm-marketing-spend.schema';
 import { Subscription } from '../subscriptions/schemas/subscription.schema';
-import { attributeOrders, buildAcquisition, buildInvestorSnapshot, buildSegments, monthKey, OrderRow } from './crm-insights.logic';
+import { attributeOrders, buildAcquisition, buildInvestorSnapshot, buildSegments, monthKey, OrderRow, REVENUE_ORDERS } from './crm-insights.logic';
 
-const VALID = { status: { $nin: ['cancelled', 'returned', 'refunded'] } };
+const VALID = REVENUE_ORDERS;
 const MAX_ROWS = 200_000; // shortcut: whole-history scan in memory; move to $group pipelines past ~200k orders
 
 @Injectable()
@@ -51,7 +51,7 @@ export class CrmInsightsService {
     const windowDays = Math.min(30, Math.max(1, days || 7));
     const since = new Date(Date.now() - 90 * 86_400_000);
     const [calls, orders] = await Promise.all([
-      this.callModel.find({ type: 'call', outcome: { $ne: null }, createdAt: { $gte: new Date(+since - windowDays * 86_400_000) } }).select('customerId createdAt').limit(50_000).lean(),
+      this.callModel.find({ type: { $ne: 'whatsapp' }, outcome: { $ne: null }, createdAt: { $gte: new Date(+since - windowDays * 86_400_000) } }).select('customerId createdAt').limit(50_000).lean(),
       this.orderModel.find({ ...VALID, createdAt: { $gte: since } }).select('user total createdAt').limit(50_000).lean(),
     ]);
     const r = attributeOrders(

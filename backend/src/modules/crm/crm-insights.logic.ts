@@ -1,11 +1,18 @@
 // Pure calculations for segments, investor snapshot, acquisition (CAC) and attribution (blueprint M09, M27, M20, M26).
 // No DB access here so every formula can be unit tested. Money is rupees, months are IST "YYYY-MM".
-import { istDateKey } from '../../common/utils/ist-time';
 
 export interface OrderRow { user: string; total: number; discount: number; createdAt: Date; source?: string; cats?: string[] }
 
 const DAY = 86_400_000;
-export const monthKey = (d: Date) => istDateKey(d).slice(0, 7);
+
+/** Same definition the CRM engine uses for LTV: delivered, non-replacement orders. Keeps reports and customer LTV in agreement. */
+export const REVENUE_ORDERS = { status: 'delivered', orderType: { $ne: 'replacement' } } as const;
+// One shared formatter: building an Intl.DateTimeFormat per order is far too slow across tens of thousands of orders.
+const IST_MONTH = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' });
+export const monthKey = (d: Date) => {
+  const p = IST_MONTH.formatToParts(d);
+  return `${p.find((x) => x.type === 'year')!.value}-${p.find((x) => x.type === 'month')!.value}`;
+};
 export const monthAdd = (key: string, n: number) => {
   const [y, m] = key.split('-').map(Number);
   const t = y * 12 + (m - 1) + n;
@@ -64,7 +71,9 @@ export function buildInvestorSnapshot(rows: OrderRow[], now = new Date()) {
     };
   });
   const eligible = cs.filter((c) => +now - +c.first >= 90 * DAY);
-  const repeaters = eligible.filter((c) => rows.some((r) => r.user === c.user && +r.createdAt > +c.first && +r.createdAt - +c.first <= 90 * DAY));
+  const times = new Map<string, number[]>();
+  for (const r of rows) times.set(r.user, [...(times.get(r.user) ?? []), +r.createdAt]);
+  const repeaters = eligible.filter((c) => (times.get(c.user) ?? []).some((t) => t > +c.first && t - +c.first <= 90 * DAY));
   const cohorts = months.map((m) => {
     const members = cs.filter((c) => firstMonth.get(c.user) === m).map((c) => c.user);
     return {
@@ -95,11 +104,11 @@ export function buildAcquisition(rows: OrderRow[], spend: { channel: string; amo
 /** Last-touch attribution (M26): an order belongs to the latest call made to that customer within `windowDays` before it. */
 export function attributeOrders(touches: { user: string; at: Date }[], orders: { id: string; user: string; total: number; createdAt: Date }[], windowDays = 7) {
   const out: { orderId: string; total: number; touchAt: Date }[] = [];
+  const byUser = new Map<string, Date[]>(); // newest call first
+  for (const t of [...touches].sort((a, b) => +b.at - +a.at)) byUser.set(t.user, [...(byUser.get(t.user) ?? []), t.at]);
   for (const o of orders) {
-    const hit = touches
-      .filter((t) => t.user === o.user && +t.at <= +o.createdAt && +o.createdAt - +t.at <= windowDays * DAY)
-      .sort((a, b) => +b.at - +a.at)[0];
-    if (hit) out.push({ orderId: o.id, total: o.total, touchAt: hit.at });
+    const hit = (byUser.get(o.user) ?? []).find((at) => +at <= +o.createdAt);
+    if (hit && +o.createdAt - +hit <= windowDays * DAY) out.push({ orderId: o.id, total: o.total, touchAt: hit });
   }
   return { orders: out.length, revenue: out.reduce((s, x) => s + x.total, 0), items: out };
 }

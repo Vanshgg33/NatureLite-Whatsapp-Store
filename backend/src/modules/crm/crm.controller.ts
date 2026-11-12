@@ -22,6 +22,10 @@ import { RequireAccess } from '../../common/decorators/require-access.decorator'
 export class CrmController {
   constructor(private readonly crm: CrmService, private readonly foundation: CrmFoundationService, private readonly insights: CrmInsightsService, private readonly ops: CrmOpsService) {}
 
+  private notViewer(user: JwtPayload) {
+    if (user.departmentType === 'crm_viewer') throw new ForbiddenException('Viewers are read-only');
+  }
+
   private managersOnly(user: JwtPayload) {
     if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') throw new ForbiddenException();
   }
@@ -467,11 +471,11 @@ export class CrmController {
 
   @Post('leads')
   @RequireAccess('crm_leads.edit')
-  addLead(@Body() body: any, @CurrentUser() user: JwtPayload) { return this.ops.addLead(body, user.sub); }
+  addLead(@Body() body: any, @CurrentUser() user: JwtPayload) { this.notViewer(user); return this.ops.addLead(body, user.sub); }
 
   @Patch('leads/:id/stage')
   @RequireAccess('crm_leads.edit')
-  setLeadStage(@Param('id') id: string, @Body() body: any) { return this.ops.setLeadStage(id, body?.stage, body?.lostReason); }
+  setLeadStage(@Param('id') id: string, @Body() body: any, @CurrentUser() user: JwtPayload) { this.notViewer(user); return this.ops.setLeadStage(id, body?.stage, body?.lostReason); }
 
   @Get('walkins/stats')
   @RequireAccess('crm_walkins.view')
@@ -479,7 +483,7 @@ export class CrmController {
 
   @Post('walkins')
   @RequireAccess('crm_walkins.edit')
-  addWalkin(@Body() body: any, @CurrentUser() user: JwtPayload) { return this.ops.addWalkin(body, user.sub); }
+  addWalkin(@Body() body: any, @CurrentUser() user: JwtPayload) { this.notViewer(user); return this.ops.addWalkin(body, user.sub); }
 
   @Get('feedback')
   @RequireAccess('crm_feedback.view')
