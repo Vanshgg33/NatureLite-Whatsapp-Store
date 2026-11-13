@@ -1,7 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { getApiError } from '@/lib/api-error';
+import { useToast } from '@/components/ui/use-toast';
 import { ShoppingBag, Plus, TrendingUp, Clock, CheckCircle2, AlertCircle, Timer, Package } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAdminAuthStore } from '@/lib/admin-store';
@@ -47,6 +49,19 @@ const ROLE_TO_STATUSES: Record<string, string[]> = {
   approver: ['PO_CREATED', 'APPROVED'],
   receiver: ['VENDOR_BILL_UPLOADED'],
 };
+
+/** Manual "WhatsApp the next person" for a list row (same endpoint as the request page). */
+function PoWaButton({ id }: { id: string }) {
+  const { toast } = useToast();
+  const m = useMutation({
+    mutationFn: () => api.resendPurchaseWhatsapp(id),
+    onSuccess: (r) => toast(r.sent
+      ? { title: `WhatsApp sent to ${r.sent} ${r.sent === 1 ? 'person' : 'people'}` }
+      : { title: 'Nobody to message', description: 'No active user for the next step has a phone number, or the send failed.', variant: 'destructive' }),
+    onError: (e) => toast({ title: 'Error', description: getApiError(e), variant: 'destructive' }),
+  });
+  return <Button variant="outline" size="sm" className="text-xs mr-2" disabled={m.isPending} onClick={() => m.mutate()}>{m.isPending ? 'Sending…' : 'WhatsApp'}</Button>;
+}
 
 export default function PurchasePage() {
   const { user } = useAdminAuthStore();
@@ -242,7 +257,8 @@ export default function PurchasePage() {
                           <DeadlineChip deadline={req.deadline} />
                         </td>
                         <td className="px-4 py-2 text-gray-500 text-xs">{fmtIST(req.createdAt)}</td>
-                        <td className="px-4 py-2 text-right">
+                        <td className="px-4 py-2 text-right whitespace-nowrap">
+                          {!['DRAFT', 'COMPLETED', 'CANCELLED'].includes(req.status) && <PoWaButton id={req._id} />}
                           <Link href={`/admin/purchase/${req._id}`}>
                             <Button variant="ghost" size="sm" className="text-xs">View</Button>
                           </Link>

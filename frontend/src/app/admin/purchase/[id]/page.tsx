@@ -553,6 +553,14 @@ export default function PurchaseRequestDetailPage() {
     refetchInterval: 15000,
   });
 
+  const waMutation = useMutation({
+    mutationFn: () => api.resendPurchaseWhatsapp(params.id),
+    onSuccess: (r) => toast(r.sent
+      ? { title: `WhatsApp sent to ${r.sent} ${r.sent === 1 ? 'person' : 'people'}` }
+      : { title: 'Nobody to message', description: 'No active user for the next step has a phone number, or the send failed.', variant: 'destructive' }),
+    onError: (err) => toast({ title: 'Error', description: getApiError(err), variant: 'destructive' }),
+  });
+
   const cancelMutation = useMutation({
     mutationFn: (reason: string) => api.cancelPurchaseRequest(params.id, reason),
     onSuccess: () => { toast({ title: 'Request cancelled' }); refetch(); },
@@ -790,6 +798,17 @@ export default function PurchaseRequestDetailPage() {
                 <CardContent className="pt-4 text-sm text-emerald-800">
                   <p className="font-semibold">Order Closed</p>
                   {req.receipt?.at && <p className="text-xs mt-1">{fmtIST(req.receipt.at)}</p>}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* WhatsApp: remind whoever acts next */}
+            {req.status !== 'DRAFT' && (isSuperadmin || purchaseRole) && (
+              <Card>
+                <CardContent className="pt-4">
+                  <Button variant="outline" size="sm" className="w-full" onClick={() => waMutation.mutate()} disabled={waMutation.isPending}>
+                    {waMutation.isPending ? 'Sending…' : 'Send WhatsApp to next person'}
+                  </Button>
                 </CardContent>
               </Card>
             )}

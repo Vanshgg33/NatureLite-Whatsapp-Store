@@ -33,6 +33,18 @@ export const SettingsSchema = SchemaFactory.createForClass(Settings);
 
 SettingsSchema.index({ category: 1 });
 
+/** Automatic WhatsApp messages: id -> on/off + Meta template name. The id is also the default template name. */
+export const WA_AUTOMATION_DEFAULTS: Record<string, { enabled: boolean; template: string }> = {
+  billing_invoice: { enabled: true, template: 'invoice_bill' },
+  fms_requested: { enabled: true, template: 'fms_requested' },
+  fms_po_created: { enabled: true, template: 'fms_po_created' },
+  fms_approved: { enabled: true, template: 'fms_approved' },
+  fms_rejected: { enabled: true, template: 'fms_rejected' },
+  fms_vendor_bill_uploaded: { enabled: true, template: 'fms_vendor_bill_uploaded' },
+  fms_completed: { enabled: true, template: 'fms_completed' },
+  fms_cancelled: { enabled: true, template: 'fms_cancelled' },
+};
+
 // Default settings structure
 export const DEFAULT_SETTINGS = {
   store: {
@@ -112,4 +124,5 @@ export const DEFAULT_SETTINGS = {
   chatbot: {
     enabled: false,
   },
+  waAutomation: WA_AUTOMATION_DEFAULTS,
 };

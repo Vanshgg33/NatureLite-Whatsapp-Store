@@ -278,6 +278,12 @@ export class PurchaseController {
     return this.purchaseService.setDeadline(id, user, body.dueAt);
   }
 
+  @Post('requests/:id/whatsapp')
+  @RequirePermission('deadline.set')
+  resendWhatsapp(@Param('id') id: string) {
+    return this.purchaseService.resendWhatsapp(id);
+  }
+
   @Post('requests/:id/cancel')
   @RequirePermission('request.cancel')
   cancelRequest(

@@ -63,7 +63,7 @@ export class BillingBill {
   orderTag: string; // sales channel: Transport Order | B2B Order | Home Delivery Order | Store Order
 
   // WhatsApp auto-send state (queued | retrying | sending | sent | failed | skipped_no_phone | skipped_cancelled)
-  @Prop({ type: Object }) whatsapp?: { status: string; attempts: number; lastError?: string; messageId?: string; sentAt?: Date; nextAttemptAt?: Date };
+  @Prop({ type: Object }) whatsapp?: { status: string; attempts: number; lastError?: string; messageId?: string; sentAt?: Date; nextAttemptAt?: Date; runKey?: string };
 
   @Prop({ enum: ['godown', 'store'], default: 'godown' }) stockLocation: string; // where this bill's stock left from
   @Prop({ type: Object }) stockOverride?: { reason: string; by: string; short: string[] };

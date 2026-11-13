@@ -11,6 +11,23 @@ import { api } from '@/lib/api';
 import { getApiError } from '@/lib/api-error';
 import { useToast } from '@/components/ui/use-toast';
 
+type WaAuto = Record<string, { enabled: boolean; template: string }>;
+
+// Same ids/defaults as WA_AUTOMATION_DEFAULTS on the backend. {{1}} = bill / request / PO number.
+const WA_AUTO_ROWS: Array<{ id: string; label: string; vars: string }> = [
+  { id: 'billing_invoice', label: 'Billing: bill created -> customer', vars: 'Header: invoice PDF. Body {{1}} invoice no, {{2}} total, {{3}} balance due' },
+  { id: 'fms_requested', label: 'Purchase: new request -> PO creator', vars: 'Body {{1}} request no, {{2}} what to do' },
+  { id: 'fms_po_created', label: 'Purchase: PO created / split -> approver', vars: 'Body {{1}} PO no, {{2}} what to do' },
+  { id: 'fms_approved', label: 'Purchase: PO approved -> PO creator + receiver', vars: 'Body {{1}} PO no, {{2}} what to do' },
+  { id: 'fms_rejected', label: 'Purchase: PO rejected -> PO creator + requester', vars: 'Body {{1}} PO no, {{2}} what to do' },
+  { id: 'fms_vendor_bill_uploaded', label: 'Purchase: vendor bill uploaded -> receiver', vars: 'Body {{1}} request no, {{2}} what to do' },
+  { id: 'fms_completed', label: 'Purchase: request closed -> requester', vars: 'Body {{1}} request no, {{2}} what to do' },
+  { id: 'fms_cancelled', label: 'Purchase: request cancelled -> requester + PO creator', vars: 'Body {{1}} request no, {{2}} what to do' },
+];
+const WA_AUTO_DEFAULTS: WaAuto = Object.fromEntries(
+  WA_AUTO_ROWS.map(r => [r.id, { enabled: true, template: r.id === 'billing_invoice' ? 'invoice_bill' : r.id }]),
+);
+
 export default function SettingsPage() {
   const queryClient = useQueryClient();
   const [storeSettings, setStoreSettings] = useState({
@@ -28,6 +45,9 @@ export default function SettingsPage() {
     abandonedCartReminderDelayMinutes: 60,
   });
 
+  const [waAuto, setWaAuto] = useState<WaAuto>(WA_AUTO_DEFAULTS);
+  const [testPhone, setTestPhone] = useState('');
+  const { toast } = useToast();
   const [mockDataEnabled, setMockDataEnabled] = useState(false);
   const [chatbotEnabled, setChatbotEnabled] = useState(false);
   const [freeGiftTiers, setFreeGiftTiers] = useState<Array<{ minAmount: number; gift: string; altGift: string; isActive: boolean }>>([]);
@@ -45,6 +65,8 @@ export default function SettingsPage() {
       if (settings.whatsapp) {
         setWhatsappSettings(settings.whatsapp as typeof whatsappSettings);
       }
+      const wa = (settings as { waAutomation?: WaAuto }).waAutomation;
+      if (wa) setWaAuto({ ...WA_AUTO_DEFAULTS, ...wa });
       if (settings.mockData) {
         setMockDataEnabled(!!(settings.mockData as { enabled?: boolean }).enabled);
       }
@@ -70,6 +92,19 @@ export default function SettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
     },
+  });
+
+  const waAutoMutation = useMutation({
+    mutationFn: (data: WaAuto) => api.updateSettings('waAutomation', data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings'] }),
+  });
+
+  const waTestMutation = useMutation({
+    mutationFn: (template: string) => api.sendWhatsAppTemplate(testPhone.trim(), template, ['TEST-001', 'This is a test message']),
+    onSuccess: (r) => toast(r.messageId
+      ? { title: 'Test message sent' }
+      : { title: 'Not sent', description: 'The provider did not accept it. Check the template name and the phone number.', variant: 'destructive' }),
+    onError: (err) => toast({ title: 'Test failed', description: getApiError(err), variant: 'destructive' }),
   });
 
   const mockDataMutation = useMutation({
@@ -238,6 +273,51 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         )}
+
+        <Card>
+          <CardHeader>
+            <CardTitle>WhatsApp Automation</CardTitle>
+            <CardDescription>
+              Turn each automatic message on or off and set its approved Meta template name (language: en).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium">Test phone</span>
+              <Input className="w-48" placeholder="98765 43210" value={testPhone} onChange={e => setTestPhone(e.target.value)} />
+              <span className="text-xs text-muted-foreground">Used by the Test buttons below. Save first if you changed a template name.</span>
+            </div>
+            {WA_AUTO_ROWS.map(r => (
+              <div key={r.id} className="grid gap-2 md:grid-cols-[auto_1fr_1fr_auto] md:items-center">
+                <input
+                  type="checkbox"
+                  aria-label={`${r.label} on/off`}
+                  className="rounded h-4 w-4"
+                  checked={waAuto[r.id]?.enabled ?? true}
+                  onChange={e => setWaAuto({ ...waAuto, [r.id]: { ...waAuto[r.id], enabled: e.target.checked } })}
+                />
+                <div>
+                  <div className="text-sm font-medium">{r.label}</div>
+                  <div className="text-xs text-muted-foreground">{r.vars}</div>
+                </div>
+                <Input
+                  aria-label={`${r.label} template name`}
+                  value={waAuto[r.id]?.template ?? ''}
+                  onChange={e => setWaAuto({ ...waAuto, [r.id]: { ...waAuto[r.id], template: e.target.value } })}
+                />
+                {/* the invoice template has a PDF header that a plain test cannot supply, so test it from a real bill */}
+                {r.id === 'billing_invoice' ? <span /> : (
+                  <Button size="sm" variant="outline" disabled={!testPhone.trim() || waTestMutation.isPending}
+                    onClick={() => waTestMutation.mutate(waAuto[r.id]?.template ?? r.id)}>Test</Button>
+                )}
+              </div>
+            ))}
+            <Button onClick={() => waAutoMutation.mutate(waAuto)} disabled={waAutoMutation.isPending}>
+              <Save className="mr-2 h-4 w-4" />
+              {waAutoMutation.isPending ? 'Saving...' : 'Save WhatsApp Automation'}
+            </Button>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>

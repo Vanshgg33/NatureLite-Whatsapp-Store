@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { SettingsService } from '../settings/settings.service';
 import { PurchaseMaterial, PurchaseMaterialDocument } from './schemas/purchase-material.schema';
 import { PurchaseRequest, PurchaseRequestDocument } from './schemas/purchase-request.schema';
 import { PurchaseVendor, PurchaseVendorDocument } from './schemas/purchase-vendor.schema';
@@ -91,6 +93,8 @@ export class PurchaseService {
     @InjectModel(AdminUser.name) private adminModel: Model<AdminUserDocument>,
     @InjectModel(PurchaseTag.name) private tagModel: Model<PurchaseTagDocument>,
     private emailService: EmailService,
+    private whatsapp: WhatsAppService,
+    private settings: SettingsService,
   ) {}
 
   // ─── Stage caching ────────────────────────────────────────────────────────
@@ -949,7 +953,57 @@ export class PurchaseService {
 
   // ─── Email ────────────────────────────────────────────────────────────────
 
+  // ─── WhatsApp ─────────────────────────────────────────────────────────────
+
+  /** Who acts next after each event, and what they must do. Superadmins are not messaged (they get the email). */
+  private static readonly WA_NEXT: Record<string, { roles: string[]; todo: string }> = {
+    REQUESTED: { roles: ['po_creator'], todo: 'Create the PO for this request' },
+    PO_CREATED: { roles: ['approver'], todo: 'Review the PO and approve or reject it' },
+    SPLIT: { roles: ['approver'], todo: 'Review the vendor POs and approve or reject each' },
+    APPROVED: { roles: ['po_creator', 'receiver'], todo: 'PO creator: send the PO to the vendor. Receiver: expect the delivery' },
+    REJECTED: { roles: ['po_creator', 'requester'], todo: 'PO was rejected: revise and resubmit' },
+    VENDOR_BILL_UPLOADED: { roles: ['receiver'], todo: 'Goods are arriving: check them at the gate and record receipt' },
+    COMPLETED: { roles: ['requester'], todo: 'Nothing to do: request is closed' },
+    CANCELLED: { roles: ['requester', 'po_creator'], todo: 'Nothing to do: request was cancelled' },
+  };
+
+  /** Fire-and-forget: a WhatsApp problem must never break the purchase step. Needs the approved template named in settings (2 body params). */
+  private async sendStatusWhatsapp(req: any, event: string, manual = false): Promise<number> {
+    const next = PurchaseService.WA_NEXT[event];
+    if (!next) return 0;
+    // Admin > Settings > WhatsApp Automation: per-step on/off and template name (SPLIT shares PO_CREATED's)
+    const cfg = await this.settings.getWaAutomation(`fms_${(event === 'SPLIT' ? 'PO_CREATED' : event).toLowerCase()}`);
+    if (!cfg.enabled && !manual) return 0; // the on/off switch only governs automatic sends
+    const users = await this.adminModel
+      .find({ purchaseRole: { $in: next.roles }, isActive: true, phone: { $exists: true, $ne: '' } })
+      .select('phone')
+      .lean();
+    const ref = req.po?.poNo || req.reqNo;
+    let sent = 0;
+    for (const u of users as any[]) {
+      const id = await this.whatsapp.sendTemplateMessage({
+        phone: u.phone,
+        templateName: cfg.template, // body: {{1}} request/PO no, {{2}} what to do
+        languageCode: 'en',
+        bodyParams: [ref, next.todo],
+        // manual resends need a fresh key or the duplicate check would swallow them
+        meta: { idempotencyKey: `wa:fms:${req._id}:${event}:${u._id}:${manual ? `m${Date.now()}` : new Date(req.updatedAt ?? Date.now()).getTime()}` },
+      }).catch(() => null);
+      if (id) sent++;
+    }
+    return sent;
+  }
+
+  /** "Send WhatsApp" button: re-sends the message for the request's current step to whoever acts next. */
+  async resendWhatsapp(id: string): Promise<{ sent: number }> {
+    const req = await this.requestModel.findById(id).lean();
+    if (!req) throw new NotFoundException('Request not found');
+    if (!PurchaseService.WA_NEXT[req.status]) throw new BadRequestException('No WhatsApp message for this step');
+    return { sent: await this.sendStatusWhatsapp(req, req.status, true) };
+  }
+
   private async sendStatusEmail(req: any, event: string) {
+    this.sendStatusWhatsapp(req, event).catch(() => null);
     const purchaseUsers = await this.adminModel
       .find({ purchaseRole: { $exists: true, $ne: null }, isActive: true })
       .select('email purchaseRole')

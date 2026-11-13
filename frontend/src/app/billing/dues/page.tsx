@@ -9,6 +9,7 @@ import { api } from '@/lib/api';
 import { istDateKey, istDaysAgoKey, istWeekStartKey, istMonthKey, startOfDayIST, endOfDayIST } from '@/lib/time';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
+import { WaSendButton } from '@/components/billing/wa-send-button';
 
 function fmt(n: number) {
   return '₹' + (n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -278,7 +279,8 @@ export default function DuesPage() {
                                       {days}d
                                     </span>
                                   </td>
-                                  <td className="px-4 py-2.5 text-right">
+                                  <td className="px-4 py-2.5 text-right space-x-2 whitespace-nowrap">
+                                    <WaSendButton billId={b._id} />
                                     {can('billing_dues.record') && (
                                     <Button
                                       size="sm"

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Settings } from './schemas/settings.schema';
 import { SettingsRepository } from './repositories/settings.repository';
-import { DEFAULT_SETTINGS } from './schemas/settings.schema';
+import { DEFAULT_SETTINGS, WA_AUTOMATION_DEFAULTS } from './schemas/settings.schema';
 
 export type WhatsAppSettings = {
   welcomeMessage: string;
@@ -167,6 +167,16 @@ export class SettingsService implements OnModuleInit {
         DEFAULT_SETTINGS.whatsapp.abandonedCartReminderDelayMinutes,
       ),
     } satisfies WhatsAppSettings;
+  }
+
+  /** On/off + template name for one automatic WhatsApp message (see WA_AUTOMATION_DEFAULTS). Falls back to defaults. */
+  async getWaAutomation(id: string): Promise<{ enabled: boolean; template: string }> {
+    const def = WA_AUTOMATION_DEFAULTS[id] ?? { enabled: false, template: id };
+    const saved = ((await this.get('waAutomation')) ?? {})[id] as { enabled?: unknown; template?: unknown } | undefined;
+    return {
+      enabled: typeof saved?.enabled === 'boolean' ? saved.enabled : def.enabled,
+      template: typeof saved?.template === 'string' && saved.template.trim() ? saved.template.trim() : def.template,
+    };
   }
 
   async getCheckoutSettings(): Promise<Record<string, unknown>> {

@@ -6,6 +6,7 @@ import * as PDFDocument from 'pdfkit';
 import { BillingBill, BillingBillDocument } from './schemas/billing-bill.schema';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { MediaService } from '../media/media.service';
+import { SettingsService } from '../settings/settings.service';
 
 /** Retry schedule in seconds: 1 min, 5 min, 30 min, 2 h, then the bill shows "failed" with a Retry button. */
 export const RETRY_DELAYS_SEC = [60, 300, 1800, 7200] as const;
@@ -35,34 +36,37 @@ export class BillingWhatsappService {
     @InjectModel(BillingBill.name) private readonly billModel: Model<BillingBillDocument>,
     private readonly whatsapp: WhatsAppService,
     private readonly media: MediaService,
+    private readonly settings: SettingsService,
   ) {}
 
-  private get enabled() { return process.env.BILLING_WHATSAPP_ENABLED !== 'false'; }
+  /** Admin > Settings > WhatsApp Automation: on/off and template name for the invoice message. */
+  private cfg() { return this.settings.getWaAutomation('billing_invoice'); }
 
   /** Marks the bill queued (or skipped) and starts the first attempt without awaiting it. */
-  async queue(billId: string): Promise<void> {
-    if (!this.enabled) return;
+  async queue(billId: string, fresh = false): Promise<string> {
+    if (!fresh && !(await this.cfg()).enabled) return 'disabled'; // the switch governs automatic sends only
     const bill = await this.billModel.findById(billId).setOptions({ allDocTypes: true }).lean();
-    if (!bill) return;
+    if (!bill) return 'missing';
     if (!normalizeIndianMobile(bill.customerPhone)) {
       await this.billModel.updateOne({ _id: billId }, { $set: { whatsapp: { status: 'skipped_no_phone', attempts: 0 } } }).setOptions({ allDocTypes: true });
-      return;
+      return 'skipped_no_phone';
     }
-    await this.billModel.updateOne({ _id: billId }, { $set: { whatsapp: { status: 'queued', attempts: 0, nextAttemptAt: new Date() } } }).setOptions({ allDocTypes: true });
+    await this.billModel.updateOne({ _id: billId }, { $set: { whatsapp: { status: 'queued', attempts: 0, nextAttemptAt: new Date(), runKey: fresh ? String(Date.now()) : 'v1' } } }).setOptions({ allDocTypes: true });
     this.attempt(billId).catch(e => this.logger.error(`whatsapp attempt ${billId}: ${e?.message}`));
+    return 'queued';
   }
 
   /** Manual Retry button: resets the counter and tries again now. */
   async retry(billId: string) {
     const bill = await this.billModel.findById(billId).setOptions({ allDocTypes: true }).lean();
     if (!bill) throw new NotFoundException('Bill not found');
-    await this.queue(billId);
-    return { ok: true };
+    // fresh key: a deliberate resend must not be swallowed by the duplicate check
+    return { ok: true, status: await this.queue(billId, true) };
   }
 
   @Cron('* * * * *')
   async retryDue(): Promise<void> {
-    if (!this.enabled) return;
+    // no on/off check: whatever was already queued (auto or manual) still finishes
     const due = await this.billModel
       .find({ 'whatsapp.status': { $in: ['queued', 'retrying', 'sending'] }, 'whatsapp.nextAttemptAt': { $lte: new Date() } })
       .setOptions({ allDocTypes: true }).select('_id').limit(20).lean();
@@ -83,25 +87,27 @@ export class BillingWhatsappService {
     }
 
     const attempts = claimed.whatsapp?.attempts ?? 0;
+    const runKey = claimed.whatsapp?.runKey ?? 'v1';
     try {
       const pdf = await this.buildPdf(claimed);
       const url = await this.media.uploadRawBuffer(pdf, 'invoices', `${claimed.invoiceNo.replace(/[^\w-]/g, '_')}-${claimed._id}.pdf`, 'application/pdf');
       const messageId = await this.whatsapp.sendTemplateMessage({
         phone: normalizeIndianMobile(claimed.customerPhone)!,
-        templateName: process.env.WHATSAPP_INVOICE_TEMPLATE || 'invoice_bill',
+        templateName: (await this.cfg()).template,
         languageCode: 'en',
         bodyParams: [claimed.invoiceNo, inr(claimed.grandTotalPaise), inr(claimed.amountDuePaise)],
         headerDocumentUrl: url,
         headerDocumentFilename: `${claimed.invoiceNo.replace(/[^\w-]/g, '_')}.pdf`,
-        meta: { idempotencyKey: `wa:invoice:${claimed._id}:v1` },
+        meta: { idempotencyKey: `wa:invoice:${claimed._id}:${runKey}` },
       });
       if (!messageId) throw new Error('WhatsApp provider did not accept the message');
-      await this.billModel.updateOne({ _id: billId }, { $set: { whatsapp: { status: 'sent', attempts: attempts + 1, messageId, sentAt: new Date() } } }).setOptions({ allDocTypes: true });
+      await this.billModel.updateOne({ _id: billId }, { $set: { whatsapp: { status: 'sent', runKey, attempts: attempts + 1, messageId, sentAt: new Date() } } }).setOptions({ allDocTypes: true });
     } catch (e: any) {
       const delay = nextRetryDelay(attempts);
       await this.billModel.updateOne({ _id: billId }, {
         $set: {
           whatsapp: {
+            runKey,
             status: delay === null ? 'failed' : 'retrying',
             attempts: attempts + 1,
             lastError: String(e?.message ?? e).slice(0, 300),

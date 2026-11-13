@@ -172,9 +172,9 @@ export default function InvoicePage() {
           <span className="flex items-center gap-1.5 text-xs text-gray-500">
             WhatsApp: <b className={bill.whatsapp?.status === 'failed' ? 'text-red-600' : 'text-gray-700'}>{WA_LABEL[bill.whatsapp?.status ?? ''] ?? 'Not sent'}</b>
             {bill.whatsapp?.status === 'failed' && bill.whatsapp?.lastError && <span title={bill.whatsapp.lastError}>ⓘ</span>}
-            {['failed', 'skipped_no_phone', undefined].includes(bill.whatsapp?.status) && can('billing_new.create') && (
+            {!['queued', 'sending', 'retrying'].includes(bill.whatsapp?.status) && can('billing_new.create') && (
               <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={retryWa.isPending} onClick={() => retryWa.mutate()}>
-                {bill.whatsapp?.status === 'failed' ? 'Retry' : 'Send'}
+                {bill.whatsapp?.status === 'failed' ? 'Retry' : bill.whatsapp?.status === 'sent' ? 'Resend' : 'Send'}
               </Button>
             )}
           </span>

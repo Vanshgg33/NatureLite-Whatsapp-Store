@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { LayoutDashboard, Users, FileText, AlertCircle, TrendingUp, TrendingDown, IndianRupee, Globe } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Header } from '@/components/layout/header';
+import { WaSendButton } from '@/components/billing/wa-send-button';
 
 function fmt(n: number) {
   return '₹' + (n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -166,6 +167,7 @@ export default function DashboardPage() {
                           {b.paymentStatus}
                         </div>
                       </div>
+                      <WaSendButton billId={b._id} />
                     </div>
                   ))}
                 </div>

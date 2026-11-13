@@ -8,11 +8,15 @@ import { AdminUser, AdminUserSchema } from '../admin/schemas/admin-user.schema';
 import { PurchaseService } from './purchase.service';
 import { PurchaseController } from './purchase.controller';
 import { EmailModule } from '../email/email.module';
+import { WhatsAppModule } from '../whatsapp/whatsapp.module';
+import { SettingsModule } from '../settings/settings.module';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 
 @Module({
   imports: [
     EmailModule,
+    WhatsAppModule,
+    SettingsModule,
     MongooseModule.forFeature([
       { name: PurchaseMaterial.name, schema: PurchaseMaterialSchema },
       { name: PurchaseRequest.name, schema: PurchaseRequestSchema },

@@ -1098,6 +1098,7 @@ class ApiClient {
   async updateSettings(key: 'banners', updates: Partial<BannerSettings>): Promise<BannerSettings>;
   async updateSettings(key: 'mockData', updates: { enabled: boolean }): Promise<{ enabled: boolean }>;
   async updateSettings(key: 'chatbot', updates: { enabled: boolean }): Promise<{ enabled: boolean }>;
+  async updateSettings(key: 'waAutomation', updates: Record<string, { enabled: boolean; template: string }>): Promise<Record<string, unknown>>;
   async updateSettings(key: string, updates: Partial<StoreSettings | WhatsAppSettings | CatalogSettings | AppearanceSettings | BannerSettings> | Record<string, unknown>): Promise<StoreSettings | WhatsAppSettings | CatalogSettings | AppearanceSettings | BannerSettings | Record<string, unknown>> {
     const response = await this.client.put<ApiResponse<StoreSettings | WhatsAppSettings | CatalogSettings | AppearanceSettings | BannerSettings>>(`/settings/${key}/update`, updates);
     return response.data.data;
@@ -1982,6 +1983,11 @@ class ApiClient {
     return res.data.data;
   }
 
+  async resendPurchaseWhatsapp(id: string): Promise<{ sent: number }> {
+    const res = await this.client.post<ApiResponse<{ sent: number }>>(`/purchase/requests/${id}/whatsapp`);
+    return res.data.data;
+  }
+
   async cancelPurchaseRequest(id: string, reason: string): Promise<any> {
     const res = await this.client.post<ApiResponse<any>>(`/purchase/requests/${id}/cancel`, { reason });
     return res.data.data;
@@ -2233,8 +2239,9 @@ class ApiClient {
     return res.data.data;
   }
 
-  async retryBillingWhatsapp(id: string): Promise<void> {
-    await this.client.post(`/billing/bills/${id}/whatsapp/retry`);
+  async retryBillingWhatsapp(id: string): Promise<{ status: string }> {
+    const res = await this.client.post<ApiResponse<{ status: string }>>(`/billing/bills/${id}/whatsapp/retry`);
+    return res.data.data;
   }
 
   async cancelBillingBill(id: string, reason: string): Promise<void> {

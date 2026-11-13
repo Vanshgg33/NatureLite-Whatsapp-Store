@@ -19,6 +19,7 @@ import { ReportsController } from './reports/reports.controller';
 import { TaxSettingsModule } from './tax-settings/tax-settings.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { MediaModule } from '../media/media.module';
+import { SettingsModule } from '../settings/settings.module';
 import { BillingWhatsappService } from './billing-whatsapp.service';
 import { BillingStockService } from './billing-stock.service';
 
@@ -44,6 +45,7 @@ import { BillingStockService } from './billing-stock.service';
     TaxSettingsModule,
     WhatsAppModule,
     MediaModule,
+    SettingsModule,
   ],
   controllers: [BillingController, ReportsController, BooksController],
   providers: [BillingService, ReportsService, BooksService, BillingWhatsappService, BillingStockService],
