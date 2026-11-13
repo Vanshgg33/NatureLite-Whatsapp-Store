@@ -35,7 +35,7 @@ const taxableOf = (p: PDoc) => p.lines.reduce((t, l) => t + l.taxable, 0);
  * MISSING_IN_2B: in register (inside [start,end)), supplier has not filed. NOT_IN_SYSTEM: in 2B, purchase bill never entered.
  * `purchases` may reach back before `start` so earlier invoices reported in this 2B still match.
  */
-export function reconcileGstr2b(govt: GovtPurchase[], purchases: PDoc[], start: Date, end: Date) {
+export function reconcileGstr2b(govt: GovtPurchase[], purchases: PDoc[], start: Date, end: Date, tolerancePaise = TAX_TOLERANCE_PAISE) {
   const local = purchases.filter(p => !p.cancelled && !p.isDebitNote && !p.reverseCharge && p.supplierGstin);
   const localByKey = new Map(local.map(p => [key(p.supplierGstin, p.docNo), p]));
   const govtByKey = new Map(govt.map(g => [key(g.gstin, g.invoiceNo), g]));
@@ -45,7 +45,7 @@ export function reconcileGstr2b(govt: GovtPurchase[], purchases: PDoc[], start: 
     const p = localByKey.get(key(g.gstin, g.invoiceNo));
     if (!p) { notInSystem.push({ gstin: g.gstin, supplier: g.supplierName, invoiceNo: g.invoiceNo, date: g.date, taxable: rs(g.taxablePaise), tax: rs(g.taxPaise) }); continue; }
     const row = { gstin: g.gstin, supplier: g.supplierName, invoiceNo: g.invoiceNo, date: g.date, govtTax: rs(g.taxPaise), systemTax: rs(taxOf(p)), govtTaxable: rs(g.taxablePaise), systemTaxable: rs(taxableOf(p)) };
-    (Math.abs(g.taxPaise - taxOf(p)) <= TAX_TOLERANCE_PAISE ? matched : mismatch).push(row);
+    (Math.abs(g.taxPaise - taxOf(p)) <= tolerancePaise ? matched : mismatch).push(row);
   }
   for (const p of local) {
     if (p.date < start || p.date >= end || govtByKey.has(key(p.supplierGstin, p.docNo))) continue;

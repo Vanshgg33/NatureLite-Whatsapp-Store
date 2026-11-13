@@ -112,7 +112,7 @@ export class ReportsService {
     try { govt = parseGstr2b(json); } catch (e: any) { throw new BadRequestException(e.message); }
     const from = new Date(m.start); from.setUTCMonth(from.getUTCMonth() - 6);
     const purchases = (await this.purchaseModel.find({ date: { $gte: from, $lt: m.end } }).lean()).map(toPDoc);
-    return { month: m.month, ...reconcileGstr2b(govt, purchases, m.start, m.end) };
+    return { month: m.month, ...reconcileGstr2b(govt, purchases, m.start, m.end, Number(await this.taxSettings.paramOrDefault('gstr2bTolerancePaise', m.start))) };
   }
 
   /** GSTR-9: the 12 monthly GSTR-1 / GSTR-3B results of an Indian FY (fy = start year, e.g. 2026 for 2026-27) summed. */

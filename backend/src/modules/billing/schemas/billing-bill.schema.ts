@@ -150,6 +150,8 @@ export class BillingBill {
   @Prop({ default: 0 }) amountPaidPaise: number;
   @Prop({ default: 0 }) amountDuePaise: number;
   @Prop({ default: 'B2CS' }) gstr1Section: string;
+  /** Which published formula set priced this bill (0 = built-in). Old bills are never recalculated. */
+  @Prop({ default: 0 }) formulaVersion: number;
   @Prop() terms?: string;
   @Prop() cancelReason?: string;
 

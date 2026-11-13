@@ -3,7 +3,7 @@ import { Document, Types } from 'mongoose'
 
 @Schema({ timestamps: false, collection: 'billing_settings_changelog' })
 export class SettingsChangeLog extends Document {
-  @Prop({ required: true, enum: ['TaxRateRule','ComplianceParam','AllowedRate','CashDenomination'] }) entity: string
+  @Prop({ required: true, enum: ['TaxRateRule','ComplianceParam','AllowedRate','CashDenomination','FormulaSet'] }) entity: string
   @Prop({ type: Types.ObjectId, required: true }) entityId: Types.ObjectId
   @Prop({ required: true, enum: ['create','cancel','retire'] }) action: string
   @Prop({ type: Object }) before: Record<string, unknown>

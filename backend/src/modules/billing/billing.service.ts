@@ -13,6 +13,8 @@ import { BillingStockService } from './billing-stock.service';
 import { AuditLog } from './schemas/audit-log.schema';
 import { User } from '../users/schemas/user.schema';
 import { TaxSettingsService } from './tax-settings/tax-settings.service';
+import { LogicsService } from './logics/logics.service';
+import { calcBill, CalcResult } from './logics/formula-engine';
 
 function validateInvoiceNo(no: string): boolean {
   return /^[A-Za-z0-9/\-]{1,16}$/.test(no);
@@ -38,6 +40,7 @@ export class BillingService {
     @InjectModel(AuditLog.name) private auditLogModel: Model<any>,
     private readonly crmEngine: CrmEngineService,
     private readonly taxSettings: TaxSettingsService,
+    private readonly logics: LogicsService,
     private readonly billingWhatsapp: BillingWhatsappService,
     private readonly billingStock: BillingStockService,
   ) {}
@@ -899,46 +902,42 @@ export class BillingService {
       if (t) productById.set(item.productId, { ...(prod ?? {}), gstTreatment: t });
     }
 
-    // 4. Pre-discount taxables (for proportional allocation)
-    const preTaxables = dto.items.map(item => {
-      const ratePaise = Math.round(item.rate * 100);
-      const gross = Math.round(ratePaise * item.qty);
-      const lineDiscAmt = Math.round(gross * (item.discountPct ?? 0) / 100);
-      const afterLineDisc = gross - lineDiscAmt;
-      return (item.priceInclTax !== false)
-        ? Math.round(afterLineDisc * 100 / (100 + item.gstRate))
-        : afterLineDisc;
+    // 4. Charges. A charge with gstRate is GST-inclusive (e.g. Shipping, SAC 996511 @18%) and flows into GST reports as a pseudo-line
+    const chargesPaise = (dto.charges ?? []).map(c => {
+      const amtPaise = Math.round(c.amtRupees * 100);
+      if (!c.gstRate || c.gstRate <= 0) return { label: c.label, amtPaise, hsn: c.hsn, gstRate: c.gstRate };
+      const taxablePaise = Math.round(amtPaise * 100 / (100 + c.gstRate));
+      const tax = amtPaise - taxablePaise;
+      const cgst = isInterState ? 0 : Math.floor(tax / 2);
+      return {
+        label: c.label, amtPaise, hsn: c.hsn, gstRate: c.gstRate, taxablePaise,
+        cgst, sgst: isInterState ? 0 : tax - cgst, igst: isInterState ? tax : 0,
+      };
     });
-    const totalPreTaxable = preTaxables.reduce((s, t) => s + t, 0);
+    const chargesTotalPaise = chargesPaise.reduce((s, c) => s + c.amtPaise, 0);
+
+    // 5. Line maths, bill discount, tax split and round-off: from the formulas in force on the invoice date (Logics page)
     // amount mode: billDiscountPct carries rupees, capped at the subtotal; the % stored for print is derived
     const rawDisc = dto.billDiscountPct ?? 0;
     if (!(rawDisc >= 0) || (dto.billDiscountMode !== 'amount' && rawDisc > 100)) throw new BadRequestException('Invalid bill discount');
-    const billDiscAmtPaise = dto.billDiscountMode === 'amount'
-      ? Math.min(Math.round(rawDisc * 100), totalPreTaxable)
-      : Math.round(totalPreTaxable * rawDisc / 100);
+    const { version: formulaVersion, formulas } = await this.logics.formulasFor(rateDate);
+    let calc: CalcResult;
+    try {
+      calc = calcBill(
+        dto.items.map(i => ({ rate: i.rate, qty: i.qty, discountPct: i.discountPct ?? 0, gstRate: i.gstRate, priceInclTax: i.priceInclTax !== false })),
+        { discountValue: rawDisc, discountMode: dto.billDiscountMode === 'amount' ? 'amount' : 'percent', roundOff: !!dto.roundOffEnabled, isInterState, chargesTotalPaise },
+        formulas,
+      );
+    } catch (e: any) {
+      throw new BadRequestException(`Bill formula problem: ${e.message}. Ask an admin to check the Logics page.`);
+    }
+    const billDiscAmtPaise = calc.billDiscAmtPaise;
     const billDiscountPct = dto.billDiscountMode === 'amount'
-      ? (totalPreTaxable > 0 ? +(billDiscAmtPaise * 100 / totalPreTaxable).toFixed(2) : 0)
+      ? (calc.preTaxableTotal > 0 ? +(billDiscAmtPaise * 100 / calc.preTaxableTotal).toFixed(2) : 0)
       : rawDisc;
 
-    const billDiscAlloc = (totalPreTaxable > 0 && billDiscAmtPaise > 0)
-      ? preTaxables.map(t => Math.round(billDiscAmtPaise * t / totalPreTaxable))
-      : preTaxables.map(() => 0);
-
-    // 5. Per-line calc
     const lines = dto.items.map((item, i) => {
-      const ratePaise = Math.round(item.rate * 100);
-      const gross = Math.round(ratePaise * item.qty);
-      const lineDiscAmt = Math.round(gross * (item.discountPct ?? 0) / 100);
-      const afterLineDisc = gross - lineDiscAmt;
-      const taxable = (item.priceInclTax !== false)
-        ? Math.round(afterLineDisc * 100 / (100 + item.gstRate))
-        : afterLineDisc;
-      const taxableABD = Math.max(0, taxable - billDiscAlloc[i]);
-      const taxAmt = Math.round(taxableABD * item.gstRate / 100);
-      const cgst = isInterState ? 0 : Math.floor(taxAmt / 2);
-      const sgst = isInterState ? 0 : (taxAmt - Math.floor(taxAmt / 2));
-      const igst = isInterState ? taxAmt : 0;
-      const total = taxableABD + taxAmt;
+      const { discountAmt: lineDiscAmt, taxable: taxableABD, taxAmt, cgst, sgst, igst, total } = calc.lines[i];
       return {
         productId: new Types.ObjectId(item.productId),
         name: item.name,
@@ -966,36 +965,12 @@ export class BillingService {
       };
     });
 
-    // 6. Charges + totals
-    // A charge with gstRate is GST-inclusive (e.g. Shipping, SAC 996511 @18%) and flows into GST reports as a pseudo-line
-    const chargesPaise = (dto.charges ?? []).map(c => {
-      const amtPaise = Math.round(c.amtRupees * 100);
-      if (!c.gstRate || c.gstRate <= 0) return { label: c.label, amtPaise, hsn: c.hsn, gstRate: c.gstRate };
-      const taxablePaise = Math.round(amtPaise * 100 / (100 + c.gstRate));
-      const tax = amtPaise - taxablePaise;
-      const cgst = isInterState ? 0 : Math.floor(tax / 2);
-      return {
-        label: c.label, amtPaise, hsn: c.hsn, gstRate: c.gstRate, taxablePaise,
-        cgst, sgst: isInterState ? 0 : tax - cgst, igst: isInterState ? tax : 0,
-      };
-    });
-    const chargesTotalPaise = chargesPaise.reduce((s, c) => s + c.amtPaise, 0);
-    const lineTaxableTotal = lines.reduce((s, l) => s + l.taxable, 0);
-    const lineTaxTotal = lines.reduce((s, l) => s + l.cgst + l.sgst + l.igst, 0);
-    const grandBeforePaise = lineTaxableTotal + lineTaxTotal + chargesTotalPaise;
-    const cgstTotalPaise = lines.reduce((s, l) => s + l.cgst, 0) + chargesPaise.reduce((s, c) => s + (c.cgst ?? 0), 0);
-    const sgstTotalPaise = lines.reduce((s, l) => s + l.sgst, 0) + chargesPaise.reduce((s, c) => s + (c.sgst ?? 0), 0);
-    const igstTotalPaise = lines.reduce((s, l) => s + l.igst, 0) + chargesPaise.reduce((s, c) => s + (c.igst ?? 0), 0);
-    const taxableTotalPaise = lineTaxableTotal + chargesPaise.reduce((s, c) => s + (c.taxablePaise ?? 0), 0);
-
-    // 7. Round-off
-    let roundOffPaise = 0;
-    let grandTotalPaise = grandBeforePaise;
-    if (dto.roundOffEnabled) {
-      const rounded = Math.round(grandBeforePaise / 100) * 100;
-      roundOffPaise = rounded - grandBeforePaise;
-      grandTotalPaise = rounded;
-    }
+    // 6. Totals (charge tax is added to the reported CGST/SGST/IGST; it is already inside the charge amount)
+    const cgstTotalPaise = calc.cgstTotal + chargesPaise.reduce((s, c) => s + (c.cgst ?? 0), 0);
+    const sgstTotalPaise = calc.sgstTotal + chargesPaise.reduce((s, c) => s + (c.sgst ?? 0), 0);
+    const igstTotalPaise = calc.igstTotal + chargesPaise.reduce((s, c) => s + (c.igst ?? 0), 0);
+    const taxableTotalPaise = calc.taxableTotal + chargesPaise.reduce((s, c) => s + (c.taxablePaise ?? 0), 0);
+    const { roundOffPaise, grandTotalPaise } = calc;
 
     const billedAt = new Date();
     // split tender (e.g. 500 cash + 600 UPI) comes as dto.payments; amountPaidRupees + paymentMode stays for older callers
@@ -1017,7 +992,7 @@ export class BillingService {
     // 8. GSTR-1 section
     const gstin = customer.gstNo ?? '';
     const hasValidGstin = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin);
-    const B2CL_THRESHOLD_PAISE = 10_000_000; // Rs 1 lakh
+    const B2CL_THRESHOLD_PAISE = Number(await this.taxSettings.paramOrDefault('b2clThreshold', rateDate));
     let gstr1Section: string;
     if (hasValidGstin) {
       gstr1Section = 'B2B';
@@ -1071,6 +1046,7 @@ export class BillingService {
       amountPaidPaise,
       amountDuePaise,
       gstr1Section,
+      formulaVersion,
       // backward compat float fields:
       subtotal: +(taxableTotalPaise / 100).toFixed(2),
       totalGst: +((cgstTotalPaise + sgstTotalPaise + igstTotalPaise) / 100).toFixed(2),

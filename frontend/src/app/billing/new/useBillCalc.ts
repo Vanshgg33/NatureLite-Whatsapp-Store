@@ -1,37 +1,12 @@
 'use client';
 import { useMemo } from 'react';
+import { calcBill, DEFAULT_FORMULAS, type Formulas } from '@/lib/billing/formula-engine';
 import type { LineItem, BillCharge, BillTotals } from './types';
 
-function calcLineFields(
-  item: Pick<LineItem, 'rate' | 'qty' | 'priceInclTax' | 'discountPct' | 'gstRate'>,
-  billDiscAllocPaise: number,
-  isInterState: boolean,
-): Pick<LineItem, 'discountAmt' | 'taxable' | 'cgst' | 'sgst' | 'igst' | 'total'> {
-  const ratePaise = Math.round(item.rate * 100);
-  const gross = Math.round(ratePaise * item.qty);
-  const lineDiscAmt = Math.round(gross * item.discountPct / 100);
-  const afterLineDisc = gross - lineDiscAmt;
-  const taxable = item.priceInclTax
-    ? Math.round(afterLineDisc * 100 / (100 + item.gstRate))
-    : afterLineDisc;
-  const taxableABD = Math.max(0, taxable - billDiscAllocPaise);
-  const taxAmt = Math.round(taxableABD * item.gstRate / 100);
-  const cgst = isInterState ? 0 : Math.floor(taxAmt / 2);
-  const sgst = isInterState ? 0 : (taxAmt - Math.floor(taxAmt / 2));
-  const igst = isInterState ? taxAmt : 0;
-  return { discountAmt: lineDiscAmt, taxable: taxableABD, cgst, sgst, igst, total: taxableABD + taxAmt };
-}
-
-function preTaxable(item: Pick<LineItem, 'rate' | 'qty' | 'priceInclTax' | 'discountPct' | 'gstRate'>): number {
-  const ratePaise = Math.round(item.rate * 100);
-  const gross = Math.round(ratePaise * item.qty);
-  const lineDiscAmt = Math.round(gross * item.discountPct / 100);
-  const afterLineDisc = gross - lineDiscAmt;
-  return item.priceInclTax
-    ? Math.round(afterLineDisc * 100 / (100 + item.gstRate))
-    : afterLineDisc;
-}
-
+/**
+ * Live bill preview. The maths comes from the shared formula engine (formulas are edited on the Logics page);
+ * the server recomputes on save and is the final authority.
+ */
 export function billCalcPure(
   items: LineItem[],
   billDiscountValue: number,
@@ -40,53 +15,32 @@ export function billCalcPure(
   isInterState: boolean,
   amountPaidRupees: number,
   discountMode: 'percent' | 'amount' = 'percent',
+  formulas: Formulas = DEFAULT_FORMULAS,
 ): { lines: LineItem[]; totals: BillTotals } {
-  const preTaxables = items.map(item => preTaxable(item));
-  const totalPreTaxable = preTaxables.reduce((s, t) => s + t, 0);
-  // amount mode: value is rupees, capped at the subtotal
-  const billDiscAmtPaise = discountMode === 'amount'
-    ? Math.min(Math.round(billDiscountValue * 100), totalPreTaxable)
-    : Math.round(totalPreTaxable * billDiscountValue / 100);
-
-  const billDiscAlloc = (totalPreTaxable > 0 && billDiscAmtPaise > 0)
-    ? preTaxables.map(t => Math.round(billDiscAmtPaise * t / totalPreTaxable))
-    : preTaxables.map(() => 0);
-
-  const lines: LineItem[] = items.map((item, i) => ({
-    ...item,
-    ...calcLineFields(item, billDiscAlloc[i], isInterState),
-  }));
-
-  const taxablePaise = lines.reduce((s, l) => s + l.taxable, 0);
-  const cgstTotalPaise = lines.reduce((s, l) => s + l.cgst, 0);
-  const sgstTotalPaise = lines.reduce((s, l) => s + l.sgst, 0);
-  const igstTotalPaise = lines.reduce((s, l) => s + l.igst, 0);
   const chargesTotalPaise = charges.reduce((s, c) => s + Math.round(c.amtRupees * 100), 0);
-  const grandBeforePaise = taxablePaise + cgstTotalPaise + sgstTotalPaise + igstTotalPaise + chargesTotalPaise;
+  const opts = { discountValue: billDiscountValue, discountMode, roundOff: roundOffEnabled, isInterState, chargesTotalPaise };
+  const n = (x: number) => (Number.isFinite(x) ? x : 0); // half-typed inputs must never crash the page
+  const input = items.map(i => ({ rate: n(i.rate), qty: n(i.qty), discountPct: n(i.discountPct), gstRate: n(i.gstRate), priceInclTax: i.priceInclTax }));
+  const safeOpts = { ...opts, discountValue: n(opts.discountValue), chargesTotalPaise: n(opts.chargesTotalPaise) };
+  let r;
+  try { r = calcBill(input, safeOpts, formulas); } catch { r = calcBill(input, safeOpts, DEFAULT_FORMULAS); } // broken custom formula: show the standard preview, the server will explain
 
-  let roundOffPaise = 0;
-  let grandTotalPaise = grandBeforePaise;
-  if (roundOffEnabled) {
-    const rounded = Math.round(grandBeforePaise / 100) * 100;
-    roundOffPaise = rounded - grandBeforePaise;
-    grandTotalPaise = rounded;
-  }
-
-  const amountPaidPaise = Math.round(amountPaidRupees * 100);
-  const amountDuePaise = Math.max(0, grandTotalPaise - amountPaidPaise);
-
+  const amountDuePaise = Math.max(0, r.grandTotalPaise - Math.round(amountPaidRupees * 100));
   return {
-    lines,
+    lines: items.map((item, i) => {
+      const l = r.lines[i];
+      return { ...item, discountAmt: l.discountAmt, taxable: l.taxable, cgst: l.cgst, sgst: l.sgst, igst: l.igst, total: l.total };
+    }),
     totals: {
-      taxablePaise,
-      billDiscAmtPaise,
+      taxablePaise: r.taxableTotal,
+      billDiscAmtPaise: r.billDiscAmtPaise,
       chargesTotalPaise,
-      cgstTotalPaise,
-      sgstTotalPaise,
-      igstTotalPaise,
-      grandBeforePaise,
-      roundOffPaise,
-      grandTotalPaise,
+      cgstTotalPaise: r.cgstTotal,
+      sgstTotalPaise: r.sgstTotal,
+      igstTotalPaise: r.igstTotal,
+      grandBeforePaise: r.grandBeforePaise,
+      roundOffPaise: r.roundOffPaise,
+      grandTotalPaise: r.grandTotalPaise,
       amountDuePaise,
     },
   };
@@ -100,10 +54,11 @@ export function useBillCalc(
   isInterState: boolean,
   amountPaidRupees: number,
   discountMode: 'percent' | 'amount' = 'percent',
+  formulas: Formulas = DEFAULT_FORMULAS,
 ): { lines: LineItem[]; totals: BillTotals } {
   return useMemo(
-    () => billCalcPure(items, billDiscountValue, charges, roundOffEnabled, isInterState, amountPaidRupees, discountMode),
+    () => billCalcPure(items, billDiscountValue, charges, roundOffEnabled, isInterState, amountPaidRupees, discountMode, formulas),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items, billDiscountValue, charges, roundOffEnabled, isInterState, amountPaidRupees, discountMode],
+    [items, billDiscountValue, charges, roundOffEnabled, isInterState, amountPaidRupees, discountMode, formulas],
   );
 }

@@ -32,6 +32,7 @@ export const ADMIN_PAGE_HREFS: { page: string; href: string }[] = [
   { page: 'billing_insights', href: '/billing/insights' },
   { page: 'billing_gstr1', href: '/billing/gstr1' },
   { page: 'billing_tax', href: '/billing/settings/tax' },
+  { page: 'billing_logics', href: '/billing/logics' },
   { page: 'analytics', href: '/admin/analytics' },
   { page: 'whatsapp', href: '/admin/whatsapp' },
   { page: 'campaigns', href: '/admin/campaigns' },

@@ -7,10 +7,13 @@ import { BillingBill, BillingBillDocument } from './schemas/billing-bill.schema'
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { MediaService } from '../media/media.service';
 import { SettingsService } from '../settings/settings.service';
+import { TaxSettingsService } from './tax-settings/tax-settings.service';
+import { parseIntList } from './logics/param-defs';
 
 /** Retry schedule in seconds: 1 min, 5 min, 30 min, 2 h, then the bill shows "failed" with a Retry button. */
 export const RETRY_DELAYS_SEC = [60, 300, 1800, 7200] as const;
-export const nextRetryDelay = (attempt: number): number | null => (attempt < RETRY_DELAYS_SEC.length ? RETRY_DELAYS_SEC[attempt] : null);
+export const retryDelayFrom = (attempt: number, delays: readonly number[]): number | null => (attempt < delays.length ? delays[attempt] : null);
+export const nextRetryDelay = (attempt: number): number | null => retryDelayFrom(attempt, RETRY_DELAYS_SEC);
 
 /** "098765 43210", "+91 98765 43210", "919876543210" -> "919876543210"; null when not an Indian mobile. */
 export function normalizeIndianMobile(raw?: string | null): string | null {
@@ -37,6 +40,7 @@ export class BillingWhatsappService {
     private readonly whatsapp: WhatsAppService,
     private readonly media: MediaService,
     private readonly settings: SettingsService,
+    private readonly taxSettings: TaxSettingsService,
   ) {}
 
   /** Admin > Settings > WhatsApp Automation: on/off and template name for the invoice message. */
@@ -103,7 +107,9 @@ export class BillingWhatsappService {
       if (!messageId) throw new Error('WhatsApp provider did not accept the message');
       await this.billModel.updateOne({ _id: billId }, { $set: { whatsapp: { status: 'sent', runKey, attempts: attempts + 1, messageId, sentAt: new Date() } } }).setOptions({ allDocTypes: true });
     } catch (e: any) {
-      const delay = nextRetryDelay(attempts);
+      // a failed settings read must not stop the retry bookkeeping: fall back to the built-in schedule
+      const configured = await this.taxSettings.paramOrDefault('whatsappRetryDelaysSec').catch(() => null);
+      const delay = retryDelayFrom(attempts, parseIntList(configured, [...RETRY_DELAYS_SEC]));
       await this.billModel.updateOne({ _id: billId }, {
         $set: {
           whatsapp: {

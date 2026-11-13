@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   Users, FileText, AlertCircle, BarChart3, Trophy, FileSpreadsheet,
-  LayoutDashboard, Plus, LogOut, BookOpen, Menu, X, Settings, Network, type LucideIcon,
+  LayoutDashboard, Plus, LogOut, BookOpen, Menu, X, Settings, Network, SlidersHorizontal, type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAdminAuthStore } from '@/lib/admin-store';
@@ -54,6 +54,7 @@ const BILLING_NAV: NavGroup[] = [
     label: 'Settings',
     items: [
       { name: 'Tax & Compliance', href: '/billing/settings/tax', icon: Settings },
+      { name: 'Logics', href: '/billing/logics', icon: SlidersHorizontal },
       { name: 'How it works', href: '/billing/how-it-works', icon: Network },
     ],
   },

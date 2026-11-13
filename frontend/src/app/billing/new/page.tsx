@@ -13,6 +13,7 @@ import { ItemGrid } from './components/ItemGrid';
 import { BillFooter } from './components/BillFooter';
 import { SummaryPanel } from './components/SummaryPanel';
 import { useBillCalc } from './useBillCalc';
+import type { Formulas } from '@/lib/billing/formula-engine';
 import { CHANNEL_TIER, channelForCustomer, type SalesChannel } from '@/lib/billing/channel';
 import type { LineItem, BillCharge, PaidSplit, GodownDto } from './types';
 
@@ -89,7 +90,8 @@ export default function NewBillPage() {
   }, [deliveryUserId, deliveryStaff]);
 
   // ─── Calc ─────────────────────────────────────────────────────────────────
-  const { lines, totals } = useBillCalc(rawItems, billDiscountPct, charges, roundOffEnabled, isInterState, amountPaidRupees, discountMode);
+  const { data: activeFormulas } = useQuery({ queryKey: ['billing-formulas', invoiceDate], queryFn: () => api.getActiveFormulas(invoiceDate), staleTime: 60_000 });
+  const { lines, totals } = useBillCalc(rawItems, billDiscountPct, charges, roundOffEnabled, isInterState, amountPaidRupees, discountMode, activeFormulas?.formulas as Formulas | undefined);
 
   // flipping ₹ <-> % keeps the discount the same: re-express the typed value in the new mode
   const changeDiscountMode = (m: 'percent' | 'amount') => {

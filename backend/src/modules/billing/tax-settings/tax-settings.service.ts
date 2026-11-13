@@ -6,6 +6,7 @@ import { ComplianceParam } from '../schemas/compliance-param.schema'
 import { AllowedRate } from '../schemas/allowed-rate.schema'
 import { SettingsChangeLog } from '../schemas/settings-changelog.schema'
 import { CreateRuleDto } from './dto/create-rule.dto'
+import { paramDef } from '../logics/param-defs'
 
 // Inlined from frontend/src/lib/billing/tax/resolveRate.ts to avoid cross-package import
 // ponytail: duplicate kept in sync with frontend lib; update both when algorithm changes
@@ -132,6 +133,14 @@ export class TaxSettingsService {
       .findOne({ key, effectiveFrom: { $lte: docDate }, $or: [{ effectiveTo: null }, { effectiveTo: { $gt: docDate } }] })
       .sort({ effectiveFrom: -1 })
     return param?.value ?? null
+  }
+
+  /** Param value for the date, or the built-in default from PARAM_DEFS when none has been set. */
+  async paramOrDefault(key: string, docDate: Date = new Date()): Promise<number | string> {
+    const def = paramDef(key)!
+    const v = await this.getParam(key, docDate)
+    if (v === null || v === undefined) return def.default
+    return def.kind === 'int' && !Number.isFinite(Number(v)) ? def.default : v as number | string
   }
 
   /** Period lock: no bill may be created or cancelled on or before the filed-until date (param gstr1FiledUntil). */

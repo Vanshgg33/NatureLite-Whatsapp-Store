@@ -2175,6 +2175,24 @@ class ApiClient {
     return res.data.data;
   }
 
+  /** Logics page: bill formulas and editable values (/billing/logics). */
+  async getBillingLogics(): Promise<any> {
+    return (await this.client.get<ApiResponse<any>>('/billing/logics')).data.data;
+  }
+  /** Formulas in force today; the bill screen uses them for its live preview. */
+  async getActiveFormulas(date?: string): Promise<{ version: number; formulas: Record<string, string> }> {
+    return (await this.client.get<ApiResponse<any>>('/billing/logics/active', { params: { date } })).data.data;
+  }
+  async testBillingFormulas(formulas: Record<string, string>): Promise<{ ok: boolean; problems: string[] }> {
+    return (await this.client.post<ApiResponse<any>>('/billing/logics/formulas/test', { formulas })).data.data;
+  }
+  async publishBillingFormulas(body: { formulas: Record<string, string>; startsOn: string; reason: string }): Promise<any> {
+    return (await this.client.post<ApiResponse<any>>('/billing/logics/formulas', body)).data.data;
+  }
+  async setBillingParam(body: { key: string; value: string | number; startsOn: string; reason: string }): Promise<any> {
+    return (await this.client.post<ApiResponse<any>>('/billing/logics/params', body)).data.data;
+  }
+
   async getBillingReport(report: BillingReportKey, params: Record<string, string>): Promise<any> {
     const res = await this.client.get<ApiResponse<any>>(`/billing/reports/${report}`, { params });
     return res.data.data;
