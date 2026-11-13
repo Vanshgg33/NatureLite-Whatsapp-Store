@@ -6,6 +6,7 @@ import { ComplianceParam } from '../schemas/compliance-param.schema'
 import { SettingsChangeLog } from '../schemas/settings-changelog.schema'
 import { TaxSettingsService } from '../tax-settings/tax-settings.service'
 import { DEFAULT_FORMULAS, Formulas, SLOT_KEYS, SLOT_META, selfCheck } from './formula-engine'
+import { NODE_GROUPS } from './formula-presets'
 import { PARAM_DEFS, checkParamValue, paramDef } from './param-defs'
 
 /** A date-only string means the start of that day in IST (the shop's clock). */
@@ -41,7 +42,7 @@ export class LogicsService {
       const last = await this.paramModel.findOne({ key: d.key }).sort({ effectiveFrom: -1 }).lean()
       return { ...d, value: await this.taxSettings.paramOrDefault(d.key, now), lastChange: last ? { effectiveFrom: last.effectiveFrom, reason: last.reason } : null }
     }))
-    return { slots: SLOT_META, defaults: DEFAULT_FORMULAS, active, history, params }
+    return { slots: SLOT_META, groups: NODE_GROUPS, defaults: DEFAULT_FORMULAS, active, history, params }
   }
 
   private cleanSlots(raw: unknown): Formulas {

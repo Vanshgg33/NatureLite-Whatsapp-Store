@@ -1,4 +1,4 @@
-import { calcBill, DEFAULT_FORMULAS, selfCheck, SLOT_KEYS, SLOT_META, CalcLineIn } from './formula-engine';
+import { calcBill, DEFAULT_FORMULAS, selfCheck, SLOT_KEYS, SLOT_META, CalcLineIn, parseExpr, printExpr, slotNames } from './formula-engine';
 
 const O = { discountValue: 0, discountMode: 'percent' as const, roundOff: false, isInterState: false, chargesTotalPaise: 0 };
 const ln = (rate: number, gstRate: number, priceInclTax: boolean, qty = 1, discountPct = 0): CalcLineIn => ({ rate, qty, gstRate, priceInclTax, discountPct });
@@ -89,3 +89,50 @@ describe('slot metadata', () => {
     expect(SLOT_META.map(m => m.key)).toEqual([...SLOT_KEYS]);
   });
 });
+
+describe('parse tree and printer (used by the block editor)', () => {
+  const texts = [
+    ...Object.values(DEFAULT_FORMULAS),
+    'a - (b - c)', 'a - b - c', 'a / (b * c)', '-(a + b) * c', '!(a && b) || c', 'x ? y ? 1 : 2 : 3', '(x ? 1 : 2) + 3', 'max(a, min(b, 3))', '2 * -a', '1.5 * a',
+  ];
+  it('printing then parsing gives the same tree', () => {
+    for (const t of texts) expect([t, parseExpr(printExpr(parseExpr(t)))]).toEqual([t, parseExpr(t)]);
+  });
+  it('printed text means the same thing', () => {
+    const v = { a: 7, b: 3, c: 2, x: 1, y: 0 };
+    for (const t of texts.slice(Object.values(DEFAULT_FORMULAS).length)) {
+      const run = (s: string) => { try { return calcExpr(s, v); } catch (e: any) { return e.message; } };
+      expect([t, run(printExpr(parseExpr(t)))]).toEqual([t, run(t)]);
+    }
+  });
+  it('every name a slot may use really is available there, and nothing else is', () => {
+    for (const k of SLOT_KEYS) {
+      for (const n of slotNames(k)) {
+        const f = { ...DEFAULT_FORMULAS, [k]: `${n} * 0` };
+        expect([k, n, calcBill([ln(100, 5, false)], { ...O, roundOff: true }, f).grandTotalPaise >= 0]).toEqual([k, n, true]);
+      }
+      for (const used of printExpr(parseExpr(DEFAULT_FORMULAS[k])).match(/[A-Za-z_]\w*/g) ?? []) {
+        if (!['round', 'floor', 'ceil', 'min', 'max', 'abs'].includes(used)) expect([k, used, slotNames(k).includes(used)]).toEqual([k, used, true]);
+      }
+    }
+  });
+  it('a name outside the slot is refused', () => {
+    expect(() => calcBill([ln(100, 5, false)], O, { ...DEFAULT_FORMULAS, gross: 'grandTotal * 0' })).toThrow(/Unknown name/);
+  });
+});
+
+// evaluates a bare expression through the engine by using it as the "gross" step is not possible, so use the public parse + a tiny walker
+function calcExpr(src: string, v: Record<string, number>): number {
+  const walk = (n: any): number => {
+    switch (n.t) {
+      case 'num': return n.v;
+      case 'var': if (!(n.n in v)) throw new Error(`Unknown name "${n.n}"`); return v[n.n];
+      case 'un': return n.op === '-' ? -walk(n.e) : (walk(n.e) === 0 ? 1 : 0);
+      case 'bin': { const a = walk(n.l), c = walk(n.r); return ({ '+': a + c, '-': a - c, '*': a * c, '/': a / c, '%': a % c, '&&': +(a !== 0 && c !== 0), '||': +(a !== 0 || c !== 0) } as any)[n.op]; }
+      case 'call': return (Math as any)[n.f](...n.args.map(walk));
+      case 'if': return walk(n.c) !== 0 ? walk(n.a) : walk(n.b);
+    }
+    return NaN;
+  };
+  return walk(parseExpr(src));
+}

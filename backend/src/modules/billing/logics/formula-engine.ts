@@ -5,16 +5,33 @@
 export type Vars = Record<string, number>;
 type Fn = (v: Vars) => number;
 
+/** A parsed formula. The Logics page edits this tree as blocks and prints it back to text. */
+export type Node =
+  | { t: 'num'; v: number }
+  | { t: 'var'; n: string }
+  | { t: 'un'; op: '-' | '!'; e: Node }
+  | { t: 'bin'; op: string; l: Node; r: Node }
+  | { t: 'call'; f: string; args: Node[] }
+  | { t: 'if'; c: Node; a: Node; b: Node };
+
 const FUNCS = new Map<string, (...a: number[]) => number>([
   ['round', Math.round], ['floor', Math.floor], ['ceil', Math.ceil],
   ['min', Math.min], ['max', Math.max], ['abs', Math.abs],
 ]);
+const b = (x: boolean) => (x ? 1 : 0);
+const BIN = new Map<string, (a: number, c: number) => number>([
+  ['*', (a, c) => a * c], ['/', (a, c) => a / c], ['%', (a, c) => a % c],
+  ['+', (a, c) => a + c], ['-', (a, c) => a - c],
+  ['<', (a, c) => b(a < c)], ['>', (a, c) => b(a > c)], ['<=', (a, c) => b(a <= c)], ['>=', (a, c) => b(a >= c)],
+  ['==', (a, c) => b(a === c)], ['!=', (a, c) => b(a !== c)],
+  ['&&', (a, c) => b(a !== 0 && c !== 0)], ['||', (a, c) => b(a !== 0 || c !== 0)],
+]);
+/** Binary operators from loosest to tightest binding. */
+const LEVELS = [['||'], ['&&'], ['==', '!='], ['<', '>', '<=', '>='], ['+', '-'], ['*', '/', '%']];
+const PREC: Record<string, number> = {};
+LEVELS.forEach((ops, i) => ops.forEach(o => { PREC[o] = i + 1; }));
 
-const cache = new Map<string, Fn>();
-
-function compile(src: string): Fn {
-  const hit = cache.get(src);
-  if (hit) return hit;
+export function parseExpr(src: string): Node {
   if (src.length > 300) throw new Error('Formula is too long (max 300 characters)');
   const toks = src.match(/\d+(?:\.\d+)?|[A-Za-z_]\w*|<=|>=|==|!=|&&|\|\||[-+*/%<>!?:(),]|\S/g) ?? [];
   let p = 0;
@@ -22,56 +39,76 @@ function compile(src: string): Fn {
   const next = () => toks[p++];
   const expect = (t: string) => { if (next() !== t) throw new Error(`Expected "${t}"`); };
 
-  const level = (ops: Map<string, (a: number, b: number) => number>, sub: () => Fn) => (): Fn => {
-    let l = sub();
-    for (let op = peek(); op !== undefined && ops.has(op); op = peek()) {
-      next();
-      const r = sub(); const f = ops.get(op)!; const a = l;
-      l = v => f(a(v), r(v));
-    }
+  const level = (i: number): Node => {
+    if (i === LEVELS.length) return unary();
+    let l = level(i + 1);
+    for (let op = peek(); op !== undefined && LEVELS[i].includes(op); op = peek()) { next(); l = { t: 'bin', op, l, r: level(i + 1) }; }
     return l;
   };
-  const b = (x: boolean) => (x ? 1 : 0);
-  const primary = (): Fn => {
+  const unary = (): Node => {
+    const t = peek();
+    if (t === '-' || t === '!') { next(); return { t: 'un', op: t, e: unary() }; }
+    return primary();
+  };
+  const primary = (): Node => {
     const t = next();
     if (t === undefined) throw new Error('Formula ends too early');
-    if (/^\d/.test(t)) { const n = Number(t); return () => n; }
+    if (/^\d/.test(t)) return { t: 'num', v: Number(t) };
     if (t === '(') { const e = ternary(); expect(')'); return e; }
-    if (t === '-') { const e = unary(); return v => -e(v); }
-    if (t === '!') { const e = unary(); return v => b(e(v) === 0); }
     if (/^[A-Za-z_]/.test(t)) {
-      if (peek() === '(') {
-        next();
-        const f = FUNCS.get(t);
-        if (!f) throw new Error(`Unknown function "${t}"`);
-        const args: Fn[] = [];
-        if (peek() !== ')') { do { args.push(ternary()); } while (peek() === ',' && next()); }
-        expect(')');
-        return v => f(...args.map(a => a(v)));
-      }
-      return v => {
-        if (!Object.prototype.hasOwnProperty.call(v, t)) throw new Error(`Unknown name "${t}"`);
-        return v[t];
-      };
+      if (peek() !== '(') return { t: 'var', n: t };
+      next();
+      if (!FUNCS.has(t)) throw new Error(`Unknown function "${t}"`);
+      const args: Node[] = [];
+      if (peek() !== ')') { do { args.push(ternary()); } while (peek() === ',' && next()); }
+      expect(')');
+      return { t: 'call', f: t, args };
     }
     throw new Error(`Unexpected "${t}"`);
   };
-  const unary = (): Fn => primary();
-  const mul = level(new Map([['*', (a, c) => a * c], ['/', (a, c) => a / c], ['%', (a, c) => a % c]]), unary);
-  const add = level(new Map([['+', (a, c) => a + c], ['-', (a, c) => a - c]]), mul);
-  const cmp = level(new Map([['<', (a, c) => b(a < c)], ['>', (a, c) => b(a > c)], ['<=', (a, c) => b(a <= c)], ['>=', (a, c) => b(a >= c)]]), add);
-  const eq = level(new Map([['==', (a, c) => b(a === c)], ['!=', (a, c) => b(a !== c)]]), cmp);
-  const and = level(new Map([['&&', (a, c) => b(a !== 0 && c !== 0)]]), eq);
-  const or = level(new Map([['||', (a, c) => b(a !== 0 || c !== 0)]]), and);
-  function ternary(): Fn {
-    const c = or();
+  const ternary = (): Node => {
+    const c = level(0);
     if (peek() !== '?') return c;
     next();
-    const y = ternary(); expect(':'); const n = ternary();
-    return v => (c(v) !== 0 ? y(v) : n(v));
-  }
-  const fn = ternary();
+    const a = ternary(); expect(':'); const e = ternary();
+    return { t: 'if', c, a, b: e };
+  };
+  const ast = ternary();
   if (p < toks.length) throw new Error(`Unexpected "${toks[p]}"`);
+  return ast;
+}
+
+/** Text form of a tree, with only the brackets that are needed. parseExpr(printExpr(n)) gives n back. */
+export function printExpr(n: Node, min = 0): string {
+  let own = 8;
+  let s: string;
+  switch (n.t) {
+    case 'num': s = String(n.v); break;
+    case 'var': s = n.n; break;
+    case 'un': own = 7; s = n.op + printExpr(n.e, 7); break;
+    case 'bin': own = PREC[n.op]; s = `${printExpr(n.l, own)} ${n.op} ${printExpr(n.r, own + 1)}`; break;
+    case 'call': s = `${n.f}(${n.args.map(a => printExpr(a)).join(', ')})`; break;
+    case 'if': own = 0; s = `${printExpr(n.c, 1)} ? ${printExpr(n.a)} : ${printExpr(n.b)}`; break;
+  }
+  return own < min ? `(${s})` : s;
+}
+
+function toFn(n: Node): Fn {
+  switch (n.t) {
+    case 'num': return () => n.v;
+    case 'var': { const name = n.n; return v => { if (!Object.prototype.hasOwnProperty.call(v, name)) throw new Error(`Unknown name "${name}"`); return v[name]; }; }
+    case 'un': { const e = toFn(n.e); return n.op === '-' ? v => -e(v) : v => b(e(v) === 0); }
+    case 'bin': { const l = toFn(n.l), r = toFn(n.r), f = BIN.get(n.op)!; return v => f(l(v), r(v)); }
+    case 'call': { const f = FUNCS.get(n.f)!, args = n.args.map(toFn); return v => f(...args.map(a => a(v))); }
+    case 'if': { const c = toFn(n.c), x = toFn(n.a), y = toFn(n.b); return v => (c(v) !== 0 ? x(v) : y(v)); }
+  }
+}
+
+const cache = new Map<string, Fn>();
+function compile(src: string): Fn {
+  const hit = cache.get(src);
+  if (hit) return hit;
+  const fn = toFn(parseExpr(src));
   if (cache.size > 500) cache.clear();
   cache.set(src, fn);
   return fn;
@@ -122,6 +159,31 @@ export const SLOT_META: Array<{ key: SlotKey; label: string; scope: 'line' | 'bi
   { key: 'grandBefore', scope: 'bill', label: 'Grand total before round-off', vars: TOTALS_IN, help: 'Sum of line totals and charges.' },
   { key: 'grandTotal', scope: 'bill', label: 'Grand total', vars: ['grandBefore', 'roundOff'], help: 'After rounding to the nearest rupee when round-off is on.' },
 ];
+
+/** Plain-language names for the inputs a formula can use. Earlier steps are named after their SLOT_META label. */
+export const VAR_LABELS: Record<string, string> = {
+  ratePaise: 'Price (in paise)', qty: 'Quantity', discountPct: 'Item discount %', gstRate: 'GST rate %',
+  priceInclTax: 'Price includes tax (1 = yes, 0 = no)', isInterState: 'Other state (1 = yes, 0 = no)',
+  discountValue: 'Bill discount as typed', isAmountMode: 'Discount typed in ₹ (1 = yes, 0 = %)', roundOff: 'Round-off switch (1 = on)',
+  chargesTotal: 'Charges total', totalPreTaxable: 'Subtotal before bill discount',
+  taxableTotal: 'Taxable total', cgstTotal: 'CGST total', sgstTotal: 'SGST total', igstTotal: 'IGST total',
+};
+
+const LINE_SLOTS: SlotKey[] = ['gross', 'lineDisc', 'preTaxable'];
+const AFTER_DISC: SlotKey[] = ['billDiscAlloc', 'taxable', 'taxAmt', 'cgst', 'sgst', 'igst', 'lineTotal'];
+
+/** Every name a slot's formula may use: the inputs of its stage plus the steps before it (mirrors calcBill). */
+export function slotNames(k: SlotKey): string[] {
+  const base = ['isInterState', 'discountValue', 'isAmountMode', 'roundOff', 'chargesTotal'];
+  const line = ['ratePaise', 'qty', 'discountPct', 'gstRate', 'priceInclTax'];
+  const totals = ['taxableTotal', 'cgstTotal', 'sgstTotal', 'igstTotal'];
+  if (k === 'billDiscAmt') return [...base, 'totalPreTaxable'];
+  if (k === 'grandBefore') return [...base, ...totals];
+  if (k === 'grandTotal') return [...base, ...totals, 'grandBefore'];
+  const i = LINE_SLOTS.indexOf(k);
+  if (i >= 0) return [...base, ...line, ...LINE_SLOTS.slice(0, i)];
+  return [...base, ...line, 'totalPreTaxable', 'billDiscAmt', ...LINE_SLOTS, ...AFTER_DISC.slice(0, AFTER_DISC.indexOf(k))];
+}
 
 // ─── Calculation ─────────────────────────────────────────────────────────────
 
