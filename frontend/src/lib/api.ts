@@ -2225,6 +2225,11 @@ class ApiClient {
     return res.data.data;
   }
 
+  async getNextBillNumber(docType?: 'SALE_ORDER'): Promise<string> {
+    const res = await this.client.get<ApiResponse<{ invoiceNo: string }>>('/billing/bills/next-number', { params: { docType } });
+    return res.data.data.invoiceNo;
+  }
+
   async getBillingGodowns(): Promise<{ _id: string; name: string; code: string; isDefault: boolean }[]> {
     const res = await this.client.get<ApiResponse<any[]>>('/billing/godowns');
     return res.data.data;

@@ -85,6 +85,11 @@ export class BillingController {
 
   // ─── Bills ────────────────────────────────────────────────────────────────
 
+  @Get('bills/next-number')
+  nextNumber(@Query('docType') docType?: string) {
+    return this.billingService.peekNextInvoiceNo(docType === 'SALE_ORDER' ? 'SALE_ORDER' : 'SALE');
+  }
+
   @Patch('customers/:id/default-delivery')
   @RequireAccess('billing_customers.edit', 'billing_new.create')
   setDefaultDelivery(

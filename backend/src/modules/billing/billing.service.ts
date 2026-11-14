@@ -282,7 +282,12 @@ export class BillingService {
     return `NL-${year}-${String(counter.value).padStart(4, '0')}`;
   }
 
-  private async nextInvoiceNoV1(docType: 'SALE' | 'CREDIT_NOTE' | 'SALE_ORDER' = 'SALE'): Promise<string> {
+  // Read-only preview of the number the next bill will get (does not consume it)
+  async peekNextInvoiceNo(docType: 'SALE' | 'SALE_ORDER' = 'SALE') {
+    return { invoiceNo: await this.nextInvoiceNoV1(docType, true) };
+  }
+
+  private async nextInvoiceNoV1(docType: 'SALE' | 'CREDIT_NOTE' | 'SALE_ORDER' = 'SALE', peek = false): Promise<string> {
     // Indian financial year runs Apr–Mar; number looks like NIF-26-27/9321
     const now = new Date();
     const fyStart = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
@@ -291,6 +296,10 @@ export class BillingService {
     const prefix = `NIF-${yy(fyStart)}-${yy(fyStart + 1)}/`;
     // Three independent series: sale, credit note, sale order (blueprint §2.6)
     const series = docType === 'CREDIT_NOTE' ? 'cn' : docType === 'SALE_ORDER' ? 'so' : 'sale';
+    if (peek) {
+      const cur = await this.counterModel.findOne({ key: `${series}-${fyLabel}` }).lean();
+      return `${prefix}${((cur as any)?.value ?? 0) + 1}`;
+    }
     const counter = await this.counterModel.findOneAndUpdate(
       { key: `${series}-${fyLabel}` },
       { $inc: { value: 1 } },

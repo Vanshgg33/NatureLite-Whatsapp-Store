@@ -75,6 +75,14 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
     staleTime: 60_000,
   });
 
+  // Next number is shown in the Invoice No box; left as-is it is not sent, so the server still assigns it
+  const { data: nextNo = '' } = useQuery({
+    queryKey: ['billing-next-number', isOrder],
+    queryFn: () => api.getNextBillNumber(isOrder ? 'SALE_ORDER' : undefined),
+    staleTime: 0,
+  });
+  useEffect(() => { if (nextNo) setInvoiceNo(cur => cur || nextNo); }, [nextNo]);
+
   const { data: stores = [] } = useQuery({
     queryKey: ['billing-stores'],
     queryFn: () => api.getBillingStores(),
@@ -269,7 +277,7 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
         docType: isOrder ? ('SALE_ORDER' as const) : undefined,
         paymentTerm,
         invoiceDate,
-        invoiceNo: invoiceNo || undefined,
+        invoiceNo: invoiceNo && invoiceNo !== nextNo ? invoiceNo : undefined,
         placeOfSupply,
         godownId: godownId || undefined,
         customerId: customer._id,
@@ -312,6 +320,7 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
     onSuccess: ({ bill, print, saveNew }) => {
       // lists are cached for 5 min: without this the Bills page keeps showing the old (now cancelled) bill without the new notes
       invalidateBilling(qc);
+      qc.invalidateQueries({ queryKey: ['billing-next-number'] });
       toast(isOrder
         ? { title: `Sale order ${bill.invoiceNo} saved`, description: 'No stock or balance changes until you confirm it' }
         : { title: `Invoice ${bill.invoiceNo} saved`, description: bill.whatsapp?.status === 'skipped_no_phone' ? 'No WhatsApp number' : sendWhatsApp ? 'WhatsApp queued' : undefined });
