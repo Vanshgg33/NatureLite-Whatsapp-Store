@@ -139,6 +139,14 @@ export class BillingController {
     return this.billingService.retryWhatsapp(id);
   }
 
+  @Post('bills/:id/convert')
+  @RequireAccess('billing_new.create')
+  convertOrder(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const userId = req.user?._id?.toString() ?? 'system';
+    const canOverrideStock = String(req.user?.role ?? '').toLowerCase() === 'superadmin';
+    return this.billingService.convertOrder(id, body, userId, req.ip ?? '', canOverrideStock);
+  }
+
   @Post('bills/:id/reissue')
   @RequireAccess('billing_new.cancel')
   reissueBill(@Param('id') id: string, @Body() body: any, @Req() req: any) {
@@ -163,6 +171,7 @@ export class BillingController {
     startDate?: string;
     endDate?: string;
     search?: string;
+    docType?: 'SALE_ORDER';
     page?: string;
     limit?: string;
   }) {

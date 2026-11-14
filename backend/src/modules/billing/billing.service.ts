@@ -426,10 +426,12 @@ export class BillingService {
     startDate?: string;
     endDate?: string;
     search?: string;
+    docType?: 'SALE_ORDER';
     page?: number;
     limit?: number;
   }) {
     const q: any = { status: 'active' };
+    if (filters.docType === 'SALE_ORDER') q.docType = 'SALE_ORDER'; // open sale orders (hidden from sales lists by default)
     if (filters.customerId) q.customerId = new Types.ObjectId(filters.customerId);
     const term = filters.search?.trim();
     if (term) {
@@ -448,8 +450,8 @@ export class BillingService {
     const skip = ((filters.page ?? 1) - 1) * limit;
 
     const [items, total] = await Promise.all([
-      this.billModel.find(q).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-      this.billModel.countDocuments(q),
+      this.billModel.find(q).setOptions({ allDocTypes: filters.docType === 'SALE_ORDER' }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      this.billModel.countDocuments(q).setOptions({ allDocTypes: filters.docType === 'SALE_ORDER' }),
     ]);
 
     return { items, total, page: filters.page ?? 1, limit };
@@ -1169,7 +1171,8 @@ export class BillingService {
     const old = await this.billModel.findById(id).setOptions({ allDocTypes: true }).lean() as any;
     if (!old) throw new NotFoundException('Bill not found');
     if (old.status === 'cancelled') throw new BadRequestException('Bill is already cancelled');
-    if ((old.docType ?? 'SALE') !== 'SALE') throw new BadRequestException('Only sale invoices can be edited');
+    const oldType = old.docType ?? 'SALE';
+    if (oldType !== 'SALE' && oldType !== 'SALE_ORDER') throw new BadRequestException('Only sale invoices and sale orders can be edited');
 
     await this.cancelBill(id, `Edited - replaced by a corrected invoice`, userId, ip);
     let created: any;
@@ -1178,16 +1181,27 @@ export class BillingService {
     } catch (e) {
       // put the old bill back exactly as it was: active, stock taken again, balance restored
       await this.billModel.updateOne({ _id: id }, { $set: { status: 'active' }, $unset: { cancelReason: 1 } });
-      if (old.storeId) {
+      if (old.storeId && oldType === 'SALE') {
         const lines = (old.items ?? []).map((i: any) => ({ productId: String(i.productId), variantSku: i.variantSku || undefined, qty: Number(i.qty) || 0 }));
         await this.takeImsStock(String(old.storeId), lines).catch(() => undefined);
       }
       const due = Number(old.amountDue) || 0;
-      if (due > 0) await this.userModel.findByIdAndUpdate(old.customerId, { $inc: { outstanding: due } });
+      if (due > 0 && oldType === 'SALE') await this.userModel.findByIdAndUpdate(old.customerId, { $inc: { outstanding: due } });
       throw e;
     }
     await this.billModel.updateOne({ _id: id }, { $set: { cancelReason: `Edited - replaced by ${created.invoiceNo}` } });
     return created;
+  }
+
+  /** Confirm a sale order: issue the real invoice (stock and balance apply now), then close the order. */
+  async convertOrder(id: string, dto: any, userId = 'system', ip = '', canOverrideStock = false) {
+    const order = await this.billModel.findById(id).setOptions({ allDocTypes: true }).lean() as any;
+    if (!order) throw new NotFoundException('Sale order not found');
+    if (order.docType !== 'SALE_ORDER') throw new BadRequestException('Not a sale order');
+    if (order.status !== 'active') throw new BadRequestException('This sale order is already confirmed or cancelled');
+    const bill = await this.createBillV1({ ...dto, docType: 'SALE', convertedFromOrderNo: order.invoiceNo }, userId, ip, canOverrideStock);
+    await this.billModel.updateOne({ _id: id }, { $set: { status: 'converted', cancelReason: `Confirmed as ${bill.invoiceNo}` } });
+    return bill;
   }
 
   async recordPayment(id: string, amount: number, mode = 'cash') {

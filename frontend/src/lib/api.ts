@@ -2128,7 +2128,7 @@ class ApiClient {
     return res.data.data;
   }
 
-  async getBillingBills(params?: { customerId?: string; paymentStatus?: string; orderTag?: string; startDate?: string; endDate?: string; search?: string; page?: number; limit?: number }): Promise<any> {
+  async getBillingBills(params?: { customerId?: string; paymentStatus?: string; orderTag?: string; startDate?: string; endDate?: string; search?: string; docType?: 'SALE_ORDER'; page?: number; limit?: number }): Promise<any> {
     const res = await this.client.get<ApiResponse<any>>('/billing/bills', { params });
     return res.data.data;
   }
@@ -2231,6 +2231,7 @@ class ApiClient {
   }
 
   async createBillingBillV1(data: {
+    docType?: 'SALE_ORDER';
     paymentTerm?: string;
     invoiceDate?: string;
     invoiceNo?: string;
@@ -2267,6 +2268,12 @@ class ApiClient {
 
   async retryBillingWhatsapp(id: string): Promise<{ status: string }> {
     const res = await this.client.post<ApiResponse<{ status: string }>>(`/billing/bills/${id}/whatsapp/retry`);
+    return res.data.data;
+  }
+
+  /** Confirm a sale order into a real bill (stock and balance apply now) */
+  async convertBillingOrder(id: string, data: any): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>(`/billing/bills/${id}/convert`, data);
     return res.data.data;
   }
 
