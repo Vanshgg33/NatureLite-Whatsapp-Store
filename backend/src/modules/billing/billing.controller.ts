@@ -154,6 +154,7 @@ export class BillingController {
     orderTag?: string;
     startDate?: string;
     endDate?: string;
+    search?: string;
     page?: string;
     limit?: string;
   }) {

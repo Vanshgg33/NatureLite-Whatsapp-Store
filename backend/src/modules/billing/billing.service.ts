@@ -425,11 +425,17 @@ export class BillingService {
     orderTag?: string;
     startDate?: string;
     endDate?: string;
+    search?: string;
     page?: number;
     limit?: number;
   }) {
     const q: any = { status: 'active' };
     if (filters.customerId) q.customerId = new Types.ObjectId(filters.customerId);
+    const term = filters.search?.trim();
+    if (term) {
+      const re = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      q.$or = [{ invoiceNo: re }, { customerName: re }, { customerPhone: re }];
+    }
     if (filters.paymentStatus) q.paymentStatus = filters.paymentStatus;
     if (filters.orderTag) q.orderTag = filters.orderTag;
     if (filters.startDate || filters.endDate) {
