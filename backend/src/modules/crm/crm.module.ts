@@ -28,6 +28,8 @@ import { AuditLog, AuditLogSchema } from '../audit/schemas/audit-log.schema';
 import { CrmMarketingSpend, CrmMarketingSpendSchema } from './schemas/crm-marketing-spend.schema';
 import { Subscription, SubscriptionSchema } from '../subscriptions/schemas/subscription.schema';
 import { CrmController } from './crm.controller';
+import { CrmLogicSet, CrmLogicSetSchema } from './schemas/crm-logic-set.schema';
+import { CrmLogicLog, CrmLogicLogSchema } from './schemas/crm-logic-log.schema';
 
 @Module({
   imports: [
@@ -36,6 +38,8 @@ import { CrmController } from './crm.controller';
       { name: CrmCallLog.name, schema: CrmCallLogSchema },
       { name: CrmCampaign.name, schema: CrmCampaignSchema },
       { name: CrmSettings.name, schema: CrmSettingsSchema },
+      { name: CrmLogicSet.name, schema: CrmLogicSetSchema },
+      { name: CrmLogicLog.name, schema: CrmLogicLogSchema },
       { name: CrmEngineRun.name, schema: CrmEngineRunSchema },
       { name: CrmActivityEvent.name, schema: CrmActivityEventSchema },
       { name: BillingBill.name, schema: BillingBillSchema },

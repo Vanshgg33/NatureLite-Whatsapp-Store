@@ -19,12 +19,15 @@ import {
   type OrderForCycle,
 } from './engine/status-model';
 import { BillingBill } from '../billing/schemas/billing-bill.schema';
+import { CrmLogicSet } from './schemas/crm-logic-set.schema';
+import { DEFAULT_CRM_FORMULAS, DEFAULT_CRM_RULES, type CrmRules } from './engine/crm-formulas';
 
 interface SettingsSnapshot {
   reorderCycles: Record<string, number>;
   fallbackCycleDays: number;
   thresholds: typeof DEFAULT_THRESHOLDS;
   vip: typeof DEFAULT_VIP;
+  rules: CrmRules;
 }
 
 @Injectable()
@@ -38,6 +41,7 @@ export class CrmEngineService implements OnModuleInit {
     @InjectModel('Order') private orderModel: Model<any>,
     @InjectModel('User') private userModel: Model<any>,
     @InjectModel(BillingBill.name) private billModel: Model<any>,
+    @InjectModel(CrmLogicSet.name) private logicSetModel: Model<CrmLogicSet>,
   ) {}
 
   async onModuleInit() {
@@ -48,9 +52,23 @@ export class CrmEngineService implements OnModuleInit {
     }
   }
 
-  private async getSettings(): Promise<SettingsSnapshot> {
-    const s = await this.settingsModel.findOne().lean();
+  /** The rules in force: newest published formulas over the built-ins, plus the stored numbers. */
+  async loadRules(): Promise<CrmRules> {
+    const [s, set] = await Promise.all([this.settingsModel.findOne().lean(), this.logicSetModel.findOne().sort({ version: -1 }).lean()]);
+    const d = DEFAULT_CRM_RULES;
     return {
+      formulas: { ...DEFAULT_CRM_FORMULAS, ...(set?.formulas ?? {}) },
+      dueSoonDays: (s as any)?.dueSoonDays ?? d.dueSoonDays,
+      minOrdersForPersonal: (s as any)?.minOrdersForPersonal ?? d.minOrdersForPersonal,
+      priorityHighAt: (s as any)?.priorityHighAt ?? d.priorityHighAt,
+      priorityMediumAt: (s as any)?.priorityMediumAt ?? d.priorityMediumAt,
+    };
+  }
+
+  private async getSettings(): Promise<SettingsSnapshot> {
+    const [s, rules] = await Promise.all([this.settingsModel.findOne().lean(), this.loadRules()]);
+    return {
+      rules,
       reorderCycles: s?.reorderCycles ?? DEFAULT_REORDER_CYCLES,
       fallbackCycleDays: s?.fallbackCycleDays ?? 30,
       thresholds: s?.thresholds ?? DEFAULT_THRESHOLDS,
@@ -195,18 +213,19 @@ export class CrmEngineService implements OnModuleInit {
       ordersForCycle,
       settings.reorderCycles,
       settings.fallbackCycleDays,
+      settings.rules,
     );
 
     const nextDueDate = new Date(lastOrderDate.getTime() + cycleDays * 86_400_000);
     const istNextDue = getISTDate(nextDueDate);
     const daysLate = computeDaysLate(istNextDue, today);
 
-    const segment = computeSegment(daysLate, totalOrders, settings.thresholds);
+    const segment = computeSegment(daysLate, totalOrders, settings.thresholds, settings.rules.dueSoonDays);
     const isVip = computeVip(totalOrders, ltv, settings.vip);
 
     const existing = await this.statsModel.findOne({ userId: uid }).select('ltvPct').lean();
     const ltvPct = (existing as any)?.ltvPct ?? 0;
-    const { score: priorityScore, band: priorityBand } = computePriority(ltvPct, daysLate, totalOrders);
+    const { score: priorityScore, band: priorityBand } = computePriority(ltvPct, daysLate, totalOrders, settings.rules);
 
     await this.statsModel.findOneAndUpdate(
       { userId: uid },
@@ -246,6 +265,7 @@ export class CrmEngineService implements OnModuleInit {
     });
 
     const errors: string[] = [];
+    const rules = await this.loadRules();
     const users = await this.userModel.find().select('_id').lean();
 
     await Promise.all(
@@ -273,6 +293,7 @@ export class CrmEngineService implements OnModuleInit {
           ltvPct,
           s.daysLate ?? 0,
           s.segment === 'new' || s.segment === 'no_orders' ? 1 : 2,
+          rules,
         );
         return this.statsModel.updateOne(
           { _id: s._id },

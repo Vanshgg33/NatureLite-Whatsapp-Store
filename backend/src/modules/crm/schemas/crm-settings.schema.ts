@@ -48,6 +48,18 @@ export class CrmSettings {
     minLifetimeValue: number;
   };
 
+  @Prop({ default: 7 })
+  dueSoonDays: number;
+
+  @Prop({ default: 3 })
+  minOrdersForPersonal: number;
+
+  @Prop({ default: 60 })
+  priorityHighAt: number;
+
+  @Prop({ default: 35 })
+  priorityMediumAt: number;
+
   @Prop({ default: 50 })
   dailyCallTarget: number;
 
