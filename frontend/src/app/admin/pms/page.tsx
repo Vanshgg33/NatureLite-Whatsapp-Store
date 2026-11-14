@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useState, useEffect, useRef } from 'react';
 import { useDebouncedValue } from '@/lib/utils';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -35,8 +36,8 @@ export default function PMSPage() {
   const queryClient = useQueryClient();
   const { can } = useAdminAccess();
   const { toast } = useToast();
-  const [selectedStoreId, setSelectedStoreId] = useState<string>(user?.storeId || '');
-  const [search, setSearch] = useState('');
+  const [selectedStoreId, setSelectedStoreId] = usePageState<string>('selectedStoreId', user?.storeId || '');
+  const [search, setSearch] = usePageState('search', '');
   const debouncedSearch = useDebouncedValue(search, 300);
   const [addDialog, setAddDialog] = useState(false);
   const [newName, setNewName] = useState('');

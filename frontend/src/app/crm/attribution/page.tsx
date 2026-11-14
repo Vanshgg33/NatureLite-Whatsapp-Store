@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Ticket } from 'lucide-react';
@@ -8,7 +9,7 @@ import { formatINR } from '@/lib/crm/format';
 import { ReportPage, Stat, pctText } from '@/components/crm/ReportPage';
 
 export default function CrmAttributionPage() {
-  const [days, setDays] = useState(7);
+  const [days, setDays] = usePageState('days', 7);
   const { data, isLoading, isError } = useQuery({ queryKey: ['crm-attribution', days], queryFn: () => api.getCrmAttribution(days) });
   return (
     <ReportPage title="Revenue recovered by CRM" icon={Ticket} loading={isLoading} error={isError}

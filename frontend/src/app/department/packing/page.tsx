@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { usePageState } from '@/hooks/usePageState';
+import { useMemo } from 'react';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Package, ArrowRight, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react';
@@ -16,7 +17,7 @@ import type { Order } from '@/types';
 export default function PackingDashboardPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = usePageState('search', '');
 
   const { data, isLoading } = useQuery({
     queryKey: ['department', 'packing', 'orders'],

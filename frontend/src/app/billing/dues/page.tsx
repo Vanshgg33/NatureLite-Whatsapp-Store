@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useAdminAccess } from '@/lib/admin-access';
 
 import { useState, useMemo } from 'react';
@@ -95,10 +96,10 @@ const PRESETS: { key: DatePreset; label: string }[] = [
 
 export default function DuesPage() {
   const { can } = useAdminAccess();
-  const [preset, setPreset] = useState<DatePreset>('today');
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
-  const [sortMode, setSortMode] = useState<SortMode>('amount');
+  const [preset, setPreset] = usePageState<DatePreset>('preset', 'today');
+  const [customStart, setCustomStart] = usePageState('customStart', '');
+  const [customEnd, setCustomEnd] = usePageState('customEnd', '');
+  const [sortMode, setSortMode] = usePageState<SortMode>('sortMode', 'amount');
   const [payBill, setPayBill] = useState<any>(null);
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
 

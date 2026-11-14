@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useAdminAccess } from '@/lib/admin-access';
 
 import { useState } from 'react';
@@ -180,8 +181,8 @@ function CustomerForm({
 
 export default function BillingCustomersPage() {
   const { can } = useAdminAccess();
-  const [search, setSearch] = useState('');
-  const [tagFilter, setTagFilter] = useState<CTag | null>(null);
+  const [search, setSearch] = usePageState('search', '');
+  const [tagFilter, setTagFilter] = usePageState<CTag | null>('tagFilter', null);
   const debouncedSearch = useDebouncedValue(search, 300);
   const [editing, setEditing] = useState<any | null>(null);
   const qc = useQueryClient();

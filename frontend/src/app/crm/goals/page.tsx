@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Target } from 'lucide-react';
@@ -45,7 +46,7 @@ function GoalCard({ g, month }: { g: any; month: string }) {
 }
 
 export default function CrmGoalsPage() {
-  const [month, setMonth] = useState(thisMonth());
+  const [month, setMonth] = usePageState('month', thisMonth());
   const { data, isLoading, isError } = useQuery({ queryKey: ['crm-goals', month], queryFn: () => api.getCrmGoals(month) });
   return (
     <ReportPage title="Goals" icon={Target} loading={isLoading} error={isError} note="The gold marker shows where you should be today. CAC cap goal needs spend data and is not included.">

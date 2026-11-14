@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { usePageState } from '@/hooks/usePageState';
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Package, Search, Download } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -23,7 +24,7 @@ function exportToExcel(products: any[]) {
 }
 
 export default function CrmProductsPage() {
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = usePageState('search', '');
   const { data = [], isLoading } = useQuery({
     queryKey: ['crm-products'],
     queryFn: () => api.getCrmProducts(),

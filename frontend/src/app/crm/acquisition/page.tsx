@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { TrendingUp } from 'lucide-react';
@@ -11,8 +12,8 @@ const thisMonth = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia
 
 export default function CrmAcquisitionPage() {
   const qc = useQueryClient();
-  const [month, setMonth] = useState(thisMonth());
-  const [channel, setChannel] = useState('');
+  const [month, setMonth] = usePageState('month', thisMonth());
+  const [channel, setChannel] = usePageState('channel', '');
   const [amount, setAmount] = useState('');
   const { data, isLoading, isError } = useQuery({ queryKey: ['crm-acquisition', month], queryFn: () => api.getCrmAcquisition(month) });
   const refresh = () => qc.invalidateQueries({ queryKey: ['crm-acquisition'] });

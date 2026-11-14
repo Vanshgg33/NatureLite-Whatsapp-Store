@@ -1,7 +1,8 @@
 'use client';
+import { usePageState } from '@/hooks/usePageState';
 import { istDaysAgoKey } from '@/lib/time';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -303,19 +304,22 @@ export default function QueuePage() {
   const [activeTab, setActiveTab] = useState<TabKey>(() =>
     resolveTab(searchParams.get('segment'), searchParams.get('tab'))
   );
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
+  const [search, setSearch] = usePageState('search', '');
+  const [page, setPage] = usePageState('page', 1);
   const [logCallItem, setLogCallItem] = useState<any | null>(null);
 
   // Sync tab from URL params
   useEffect(() => {
     const t = resolveTab(searchParams.get('segment'), searchParams.get('tab'));
     setActiveTab(t);
-    setPage(1);
   }, [searchParams]);
 
-  // Reset page on tab or search change
-  useEffect(() => { setPage(1); }, [activeTab, search]);
+  // Reset page on tab or search change (not on mount, so Back keeps the saved page)
+  const listKey = `${activeTab}|${search}`;
+  const prevListKey = useRef(listKey);
+  useEffect(() => {
+    if (prevListKey.current !== listKey) { prevListKey.current = listKey; setPage(1); }
+  }, [listKey]);
 
   const tabCfg = TABS.find(t => t.key === activeTab) ?? TABS[0];
 

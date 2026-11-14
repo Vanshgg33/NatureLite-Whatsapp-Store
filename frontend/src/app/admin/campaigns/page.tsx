@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -442,7 +443,7 @@ export default function CampaignsPage() {
   });
 
   const [selectedCampaign, setSelectedCampaign] = useState<CampaignRecord | null>(null);
-  const [historyFilter, setHistoryFilter] = useState<'all' | 'sending' | 'done' | 'failed'>('all');
+  const [historyFilter, setHistoryFilter] = usePageState<'all' | 'sending' | 'done' | 'failed'>('historyFilter', 'all');
   const [clearHistoryConfirm, setClearHistoryConfirm] = useState(false);
   const clearHistoryMutation = useMutation({
     mutationFn: () => api.clearCampaignHistory(),

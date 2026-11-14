@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { usePageState } from '@/hooks/usePageState';
+import { useEffect, useMemo, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import {
@@ -87,7 +88,7 @@ const Pill = ({ children, cls }: { children: ReactNode; cls: string }) => (
 export default function FactoryDashboardPage() {
   const { user } = useAdminAuthStore();
   const isSuperadmin = user?.role === 'superadmin' || (!user?.storeId && user?.role === 'admin');
-  const [storeId, setStoreId] = useState<string>(user?.storeId || '');
+  const [storeId, setStoreId] = usePageState<string>('storeId', user?.storeId || '');
 
   const { data: stores = [] } = useQuery<Store[]>({ queryKey: ['stores'], queryFn: () => api.getStores(), enabled: isSuperadmin });
   useEffect(() => {

@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Receipt, Search } from 'lucide-react';
@@ -11,9 +12,9 @@ const STATUSES = ['', 'placed', 'confirmed', 'preparing', 'out_for_delivery', 'd
 const istDate = (d: string) => new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' });
 
 export default function CrmOrdersPage() {
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('');
-  const [page, setPage] = useState(1);
+  const [search, setSearch] = usePageState('search', '');
+  const [status, setStatus] = usePageState('status', '');
+  const [page, setPage] = usePageState('page', 1);
   const { data, isLoading, isError } = useQuery({
     queryKey: ['crm-orders', search, status, page],
     queryFn: () => api.getCrmOrders({ search: search || undefined, status: status || undefined, page }),

@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useAdminAccess } from '@/lib/admin-access';
 
 import { useState } from 'react';
@@ -36,10 +37,10 @@ import { User } from '@/types';
 export default function CustomersPage() {
   const { can } = useAdminAccess();
   const router = useRouter();
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = usePageState('search', '');
   const debouncedSearch = useDebouncedValue(search, 300);
-  const [page, setPage] = useState(1);
-  const [deliveryFilter, setDeliveryFilter] = useState<string>('');
+  const [page, setPage] = usePageState('page', 1);
+  const [deliveryFilter, setDeliveryFilter] = usePageState<string>('deliveryFilter', '');
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [blockDialogUser, setBlockDialogUser] = useState<User | null>(null);

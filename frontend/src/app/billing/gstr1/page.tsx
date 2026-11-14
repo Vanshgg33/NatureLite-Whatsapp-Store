@@ -1,4 +1,5 @@
 'use client';
+import { usePageState } from '@/hooks/usePageState';
 import { istMonthKey } from '@/lib/time';
 
 import { useState, useMemo } from 'react';
@@ -33,8 +34,8 @@ function downloadXlsx(filename: string, sheets: { name: string; rows: (string | 
 type GstrTab = 'b2b' | 'b2c' | 'hsn' | 'doc';
 
 export default function Gstr1Page() {
-  const [month, setMonth] = useState(currentMonth());
-  const [tab, setTab] = useState<GstrTab>('hsn');
+  const [month, setMonth] = usePageState('month', currentMonth());
+  const [tab, setTab] = usePageState<GstrTab>('tab', 'hsn');
 
   const { data, isLoading } = useQuery({
     queryKey: ['billing-gstr1', month],

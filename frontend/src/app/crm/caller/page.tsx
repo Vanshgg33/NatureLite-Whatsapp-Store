@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -194,7 +195,7 @@ function DoneCard({ label, onReset }: { label: string; onReset: () => void }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CallerPage() {
-  const [apiTab, setApiTab] = useState<ApiTab>('today');
+  const [apiTab, setApiTab] = usePageState<ApiTab>('apiTab', 'today');
   const [index, setIndex] = useState(0);
   const [panelItem, setPanelItem] = useState<any | null>(null);
 

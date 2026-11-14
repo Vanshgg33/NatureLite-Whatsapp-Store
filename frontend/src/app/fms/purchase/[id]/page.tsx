@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -637,7 +638,7 @@ export default function FmsPurchaseRequestDetailPage() {
   const canReceive   = usePermission('delivery.receive');
   const canCancel_p  = usePermission('request.cancel');
 
-  const [notesTab, setNotesTab] = useState<'notes' | 'attachments'>('notes');
+  const [notesTab, setNotesTab] = usePageState<'notes' | 'attachments'>('notesTab', 'notes');
 
   const { data: req, isLoading, refetch } = useQuery({
     queryKey: ['purchase-request', params.id],

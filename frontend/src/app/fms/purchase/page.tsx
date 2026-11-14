@@ -1,6 +1,7 @@
 'use client';
 
-import { Suspense, useState, useMemo } from 'react';
+import { usePageState } from '@/hooks/usePageState';
+import { Suspense, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
@@ -320,8 +321,8 @@ function PurchasePageInner() {
   const isBoard = params.get('view') === 'board';
   const dateRange = params.get('range');
 
-  const [stageFilter, setStageFilter] = useState<Stage | null>(null);
-  const [search, setSearch] = useState('');
+  const [stageFilter, setStageFilter] = usePageState<Stage | null>('stageFilter', null);
+  const [search, setSearch] = usePageState('search', '');
   const selectedTagNames = parseTagsParam(params.get('tags'));
 
   const { data: summary } = useQuery({

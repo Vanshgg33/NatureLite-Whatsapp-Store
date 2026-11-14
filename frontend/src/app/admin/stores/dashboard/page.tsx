@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -59,8 +60,8 @@ function formatCurrency(value: number): string {
 }
 
 export default function StoresDashboardPage() {
-  const [topProductsStore, setTopProductsStore] = useState<string>('all');
-  const [topCustomersStore, setTopCustomersStore] = useState<string>('all');
+  const [topProductsStore, setTopProductsStore] = usePageState<string>('topProductsStore', 'all');
+  const [topCustomersStore, setTopCustomersStore] = usePageState<string>('topCustomersStore', 'all');
 
   const { data: todayRevenue = [], isLoading: loadingToday } = useQuery({
     queryKey: ['stores-today-revenue'],

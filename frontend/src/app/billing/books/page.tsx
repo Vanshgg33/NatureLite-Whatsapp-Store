@@ -1,4 +1,5 @@
 'use client';
+import { usePageState } from '@/hooks/usePageState';
 import { istDateKey } from '@/lib/time';
 
 import { useAdminAccess } from '@/lib/admin-access';
@@ -356,7 +357,7 @@ function StockTab() {
 }
 
 export default function BooksPage() {
-  const [tab, setTab] = useState<Tab>('accounts');
+  const [tab, setTab] = usePageState<Tab>('tab', 'accounts');
   const canEdit = useAdminAccess().can('billing_books.edit');
   return (
     <div className="min-h-screen bg-[#faf9f6]">

@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
@@ -158,7 +159,7 @@ export default function Customer360Page() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const [activeTab, setActiveTab]       = useState<'timeline' | 'recordings' | 'orders'>('timeline');
+  const [activeTab, setActiveTab]       = usePageState<'timeline' | 'recordings' | 'orders'>('activeTab', 'timeline');
   const [activePanel, setActivePanel]   = useState<'call' | 'note' | 'wa'>('call');
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [callOutcome, setCallOutcome]   = useState('');

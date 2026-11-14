@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -224,8 +225,8 @@ function Detail({ id, onClose }: { id: string; onClose: () => void }) {
 }
 
 export default function ComplaintsPage() {
-  const [tab, setTab] = useState('open');
-  const [search, setSearch] = useState('');
+  const [tab, setTab] = usePageState('tab', 'open');
+  const [search, setSearch] = usePageState('search', '');
   const [openId, setOpenId] = useState<string | null>(null);
   // Wait for a pause in typing so each keystroke isn't a request.
   const [debouncedSearch, setDebouncedSearch] = useState('');

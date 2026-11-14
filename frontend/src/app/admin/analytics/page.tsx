@@ -1,4 +1,5 @@
 'use client';
+import { usePageState } from '@/hooks/usePageState';
 import { istDateKey, istDaysAgoKey } from '@/lib/time';
 
 import { useState, useMemo, useEffect, useRef, Fragment } from 'react';
@@ -105,14 +106,14 @@ function formatDateLocalLong(dateStr: string | undefined | null) {
 export default function AnalyticsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [days, setDays] = useState(30);
-  const [stockTab, setStockTab] = useState(false);
+  const [days, setDays] = usePageState('days', 30);
+  const [stockTab, setStockTab] = usePageState('stockTab', false);
   const [selectedStockDate, setSelectedStockDate] = useState<string>('');
-  const [stockStoreId, setStockStoreId] = useState<string>('');
-  const [rawTab, setRawTab] = useState(false);
+  const [stockStoreId, setStockStoreId] = usePageState<string>('stockStoreId', '');
+  const [rawTab, setRawTab] = usePageState('rawTab', false);
   const [selectedRawDate, setSelectedRawDate] = useState<string>('');
-  const [rawStoreId, setRawStoreId] = useState<string>('');
-  const [rmsTab, setRmsTab] = useState(false);
+  const [rawStoreId, setRawStoreId] = usePageState<string>('rawStoreId', '');
+  const [rmsTab, setRmsTab] = usePageState('rmsTab', false);
   const [stockEdit, setStockEdit] = useState<{
     item: StockSnapshotItem;
     stockInDelta: string;

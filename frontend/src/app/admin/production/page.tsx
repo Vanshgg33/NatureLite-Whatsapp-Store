@@ -1,4 +1,5 @@
 'use client';
+import { usePageState } from '@/hooks/usePageState';
 import { istDateKey } from '@/lib/time';
 
 import { useEffect, useState, type ReactNode } from 'react';
@@ -123,7 +124,7 @@ export default function ProductionPage() {
   const qc = useQueryClient();
   const { can } = useAdminAccess();
   const isUnscoped = user?.role === 'superadmin' || !user?.storeId;
-  const [storeId, setStoreId] = useState<string>(user?.storeId || '');
+  const [storeId, setStoreId] = usePageState<string>('storeId', user?.storeId || '');
   const [tab, setTabState] = useState('overview');
   const [drill, setDrill] = useState<{ type?: string; from?: string; to?: string; q?: string; n: number } | null>(null);
   const [last, setLast] = useState('');
@@ -339,7 +340,7 @@ function IssueTab({ sid, materials, machines, locOpts, itemOpts, send, busy }: a
 
 /* ───────── Adjust / waste / count ───────── */
 function AdjustTab({ items, locOpts, itemOpts, send, busy }: any) {
-  const [mode, setMode] = useState<'adjustments' | 'waste' | 'count'>('adjustments');
+  const [mode, setMode] = usePageState<'adjustments' | 'waste' | 'count'>('mode', 'adjustments');
   const [f, setF] = useState({ item: '', location: '', value: '', unit: 'kg', reason: '' });
   const [key, setKey] = useState(newKey());
   const set = (k: string) => (v: string) => setF((p) => ({ ...p, [k]: v }));

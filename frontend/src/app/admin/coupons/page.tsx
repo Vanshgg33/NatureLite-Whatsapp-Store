@@ -1,4 +1,5 @@
 'use client';
+import { usePageState } from '@/hooks/usePageState';
 import { istDateKey, istDaysAgoKey } from '@/lib/time';
 
 import { useAdminAccess } from '@/lib/admin-access';
@@ -47,7 +48,7 @@ import { Coupon, CreateCouponDto, Product, Category, User } from '@/types';
 
 export default function CouponsPage() {
   const { can } = useAdminAccess();
-  const [page, setPage] = useState(1);
+  const [page, setPage] = usePageState('page', 1);
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);

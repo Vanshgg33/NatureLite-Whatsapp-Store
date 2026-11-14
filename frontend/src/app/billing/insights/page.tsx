@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Trophy, TrendingUp, AlertCircle, X } from 'lucide-react';
@@ -128,11 +129,11 @@ function BillHistoryModal({ customer, onClose }: { customer: any; onClose: () =>
 type Tab = 'orders' | 'value' | 'product';
 
 export default function InsightsPage() {
-  const [tab, setTab] = useState<Tab>('orders');
+  const [tab, setTab] = usePageState<Tab>('tab', 'orders');
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
-  const [preset, setPreset] = useState<DatePreset>('all');
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
+  const [preset, setPreset] = usePageState<DatePreset>('preset', 'all');
+  const [customStart, setCustomStart] = usePageState('customStart', '');
+  const [customEnd, setCustomEnd] = usePageState('customEnd', '');
 
   const range = useMemo(() => getRange(preset, customStart, customEnd), [preset, customStart, customEnd]);
 

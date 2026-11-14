@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { downloadCsv } from '@/lib/crm/csv';
@@ -124,10 +125,10 @@ export default function CustomersPage() {
   const [search, setSearch] = useState('');
   const [segment, setSegment] = useState('');
   const [issues, setIssues] = useState(false);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = usePageState('page', 1);
   const [extra, setExtra] = useState({ minLtv: '', maxLtv: '', minDaysLate: '', tag: '', complaint: false });
   const [ready, setReady] = useState(false); // filters are read from the URL after mount (avoids a hydration mismatch)
-  const [viewId, setViewId] = useState('');
+  const [viewId, setViewId] = usePageState('viewId', '');
   const dSearch = useDebouncedValue(search, 350);
   const qc = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());

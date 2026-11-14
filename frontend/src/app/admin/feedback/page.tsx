@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MessageSquare, Star, Send, ChevronDown, ChevronUp, Upload, X } from 'lucide-react';
@@ -40,9 +41,9 @@ const emptyUploadForm = {
 export default function FeedbackPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [page, setPage] = useState(1);
-  const [typeFilter, setTypeFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = usePageState('page', 1);
+  const [typeFilter, setTypeFilter] = usePageState('typeFilter', '');
+  const [statusFilter, setStatusFilter] = usePageState('statusFilter', '');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [responseText, setResponseText] = useState('');
 

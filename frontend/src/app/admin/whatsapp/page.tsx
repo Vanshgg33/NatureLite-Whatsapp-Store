@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
@@ -43,7 +44,7 @@ export default function WhatsAppPage() {
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const [selectedPhone, setSelectedPhone] = useState<string | null>(searchParams.get('phone'));
-  const [searchText, setSearchText] = useState('');
+  const [searchText, setSearchText] = usePageState('searchText', '');
   const [newMessage, setNewMessage] = useState('');
   const [isEditingName, setIsEditingName] = useState(false);
   const [editNameDraft, setEditNameDraft] = useState('');

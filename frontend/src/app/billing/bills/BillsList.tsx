@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { usePageState } from '@/hooks/usePageState';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
@@ -84,28 +85,33 @@ export function BillsList({ orders = false }: { orders?: boolean }) {
   const { can } = useAdminAccess();
   const router = useRouter();
   const [cancelBill, setCancelBill] = useState<any>(null);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = usePageState('BillsList.search', '');
   const dSearch = useDebouncedValue(search, 300);
-  const [status, setStatus] = useState('');
-  const [channel, setChannel] = useState('');
-  const [preset, setPreset] = useState<DatePreset>('all');
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
-  const [page, setPage] = useState(1);
-  const [hasNotes, setHasNotes] = useState(false);
-  const [report, setReport] = useState<'' | 'party' | 'product'>('');
+  const [status, setStatus] = usePageState('BillsList.status', '');
+  const [channel, setChannel] = usePageState('BillsList.channel', '');
+  const [preset, setPreset] = usePageState<DatePreset>('BillsList.preset', 'all');
+  const [customStart, setCustomStart] = usePageState('BillsList.customStart', '');
+  const [customEnd, setCustomEnd] = usePageState('BillsList.customEnd', '');
+  const [page, setPage] = usePageState('BillsList.page', 1);
+  const [hasNotes, setHasNotes] = usePageState('BillsList.hasNotes', false);
+  const [report, setReport] = usePageState<'' | 'party' | 'product'>('BillsList.report', '');
 
   const range = useMemo(() => getRange(preset, customStart, customEnd), [preset, customStart, customEnd]);
-  const [product, setProduct] = useState('');
+  const [product, setProduct] = usePageState('BillsList.product', '');
   const dProduct = useDebouncedValue(product, 300);
-  const [minQty, setMinQty] = useState('');
+  const [minQty, setMinQty] = usePageState('BillsList.minQty', '');
   const dMinQty = useDebouncedValue(minQty, 300);
   // the same filters feed the list and the party report
   const filters = useMemo(() => ({
     search: dSearch || undefined, paymentStatus: status || undefined, orderTag: channel || undefined, hasNotes: hasNotes || undefined,
     productName: dProduct.trim() || undefined, minQty: Number(dMinQty) > 0 ? Number(dMinQty) : undefined, ...range,
   }), [dSearch, status, channel, hasNotes, dProduct, dMinQty, range]);
-  useEffect(() => { setPage(1); }, [filters]);
+  // reset to page 1 only when filters really change, not on mount (Back keeps the saved page)
+  const filtersKey = JSON.stringify(filters);
+  const prevFiltersKey = useRef(filtersKey);
+  useEffect(() => {
+    if (prevFiltersKey.current !== filtersKey) { prevFiltersKey.current = filtersKey; setPage(1); }
+  }, [filtersKey]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['billing-bills', orders, filters, page],

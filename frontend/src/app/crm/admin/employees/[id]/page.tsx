@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
@@ -36,7 +37,7 @@ function StatCard({ label, value, sub, icon: Icon, accent }: {
 
 export default function EmployeeAnalyticsPage() {
   const { id } = useParams<{ id: string }>();
-  const [days, setDays] = useState(30);
+  const [days, setDays] = usePageState('days', 30);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['crm-employee-stats', id, days],

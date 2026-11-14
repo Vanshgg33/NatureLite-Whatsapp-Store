@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useState } from 'react';
 import { useAdminAccess } from '@/lib/admin-access';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -100,19 +101,19 @@ export default function OrdersPage() {
   const { toast } = useToast();
 
   // List state
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = usePageState('search', '');
   const debouncedSearch = useDebouncedValue(search, 250);
-  const [status, setStatus] = useState('');
-  const [paymentFilter, setPaymentFilter] = useState<'' | 'pending' | 'paid'>('');
+  const [status, setStatus] = usePageState('status', '');
+  const [paymentFilter, setPaymentFilter] = usePageState<'' | 'pending' | 'paid'>('paymentFilter', '');
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofMarkPaid, setProofMarkPaid] = useState(true);
   const [proofUploading, setProofUploading] = useState(false);
   const [reopenEnabled, setReopenEnabled] = useState(false);
   const [reopening, setReopening] = useState(false);
-  const [cityFilter, setCityFilter] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [page, setPage] = useState(1);
+  const [cityFilter, setCityFilter] = usePageState('cityFilter', '');
+  const [startDate, setStartDate] = usePageState('startDate', '');
+  const [endDate, setEndDate] = usePageState('endDate', '');
+  const [page, setPage] = usePageState('page', 1);
 
   const [billLoadingId, setBillLoadingId] = useState<string | null>(null);
   const [printLoadingId, setPrintLoadingId] = useState<string | null>(null);

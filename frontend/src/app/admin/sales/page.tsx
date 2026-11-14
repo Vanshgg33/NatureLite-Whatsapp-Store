@@ -1,4 +1,5 @@
 'use client';
+import { usePageState } from '@/hooks/usePageState';
 import { istDateTimeLocal } from '@/lib/time';
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
@@ -350,11 +351,11 @@ export default function SalesPage() {
   const { can } = useAdminAccess();
   const { toast } = useToast();
   const { user } = useAdminAuthStore();
-  const [selectedStoreId, setSelectedStoreId] = useState<string>(user?.storeId || '');
-  const [search, setSearch] = useState('');
+  const [selectedStoreId, setSelectedStoreId] = usePageState<string>('selectedStoreId', user?.storeId || '');
+  const [search, setSearch] = usePageState('search', '');
   const debouncedSearch = useDebouncedValue(search, 300);
-  const [saleTypeFilter, setSaleTypeFilter] = useState('');
-  const [page, setPage] = useState(1);
+  const [saleTypeFilter, setSaleTypeFilter] = usePageState('saleTypeFilter', '');
+  const [page, setPage] = usePageState('page', 1);
   const [showLogSale, setShowLogSale] = useState(false);
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
   const [editingSaleStoreId, setEditingSaleStoreId] = useState<string | null>(null);

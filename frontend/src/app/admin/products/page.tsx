@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, Search, Package, Tag, X, CheckSquare, Download, Upload, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
@@ -38,14 +39,14 @@ function SortIcon({ field, current, dir }: { field: SortField; current: SortFiel
 
 export default function ProductsPage() {
   const { can } = useAdminAccess();
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = usePageState('search', '');
   const debouncedSearch = useDebouncedValue(search, 300);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = usePageState('page', 1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkCategoryId, setBulkCategoryId] = useState('');
-  const [filterCategory, setFilterCategory] = useState('');
-  const [sortBy, setSortBy] = useState<SortField>('createdAt');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [filterCategory, setFilterCategory] = usePageState('filterCategory', '');
+  const [sortBy, setSortBy] = usePageState<SortField>('sortBy', 'createdAt');
+  const [sortDir, setSortDir] = usePageState<SortDir>('sortDir', 'desc');
   const [exporting, setExporting] = useState(false);
   const [deleteConfirmProduct, setDeleteConfirmProduct] = useState<Product | null>(null);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);

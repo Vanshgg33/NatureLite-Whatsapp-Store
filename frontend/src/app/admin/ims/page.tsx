@@ -1,4 +1,5 @@
 'use client';
+import { usePageState } from '@/hooks/usePageState';
 import { istDateKey } from '@/lib/time';
 
 import { useState, useEffect, Fragment } from 'react';
@@ -35,10 +36,10 @@ export default function IMSPage() {
   const queryClient = useQueryClient();
   const { can } = useAdminAccess();
   const { toast } = useToast();
-  const [selectedStoreId, setSelectedStoreId] = useState<string>(user?.storeId || '');
-  const [search, setSearch] = useState('');
+  const [selectedStoreId, setSelectedStoreId] = usePageState<string>('selectedStoreId', user?.storeId || '');
+  const [search, setSearch] = usePageState('search', '');
   const debouncedSearch = useDebouncedValue(search, 300);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = usePageState('page', 1);
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [editItem, setEditItem] = useState<StoreStockItem | null>(null);
   const [editVariantKey, setEditVariantKey] = useState<string>(BASE_STOCK_KEY);
@@ -47,7 +48,7 @@ export default function IMSPage() {
   const [editDamaged, setEditDamaged] = useState('');
   const [editSaleLog, setEditSaleLog] = useState('');
   const [editThreshold, setEditThreshold] = useState('');
-  const [reportDate, setReportDate] = useState('');
+  const [reportDate, setReportDate] = usePageState('reportDate', '');
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   function toggleExpand(id: string) {

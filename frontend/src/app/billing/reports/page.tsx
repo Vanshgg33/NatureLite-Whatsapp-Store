@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { Fragment, useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart3, Download, ChevronDown, ChevronRight, ArrowUpDown, X, User } from 'lucide-react';
@@ -292,7 +293,7 @@ function SaleLines({ lines, showCustomer }: { lines: any[]; showCustomer?: boole
 // ── Product table ─────────────────────────────────────────────────────────────
 
 function ProductReport({ data, loading }: { data: any[]; loading: boolean }) {
-  const [sortBy, setSortBy] = useState<'totalValue' | 'totalQty'>('totalValue');
+  const [sortBy, setSortBy] = usePageState<'totalValue' | 'totalQty'>('sortBy', 'totalValue');
   const [open, setOpen] = useState<Set<string>>(new Set());
   const toggle = (k: string) => setOpen(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
@@ -573,8 +574,8 @@ function HsnSummaryReport({ from, to }: { from: string; to: string }) {
 }
 
 export default function SalesReportsPage() {
-  const [tab, setTab] = useState<'product' | 'customer' | 'daybook' | 'hsn' | StatementKind>('product');
-  const [filters, setFilters] = useState<FilterState>({
+  const [tab, setTab] = usePageState<'product' | 'customer' | 'daybook' | 'hsn' | StatementKind>('tab', 'product');
+  const [filters, setFilters] = usePageState<FilterState>('filters', {
     startDate: startOfMonth(),
     endDate: today(),
     startTime: '00:00',

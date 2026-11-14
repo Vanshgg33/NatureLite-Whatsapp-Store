@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { Toaster } from '@/components/ui/toaster';
+import { ScrollRestorer } from '@/components/scroll-restorer';
 import { APP_TZ, installISTDefaults } from '@/lib/time';
 
 // Prevent Render free-tier cold starts: ping the health endpoint every 14 minutes
@@ -68,6 +69,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       {children}
       <Toaster />
       <LiveISTClock />
+      <ScrollRestorer />
     </QueryClientProvider>
   );
 }

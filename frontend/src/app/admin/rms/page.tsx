@@ -1,4 +1,5 @@
 'use client';
+import { usePageState } from '@/hooks/usePageState';
 import { istDateKey } from '@/lib/time';
 
 import { useState, useEffect, useRef } from 'react';
@@ -42,10 +43,10 @@ export default function RMSPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { can } = useAdminAccess();
-  const [selectedStoreId, setSelectedStoreId] = useState<string>(user?.storeId || '');
-  const [search, setSearch] = useState('');
+  const [selectedStoreId, setSelectedStoreId] = usePageState<string>('selectedStoreId', user?.storeId || '');
+  const [search, setSearch] = usePageState('search', '');
   const debouncedSearch = useDebouncedValue(search, 300);
-  const [reportDate, setReportDate] = useState('');
+  const [reportDate, setReportDate] = usePageState('reportDate', '');
 
   const [editMaterial, setEditMaterial] = useState<RawMaterial | null>(null);
   const [prefill, setPrefill] = useState<RawMaterialPrefill | null>(null);

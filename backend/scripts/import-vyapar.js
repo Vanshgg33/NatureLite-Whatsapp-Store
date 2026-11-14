@@ -1,33 +1,38 @@
 /**
- * Import Vyapar Sales Report → users + orders (zero duplicates)
+ * Import Vyapar Sales Report → users + orders (zero duplicates, safe to re-run)
  *
- * Usage:
- *   node scripts/import-vyapar.js --file C:/Users/jaisw/Downloads/SaleReport.xlsx --dry-run
- *   node scripts/import-vyapar.js --file C:/Users/jaisw/Downloads/SaleReport.xlsx
+ * Usage (from backend/):
+ *   node scripts/import-vyapar.js --file "C:/path/SALE REPORT.xlsx" --dry-run   # counts only, no writes
+ *   node scripts/import-vyapar.js --file "C:/path/SALE REPORT.xlsx"             # import
+ *   node scripts/import-vyapar.js --rollback                                     # undo import
  *
  * - Skips cancelled invoices
- * - Matches existing users by phone (no duplicate users)
- * - Skips orders already imported (idempotent, safe to re-run)
+ * - Matches customers by the last 10 digits of the phone (any stored format)
+ * - New customers are stored as 91XXXXXXXXXX, like the rest of the users collection
+ * - Skips orders already imported (orderNumber VYP-<invoice>)
+ * - Relinks imported orders whose customer is missing to the customer with that phone
+ * - Recomputes totalOrders / totalSpent / lastOrderAt from real orders for every touched customer
  */
 
 const mongoose = require('mongoose');
 const xlsx = require('xlsx');
 const path = require('path');
 const fs = require('fs');
+const assert = require('assert');
 require('dotenv').config();
 
-const MONGO_URI = process.env.MONGODB_URI ||
-  'mongodb+srv://hariguptax1_db_user:yaJKUDWTmdFjvNY7@cluster0.xsfv7e3.mongodb.net/whatsapp-store?retryWrites=true&w=majority';
+const MONGO_URI = process.env.MONGODB_URI;
+if (!MONGO_URI) { console.error('MONGODB_URI not set (backend/.env)'); process.exit(1); }
 
-function normalizePhone(raw) {
-  if (!raw) return null;
-  const digits = String(raw).replace(/\D/g, '');
-  if (digits.length === 10) return `+91${digits}`;
-  if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
-  if (digits.length === 11 && digits.startsWith('0')) return `+91${digits.slice(1)}`;
-  if (digits.length > 10) return `+91${digits.slice(-10)}`;
-  return null;
+/** Last 10 digits of an Indian phone, or null. This is the matching key for customers. */
+function phone10(raw) {
+  const digits = String(raw ?? '').replace(/\D/g, '');
+  return digits.length >= 10 ? digits.slice(-10) : null;
 }
+assert.strictEqual(phone10('78799 88507'), '7879988507');
+assert.strictEqual(phone10('+919329150256'), '9329150256');
+assert.strictEqual(phone10('09329150256'), '9329150256');
+assert.strictEqual(phone10('12345'), null);
 
 function mapPaymentMethod(type) {
   const t = (type || '').toLowerCase();
@@ -113,15 +118,10 @@ async function withRetry(fn, label = '') {
     try {
       return await fn();
     } catch (err) {
-      if (err.code === 11000) return null; // duplicate key — already imported, skip
       const retriable = err.code === 'ECONNRESET' || err.code === 'ENOTFOUND' || err.name === 'MongoNetworkError' || err.name === 'MongoServerSelectionError';
       if (!retriable || attempt === 5) throw err;
       console.log(`  [retry ${attempt}/5] ${label} — ${err.code || err.message}`);
       await new Promise(r => setTimeout(r, 2000 * attempt));
-      if (mongoose.connection.readyState !== 1) {
-        console.log('  Reconnecting to MongoDB...');
-        await mongoose.connect(MONGO_URI);
-      }
     }
   }
 }
@@ -133,40 +133,35 @@ async function rollback() {
   const usersCol = db.collection('users');
   const ordersCol = db.collection('orders');
 
-  // 1. Delete all imported orders
   const { deletedCount: ordersDeleted } = await ordersCol.deleteMany({ source: 'vyapar_import' });
   console.log(`Deleted ${ordersDeleted} imported orders`);
-
-  // 2. Delete users created by import (tagged vyapar-import)
   const { deletedCount: usersDeleted } = await usersCol.deleteMany({ tags: 'vyapar-import' });
   console.log(`Deleted ${usersDeleted} imported users`);
 
-  // 3. Re-aggregate totalOrders + totalSpent for pre-existing users from remaining orders
   console.log('Re-aggregating stats for existing users...');
-  const pipeline = [
+  const stats = await ordersCol.aggregate([
     { $group: { _id: '$user', totalOrders: { $sum: 1 }, totalSpent: { $sum: '$total' }, lastOrderAt: { $max: '$createdAt' } } },
     { $match: { _id: { $ne: null } } },
-  ];
-  const stats = await ordersCol.aggregate(pipeline).toArray();
-  let updated = 0;
+  ]).toArray();
   for (const s of stats) {
     await usersCol.updateOne(
       { _id: s._id },
       { $set: { totalOrders: s.totalOrders, totalSpent: s.totalSpent, lastOrderAt: s.lastOrderAt, updatedAt: new Date() } }
     );
-    updated++;
   }
-  // Zero out users with no remaining orders
   await usersCol.updateMany(
     { _id: { $nin: stats.map(s => s._id) }, totalOrders: { $gt: 0 } },
     { $set: { totalOrders: 0, totalSpent: 0, lastOrderAt: null, updatedAt: new Date() } }
   );
-  console.log(`Re-aggregated stats for ${updated} users`);
-
+  console.log(`Re-aggregated stats for ${stats.length} users`);
   await mongoose.disconnect();
   console.log('\n=== ROLLBACK COMPLETE ===');
-  console.log(`Orders removed : ${ordersDeleted}`);
-  console.log(`Users removed  : ${usersDeleted}`);
+}
+
+function chunks(arr, n) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+  return out;
 }
 
 async function run() {
@@ -174,9 +169,8 @@ async function run() {
   const fileIdx = args.indexOf('--file');
   const filePath = fileIdx !== -1 ? path.resolve(args[fileIdx + 1]) : null;
   const dryRun = args.includes('--dry-run');
-  const doRollback = args.includes('--rollback');
 
-  if (doRollback) return rollback();
+  if (args.includes('--rollback')) return rollback();
 
   if (!filePath || !fs.existsSync(filePath)) {
     console.error('Usage:');
@@ -185,140 +179,97 @@ async function run() {
     process.exit(1);
   }
 
-  console.log('Reading Sale Report...');
+  console.log('Reading Excel...');
   const invoices = loadSaleReport(filePath);
-  console.log(`Reading Item Details...`);
   const itemMap = loadItemDetails(filePath);
-  console.log(`Invoices to import: ${invoices.length} | Item Detail entries: ${itemMap.size}`);
-
-  if (dryRun) {
-    console.log('--- DRY RUN: no DB writes ---\n');
-    console.log('Sample (first 10):');
-    invoices.slice(0, 10).forEach(inv => {
-      const phone = normalizePhone(inv.phone);
-      const items = itemMap.get(inv.invoiceNo) || [];
-      console.log(`  VYP-${inv.invoiceNo} | ${inv.partyName} | ${phone || 'no phone'} | ₹${inv.totalAmount} | ${inv.paymentType} → ${mapPaymentMethod(inv.paymentType)} | ${inv.paymentStatus} | ${items.length} item(s)`);
-    });
-    console.log('\n=== DRY RUN SUMMARY ===');
-    console.log(`Total invoices to import: ${invoices.length}`);
-    console.log(`Invoices with items     : ${[...itemMap.keys()].filter(k => invoices.find(i => i.invoiceNo === k)).length}`);
-    console.log(`Invoices without phone  : ${invoices.filter(i => !normalizePhone(i.phone)).length}`);
-    const pmCounts = {};
-    invoices.forEach(i => { const m = mapPaymentMethod(i.paymentType); pmCounts[m] = (pmCounts[m]||0)+1; });
-    console.log('Payment methods         :', pmCounts);
-    return;
-  }
+  console.log(`Non-cancelled invoices in file: ${invoices.length}`);
+  if (dryRun) console.log('--- DRY RUN: reads the DB, writes nothing ---');
 
   await mongoose.connect(MONGO_URI);
   const db = mongoose.connection.db;
   const usersCol = db.collection('users');
   const ordersCol = db.collection('orders');
 
-  // Pre-load all existing VYP order numbers to avoid per-row queries
-  const existingOrders = new Set(
-    (await ordersCol.distinct('orderNumber', { orderNumber: /^VYP-/ }))
-  );
+  // last-10-digits → userId for every existing customer
+  const byPhone = new Map();
+  const validUserIds = new Set();
+  for (const u of await usersCol.find({}, { projection: { _id: 1, phone: 1 } }).toArray()) {
+    validUserIds.add(String(u._id));
+    const p = phone10(u.phone);
+    if (p && !byPhone.has(p)) byPhone.set(p, u._id);
+  }
+  console.log(`Existing customers: ${validUserIds.size}`);
+
+  const touched = new Set(); // userIds whose stats must be recomputed
+  let userCreated = 0, userMatched = 0;
+  const matchedPhones = new Set();
+
+  // Find the customer for a phone, creating one if needed (dry run: fake id, no write)
+  async function resolveUser(p, name, city) {
+    if (byPhone.has(p)) {
+      if (!matchedPhones.has(p) && validUserIds.has(String(byPhone.get(p)))) { matchedPhones.add(p); userMatched++; }
+      return byPhone.get(p);
+    }
+    const phone = `91${p}`;
+    let id;
+    if (dryRun) {
+      id = new mongoose.Types.ObjectId();
+    } else {
+      const res = await withRetry(() => usersCol.insertOne({
+        phone,
+        name: name || 'Unknown',
+        isActive: true,
+        isBlocked: false,
+        totalOrders: 0,
+        totalSpent: 0,
+        addresses: [{
+          label: 'Home', fullName: name || 'Unknown', phone,
+          house: '', building: '', area: '', street: '',
+          city: city || '', state: '', pincode: '', landmark: '',
+          addressType: 'home', isDefault: true,
+        }],
+        preferences: {},
+        tags: ['vyapar-import'],
+        notes: '',
+        failedLoginAttempts: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }), 'user-insert');
+      id = res.insertedId;
+    }
+    byPhone.set(p, id);
+    userCreated++;
+    return id;
+  }
+
+  // 1. Insert invoices not yet imported
+  const existingOrders = new Set(await ordersCol.distinct('orderNumber', { orderNumber: /^VYP-/ }));
   console.log(`Already imported orders in DB: ${existingOrders.size}`);
-
-  // Phone → userId cache to avoid repeat user lookups
-  const phoneCache = new Map();
-
-  let userCreated = 0, userMatched = 0, orderCreated = 0, orderSkipped = 0, noPhone = 0;
-
+  const toInsert = [];
+  let orderSkipped = 0, noPhone = 0;
   for (const inv of invoices) {
     const orderNumber = `VYP-${inv.invoiceNo}`;
+    if (existingOrders.has(orderNumber)) { orderSkipped++; continue; }
+    existingOrders.add(orderNumber); // a repeated invoice row in the file counts once
 
-    if (existingOrders.has(orderNumber)) {
-      orderSkipped++;
-      continue;
-    }
-
-    const phone = normalizePhone(inv.phone);
+    const p = phone10(inv.phone);
     const name = inv.partyName || 'Unknown';
-
-    // Find or create user
     let userId = null;
-    if (phone) {
-      if (phoneCache.has(phone)) {
-        userId = phoneCache.get(phone);
-        userMatched++;
-      } else {
-        const existing = await usersCol.findOne({ phone }, { projection: { _id: 1 } });
-        if (existing) {
-          userId = existing._id;
-          phoneCache.set(phone, userId);
-          userMatched++;
-        } else if (!dryRun) {
-          const res = await withRetry(() => usersCol.insertOne({
-            phone,
-            name,
-            isActive: true,
-            isBlocked: false,
-            totalOrders: 0,
-            totalSpent: 0,
-            addresses: [{
-              label: 'Home',
-              fullName: name,
-              phone,
-              house: '', building: '', area: '', street: '',
-              city: inv.city,
-              state: '',
-              pincode: '',
-              landmark: '',
-              addressType: 'home',
-              isDefault: true,
-            }],
-            preferences: {},
-            tags: ['vyapar-import'],
-            notes: '',
-            failedLoginAttempts: 0,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          }), 'user-insert');
-          userId = res.insertedId;
-          phoneCache.set(phone, userId);
-          userCreated++;
-        }
-      }
-    } else {
-      noPhone++;
-    }
+    if (p) { userId = await resolveUser(p, name, inv.city); touched.add(String(userId)); } else noPhone++;
 
     const items = itemMap.get(inv.invoiceNo) || [{
-      name: 'Vyapar Item',
-      quantity: 1,
-      price: inv.totalAmount,
-      total: inv.totalAmount,
-      gstAmount: 0,
+      name: 'Vyapar Item', quantity: 1, price: inv.totalAmount, total: inv.totalAmount, gstAmount: 0,
     }];
-
     const invoiceDate = parseExcelDate(inv.date);
-    const paymentMethod = mapPaymentMethod(inv.paymentType);
-    const paymentStatus = mapPaymentStatus(inv.paymentStatus);
-
-    if (dryRun) {
-      process.stdout.write(`  [DRY] ${orderNumber} | ${name} | ${phone || 'no phone'} | ₹${inv.totalAmount} | ${paymentMethod} | ${paymentStatus}\n`);
-      orderCreated++;
-      continue;
-    }
-
-    await withRetry(() => ordersCol.insertOne({
+    toInsert.push({
       orderNumber,
       user: userId,
       items,
-      shippingAddress: {
-        name,
-        phone: phone || '',
-        street: '',
-        city: inv.city,
-        state: '',
-        pincode: '',
-        landmark: '',
-      },
+      shippingAddress: { name, phone: p ? `91${p}` : '', street: '', city: inv.city, state: '', pincode: '', landmark: '' },
       source: 'vyapar_import',
       status: 'delivered',
-      paymentStatus,
-      paymentMethod,
+      paymentStatus: mapPaymentStatus(inv.paymentStatus),
+      paymentMethod: mapPaymentMethod(inv.paymentType),
       subtotal: inv.totalAmount,
       total: inv.totalAmount,
       gstTotal: items.reduce((s, i) => s + (i.gstAmount || 0), 0),
@@ -331,29 +282,68 @@ async function run() {
       metadata: { vyaparInvoice: inv.invoiceNo, originalPaymentType: inv.paymentType, importedAt: new Date() },
       createdAt: invoiceDate,
       updatedAt: new Date(),
-    }), orderNumber);
-
-    if (userId) {
-      await withRetry(() => usersCol.updateOne(
-        { _id: userId },
-        { $inc: { totalOrders: 1, totalSpent: inv.totalAmount }, $set: { lastOrderAt: invoiceDate, updatedAt: new Date() } }
-      ), 'user-update');
+    });
+  }
+  const byYear = {};
+  toInsert.forEach(o => { const y = o.createdAt.getUTCFullYear(); byYear[y] = (byYear[y] || 0) + 1; });
+  console.log(`Orders to add: ${toInsert.length}`, byYear);
+  if (!dryRun) {
+    let done = 0;
+    for (const batch of chunks(toInsert, 500)) {
+      await withRetry(() => ordersCol.insertMany(batch, { ordered: false }), 'order-insert');
+      done += batch.length;
+      console.log(`  ... ${done}/${toInsert.length} orders added`);
     }
+  }
 
-    existingOrders.add(orderNumber); // prevent duplicates within this run
-    orderCreated++;
+  // 2. Relink previously imported orders whose customer no longer exists
+  const orphans = (await ordersCol.find(
+    { source: 'vyapar_import' },
+    { projection: { _id: 1, user: 1, 'shippingAddress.phone': 1, 'shippingAddress.name': 1, 'shippingAddress.city': 1 } },
+  ).toArray()).filter(o => !o.user || !validUserIds.has(String(o.user)));
+  const relinkOps = [];
+  let orphanNoPhone = 0;
+  for (const o of orphans) {
+    const p = phone10(o.shippingAddress?.phone);
+    if (!p) { orphanNoPhone++; continue; }
+    const userId = await resolveUser(p, o.shippingAddress?.name, o.shippingAddress?.city);
+    if (String(userId) === String(o.user)) continue; // just inserted in step 1 with a new customer
+    touched.add(String(userId));
+    relinkOps.push({ updateOne: { filter: { _id: o._id }, update: { $set: { user: userId, 'shippingAddress.phone': `91${p}` } } } });
+  }
+  console.log(`Orphaned imported orders to relink: ${relinkOps.length} (no phone, left as is: ${orphanNoPhone})`);
+  if (!dryRun) {
+    let done = 0;
+    for (const batch of chunks(relinkOps, 1000)) {
+      await withRetry(() => ordersCol.bulkWrite(batch, { ordered: false }), 'relink');
+      done += batch.length;
+      console.log(`  ... ${done}/${relinkOps.length} relinked`);
+    }
+  }
 
-    if (orderCreated % 500 === 0) process.stdout.write(`  ... ${orderCreated} orders imported\n`);
+  // 3. Recompute customer stats from their real orders (idempotent, unlike $inc)
+  const touchedIds = [...touched].map(id => new mongoose.Types.ObjectId(id));
+  if (!dryRun) {
+    for (const ids of chunks(touchedIds, 2000)) {
+      const stats = await ordersCol.aggregate([
+        { $match: { user: { $in: ids }, status: { $ne: 'cancelled' } } },
+        { $group: { _id: '$user', totalOrders: { $sum: 1 }, totalSpent: { $sum: '$total' }, lastOrderAt: { $max: '$createdAt' } } },
+      ]).toArray();
+      if (stats.length) await withRetry(() => usersCol.bulkWrite(stats.map(s => ({
+        updateOne: { filter: { _id: s._id }, update: { $set: { totalOrders: s.totalOrders, totalSpent: s.totalSpent, lastOrderAt: s.lastOrderAt, updatedAt: new Date() } } },
+      })), { ordered: false }), 'stats');
+    }
   }
 
   await mongoose.disconnect();
 
-  console.log('\n=== SUMMARY ===');
-  console.log(`Users created  : ${userCreated}`);
-  console.log(`Users matched  : ${userMatched} (existing, no duplicate)`);
-  console.log(`No-phone orders: ${noPhone}`);
-  console.log(`Orders imported: ${orderCreated}`);
-  console.log(`Orders skipped : ${orderSkipped} (already in DB)`);
+  console.log(`\n=== ${dryRun ? 'DRY RUN ' : ''}SUMMARY ===`);
+  console.log(`Existing customers matched : ${userMatched}`);
+  console.log(`New customers created      : ${userCreated}`);
+  console.log(`Orders added               : ${toInsert.length} (no phone: ${noPhone})`);
+  console.log(`Orders skipped (in DB)     : ${orderSkipped}`);
+  console.log(`Orphaned orders relinked   : ${relinkOps.length}`);
+  console.log(`Customers stats recomputed : ${dryRun ? `${touched.size} (would be)` : touchedIds.length}`);
 }
 
 run().catch(err => { console.error(err); process.exit(1); });

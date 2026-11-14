@@ -16,8 +16,7 @@ const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
 
-const MONGO_URI = process.env.MONGODB_URI ||
-  'mongodb+srv://hariguptax1_db_user:yaJKUDWTmdFjvNY7@cluster0.xsfv7e3.mongodb.net/whatsapp-store?retryWrites=true&w=majority';
+const MONGO_URI = process.env.MONGODB_URI;
 
 function normalizePhone(raw) {
   if (!raw) return null;

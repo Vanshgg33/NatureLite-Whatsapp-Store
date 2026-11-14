@@ -1,5 +1,6 @@
 'use client';
 
+import { usePageState } from '@/hooks/usePageState';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { FileText, ArrowRight, CheckCircle2, Truck, Search, ArrowLeftRight, Trash2, Pin } from 'lucide-react';
@@ -24,7 +25,7 @@ export default function BillingDashboardPage() {
   const [selectedRider, setSelectedRider] = useState<Record<string, string>>({});
   const [reassignRider, setReassignRider] = useState<Record<string, string>>({});
   const [showRiderOverride, setShowRiderOverride] = useState<Set<string>>(new Set());
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = usePageState('search', '');
 
   const { data, isLoading } = useQuery({
     queryKey: ['department', 'billing', 'orders'],
