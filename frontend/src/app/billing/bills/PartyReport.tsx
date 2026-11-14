@@ -9,19 +9,21 @@ const fmt = (n: number) => '₹' + (n ?? 0).toLocaleString('en-IN', { minimumFra
 const productsOf = (b: any): string[] => (b.items ?? []).map((i: any) => `${i.name} × ${i.qty}${i.unit ? ' ' + i.unit : ''}`);
 const addressOf = (b: any) => b.shippingAddress || b.billingAddress || '';
 
+/** Every bill the filters match (the API caps a page at 200, so walk the pages). Shared by the party and product reports. */
+export async function fetchAllBills(filters: Record<string, any>) {
+  const all: any[] = [];
+  for (let page = 1; ; page++) {
+    const r = await api.getBillingBills({ ...filters, page, limit: 200 });
+    all.push(...r.items);
+    if (all.length >= r.total || !r.items.length) return all;
+  }
+}
+
 /** Party report: one row per bill (name, phone, address, products with qty, amount) for whatever the Bills filters currently match. */
 export function PartyReport({ filters, onClose }: { filters: Record<string, any>; onClose: () => void }) {
   const { data: bills = [], isLoading } = useQuery({
     queryKey: ['billing-bills-party', filters],
-    queryFn: async () => {
-      // the API caps a page at 200, so walk the pages
-      const all: any[] = [];
-      for (let page = 1; ; page++) {
-        const r = await api.getBillingBills({ ...filters, page, limit: 200 });
-        all.push(...r.items);
-        if (all.length >= r.total || !r.items.length) return all;
-      }
-    },
+    queryFn: () => fetchAllBills(filters),
   });
 
   const exportCSV = () => {

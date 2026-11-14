@@ -13,6 +13,7 @@ import { istDateKey, istDaysAgoKey, istWeekStartKey, istMonthKey, startOfDayIST,
 import { CHANNELS, CHANNEL_COLORS } from '@/lib/billing/channel';
 import { invalidateBilling } from '@/lib/billing/invalidate';
 import { PartyReport } from './PartyReport';
+import { ProductReport } from './ProductReport';
 import { billDate, billTime } from '@/lib/billing/datetime';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -92,7 +93,7 @@ export function BillsList({ orders = false }: { orders?: boolean }) {
   const [customEnd, setCustomEnd] = useState('');
   const [page, setPage] = useState(1);
   const [hasNotes, setHasNotes] = useState(false);
-  const [showParty, setShowParty] = useState(false);
+  const [report, setReport] = useState<'' | 'party' | 'product'>('');
 
   const range = useMemo(() => getRange(preset, customStart, customEnd), [preset, customStart, customEnd]);
   const [product, setProduct] = useState('');
@@ -146,10 +147,14 @@ export function BillsList({ orders = false }: { orders?: boolean }) {
             <input type="number" min="0" value={minQty} onChange={e => setMinQty(e.target.value)} placeholder="Min qty"
               className="border border-gray-200 rounded-md px-2 py-1.5 text-xs w-20" />
             {!orders && (
-              <button onClick={() => setShowParty(v => !v)}
-                className="ml-auto px-3 py-1.5 text-xs font-medium rounded-md border border-[#2d7a4f] text-[#2d7a4f] hover:bg-[#e8f5ee]">
-                {showParty ? 'Hide party report' : 'Party report'}
-              </button>
+              <div className="ml-auto flex gap-1.5">
+                {([['party', 'Party report'], ['product', 'Product report']] as const).map(([k, label]) => (
+                  <button key={k} onClick={() => setReport(r => r === k ? '' : k)}
+                    className={cn('px-3 py-1.5 text-xs font-medium rounded-md border border-[#2d7a4f]', report === k ? 'bg-[#2d7a4f] text-white' : 'text-[#2d7a4f] hover:bg-[#e8f5ee]')}>
+                    {label}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -164,12 +169,8 @@ export function BillsList({ orders = false }: { orders?: boolean }) {
           </div>
         </div>
 
-        {showParty && !orders && (
-          <PartyReport
-            filters={filters}
-            onClose={() => setShowParty(false)}
-          />
-        )}
+        {!orders && report === 'party' && <PartyReport filters={filters} onClose={() => setReport('')} />}
+        {!orders && report === 'product' && <ProductReport filters={filters} onClose={() => setReport('')} />}
 
         <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
           <table className="w-full text-sm">
