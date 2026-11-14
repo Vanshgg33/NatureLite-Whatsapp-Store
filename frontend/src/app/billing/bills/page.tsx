@@ -2,7 +2,9 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useAdminAccess } from '@/lib/admin-access';
+import { useToast } from '@/components/ui/use-toast';
 import { Receipt, Search } from 'lucide-react';
 import { api } from '@/lib/api';
 import { cn, useDebouncedValue } from '@/lib/utils';
@@ -39,7 +41,42 @@ function getRange(preset: DatePreset, customStart: string, customEnd: string) {
 const chip = (on: boolean) => cn('px-3 py-1.5 text-xs font-medium rounded-md border transition-colors',
   on ? 'bg-[#2d7a4f] text-white border-[#2d7a4f]' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50');
 
+function CancelModal({ bill, onClose }: { bill: any; onClose: () => void }) {
+  const [reason, setReason] = useState('');
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const cancel = useMutation({
+    mutationFn: () => api.cancelBillingBill(bill._id, reason.trim()),
+    onSuccess: () => {
+      toast({ title: `${bill.invoiceNo} cancelled`, description: 'Stock returned to the store' });
+      qc.invalidateQueries({ queryKey: ['billing-bills'] });
+      onClose();
+    },
+    onError: (e: any) => toast({ title: e?.response?.data?.message ?? 'Failed to cancel bill', variant: 'destructive' }),
+  });
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+      <div className="bg-white rounded-xl shadow-xl w-[400px] max-w-[92vw] p-5">
+        <h3 className="font-semibold text-gray-800 mb-1">Cancel {bill.invoiceNo}</h3>
+        <p className="text-sm text-gray-500 mb-3">
+          Stock goes back to the store and the unpaid amount is removed from {bill.customerName}&apos;s balance. This cannot be undone.
+        </p>
+        <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} placeholder="Reason (required)"
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
+        <div className="flex gap-2 mt-3">
+          <Button variant="outline" className="flex-1" onClick={onClose} disabled={cancel.isPending}>Keep bill</Button>
+          <Button className="flex-1 bg-red-600 hover:bg-red-700 text-white" disabled={!reason.trim() || cancel.isPending} onClick={() => cancel.mutate()}>
+            {cancel.isPending ? 'Cancelling…' : 'Cancel bill'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function BillsPage() {
+  const { can } = useAdminAccess();
+  const [cancelBill, setCancelBill] = useState<any>(null);
   const [search, setSearch] = useState('');
   const dSearch = useDebouncedValue(search, 300);
   const [status, setStatus] = useState('');
@@ -105,6 +142,7 @@ export default function BillsPage() {
                 <th className="text-left px-3 py-2">Customer</th><th className="text-left px-3 py-2">Channel</th>
                 <th className="text-right px-3 py-2">Total</th><th className="text-right px-3 py-2">Paid</th>
                 <th className="text-right px-3 py-2">Due</th><th className="text-left px-3 py-2">Status</th>
+                <th className="px-3 py-2" />
               </tr>
             </thead>
             <tbody>
@@ -129,12 +167,20 @@ export default function BillsPage() {
                   <td className="px-3 py-2">
                     <span className={cn('text-[10px] px-2 py-0.5 rounded-full capitalize', STATUS_STYLE[b.paymentStatus] ?? 'bg-gray-100 text-gray-600')}>{b.paymentStatus}</span>
                   </td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap space-x-3">
+                    {can('billing_new.cancel') && can('billing_new.create') && (b.docType ?? 'SALE') === 'SALE' && (
+                      <Link href={`/billing/new?edit=${b._id}`} className="text-xs text-[#2d7a4f] hover:underline">Edit</Link>
+                    )}
+                    {can('billing_new.cancel') && (
+                      <button onClick={() => setCancelBill(b)} className="text-xs text-red-500 hover:text-red-700 hover:underline">Cancel</button>
+                    )}
+                  </td>
                 </tr>
               ))}
               {!isLoading && bills.length === 0 && (
-                <tr><td colSpan={8} className="px-3 py-10 text-center text-sm text-gray-400">No bills match these filters</td></tr>
+                <tr><td colSpan={9} className="px-3 py-10 text-center text-sm text-gray-400">No bills match these filters</td></tr>
               )}
-              {isLoading && <tr><td colSpan={8} className="px-3 py-10 text-center text-sm text-gray-400">Loading…</td></tr>}
+              {isLoading && <tr><td colSpan={9} className="px-3 py-10 text-center text-sm text-gray-400">Loading…</td></tr>}
             </tbody>
           </table>
         </div>
@@ -148,6 +194,7 @@ export default function BillsPage() {
           </div>
         </div>
       </div>
+      {cancelBill && <CancelModal bill={cancelBill} onClose={() => setCancelBill(null)} />}
     </div>
   );
 }

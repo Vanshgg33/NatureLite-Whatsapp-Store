@@ -14,7 +14,7 @@ import { BillFooter } from './components/BillFooter';
 import { SummaryPanel } from './components/SummaryPanel';
 import { useBillCalc } from './useBillCalc';
 import type { Formulas } from '@/lib/billing/formula-engine';
-import { channelForCustomer, type PriceTier, type SalesChannel } from '@/lib/billing/channel';
+import { channelForCustomer, CHANNEL_TIER, type PriceTier, type SalesChannel } from '@/lib/billing/channel';
 import type { LineItem, BillCharge, PaidSplit, GodownDto } from './types';
 
 const DELIVERY_TAGS = ['Home Delivery Order', 'Transport Order'];
@@ -83,6 +83,44 @@ export default function NewBillPage() {
     enabled: needsDelivery,
     staleTime: 60_000,
   });
+
+  // ─── Edit mode: /billing/new?edit=<billId> loads that bill; saving cancels it and issues a corrected one ──
+  const [editId, setEditId] = useState('');
+  const [editInvoiceNo, setEditInvoiceNo] = useState('');
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('edit');
+    if (!id) return;
+    (async () => {
+      try {
+        const b = await api.getBillingBill(id);
+        if (b.status === 'cancelled' || (b.docType ?? 'SALE') !== 'SALE') { toast({ title: 'This bill cannot be edited', variant: 'destructive' }); return; }
+        setCustomer(await api.getBillingCustomer(String(b.customerId)));
+        setEditId(id); setEditInvoiceNo(b.invoiceNo);
+        setOrderTag(b.orderTag); setPriceMode(CHANNEL_TIER[b.orderTag as SalesChannel] ?? 'Store/Retail');
+        setPlaceOfSupply(b.placeOfSupply ?? '22');
+        setInvoiceDate(new Date(b.invoiceDate ?? b.createdAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }));
+        if (b.godownId) setGodownId(b.godownId);
+        if (b.storeId) setStoreId(String(b.storeId));
+        setBillingAddress(b.billingAddress ?? ''); setShippingAddress(b.shippingAddress ?? ''); setSameAsBilling(b.sameAsBilling !== false);
+        setNotes(b.notes ?? ''); setTerms(b.terms ?? '');
+        setDeliveryUserId(b.deliveryUserId ?? ''); setDeliveryUserName(b.deliveryUserName ?? '');
+        setRawItems((b.items ?? []).map((i: any) => ({
+          _key: crypto.randomUUID(), productId: String(i.productId), variantSku: i.variantSku || undefined,
+          name: i.name, sku: i.sku, hsnCode: i.hsnCode ?? '', mrp: i.mrp ?? 0, qty: i.qty, unit: i.unit ?? 'NOS',
+          rate: i.rate ?? 0, priceInclTax: i.priceInclTax !== false, discountPct: i.discountPct ?? 0, gstRate: i.gstRate ?? 0,
+          manualRate: true, // keep the rates the bill was issued at
+          discountAmt: 0, taxable: 0, cgst: 0, sgst: 0, igst: 0, total: 0,
+        })));
+        if (b.billDiscountAmtPaise > 0) { setDiscountMode('amount'); setBillDiscountPct(b.billDiscountAmtPaise / 100); }
+        setCharges((b.charges ?? []).map((c: any) => ({ label: c.label, amtRupees: c.amtPaise / 100 })));
+        const sum = (m: string) => (b.payments ?? []).filter((p: any) => p.mode === m).reduce((s: number, p: any) => s + p.amountPaise, 0) / 100;
+        setPaid({ cash: sum('cash'), upi: sum('upi') });
+        setSendWhatsApp(false); // the customer already got the original
+      } catch {
+        toast({ title: 'Could not load the bill to edit', variant: 'destructive' });
+      }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Effects ──────────────────────────────────────────────────────────────
   // start on the main IMS store; the cashier can switch
@@ -218,7 +256,7 @@ export default function NewBillPage() {
         }).then(setCustomer).catch(() => {});
       }
 
-      const bill = await api.createBillingBillV1({
+      const payload = {
         paymentTerm,
         invoiceDate,
         invoiceNo: invoiceNo || undefined,
@@ -255,12 +293,14 @@ export default function NewBillPage() {
         notes,
         deliveryUserId: deliveryUserId || undefined,
         deliveryUserName: deliveryUserName || undefined,
-      });
+      };
+      const bill = editId ? await api.reissueBillingBill(editId, payload) : await api.createBillingBillV1(payload);
       return { bill, ...opts };
     },
     onSuccess: ({ bill, print, saveNew }) => {
       toast({ title: `Invoice ${bill.invoiceNo} saved`, description: bill.whatsapp?.status === 'skipped_no_phone' ? 'No WhatsApp number' : sendWhatsApp ? 'WhatsApp queued' : undefined });
       if (saveNew) {
+        setEditId('');
         resetForm();
       } else if (print) {
         router.push(`/billing/invoice/${bill._id}?print=1`);
@@ -308,7 +348,8 @@ export default function NewBillPage() {
           <span className="hidden sm:inline text-xs">Back</span>
         </button>
         <div className="w-px h-4 bg-gray-200" />
-        <span className="font-semibold text-gray-800 text-sm">New Bill</span>
+        <span className="font-semibold text-gray-800 text-sm">{editId ? `Edit ${editInvoiceNo}` : 'New Bill'}</span>
+        {editId && <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded">Saving cancels {editInvoiceNo} (stock returned) and issues a new invoice</span>}
         <span className="hidden lg:flex items-center gap-1 text-[11px] text-gray-400 ml-1">
           <kbd className="px-1 py-0.5 bg-gray-100 rounded text-[10px] font-mono">F3</kbd> Customer ·
           <kbd className="px-1 py-0.5 bg-gray-100 rounded text-[10px] font-mono">F8</kbd> Save ·

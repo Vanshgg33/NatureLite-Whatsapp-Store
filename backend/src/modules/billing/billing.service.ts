@@ -1146,6 +1146,11 @@ export class BillingService {
       if (bill.docType === 'CREDIT_NOTE') await this.takeImsStock(String(bill.storeId), lines).catch(() => undefined);
       else await this.returnImsStock(String(bill.storeId), lines);
     }
+    // creation added the unpaid amount to the customer's outstanding (a credit note subtracted it); undo that
+    const due = Number(bill.amountDue) || 0;
+    if (bill.docType !== 'SALE_ORDER' && due > 0 && bill.customerId) {
+      await this.userModel.findByIdAndUpdate(bill.customerId, { $inc: { outstanding: bill.docType === 'CREDIT_NOTE' ? due : -due } });
+    }
     await this.auditLogModel.create({
       targetCollection: 'BillingBill',
       docId: bill._id,
@@ -1157,6 +1162,32 @@ export class BillingService {
       at: new Date(),
     });
     return { ok: true };
+  }
+
+  /** Edit a sale = cancel it (stock back) and issue a corrected invoice. If the new one fails, the old bill is restored. */
+  async reissueBill(id: string, dto: any, userId = 'system', ip = '', canOverrideStock = false) {
+    const old = await this.billModel.findById(id).setOptions({ allDocTypes: true }).lean() as any;
+    if (!old) throw new NotFoundException('Bill not found');
+    if (old.status === 'cancelled') throw new BadRequestException('Bill is already cancelled');
+    if ((old.docType ?? 'SALE') !== 'SALE') throw new BadRequestException('Only sale invoices can be edited');
+
+    await this.cancelBill(id, `Edited - replaced by a corrected invoice`, userId, ip);
+    let created: any;
+    try {
+      created = await this.createBillV1(dto, userId, ip, canOverrideStock);
+    } catch (e) {
+      // put the old bill back exactly as it was: active, stock taken again, balance restored
+      await this.billModel.updateOne({ _id: id }, { $set: { status: 'active' }, $unset: { cancelReason: 1 } });
+      if (old.storeId) {
+        const lines = (old.items ?? []).map((i: any) => ({ productId: String(i.productId), variantSku: i.variantSku || undefined, qty: Number(i.qty) || 0 }));
+        await this.takeImsStock(String(old.storeId), lines).catch(() => undefined);
+      }
+      const due = Number(old.amountDue) || 0;
+      if (due > 0) await this.userModel.findByIdAndUpdate(old.customerId, { $inc: { outstanding: due } });
+      throw e;
+    }
+    await this.billModel.updateOne({ _id: id }, { $set: { cancelReason: `Edited - replaced by ${created.invoiceNo}` } });
+    return created;
   }
 
   async recordPayment(id: string, amount: number, mode = 'cash') {

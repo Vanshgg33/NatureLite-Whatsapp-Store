@@ -2270,6 +2270,12 @@ class ApiClient {
     return res.data.data;
   }
 
+  /** Edit = cancel the bill and issue a corrected one (same payload as createBillingBillV1) */
+  async reissueBillingBill(id: string, data: any): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>(`/billing/bills/${id}/reissue`, data);
+    return res.data.data;
+  }
+
   async cancelBillingBill(id: string, reason: string): Promise<void> {
     await this.client.patch(`/billing/bills/${id}/cancel`, { reason });
   }

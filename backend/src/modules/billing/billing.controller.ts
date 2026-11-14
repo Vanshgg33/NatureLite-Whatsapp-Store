@@ -139,6 +139,14 @@ export class BillingController {
     return this.billingService.retryWhatsapp(id);
   }
 
+  @Post('bills/:id/reissue')
+  @RequireAccess('billing_new.cancel')
+  reissueBill(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const userId = req.user?._id?.toString() ?? 'system';
+    const canOverrideStock = String(req.user?.role ?? '').toLowerCase() === 'superadmin';
+    return this.billingService.reissueBill(id, body, userId, req.ip ?? '', canOverrideStock);
+  }
+
   @Patch('bills/:id/cancel')
   @RequireAccess('billing_new.cancel')
   cancelBill(@Param('id') id: string, @Body('reason') reason: string, @Req() req: any) {
