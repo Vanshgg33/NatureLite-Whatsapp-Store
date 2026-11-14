@@ -879,6 +879,9 @@ export class BillingService {
     stockOverrideReason?: string;
   }, userId = 'system', ip = '', canOverrideStock = false) {
     if (!dto.items?.length) throw new BadRequestException('Bill must have at least one item');
+    if (!dto.customerId) throw new BadRequestException('Select a customer first');
+    const noId = dto.items.find(i => !i.productId);
+    if (noId) throw new BadRequestException(`Item "${noId.name}" has no product id: remove it and add it again`);
     if (!isChannel(dto.orderTag)) throw new BadRequestException('Sales channel is required: Transport Order, B2B Order, Home Delivery Order or Store Order');
 
     const docType = dto.docType ?? 'SALE';

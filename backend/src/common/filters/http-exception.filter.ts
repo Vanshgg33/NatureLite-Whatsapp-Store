@@ -52,7 +52,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
       const value = exception.stringValue ?? String(exception.value ?? '');
       message = `Invalid value for "${path}": "${value}" is not a valid ID.`;
       error = 'Bad Request';
-      this.logger.warn(`CastError: ${message}`);
+      // include the route and the first app-code stack frames so a bad id can be traced to the lookup that raised it
+      const frames = (exception.stack ?? '').split('\n').filter(l => l.includes('/src/') || l.includes('/dist/')).slice(0, 3).join(' | ');
+      this.logger.warn(`CastError: ${message} [${request.method} ${request.url}] ${frames}`);
     } else if (exception instanceof Error) {
       status = HttpStatus.INTERNAL_SERVER_ERROR;
       message = 'Internal server error';
