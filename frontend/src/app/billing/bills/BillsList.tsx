@@ -13,6 +13,7 @@ import { istDateKey, istDaysAgoKey, istWeekStartKey, istMonthKey, startOfDayIST,
 import { CHANNELS, CHANNEL_COLORS } from '@/lib/billing/channel';
 import { invalidateBilling } from '@/lib/billing/invalidate';
 import { PartyReport } from './PartyReport';
+import { billDate, billTime } from '@/lib/billing/datetime';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 
@@ -189,7 +190,8 @@ export function BillsList({ orders = false }: { orders?: boolean }) {
                     {b.notes?.trim() && <span title={b.notes}><StickyNote className="inline h-3.5 w-3.5 ml-1.5 text-amber-500" /></span>}
                   </td>
                   <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
-                    {new Date(b.invoiceDate ?? b.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })}
+                    {billDate(b.invoiceDate ?? b.createdAt)}
+                    <div className="text-[11px] text-gray-400">{billTime(b.createdAt)}</div>
                   </td>
                   <td className="px-3 py-2">
                     <div className="text-gray-800">{b.customerName}</div>

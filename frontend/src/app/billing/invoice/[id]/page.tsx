@@ -8,6 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Printer, ArrowLeft, XCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { invalidateBilling } from '@/lib/billing/invalidate';
+import { billTime } from '@/lib/billing/datetime';
 import { Button } from '@/components/ui/button';
 import { amountInWords } from '@/lib/billing/utils/amountInWords';
 import { INVOICE_BANK } from '@/components/InvoiceLayout';
@@ -215,7 +216,7 @@ export default function InvoicePage() {
                 <td style={{ verticalAlign: 'top', textAlign: 'right' }}>
                   <div style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', letterSpacing: 1 }}>{bill.docType === 'SALE_ORDER' ? 'SALE ORDER' : bill.docType === 'CREDIT_NOTE' ? 'CREDIT NOTE' : 'TAX INVOICE'}</div>
                   <div style={{ fontSize: 9, color: '#222', marginTop: 2 }}>Invoice No: <b>{bill.invoiceNo}</b></div>
-                  <div style={{ fontSize: 9, color: '#222' }}>Date: <b>{fmtDate(invoiceDate)}</b></div>
+                  <div style={{ fontSize: 9, color: '#222' }}>Date: <b>{fmtDate(invoiceDate)}</b> &nbsp; Time: <b>{billTime(bill.createdAt)}</b></div>
                   {bill.paymentMode && (
                     <div style={{ fontSize: 9, color: '#222' }}>
                       Payment: <b style={{ textTransform: 'capitalize' }}>{bill.paymentMode}</b>

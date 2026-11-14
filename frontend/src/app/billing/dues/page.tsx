@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, IndianRupee, Clock, CheckCircle, ArrowDownUp } from 'lucide-react';
 import { api } from '@/lib/api';
 import { invalidateBilling } from '@/lib/billing/invalidate';
+import { billDate, billTime } from '@/lib/billing/datetime';
 import { istDateKey, istDaysAgoKey, istWeekStartKey, istMonthKey, startOfDayIST, endOfDayIST } from '@/lib/time';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -266,7 +267,7 @@ export default function DuesPage() {
                                 <tr key={b._id} className="hover:bg-white transition-colors">
                                   <td className="px-5 py-2.5 font-mono text-xs text-gray-500">{b.invoiceNo}</td>
                                   <td className="px-4 py-2.5 text-gray-500 text-xs">
-                                    {new Date(b.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}
+                                    {billDate(b.createdAt, '2-digit')} <span className="text-gray-400">{billTime(b.createdAt)}</span>
                                   </td>
                                   <td className="px-4 py-2.5 text-right text-gray-600 tabular-nums text-xs">{fmt(b.grandTotal)}</td>
                                   <td className="px-4 py-2.5 text-right text-green-600 tabular-nums text-xs">{fmt(b.amountPaid)}</td>

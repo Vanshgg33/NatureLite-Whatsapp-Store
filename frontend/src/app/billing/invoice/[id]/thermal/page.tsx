@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { billTime } from '@/lib/billing/datetime';
 import { amountInWords } from '@/lib/billing/utils/amountInWords';
 
 const SELLER_NAME = 'NATURE LITE FOODS';
@@ -106,7 +107,7 @@ export default function ThermalReceiptPage() {
 
         {/* Invoice meta */}
         <Row label="Invoice No" value={bill.invoiceNo ?? '—'} />
-        <Row label="Date" value={fmtDate(invoiceDate)} />
+        <Row label="Date" value={`${fmtDate(invoiceDate)} ${billTime(bill.createdAt)}`} />
         <Row label="Customer" value={bill.customerName} />
         {bill.customerPhone && <Row label="Phone" value={bill.customerPhone} />}
         {bill.customerGstNo && <Row label="GSTIN" value={bill.customerGstNo} />}

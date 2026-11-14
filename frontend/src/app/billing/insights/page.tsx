@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Trophy, TrendingUp, AlertCircle, X } from 'lucide-react';
 import { api } from '@/lib/api';
+import { billDate, billTime } from '@/lib/billing/datetime';
 import { istDateKey, istDaysAgoKey, istWeekStartKey, istMonthKey, startOfDayIST, endOfDayIST } from '@/lib/time';
 import { Header } from '@/components/layout/header';
 import { CHANNEL_COLORS } from '@/lib/billing/channel';
@@ -105,7 +106,7 @@ function BillHistoryModal({ customer, onClose }: { customer: any; onClose: () =>
                   <tr key={b._id} className="hover:bg-gray-50">
                     <td className="px-4 py-2.5 font-mono text-xs text-gray-500">{b.invoiceNo}</td>
                     <td className="px-4 py-2.5 text-gray-500 text-xs">
-                      {new Date(b.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      {billDate(b.createdAt)} <span className="text-gray-400">{billTime(b.createdAt)}</span>
                     </td>
                     <td className="px-4 py-2.5 text-right font-semibold text-gray-800 tabular-nums">{fmt(b.grandTotal)}</td>
                     <td className="px-4 py-2.5 text-right">
