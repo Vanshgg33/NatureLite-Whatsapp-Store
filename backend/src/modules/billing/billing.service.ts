@@ -426,10 +426,12 @@ export class BillingService {
     endDate?: string;
     search?: string;
     docType?: 'SALE_ORDER';
+    hasNotes?: string;
     page?: number;
     limit?: number;
   }) {
     const q: any = { status: 'active' };
+    if (filters.hasNotes === 'true') q.notes = { $regex: /\S/ }; // internal notes with something typed (blank/whitespace excluded)
     if (filters.docType === 'SALE_ORDER') q.docType = 'SALE_ORDER'; // open sale orders (hidden from sales lists by default)
     if (filters.customerId) q.customerId = new Types.ObjectId(filters.customerId);
     const term = filters.search?.trim();

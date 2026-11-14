@@ -172,6 +172,7 @@ export class BillingController {
     endDate?: string;
     search?: string;
     docType?: 'SALE_ORDER';
+    hasNotes?: string;
     page?: string;
     limit?: string;
   }) {

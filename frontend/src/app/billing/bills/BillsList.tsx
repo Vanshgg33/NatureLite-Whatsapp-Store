@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useAdminAccess } from '@/lib/admin-access';
 import { useToast } from '@/components/ui/use-toast';
-import { Receipt, Search } from 'lucide-react';
+import { Receipt, Search, StickyNote } from 'lucide-react';
 import { api } from '@/lib/api';
 import { cn, useDebouncedValue } from '@/lib/utils';
 import { istDateKey, istDaysAgoKey, istWeekStartKey, istMonthKey, startOfDayIST, endOfDayIST } from '@/lib/time';
@@ -86,14 +86,16 @@ export function BillsList({ orders = false }: { orders?: boolean }) {
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [page, setPage] = useState(1);
+  const [hasNotes, setHasNotes] = useState(false);
 
   const range = useMemo(() => getRange(preset, customStart, customEnd), [preset, customStart, customEnd]);
-  useEffect(() => { setPage(1); }, [dSearch, status, channel, range]);
+  useEffect(() => { setPage(1); }, [dSearch, status, channel, range, hasNotes]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['billing-bills', orders, dSearch, status, channel, range, page],
+    queryKey: ['billing-bills', orders, dSearch, status, channel, range, page, hasNotes],
     queryFn: () => api.getBillingBills({
       docType: orders ? 'SALE_ORDER' : undefined, search: dSearch || undefined, paymentStatus: status || undefined, orderTag: channel || undefined,
+      hasNotes: hasNotes || undefined,
       ...range, page, limit: PAGE_SIZE,
     }),
     placeholderData: keepPreviousData,
@@ -127,6 +129,7 @@ export function BillsList({ orders = false }: { orders?: boolean }) {
               <option value="">All channels</option>
               {CHANNELS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
+            <button onClick={() => setHasNotes(v => !v)} className={chip(hasNotes)}>Internal notes</button>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {PRESETS.map(p => <button key={p.key} onClick={() => setPreset(p.key)} className={chip(preset === p.key)}>{p.label}</button>)}
@@ -156,6 +159,7 @@ export function BillsList({ orders = false }: { orders?: boolean }) {
                 <tr key={b._id} className="border-t border-gray-100 hover:bg-[#f7faf8]">
                   <td className="px-3 py-2 font-mono text-xs">
                     <Link href={`/billing/invoice/${b._id}`} className="text-[#2d7a4f] hover:underline">{b.invoiceNo}</Link>
+                    {b.notes?.trim() && <span title={b.notes}><StickyNote className="inline h-3.5 w-3.5 ml-1.5 text-amber-500" /></span>}
                   </td>
                   <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
                     {new Date(b.invoiceDate ?? b.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })}
