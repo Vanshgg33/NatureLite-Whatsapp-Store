@@ -11,7 +11,6 @@ import { StoreStockService } from '../store-stock/store-stock.service';
 import { StoresService } from '../stores/stores.service';
 import { BillingWhatsappService } from './billing-whatsapp.service';
 import { BillingStockService } from './billing-stock.service';
-import { AuditLog } from './schemas/audit-log.schema';
 import { User } from '../users/schemas/user.schema';
 import { TaxSettingsService } from './tax-settings/tax-settings.service';
 import { LogicsService } from './logics/logics.service';
@@ -37,7 +36,7 @@ export class BillingService {
     @InjectModel(BillingCounter.name) private counterModel: Model<BillingCounterDocument>,
     @InjectModel('Product') private productModel: Model<any>,
     @InjectModel(Godown.name) private godownModel: Model<any>,
-    @InjectModel(AuditLog.name) private auditLogModel: Model<any>,
+    @InjectModel('BillingAuditLog') private auditLogModel: Model<any>,
     private readonly crmEngine: CrmEngineService,
     private readonly taxSettings: TaxSettingsService,
     private readonly logics: LogicsService,

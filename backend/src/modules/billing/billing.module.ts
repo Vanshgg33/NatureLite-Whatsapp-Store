@@ -33,7 +33,7 @@ import { StoresModule } from '../stores/stores.module';
       { name: Product.name, schema: ProductSchema },
       { name: BusinessProfile.name, schema: BusinessProfileSchema },
       { name: Godown.name, schema: GodownSchema },
-      { name: AuditLog.name, schema: AuditLogSchema },
+      { name: 'BillingAuditLog', schema: AuditLogSchema }, // own name: the admin audit module also registers a model called AuditLog
       { name: BillingAccount.name, schema: BillingAccountSchema },
       { name: BillingPayment.name, schema: BillingPaymentSchema },
       { name: BillingExpense.name, schema: BillingExpenseSchema },
