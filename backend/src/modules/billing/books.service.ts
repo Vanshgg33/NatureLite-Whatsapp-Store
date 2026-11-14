@@ -96,14 +96,14 @@ export class BooksService {
 
   // ── stock entries ──
   listStockEntries() { return this.stockEntries.find().sort({ date: -1 }).limit(1000).lean(); }
-  async createStockEntry(d: { productId: string; name: string; kind: 'OPENING' | 'ADJUST'; qty: number; unitCostRupees?: number; date?: string; note?: string; location?: 'godown' | 'store' }) {
+  async createStockEntry(d: { productId: string; variantSku?: string; name: string; kind: 'OPENING' | 'ADJUST'; qty: number; unitCostRupees?: number; date?: string; note?: string; location?: 'godown' | 'store' }) {
     if (d.location && !['godown', 'store'].includes(d.location)) throw new BadRequestException('location must be godown or store');
     if (!d.productId || !d.name || !Number.isFinite(d.qty) || d.qty === 0) throw new BadRequestException('productId, name and a non-zero qty are required');
     if (!['OPENING', 'ADJUST'].includes(d.kind)) throw new BadRequestException('kind must be OPENING or ADJUST');
     const op = await this.getOpening();
     // opening stock lives on the day the books open, so valuations at that instant include it
     const date = d.kind === 'OPENING' ? (op?.asOn ?? asDate(d.date)) : asDate(d.date);
-    return this.stockEntries.create({ productId: d.productId, name: d.name, kind: d.kind, qty: d.qty, unitCostPaise: d.unitCostRupees != null ? Math.round(d.unitCostRupees * 100) : undefined, date, note: d.note, location: d.location ?? 'godown' });
+    return this.stockEntries.create({ productId: d.productId, variantSku: d.variantSku || undefined, name: d.name, kind: d.kind, qty: d.qty, unitCostPaise: d.unitCostRupees != null ? Math.round(d.unitCostRupees * 100) : undefined, date, note: d.note, location: d.location ?? 'godown' });
   }
 
   // ── purchases / debit notes ──
@@ -118,7 +118,7 @@ export class BooksService {
   async createPurchase(d: {
     supplierId?: string; supplierName: string; supplierGstin?: string; stateOfSupply?: string; date?: string; isDebitNote?: boolean; refDocNo?: string;
     itcEligibility?: string; reverseCharge?: boolean; paidRupees?: number; paymentMode?: string; roundOff?: boolean; notes?: string;
-    items: Array<{ productId?: string; name: string; hsnCode?: string; qty: number; unit?: string; rate: number; priceInclTax?: boolean; discountPct?: number; gstRate: number; gstTreatment?: string }>;
+    items: Array<{ productId?: string; variantSku?: string; name: string; hsnCode?: string; qty: number; unit?: string; rate: number; priceInclTax?: boolean; discountPct?: number; gstRate: number; gstTreatment?: string }>;
   }) {
     if (!d.supplierName?.trim()) throw new BadRequestException('supplier required');
     if (!d.items?.length) throw new BadRequestException('at least one item required');
@@ -131,7 +131,7 @@ export class BooksService {
       const tax = i.priceInclTax ? afterDisc - taxable : Math.round(taxable * i.gstRate / 100);
       const cgst = inter ? 0 : Math.floor(tax / 2);
       return {
-        productId: i.productId, name: i.name, hsnCode: i.hsnCode ?? '', qty: i.qty, unit: i.unit, gstRate: i.gstRate, gstTreatment: i.gstTreatment,
+        productId: i.productId, variantSku: i.variantSku || undefined, name: i.name, hsnCode: i.hsnCode ?? '', qty: i.qty, unit: i.unit, gstRate: i.gstRate, gstTreatment: i.gstTreatment,
         taxable, cgst, sgst: inter ? 0 : tax - cgst, igst: inter ? tax : 0,
       };
     });

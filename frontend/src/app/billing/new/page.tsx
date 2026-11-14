@@ -14,7 +14,7 @@ import { BillFooter } from './components/BillFooter';
 import { SummaryPanel } from './components/SummaryPanel';
 import { useBillCalc } from './useBillCalc';
 import type { Formulas } from '@/lib/billing/formula-engine';
-import { CHANNEL_TIER, channelForCustomer, type SalesChannel } from '@/lib/billing/channel';
+import { channelForCustomer, type PriceTier, type SalesChannel } from '@/lib/billing/channel';
 import type { LineItem, BillCharge, PaidSplit, GodownDto } from './types';
 
 const DELIVERY_TAGS = ['Home Delivery Order', 'Transport Order'];
@@ -39,6 +39,8 @@ export default function NewBillPage() {
   const [godownId, setGodownId] = useState('');
   const [placeOfSupply, setPlaceOfSupply] = useState('22');
   const [orderTag, setOrderTag] = useState<SalesChannel | ''>('');
+  // which product price fills the bill lines: the normal price, or the B2B price set on the product
+  const [priceMode, setPriceMode] = useState<PriceTier>('Store/Retail');
 
   const [billingAddress, setBillingAddress] = useState('');
   const [shippingAddress, setShippingAddress] = useState('');
@@ -112,13 +114,16 @@ export default function NewBillPage() {
     setRawItems(prev => prev.map(i => ({ ...i, priceInclTax: next })));
   };
 
-  // changing channel re-prices every line the cashier did not price by hand
   const changeChannel = (ch: SalesChannel | '') => {
     setOrderTag(ch);
     if (!ch) return;
     // default stock location follows the channel; the cashier can still change it
     setStockLocation(ch === 'Home Delivery Order' || ch === 'Store Order' ? 'store' : 'godown');
-    const tier = CHANNEL_TIER[ch];
+  };
+
+  // switching Retail / B2B pricing re-prices every line the cashier did not price by hand
+  const changePriceMode = (tier: PriceTier) => {
+    setPriceMode(tier);
     setRawItems(prev => prev.map(i => {
       if (i.manualRate) return i;
       const price = i.tierPrices?.[tier];
@@ -161,7 +166,7 @@ export default function NewBillPage() {
 
   const handleAdd = (item: Omit<LineItem, 'discountAmt' | 'taxable' | 'cgst' | 'sgst' | 'igst' | 'total'>) => {
     setRawItems(prev => {
-      const ex = prev.findIndex(i => i.productId === item.productId);
+      const ex = prev.findIndex(i => i.productId === item.productId && i.variantSku === item.variantSku);
       if (ex >= 0) {
         const u = [...prev];
         u[ex] = { ...u[ex], qty: u[ex].qty + item.qty };
@@ -211,6 +216,7 @@ export default function NewBillPage() {
         payments: [{ mode: 'cash' as const, amountRupees: paid.cash }, { mode: 'upi' as const, amountRupees: paid.upi }],
         items: rawItems.map(i => ({
           productId: i.productId,
+          variantSku: i.variantSku,
           name: i.name,
           sku: i.sku,
           hsnCode: i.hsnCode,
@@ -298,7 +304,7 @@ export default function NewBillPage() {
           {/* Bill header */}
           <div className="p-4 bg-white border-b border-gray-200">
             <BillHeader
-              paymentTerm={paymentTerm} onPaymentTermChange={setPaymentTerm}
+              priceMode={priceMode} onPriceModeChange={changePriceMode}
               invoiceNo={invoiceNo} onInvoiceNoChange={setInvoiceNo}
               invoiceDate={invoiceDate} onInvoiceDateChange={setInvoiceDate}
               invoiceTime={invoiceTime} onInvoiceTimeChange={setInvoiceTime}
@@ -355,6 +361,7 @@ export default function NewBillPage() {
               rawItems={rawItems}
               isInterState={isInterState}
               channel={orderTag}
+              tier={priceMode}
               stockLocation={stockLocation}
               globalPriceInclTax={globalPriceInclTax}
               onGlobalInclTaxToggle={toggleGlobalInclTax}

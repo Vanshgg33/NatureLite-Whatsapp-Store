@@ -1,5 +1,5 @@
 import { RDoc } from './docs';
-import { StockMove } from './stock';
+import { StockMove, stockKey } from './stock';
 
 export interface PLine { productId?: string; name: string; hsn: string; qty: number; ratePct: number; treatment: string; taxable: number; cgst: number; sgst: number; igst: number }
 export interface PDoc {
@@ -23,7 +23,7 @@ export const toPDoc = (p: any): PDoc => ({
   pos: String(p.stateOfSupply ?? '22'), date: new Date(p.date), isDebitNote: !!p.isDebitNote, cancelled: p.status === 'cancelled',
   itc: p.itcEligibility ?? 'ELIGIBLE', reverseCharge: !!p.reverseCharge,
   lines: (p.items ?? []).map((i: any): PLine => ({
-    productId: i.productId ? String(i.productId) : undefined, name: i.name, hsn: String(i.hsnCode ?? ''), qty: Number(i.qty ?? 0), ratePct: Number(i.gstRate ?? 0),
+    productId: i.productId ? stockKey(String(i.productId), i.variantSku) : undefined, name: i.name, hsn: String(i.hsnCode ?? ''), qty: Number(i.qty ?? 0), ratePct: Number(i.gstRate ?? 0),
     treatment: i.gstTreatment ?? (Number(i.gstRate) > 0 ? 'TAXABLE' : 'NIL_RATED'), taxable: Math.round(i.taxable ?? 0), cgst: Math.round(i.cgst ?? 0), sgst: Math.round(i.sgst ?? 0), igst: Math.round(i.igst ?? 0),
   })),
   totalPaise: Math.round(p.totalPaise ?? 0), paidPaise: Math.round(p.paidPaise ?? 0), paymentMode: String(p.paymentMode ?? 'cash').toLowerCase(),

@@ -5,6 +5,7 @@ export interface PaidSplit { cash: number; upi: number }
 export interface LineItem {
   _key: string;
   productId: string;
+  variantSku?: string;  // set when the line is one variant of the product
   name: string;
   sku: string;
   hsnCode: string;

@@ -45,7 +45,7 @@ export const BillingExpenseSchema = SchemaFactory.createForClass(BillingExpense)
 BillingExpenseSchema.index({ date: 1 });
 
 export interface PurchaseItem {
-  productId?: string; name: string; hsnCode: string; qty: number; unit?: string;
+  productId?: string; variantSku?: string; name: string; hsnCode: string; qty: number; unit?: string;
   gstRate: number; gstTreatment?: string;
   taxable: number; cgst: number; sgst: number; igst: number; // paise
 }
@@ -77,6 +77,7 @@ BillingPurchaseSchema.index({ date: 1 });
 @Schema({ timestamps: true, collection: 'billing_stock_entries' })
 export class BillingStockEntry extends Document {
   @Prop({ required: true }) productId: string;
+  @Prop() variantSku?: string;  // set when the entry is for one variant's own stock
   @Prop({ required: true }) name: string;
   @Prop({ required: true }) date: Date;
   @Prop({ required: true, enum: ['OPENING', 'ADJUST', 'TRANSFER_OUT', 'TRANSFER_IN'] }) kind: string;

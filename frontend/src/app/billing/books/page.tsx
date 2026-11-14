@@ -59,7 +59,8 @@ function PartyPicker({ value, onChange, allowFree = true }: { value: { id: strin
   );
 }
 
-function ProductPicker({ value, onChange }: { value: { id: string; name: string }; onChange: (v: { id: string; name: string }) => void }) {
+type Picked = { id: string; name: string; variantSku?: string };
+function ProductPicker({ value, onChange }: { value: Picked; onChange: (v: Picked) => void }) {
   const [q, setQ] = useState(value.name);
   const dq = useDebouncedValue(q, 250);
   const [results, setResults] = useState<any[]>([]);
@@ -71,8 +72,8 @@ function ProductPicker({ value, onChange }: { value: { id: string; name: string 
       {open && results.length > 0 && (
         <div className="absolute z-50 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-56 overflow-auto">
           {results.map(p => (
-            <button key={p._id ?? p.productId} type="button" className="w-full text-left px-3 py-2 hover:bg-[#f7faf8] text-sm"
-              onClick={() => { onChange({ id: p._id ?? p.productId, name: p.name }); setQ(p.name); setOpen(false); }}>
+            <button key={p.key ?? p._id ?? p.productId} type="button" className="w-full text-left px-3 py-2 hover:bg-[#f7faf8] text-sm"
+              onClick={() => { onChange({ id: p._id ?? p.productId, name: p.name, variantSku: p.variantSku }); setQ(p.name); setOpen(false); }}>
               {p.name} <span className="text-xs text-gray-400">{p.sku}</span>
             </button>
           ))}
@@ -246,7 +247,7 @@ function ExpensesTab() {
 
 // ── Purchases ────────────────────────────────────────────────────────────────
 
-const blankItem = () => ({ product: { id: '', name: '' }, hsnCode: '', qty: '1', rate: '', gstRate: '5', priceInclTax: false });
+const blankItem = () => ({ product: { id: '', name: '' } as Picked, hsnCode: '', qty: '1', rate: '', gstRate: '5', priceInclTax: false });
 
 function PurchasesTab() {
   const canDelete = useAdminAccess().can('billing_books.delete');
@@ -288,7 +289,7 @@ function PurchasesTab() {
           <Button size="sm" disabled={!valid || save.isPending} onClick={() => save.mutate({
             supplierName: h.supplier, supplierGstin: h.gstin || undefined, stateOfSupply: h.state, date: h.date, isDebitNote: h.debit, itcEligibility: h.itc, reverseCharge: h.rcm,
             paidRupees: Number(h.paid || 0), paymentMode: h.mode, roundOff: h.roundOff,
-            items: items.map(i => ({ productId: i.product.id || undefined, name: i.product.name, hsnCode: i.hsnCode, qty: Number(i.qty), rate: Number(i.rate), gstRate: Number(i.gstRate), priceInclTax: i.priceInclTax })),
+            items: items.map(i => ({ productId: i.product.id || undefined, variantSku: i.product.variantSku, name: i.product.name, hsnCode: i.hsnCode, qty: Number(i.qty), rate: Number(i.rate), gstRate: Number(i.gstRate), priceInclTax: i.priceInclTax })),
           }, { onSuccess: () => { setItems([blankItem()]); setH({ ...h, supplier: '', gstin: '', paid: '' }); } })}>Save</Button>
         </div>
         {save.isError && <div className="text-xs text-red-600">{errMsg(save.error)}</div>}
@@ -311,10 +312,10 @@ function StockTab() {
   const list = useBooks('stock-entries');
   const save = useSave('stock-entries');
   const [f, setF] = useState({ kind: 'OPENING', qty: '', cost: '', date: today(), note: '', location: 'godown' });
-  const [prod, setProd] = useState({ id: '', name: '' });
+  const [prod, setProd] = useState<Picked>({ id: '', name: '' });
   const transfer = useSave('stock-transfer');
   const [t, setT] = useState({ qty: '', from: 'godown', note: '' });
-  const [tProd, setTProd] = useState({ id: '', name: '' });
+  const [tProd, setTProd] = useState<Picked>({ id: '', name: '' });
   const to = t.from === 'godown' ? 'store' : 'godown';
   const LOC: Record<string, string> = { godown: 'Godown', store: 'Store' };
   return (
@@ -328,7 +329,7 @@ function StockTab() {
           <Field label="Quantity"><input className={INPUT} type="number" min="0" value={t.qty} onChange={e => setT({ ...t, qty: e.target.value })} /></Field>
         </div>
         <Button size="sm" disabled={!tProd.id || !(Number(t.qty) > 0) || transfer.isPending}
-          onClick={() => transfer.mutate({ productId: tProd.id, name: tProd.name, qty: Number(t.qty), from: t.from, to, note: t.note || undefined }, { onSuccess: () => { setTProd({ id: '', name: '' }); setT({ ...t, qty: '' }); } })}>Transfer</Button>
+          onClick={() => transfer.mutate({ productId: tProd.id, variantSku: tProd.variantSku, name: tProd.name, qty: Number(t.qty), from: t.from, to, note: t.note || undefined }, { onSuccess: () => { setTProd({ id: '', name: '' }); setT({ ...t, qty: '' }); } })}>Transfer</Button>
         {transfer.isError && <div className="text-xs text-red-600">{errMsg(transfer.error)}</div>}
       </Panel>
       <Panel title="Opening stock / adjustment">
@@ -341,7 +342,7 @@ function StockTab() {
           <Field label="Unit cost ₹ (pre-tax)"><input className={INPUT} type="number" value={f.cost} onChange={e => setF({ ...f, cost: e.target.value })} /></Field>
         </div>
         <Button size="sm" disabled={!prod.id || !Number(f.qty) || save.isPending}
-          onClick={() => save.mutate({ kind: f.kind, productId: prod.id, name: prod.name, qty: Number(f.qty), unitCostRupees: f.cost ? Number(f.cost) : undefined, date: f.date, location: f.location }, { onSuccess: () => { setProd({ id: '', name: '' }); setF({ ...f, qty: '', cost: '' }); } })}>Save</Button>
+          onClick={() => save.mutate({ kind: f.kind, productId: prod.id, variantSku: prod.variantSku, name: prod.name, qty: Number(f.qty), unitCostRupees: f.cost ? Number(f.cost) : undefined, date: f.date, location: f.location }, { onSuccess: () => { setProd({ id: '', name: '' }); setF({ ...f, qty: '', cost: '' }); } })}>Save</Button>
         {save.isError && <div className="text-xs text-red-600">{errMsg(save.error)}</div>}
       </Panel>
       <div className="bg-white rounded-xl shadow-sm overflow-auto">

@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { useDebouncedValue } from '@/lib/utils';
 import { api } from '@/lib/api';
 import { formatINR } from '@/lib/billing/utils/formatINR';
-import { CHANNEL_TIER, type SalesChannel } from '@/lib/billing/channel';
+import { type SalesChannel } from '@/lib/billing/channel';
 import type { LineItem } from '../types';
 
 /** Exactly two tiers exist. A missing tier price is an error, never a silent fallback. */
@@ -55,7 +55,7 @@ function QtyInput({ value, unit, onChange }: { value: number; unit: string; onCh
   );
 }
 
-function ProductSearch({ channel, stockLocation, onAdd }: { channel: SalesChannel | ''; stockLocation: 'godown' | 'store'; onAdd: (item: Omit<LineItem, 'discountAmt' | 'taxable' | 'cgst' | 'sgst' | 'igst' | 'total'>) => void }) {
+function ProductSearch({ channel, tier, stockLocation, onAdd }: { channel: SalesChannel | ''; tier: string; stockLocation: 'godown' | 'store'; onAdd: (item: Omit<LineItem, 'discountAmt' | 'taxable' | 'cgst' | 'sgst' | 'igst' | 'total'>) => void }) {
   const [q, setQ] = useState('');
   const dq = useDebouncedValue(q, 250);
   const [results, setResults] = useState<any[]>([]);
@@ -75,13 +75,13 @@ function ProductSearch({ channel, stockLocation, onAdd }: { channel: SalesChanne
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
-  const tier = channel ? CHANNEL_TIER[channel] : '';
   const add = (p: any) => {
     const price = tierPriceOf(p.tagPrices ?? [], tier);
     if (price === undefined) return;
     onAdd({
       _key: crypto.randomUUID(),
       productId: p._id.toString(),
+      variantSku: p.variantSku,
       name: p.name,
       sku: p.sku,
       hsnCode: p.hsnCode ?? '',
@@ -118,7 +118,7 @@ function ProductSearch({ channel, stockLocation, onAdd }: { channel: SalesChanne
           {results.map(p => {
             const price = tierPriceOf(p.tagPrices ?? [], tier);
             return (
-              <button key={p._id} disabled={price === undefined} className="w-full flex disabled:opacity-60 disabled:cursor-not-allowed items-center gap-3 px-4 py-2.5 hover:bg-[#f7faf8] text-left transition-colors"
+              <button key={p.key ?? p._id} disabled={price === undefined} className="w-full flex disabled:opacity-60 disabled:cursor-not-allowed items-center gap-3 px-4 py-2.5 hover:bg-[#f7faf8] text-left transition-colors"
                 onClick={() => add(p)}>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-gray-800 truncate">{p.name}</div>
@@ -148,6 +148,7 @@ export interface ItemGridProps {
   rawItems: LineItem[];
   isInterState: boolean;
   channel: SalesChannel | '';
+  tier: string;
   stockLocation: 'godown' | 'store';
   onUpdate: (idx: number, patch: Partial<Pick<LineItem, 'mrp' | 'qty' | 'unit' | 'rate' | 'priceInclTax' | 'discountPct' | 'gstRate' | 'hsnCode' | 'manualRate' | 'missingTier'>>) => void;
   onRemove: (idx: number) => void;
@@ -157,7 +158,7 @@ export interface ItemGridProps {
 }
 
 export function ItemGrid({
-  lines, rawItems, isInterState, channel, stockLocation,
+  lines, rawItems, isInterState, channel, tier, stockLocation,
   onUpdate, onRemove, onAdd,
   globalPriceInclTax, onGlobalInclTaxToggle,
 }: ItemGridProps) {
@@ -289,7 +290,7 @@ export function ItemGrid({
 
       {/* Product search row */}
       <div className="p-3 border-t border-gray-100">
-        <ProductSearch channel={channel} stockLocation={stockLocation} onAdd={onAdd} />
+        <ProductSearch channel={channel} tier={tier} stockLocation={stockLocation} onAdd={onAdd} />
       </div>
     </div>
   );

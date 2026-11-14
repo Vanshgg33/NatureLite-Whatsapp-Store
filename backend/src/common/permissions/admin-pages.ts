@@ -90,7 +90,6 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   def('billing_customers', 'Billing Customers', 'Billing', '/billing/customers', true, [
     a('view', 'View'), a('create', 'Create'), a('edit', 'Edit'),
   ]),
-  def('billing_pricing', 'Tag Pricing', 'Billing', '/billing/pricing', true, [a('view', 'View'), a('edit', 'Edit prices')]),
   def('billing_dues', 'Unpaid Dues', 'Billing', '/billing/dues', true, [a('view', 'View'), a('record', 'Record payment')]),
   def('billing_reports', 'Sales Reports', 'Billing', '/billing/reports', true, [a('view', 'View & export')]),
   def('billing_books', 'Books & Stock', 'Billing', '/billing/books', true, [

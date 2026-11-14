@@ -508,15 +508,15 @@ function ExportBtn({ onClick }: { onClick: () => Promise<void> }) {
 const TH = 'px-3 py-2 text-left text-xs font-semibold text-gray-500 bg-gray-50 sticky top-0 whitespace-nowrap';
 const TD = 'px-3 py-2 text-sm text-gray-700 whitespace-nowrap';
 
-function DaybookReport({ from, to }: { from: string; to: string }) {
-  const q = useQuery({ queryKey: ['billing-daybook', from, to], queryFn: () => api.getBillingReport('daybook', { from, to }) });
+function DaybookReport({ from, to, orderTag }: { from: string; to: string; orderTag: string }) {
+  const q = useQuery({ queryKey: ['billing-daybook', from, to, orderTag], queryFn: () => api.getBillingReport('daybook', { from, to, orderTag }) });
   const rows: any[] = q.data?.rows ?? [];
   const totals = q.data?.totals;
   return (
     <div className="bg-white rounded-xl shadow-sm overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b">
         <div className="text-sm text-gray-500">{rows.length} transactions · Money In {fmt(totals?.moneyIn)} · Money Out {fmt(totals?.moneyOut)}</div>
-        <ExportBtn onClick={() => api.downloadBillingReport('daybook', { from, to })} />
+        <ExportBtn onClick={() => api.downloadBillingReport('daybook', { from, to, orderTag })} />
       </div>
       <div className="overflow-auto max-h-[65vh]">
         <table className="w-full">
@@ -648,7 +648,7 @@ export default function SalesReportsPage() {
 
         {tab === 'product' && <ProductReport data={productData} loading={productQuery.isLoading} />}
         {STATEMENT_TABS.some(s => s.key === tab) && <StatementReport kind={tab as StatementKind} from={filters.startDate} to={filters.endDate} />}
-        {tab === 'daybook' && <DaybookReport from={filters.startDate} to={filters.endDate} />}
+        {tab === 'daybook' && <DaybookReport from={filters.startDate} to={filters.endDate} orderTag={filters.orderTag} />}
         {tab === 'hsn' && <HsnSummaryReport from={filters.startDate} to={filters.endDate} />}
         {tab === 'customer' && <CustomerReport data={customerData} loading={customerQuery.isLoading} />}
       </div>

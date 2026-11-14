@@ -11,7 +11,7 @@ import { buildGstr1 } from './gstr1';
 import { buildGstr3b } from './gstr3b';
 import { Books, toPayRec, toPDoc } from './books';
 import { parseGstr2b, reconcileGstr2b } from './gstr2b';
-import { collectMoves } from './stock';
+import { collectMoves, stockKey } from './stock';
 import { computePnl } from './ledger';
 import { buildBalanceSheet, buildStockSummary, buildTrialBalance, fyStartOf, pnlSheet } from './statements';
 import { BillingAccount, BillingExpense, BillingOpening, BillingPayment, BillingPurchase, BillingStockEntry } from '../schemas/books.schemas';
@@ -49,10 +49,10 @@ export class ReportsService {
   }
 
   /** Every bill (any doc type, any status) dated in [start,end) or carrying a payment in it. */
-  private async load(start: Date, end: Date, stateCode: string, withPayments = false): Promise<RDoc[]> {
+  private async load(start: Date, end: Date, stateCode: string, withPayments = false, orderTag?: string): Promise<RDoc[]> {
     const dated = { $or: [{ invoiceDate: { $gte: start, $lt: end } }, { invoiceDate: null, createdAt: { $gte: start, $lt: end } }, { invoiceDate: { $exists: false }, createdAt: { $gte: start, $lt: end } }] };
     const q = withPayments ? { $or: [...dated.$or, { 'payments.at': { $gte: start, $lt: end } }] } : dated;
-    const bills = await this.billModel.find(q).setOptions({ allDocTypes: true }).lean();
+    const bills = await this.billModel.find(orderTag ? { $and: [q, { orderTag }] } : q).setOptions({ allDocTypes: true }).lean();
     return bills.map(b => toRDoc(b, stateCode));
   }
 
@@ -68,10 +68,10 @@ export class ReportsService {
     return { month: m, ...monthRange(m) };
   }
 
-  async daybook(from?: string, to?: string) {
+  async daybook(from?: string, to?: string, orderTag?: string) {
     const r = this.range(from, to);
     const co = await this.company();
-    const result = buildDaybook(await this.load(r.start, r.end, co.stateCode, true), r.start, r.end);
+    const result = buildDaybook(await this.load(r.start, r.end, co.stateCode, true, orderTag), r.start, r.end);
     return { from: r.from, to: r.to, ...result, _sheets: daybookSheets(result), _file: `Daybook_${fileDay(r.from)}_to_${fileDay(r.to)}.xlsx` };
   }
 
@@ -157,7 +157,7 @@ export class ReportsService {
       this.accountModel.find().lean(),
       this.stockEntryModel.find({ date: { $lt: before } }).lean(),
       this.openingModel.findOne({ key: 'default' }).lean(),
-      this.productModel.find().select('name sku price purchasePrice').lean(),
+      this.productModel.find().select('name sku price purchasePrice variants.name variants.sku variants.price variants.isActive').lean(),
     ]);
     const docs = bills.map(b => toRDoc(b, co.stateCode));
     const pdocs = purchases.map(toPDoc);
@@ -168,8 +168,14 @@ export class ReportsService {
       expenses: expenses.map((e: any) => ({ date: new Date(e.date), category: e.category, amountPaise: e.amountPaise, accountId: e.accountId, mode: e.mode, direct: !!e.direct, isIncome: !!e.isIncome })),
       accounts: accounts.map((a: any) => ({ id: String(a._id), name: a.name, kind: a.kind, openingBalancePaise: a.openingBalancePaise ?? 0 })),
       opening: o ? { asOn: new Date(o.asOn), retainedEarningsPaise: o.retainedEarningsPaise ?? 0, partyOpenings: o.partyOpenings ?? [], modeAccountMap: o.modeAccountMap ?? {} } : null,
-      products: products.map((x: any) => ({ id: String(x._id), name: x.name, sku: x.sku ?? '', salePricePaise: Math.round((x.price ?? 0) * 100), purchasePricePaise: Math.round((x.purchasePrice ?? 0) * 100) })),
-      moves: collectMoves(docs, pdocs, stockEntries.map((e: any) => ({ productId: e.productId, date: new Date(e.date), kind: e.kind, qty: e.qty, unitCostPaise: e.unitCostPaise, location: e.location }))),
+      // each variant is its own stock item (key "<productId>#<variantSku>"); it has no purchase price of its own, so it uses the product's
+      products: products.flatMap((x: any) => [
+        { id: String(x._id), name: x.name, sku: x.sku ?? '', salePricePaise: Math.round((x.price ?? 0) * 100), purchasePricePaise: Math.round((x.purchasePrice ?? 0) * 100) },
+        ...(x.variants ?? []).filter((v: any) => v.isActive !== false).map((v: any) => ({
+          id: stockKey(String(x._id), v.sku), name: `${x.name} - ${v.name}`, sku: v.sku ?? '', salePricePaise: Math.round((v.price ?? 0) * 100), purchasePricePaise: Math.round((x.purchasePrice ?? 0) * 100),
+        })),
+      ]),
+      moves: collectMoves(docs, pdocs, stockEntries.map((e: any) => ({ productId: stockKey(e.productId, e.variantSku), date: new Date(e.date), kind: e.kind, qty: e.qty, unitCostPaise: e.unitCostPaise, location: e.location }))),
     };
     return { books, co };
   }

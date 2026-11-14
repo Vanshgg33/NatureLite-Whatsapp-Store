@@ -2,7 +2,7 @@
 export const CHANNELS = ['Transport Order', 'B2B Order', 'Home Delivery Order', 'Store Order'] as const;
 export type SalesChannel = (typeof CHANNELS)[number];
 
-/** Only two price tiers exist; these are the BillingTagPrice.tag values. */
+/** Only two price tiers exist: B2B (Product.b2bPrice) and Store/Retail (Product.price). */
 export const PRICE_TIERS = ['B2B', 'Store/Retail'] as const;
 export type PriceTier = (typeof PRICE_TIERS)[number];
 

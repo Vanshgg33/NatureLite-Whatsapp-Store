@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req,
+  Controller, Get, Post, Patch, Param, Body, Query, UseGuards, Req,
 } from '@nestjs/common';
 import { BillingService } from './billing.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -69,31 +69,6 @@ export class BillingController {
   @Get('products/search')
   searchProducts(@Query('q') q: string) {
     return this.billingService.searchProductsForBilling(q);
-  }
-
-  // ─── Tag Prices ───────────────────────────────────────────────────────────
-
-  @Get('tag-prices')
-  getTagPrices(@Query('productId') productId?: string) {
-    return this.billingService.getTagPrices(productId);
-  }
-
-  @Post('tag-prices')
-  @RequireAccess('billing_pricing.edit')
-  upsertTagPrice(@Body() body: { productId: string; tag: CustomerTag; price: number }) {
-    return this.billingService.upsertTagPrice(body.productId, body.tag, body.price);
-  }
-
-  @Delete('tag-prices/:id')
-  @RequireAccess('billing_pricing.edit')
-  deleteTagPrice(@Param('id') id: string) {
-    return this.billingService.deleteTagPrice(id);
-  }
-
-  @Post('tag-prices/bulk')
-  @RequireAccess('billing_pricing.edit')
-  bulkUpsert(@Body() body: Array<{ productId: string; tag: CustomerTag; price: number }>) {
-    return this.billingService.bulkUpsertTagPrices(body);
   }
 
   // ─── Godowns ──────────────────────────────────────────────────────────────

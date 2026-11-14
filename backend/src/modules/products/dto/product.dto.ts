@@ -27,6 +27,11 @@ export class ProductVariantDto {
   @IsNumber()
   @IsOptional()
   @Min(0)
+  b2bPrice?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
   compareAtPrice?: number;
 
   @IsNumber()
@@ -190,6 +195,11 @@ export class CreateProductDto {
   @IsNumber()
   @IsOptional()
   @Min(0)
+  b2bPrice?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
   compareAtPrice?: number;
 
   @IsNumber()
@@ -340,6 +350,11 @@ export class UpdateProductDto {
   @IsOptional()
   @Min(0)
   price?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  b2bPrice?: number;
 
   @IsNumber()
   @IsOptional()

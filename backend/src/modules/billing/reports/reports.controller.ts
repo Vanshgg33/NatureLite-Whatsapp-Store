@@ -24,8 +24,8 @@ export class ReportsController {
 
   @Get('daybook')
   @RequireAccess('billing_reports.view')
-  async daybook(@Query('from') from: string, @Query('to') to: string, @Query('format') format: string, @Res() res: Response) {
-    return this.respond(res, format, await this.reports.daybook(from, to));
+  async daybook(@Query('from') from: string, @Query('to') to: string, @Query('orderTag') orderTag: string, @Query('format') format: string, @Res() res: Response) {
+    return this.respond(res, format, await this.reports.daybook(from, to, orderTag || undefined));
   }
 
   @Get('sale-summary-hsn')

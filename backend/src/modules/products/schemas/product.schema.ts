@@ -15,6 +15,9 @@ export class ProductVariant {
   price: number;
 
   @Prop()
+  b2bPrice?: number;
+
+  @Prop()
   compareAtPrice?: number;
 
   @Prop({ default: 0 })
@@ -65,6 +68,10 @@ export class Product {
 
   @Prop({ required: true })
   price: number;
+
+  // Wholesale price used on the billing page's "B2B pricing" mode; optional
+  @Prop()
+  b2bPrice?: number;
 
   @Prop()
   compareAtPrice?: number;

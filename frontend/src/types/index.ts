@@ -97,6 +97,7 @@ export interface ProductVariant {
   name: string;
   sku: string;
   price: number;
+  b2bPrice?: number | null;
   compareAtPrice?: number;
   stock: number;
   attributes: ProductVariantAttributes;
@@ -128,6 +129,7 @@ export interface Product {
   videoUrl?: string;
   videos?: string[];
   price: number;
+  b2bPrice?: number | null;
   compareAtPrice?: number;
   specialOfferPrice?: number;
   specialOfferLabel?: string;

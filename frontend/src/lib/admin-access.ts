@@ -25,7 +25,6 @@ export const ADMIN_PAGE_HREFS: { page: string; href: string }[] = [
   { page: 'billing_new', href: '/billing/new' },
   { page: 'billing_dashboard', href: '/billing/dashboard' },
   { page: 'billing_customers', href: '/billing/customers' },
-  { page: 'billing_pricing', href: '/billing/pricing' },
   { page: 'billing_dues', href: '/billing/dues' },
   { page: 'billing_reports', href: '/billing/reports' },
   { page: 'billing_books', href: '/billing/books' },

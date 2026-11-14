@@ -7,6 +7,7 @@ export type PaymentStatus = 'paid' | 'partial' | 'unpaid';
 
 export interface BillLineItem {
   productId: Types.ObjectId;
+  variantSku?: string;
   name: string;
   sku: string;
   hsnCode: string;
@@ -73,6 +74,7 @@ export class BillingBill {
   @Prop({
     type: [{
       productId: { type: Types.ObjectId, ref: 'Product' },
+      variantSku: String, // set when the line is one variant of the product (own stock)
       name: String,
       sku: String,
       hsnCode: String,

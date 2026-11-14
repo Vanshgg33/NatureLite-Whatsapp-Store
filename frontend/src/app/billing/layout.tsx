@@ -33,7 +33,6 @@ const BILLING_NAV: NavGroup[] = [
     label: 'Customers',
     items: [
       { name: 'Customers', href: '/billing/customers', icon: Users },
-      { name: 'Tag Pricing', href: '/billing/pricing', icon: FileText },
     ],
   },
   {

@@ -3,6 +3,13 @@ import { PDoc } from './books';
 
 export type StockLocation = 'godown' | 'store';
 export const STOCK_LOCATIONS: readonly StockLocation[] = ['godown', 'store'];
+/**
+ * A stock item is a product, or one variant of a product. The ledger keys every move by this string:
+ * "<productId>" for a plain product, "<productId>#<variantSku>" for a variant (each variant has its own stock).
+ */
+export const stockKey = (productId: string, variantSku?: string | null) => (variantSku ? `${productId}#${variantSku}` : productId);
+/** The product id inside a stock key. */
+export const productOfKey = (key: string) => key.split('#')[0];
 export type MoveKind = 'OPENING' | 'PURCHASE' | 'ADJUST' | 'CN' | 'SALE' | 'DN' | 'TRANSFER_OUT' | 'TRANSFER_IN';
 export interface StockMove { productId: string; date: Date; qty: number; kind: MoveKind; unitCostPaise?: number; location?: StockLocation }
 

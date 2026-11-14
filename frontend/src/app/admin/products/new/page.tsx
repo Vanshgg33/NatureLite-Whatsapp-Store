@@ -23,7 +23,7 @@ import type { BarcodeProduct } from '@/lib/barcode-lookup';
 import type { NutritionalFactRow, Product } from '@/types';
 
 type VariantRow = {
-  name: string; sku: string; price: string; compareAtPrice: string; stock: string;
+  name: string; sku: string; price: string; b2bPrice: string; compareAtPrice: string; stock: string;
   images: string[];
 };
 
@@ -46,7 +46,7 @@ export default function NewProductPage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
     name: '', shortDescription: '', description: '', category: '',
-    price: '', compareAtPrice: '', sku: '',
+    price: '', b2bPrice: '', compareAtPrice: '', sku: '',
     specialOfferPrice: '', specialOfferLabel: '', specialOfferActive: false,
     stock: '0', trackStock: true, lowStockThreshold: '5',
     isActive: true, isFeatured: false, hsnCode: '', tags: '',
@@ -137,7 +137,7 @@ export default function NewProductPage() {
     setImageAlts((prev) => prev.map((a, i) => i === index ? alt : a));
   };
 
-  const addVariant = () => setVariants((prev) => [...prev, { name: '', sku: '', price: '', compareAtPrice: '', stock: '0', images: [] }]);
+  const addVariant = () => setVariants((prev) => [...prev, { name: '', sku: '', price: '', b2bPrice: '', compareAtPrice: '', stock: '0', images: [] }]);
   const updateVariant = (index: number, field: keyof VariantRow, value: string) =>
     setVariants((prev) => prev.map((v, i) => i === index ? { ...v, [field]: value } : v));
   const removeVariant = (index: number) => setVariants((prev) => prev.filter((_, i) => i !== index));
@@ -197,6 +197,7 @@ export default function NewProductPage() {
       shortDescription: formData.shortDescription,
       category: formData.category,
       price: parseFloat(formData.price),
+      b2bPrice: formData.b2bPrice ? parseFloat(formData.b2bPrice) : undefined,
       compareAtPrice: formData.compareAtPrice ? parseFloat(formData.compareAtPrice) : undefined,
       specialOfferPrice: formData.specialOfferPrice ? parseFloat(formData.specialOfferPrice) : undefined,
       specialOfferLabel: formData.specialOfferLabel || undefined,
@@ -229,6 +230,7 @@ export default function NewProductPage() {
       variants: variants.filter((v) => v.name || v.sku || v.price).map((v) => ({
         name: v.name, sku: v.sku,
         price: parseFloat(v.price),
+        b2bPrice: v.b2bPrice ? parseFloat(v.b2bPrice) : undefined,
         compareAtPrice: v.compareAtPrice ? parseFloat(v.compareAtPrice) : undefined,
         stock: parseInt(v.stock) || 0,
         attributes: {},
@@ -364,6 +366,29 @@ export default function NewProductPage() {
                     <Input id="hsnCode" value={formData.hsnCode} onChange={(e) => set('hsnCode', e.target.value)} placeholder="HSN/SAC Code" />
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* B2B pricing: used when "B2B pricing" is picked on the billing page */}
+            <Card>
+              <CardHeader><CardTitle>B2B Pricing</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2 max-w-xs">
+                  <Label htmlFor="b2bPrice">B2B Price (₹)</Label>
+                  <Input id="b2bPrice" type="number" min="0" step="0.01" value={formData.b2bPrice} onChange={(e) => set('b2bPrice', e.target.value)} placeholder="Wholesale price" />
+                  <p className="text-xs text-muted-foreground">Used on bills set to B2B pricing. Leave empty if this product has no B2B price.</p>
+                </div>
+                {variants.length > 0 && (
+                  <div className="space-y-2">
+                    <Label className="text-xs">Variant B2B prices</Label>
+                    {variants.map((variant, index) => (
+                      <div key={index} className="grid gap-3 md:grid-cols-3 items-center">
+                        <div className="text-sm text-muted-foreground truncate">{variant.name || 'Unnamed variant'} <span className="font-mono text-xs">{variant.sku}</span></div>
+                        <Input type="number" min="0" step="0.01" placeholder="B2B price (₹)" value={variant.b2bPrice} onChange={(e) => updateVariant(index, 'b2bPrice', e.target.value)} />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
 

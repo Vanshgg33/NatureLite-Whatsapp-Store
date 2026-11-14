@@ -2,12 +2,11 @@ import { Injectable, ConflictException, NotFoundException, BadRequestException }
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { CrmEngineService } from '../crm/crm-engine.service';
-import { CustomerTag, TAG_PRIORITY } from './schemas/billing-customer.schema';
-import { BillingTagPrice, BillingTagPriceDocument } from './schemas/billing-tag-price.schema';
 import { BillingBill, BillingBillDocument, BillLineItem, PaymentStatus } from './schemas/billing-bill.schema';
 import { BillingCounter, BillingCounterDocument } from './schemas/billing-counter.schema';
 import { Godown } from './schemas/godown.schema';
-import { isChannel, PRICE_TIERS } from './channels';
+import { isChannel } from './channels';
+import { stockKey } from './reports/stock';
 import { BillingWhatsappService } from './billing-whatsapp.service';
 import { BillingStockService } from './billing-stock.service';
 import { AuditLog } from './schemas/audit-log.schema';
@@ -32,7 +31,6 @@ const SALE_LINE = {
 export class BillingService {
   constructor(
     @InjectModel(User.name) private userModel: Model<any>,
-    @InjectModel(BillingTagPrice.name) private tagPriceModel: Model<BillingTagPriceDocument>,
     @InjectModel(BillingBill.name) private billModel: Model<BillingBillDocument>,
     @InjectModel(BillingCounter.name) private counterModel: Model<BillingCounterDocument>,
     @InjectModel('Product') private productModel: Model<any>,
@@ -170,85 +168,35 @@ export class BillingService {
 
   async searchProductsForBilling(q: string) {
     const filter = q?.trim()
-      ? { isActive: true, $or: [{ name: { $regex: q, $options: 'i' } }, { sku: { $regex: q, $options: 'i' } }] }
+      ? { isActive: true, $or: [{ name: { $regex: q, $options: 'i' } }, { sku: { $regex: q, $options: 'i' } }, { 'variants.sku': { $regex: q, $options: 'i' } }, { 'variants.name': { $regex: q, $options: 'i' } }] }
       : { isActive: true };
 
     const products = await this.productModel
-      .find(filter, 'name sku price hsnCode gstRate mrp uqc')
+      .find(filter, 'name sku price b2bPrice hsnCode gstRate mrp uqc variants.name variants.sku variants.price variants.b2bPrice variants.compareAtPrice variants.isActive')
       .limit(30)
       .lean();
 
     if (!products.length) return [];
 
-    const productIds = products.map(p => p._id);
-    const tagPrices = await this.tagPriceModel.find({ productId: { $in: productIds } }).lean();
-
-    // group tag prices by productId
-    const tpMap: Record<string, Array<{ tag: string; price: number }>> = {};
-    for (const tp of tagPrices) {
-      const pid = tp.productId.toString();
-      if (!tpMap[pid]) tpMap[pid] = [];
-      tpMap[pid].push({ tag: tp.tag, price: tp.price });
-    }
-
-    const stock = await this.billingStock.availability(productIds.map(String));
-    return products.map(p => ({
-      ...p,
-      stock: stock[p._id.toString()],
-      tagPrices: tpMap[p._id.toString()] ?? [],
-      unit: (p as any).uqc ?? 'NOS',
-    }));
-  }
-
-  // ─── Tag Prices ──────────────────────────────────────────────────────────
-
-  async getTagPrices(productId?: string) {
-    const filter = productId ? { productId: new Types.ObjectId(productId) } : {};
-    return this.tagPriceModel.find(filter).populate('productId', 'name sku price hsnCode').lean();
-  }
-
-  private assertTier(tag: string) {
-    if (!(PRICE_TIERS as readonly string[]).includes(tag)) throw new BadRequestException(`Only ${PRICE_TIERS.join(' and ')} prices are supported`);
-  }
-
-  async upsertTagPrice(productId: string, tag: CustomerTag, price: number) {
-    this.assertTier(tag);
-    return this.tagPriceModel.findOneAndUpdate(
-      { productId: new Types.ObjectId(productId), tag },
-      { price },
-      { upsert: true, new: true },
-    ).lean();
-  }
-
-  async deleteTagPrice(id: string) {
-    const r = await this.tagPriceModel.findByIdAndDelete(id).lean();
-    if (!r) throw new NotFoundException('Tag price not found');
-    return { deleted: true };
-  }
-
-  async bulkUpsertTagPrices(rows: Array<{ productId: string; tag: CustomerTag; price: number }>) {
-    rows.forEach(r => this.assertTier(r.tag));
-    const now = new Date();
-    const ops = rows.map(r => ({
-      updateOne: {
-        filter: { productId: new Types.ObjectId(r.productId), tag: r.tag },
-        update: {
-          $set: { price: r.price, updatedAt: now },
-          $setOnInsert: { createdAt: now },
-        },
-        upsert: true,
-      },
-    }));
-    return this.tagPriceModel.bulkWrite(ops);
-  }
-
-  resolvePrice(basePrice: number, customerTags: CustomerTag[], tagPrices: Array<{ tag: string; price: number }>) {
-    for (const tag of TAG_PRIORITY) {
-      if (!customerTags.includes(tag)) continue;
-      const tp = tagPrices.find(p => p.tag === tag);
-      if (tp) return tp.price;
-    }
-    return basePrice;
+    // One row per product, then one per active variant: each is its own stock item with its own prices.
+    const tiers = (price: number, b2b?: number | null) => [
+      { tag: 'Store/Retail', price },
+      ...(typeof b2b === 'number' ? [{ tag: 'B2B', price: b2b }] : []),
+    ];
+    const rows = products.flatMap((p: any) => {
+      const { variants = [], ...base } = p;
+      const id = String(p._id);
+      return [
+        { ...base, key: id, stockKey: id, tagPrices: tiers(p.price, p.b2bPrice), unit: p.uqc ?? 'NOS' },
+        ...variants.filter((v: any) => v.isActive !== false).map((v: any) => ({
+          ...base, key: stockKey(id, v.sku), stockKey: stockKey(id, v.sku), variantSku: v.sku,
+          name: `${p.name} - ${v.name}`, sku: v.sku, price: v.price, b2bPrice: v.b2bPrice, mrp: v.compareAtPrice ?? p.mrp ?? 0,
+          tagPrices: tiers(v.price, v.b2bPrice), unit: p.uqc ?? 'NOS',
+        })),
+      ];
+    });
+    const stock = await this.billingStock.availability(rows.map(r => r.stockKey));
+    return rows.map(r => ({ ...r, stock: stock[r.stockKey] }));
   }
 
   // ─── Invoice numbering ────────────────────────────────────────────────────
@@ -264,7 +212,13 @@ export class BillingService {
     return `NL-${year}-${String(counter.value).padStart(4, '0')}`;
   }
 
-  private async nextInvoiceNoV1(docType: 'SALE' | 'CREDIT_NOTE' | 'SALE_ORDER' = 'SALE', fyLabel = '2026-27', prefix = 'NLF-26-27/'): Promise<string> {
+  private async nextInvoiceNoV1(docType: 'SALE' | 'CREDIT_NOTE' | 'SALE_ORDER' = 'SALE'): Promise<string> {
+    // Indian financial year runs Apr–Mar; number looks like NIF-26-27/9321
+    const now = new Date();
+    const fyStart = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+    const yy = (n: number) => String(n).slice(2);
+    const fyLabel = `${fyStart}-${yy(fyStart + 1)}`;
+    const prefix = `NIF-${yy(fyStart)}-${yy(fyStart + 1)}/`;
     // Three independent series: sale, credit note, sale order (blueprint §2.6)
     const series = docType === 'CREDIT_NOTE' ? 'cn' : docType === 'SALE_ORDER' ? 'so' : 'sale';
     const counter = await this.counterModel.findOneAndUpdate(
@@ -818,6 +772,7 @@ export class BillingService {
     paymentMode?: string;
     items: Array<{
       productId: string;
+      variantSku?: string;
       name: string;
       sku: string;
       hsnCode: string;
@@ -854,7 +809,7 @@ export class BillingService {
     if (!['godown', 'store'].includes(stockLocation)) throw new BadRequestException('stockLocation must be godown or store');
     let stockOverride: { reason: string; by: string; short: string[] } | undefined;
     if (docType === 'SALE') {
-      const chk = await this.billingStock.assertAvailable(dto.items.map(i => ({ productId: i.productId, name: i.name, qty: i.qty })), stockLocation, { reason: dto.stockOverrideReason, allowed: canOverrideStock });
+      const chk = await this.billingStock.assertAvailable(dto.items.map(i => ({ productId: i.productId, variantSku: i.variantSku, name: i.name, qty: i.qty })), stockLocation, { reason: dto.stockOverrideReason, allowed: canOverrideStock });
       if (chk.overridden) stockOverride = { reason: dto.stockOverrideReason!.trim(), by: userId, short: chk.short };
     }
 
@@ -940,6 +895,7 @@ export class BillingService {
       const { discountAmt: lineDiscAmt, taxable: taxableABD, taxAmt, cgst, sgst, igst, total } = calc.lines[i];
       return {
         productId: new Types.ObjectId(item.productId),
+        variantSku: item.variantSku || undefined,
         name: item.name,
         sku: item.sku,
         hsnCode: item.hsnCode ?? '',
@@ -949,7 +905,7 @@ export class BillingService {
         gstTreatment: productById.get(item.productId)?.gstTreatment ?? (item.gstRate > 0 ? 'TAXABLE' : 'NIL_RATED'),
         uqc: productById.get(item.productId)?.uqc ?? 'NOS',
         category: productById.get(item.productId)?.category?.name ?? '',
-        barcode: productById.get(item.productId)?.sku ?? item.sku,
+        barcode: item.variantSku ? item.sku : (productById.get(item.productId)?.sku ?? item.sku),
         rate: item.rate,
         priceInclTax: item.priceInclTax !== false,
         discountPct: item.discountPct ?? 0,

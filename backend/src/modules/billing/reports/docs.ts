@@ -1,4 +1,5 @@
 import { stateName } from './period';
+import { stockKey } from './stock';
 
 export type DocType = 'SALE' | 'CREDIT_NOTE' | 'SALE_ORDER';
 export type Treatment = 'TAXABLE' | 'NIL_RATED' | 'EXEMPT' | 'NON_GST';
@@ -105,7 +106,8 @@ function toLine(it: any, isInter: boolean): RLine {
   const unitPrice = it.priceInclTax === false ? entered : entered / (1 + ratePct / 100);
   const { t, declared } = effectiveTreatment(ratePct, it.gstTreatment);
   return {
-    productId: String(it.productId ?? ''),
+    // stock key: "<productId>" or "<productId>#<variantSku>" so a variant has its own stock
+    productId: it.productId ? stockKey(String(it.productId), it.variantSku) : '',
     name: it.name ?? '',
     barcode: it.barcode ?? it.sku ?? '',
     hsn: normalizeHsn(it.hsnCode),

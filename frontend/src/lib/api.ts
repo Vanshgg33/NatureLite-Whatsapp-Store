@@ -2112,27 +2112,6 @@ class ApiClient {
     return res.data.data;
   }
 
-  async getBillingTagPrices(productId?: string): Promise<any[]> {
-    const qs = productId ? `?productId=${productId}` : '';
-    const res = await this.client.get<ApiResponse<any[]>>(`/billing/tag-prices${qs}`);
-    return res.data.data;
-  }
-
-  async upsertBillingTagPrice(data: { productId: string; tag: string; price: number }): Promise<any> {
-    const res = await this.client.post<ApiResponse<any>>('/billing/tag-prices', data);
-    return res.data.data;
-  }
-
-  async deleteBillingTagPrice(id: string): Promise<any> {
-    const res = await this.client.delete<ApiResponse<any>>(`/billing/tag-prices/${id}`);
-    return res.data.data;
-  }
-
-  async bulkUpsertBillingTagPrices(rows: Array<{ productId: string; tag: string; price: number }>): Promise<any> {
-    const res = await this.client.post<ApiResponse<any>>('/billing/tag-prices/bulk', rows);
-    return res.data.data;
-  }
-
   async searchBillingProducts(q = ''): Promise<any[]> {
     const res = await this.client.get<ApiResponse<any[]>>(`/billing/products/search?q=${encodeURIComponent(q)}`);
     return res.data.data;
@@ -2258,7 +2237,7 @@ class ApiClient {
     orderTag: string;
     paymentMode?: string;
     items: Array<{
-      productId: string; name: string; sku: string; hsnCode: string;
+      productId: string; variantSku?: string; name: string; sku: string; hsnCode: string;
       mrp?: number; qty: number; unit?: string; rate: number;
       priceInclTax?: boolean; discountPct?: number; gstRate: number;
     }>;

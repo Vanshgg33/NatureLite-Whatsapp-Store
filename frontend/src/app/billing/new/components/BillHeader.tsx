@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { GST_STATE_CODES } from '@/lib/billing/constants/stateCodes';
-import { CHANNELS, CHANNEL_COLORS } from '@/lib/billing/channel';
+import { CHANNELS, CHANNEL_COLORS, type PriceTier } from '@/lib/billing/channel';
 import type { GodownDto } from '../types';
 
 type CTag = 'B2B' | 'Transport' | 'Home Delivery' | 'Store/Retail' | 'Wholesale' | 'Retail';
@@ -145,8 +145,8 @@ function CustomerSearch({ onSelect }: { onSelect: (c: any) => void }) {
 }
 
 export interface BillHeaderProps {
-  paymentTerm: 'cash' | 'credit';
-  onPaymentTermChange: (v: 'cash' | 'credit') => void;
+  priceMode: PriceTier;
+  onPriceModeChange: (v: PriceTier) => void;
   invoiceNo: string;
   onInvoiceNoChange: (v: string) => void;
   invoiceDate: string;
@@ -175,7 +175,7 @@ export interface BillHeaderProps {
 }
 
 export function BillHeader({
-  paymentTerm, onPaymentTermChange,
+  priceMode, onPriceModeChange,
   invoiceNo, onInvoiceNoChange,
   invoiceDate, onInvoiceDateChange,
   invoiceTime, onInvoiceTimeChange,
@@ -189,15 +189,15 @@ export function BillHeader({
 }: BillHeaderProps) {
   return (
     <div className="space-y-3">
-      {/* Row 1: Cash/Credit toggle + Invoice meta + Godown */}
+      {/* Row 1: Retail/B2B pricing + Invoice meta + Godown */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex rounded-md border border-gray-200 overflow-hidden text-xs shrink-0">
-          {(['credit', 'cash'] as const).map(t => (
-            <button key={t} onClick={() => onPaymentTermChange(t)}
-              className={cn('px-3 py-1.5 font-medium capitalize transition-colors',
-                paymentTerm === t ? 'bg-[#2d7a4f] text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
+          {([['Store/Retail', 'Retail Pricing'], ['B2B', 'B2B Pricing']] as const).map(([tier, label]) => (
+            <button key={tier} type="button" onClick={() => onPriceModeChange(tier)}
+              className={cn('px-3 py-1.5 font-medium transition-colors',
+                priceMode === tier ? 'bg-[#2d7a4f] text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
               )}>
-              {t === 'credit' ? 'Credit' : 'Cash Sale'}
+              {label}
             </button>
           ))}
         </div>
