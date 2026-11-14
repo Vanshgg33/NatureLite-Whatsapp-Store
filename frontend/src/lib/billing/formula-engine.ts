@@ -105,7 +105,7 @@ function toFn(n: Node): Fn {
 }
 
 const cache = new Map<string, Fn>();
-function compile(src: string): Fn {
+export function compile(src: string): Fn {
   const hit = cache.get(src);
   if (hit) return hit;
   const fn = toFn(parseExpr(src));

@@ -1,5 +1,6 @@
 // Pure, side-effect-free functions for CRM status computation.
 // All accept explicit parameters so tests can inject fixed dates and data.
+import { DEFAULT_CRM_RULES, DEFAULT_CRM_FORMULAS, evalCycle, evalPriority, type CrmRules } from './crm-formulas';
 
 export type Segment =
   | 'new' | 'active' | 'due_soon' | 'due_today'
@@ -62,8 +63,9 @@ export function resolveCycle(
   orders: OrderForCycle[],
   categoryDays: Record<string, number>,
   fallbackDays: number,
+  rules: CrmRules = DEFAULT_CRM_RULES,
 ): { days: number; source: CycleSource } {
-  if (orders.length >= 3) {
+  if (orders.length >= rules.minOrdersForPersonal) {
     const dates = orders.map(o => o.date.getTime());
     const gaps: number[] = [];
     for (let i = 0; i < dates.length - 1; i++) {
@@ -76,7 +78,9 @@ export function resolveCycle(
       const median = sorted.length % 2
         ? sorted[mid]
         : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
-      return { days: Math.min(Math.max(median, 7), 120), source: 'personal' };
+      const vars = { medianGap: median, meanGap: gaps.reduce((a, b) => a + b, 0) / gaps.length, lastGap: gaps[0], orders: orders.length };
+      const days = evalCycle(rules.formulas, vars) ?? evalCycle(DEFAULT_CRM_FORMULAS, vars);
+      if (days !== null) return { days, source: 'personal' };
     }
   }
 
@@ -98,6 +102,7 @@ export function computeSegment(
   daysLate: number,
   totalOrders: number,
   thresholds: Thresholds = DEFAULT_THRESHOLDS,
+  dueSoonDays = 7,
 ): Segment {
   if (totalOrders === 0) return 'no_orders';
   if (daysLate > thresholds.lostAfterDays) return 'lost';
@@ -105,7 +110,7 @@ export function computeSegment(
   if (daysLate > thresholds.atRiskAfterDays) return 'at_risk';
   if (daysLate >= 1) return 'overdue';
   if (daysLate === 0) return 'due_today';
-  if (daysLate >= -7) return 'due_soon';
+  if (daysLate >= -dueSoonDays) return 'due_soon';
   if (totalOrders === 1) return 'new';
   return 'active';
 }
@@ -130,10 +135,12 @@ export function computePriority(
   ltvPct: number,
   daysLate: number,
   totalOrders: number,
+  rules: CrmRules = DEFAULT_CRM_RULES,
 ): { score: number; band: PriorityBand } {
-  const lateNorm = Math.min(Math.max(daysLate, 0), 30) / 30;
-  const score = Math.round(50 * ltvPct + 40 * lateNorm + (totalOrders >= 2 ? 10 : 0));
-  const band: PriorityBand = score >= 60 ? 'high' : score >= 35 ? 'medium' : 'low';
+  const v = { ltvPct, daysLate, orders: totalOrders };
+  let score: number;
+  try { score = evalPriority(rules.formulas, v); } catch { score = evalPriority(DEFAULT_CRM_FORMULAS, v); }
+  const band: PriorityBand = score >= rules.priorityHighAt ? 'high' : score >= rules.priorityMediumAt ? 'medium' : 'low';
   return { score, band };
 }
 
