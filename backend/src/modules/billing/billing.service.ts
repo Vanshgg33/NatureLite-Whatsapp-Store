@@ -919,11 +919,16 @@ export class BillingService {
     const isInterState = pos !== '22';
 
     // Snapshot per-product reporting attributes (GST treatment, UQC, category, barcode)
+    // Category is looked up by hand, not populate(): a product whose saved category is empty/invalid made populate throw
+    // "Invalid value for _id" and blocked every bill containing it. Such a product just has no category on the bill.
     const productDocs = await this.productModel
       .find({ _id: { $in: dto.items.map(i => i.productId) } })
       .select('gstTreatment uqc sku category')
-      .populate('category', 'name')
       .lean() as any[];
+    const catIds = [...new Set(productDocs.map(p => String(p.category ?? '')).filter(c => /^[0-9a-fA-F]{24}$/.test(c)))];
+    const cats = catIds.length ? await this.productModel.db.model('Category').find({ _id: { $in: catIds } }).select('name').lean() as any[] : [];
+    const catById = new Map(cats.map(c => [String(c._id), c]));
+    for (const p of productDocs) p.category = catById.get(String(p.category ?? ''));
     const productById = new Map(productDocs.map(p => [String(p._id), p]));
 
     // Rates come from the effective-dated rule master for the invoice date, not from the client.
