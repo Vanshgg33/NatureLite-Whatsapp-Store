@@ -3,7 +3,7 @@ import { istDateKey } from '@/lib/time';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, X, Pin } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
@@ -26,6 +26,7 @@ const CHARGE_GST_RATE = 18;
 export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
   const isOrder = mode === 'order';
   const router = useRouter();
+  const qc = useQueryClient();
   const { toast } = useToast();
 
   // ─── All state first ──────────────────────────────────────────────────────
@@ -308,6 +309,8 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
       return { bill, ...opts };
     },
     onSuccess: ({ bill, print, saveNew }) => {
+      // lists are cached for 5 min: without this the Bills page keeps showing the old (now cancelled) bill without the new notes
+      for (const k of ['billing-bills', 'billing-bill', 'billing-dues', 'billing-customers']) qc.invalidateQueries({ queryKey: [k] });
       toast(isOrder
         ? { title: `Sale order ${bill.invoiceNo} saved`, description: 'No stock or balance changes until you confirm it' }
         : { title: `Invoice ${bill.invoiceNo} saved`, description: bill.whatsapp?.status === 'skipped_no_phone' ? 'No WhatsApp number' : sendWhatsApp ? 'WhatsApp queued' : undefined });
