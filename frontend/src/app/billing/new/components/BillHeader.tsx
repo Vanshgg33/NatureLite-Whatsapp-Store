@@ -35,6 +35,7 @@ function CustomerSearch({ onSelect }: { onSelect: (c: any) => void }) {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
+  const [newAddress, setNewAddress] = useState('');
   const [newTags, setNewTags] = useState<CTag[]>([]);
   const [creating, setCreating] = useState(false);
   const { toast } = useToast();
@@ -57,7 +58,11 @@ function CustomerSearch({ onSelect }: { onSelect: (c: any) => void }) {
     if (!newName.trim() || !newPhone.trim()) return;
     setCreating(true);
     try {
-      const customer = await api.createBillingCustomer({ name: newName.trim(), phone: newPhone.trim(), tags: newTags });
+      const line = newAddress.trim();
+      const customer = await api.createBillingCustomer({
+        name: newName.trim(), phone: newPhone.trim(), tags: newTags,
+        addresses: line ? [{ label: 'Billing', line, isDefault: true }] : [],
+      });
       onSelect(customer);
       setShowCreate(false);
       setQ('');
@@ -107,7 +112,11 @@ function CustomerSearch({ onSelect }: { onSelect: (c: any) => void }) {
           {!showCreate ? (
             <button
               className="w-full flex items-center gap-2 px-4 py-2.5 text-[#2d7a4f] font-medium text-sm hover:bg-[#f7faf8] border-t border-gray-100 transition-colors"
-              onClick={() => setShowCreate(true)}
+              onClick={() => {
+                // prefill from what was typed in the search box
+                if (/^[\d\s+-]{6,}$/.test(q)) setNewPhone(q.trim()); else setNewName(q.trim());
+                setShowCreate(true);
+              }}
             >
               <Plus className="h-4 w-4" /> Add New Customer
             </button>
@@ -118,6 +127,7 @@ function CustomerSearch({ onSelect }: { onSelect: (c: any) => void }) {
                 <Input placeholder="Name *" value={newName} onChange={e => setNewName(e.target.value)} className="text-sm h-8" />
                 <Input placeholder="Phone *" value={newPhone} onChange={e => setNewPhone(e.target.value)} className="text-sm h-8" />
               </div>
+              <Input placeholder="Address (optional)" value={newAddress} onChange={e => setNewAddress(e.target.value)} className="text-sm h-8" />
               <div className="flex flex-wrap gap-1.5">
                 {ALL_TAGS.map(t => (
                   <button key={t} type="button"
@@ -286,13 +296,13 @@ export function BillHeader({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold block mb-1">Billing Address</label>
-            <select value={billingAddress} onChange={e => onBillingAddressChange(e.target.value)}
-              className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs focus:ring-2 focus:ring-[#2d7a4f]/30 focus:outline-none bg-white">
-              <option value="">— Pick address —</option>
-              {customer.addresses?.map((a: any, i: number) => (
-                <option key={i} value={a.line}>{a.label}: {a.line}</option>
-              ))}
-            </select>
+            {/* typeable; saved addresses are suggestions. A new one is saved to the customer when the bill is saved */}
+            <input list="saved-addresses" value={billingAddress} onChange={e => onBillingAddressChange(e.target.value)}
+              placeholder="Type address or pick a saved one…"
+              className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs focus:ring-2 focus:ring-[#2d7a4f]/30 focus:outline-none bg-white" />
+            <datalist id="saved-addresses">
+              {customer.addresses?.map((a: any, i: number) => <option key={i} value={a.line}>{a.label}</option>)}
+            </datalist>
           </div>
           <div>
             <div className="flex items-center gap-2 mb-1">

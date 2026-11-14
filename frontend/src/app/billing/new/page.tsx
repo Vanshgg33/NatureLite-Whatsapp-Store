@@ -209,6 +209,15 @@ export default function NewBillPage() {
       const noRate = rawItems.find(i => i.missingTier);
       if (noRate) throw new Error(`No ${noRate.missingTier} rate set for ${noRate.name}`);
 
+      // save a newly typed address on the customer so it autofills next time (never blocks the bill)
+      const typed = billingAddress.trim();
+      const saved: any[] = customer.addresses ?? [];
+      if (typed && !saved.some(a => a.line === typed)) {
+        api.updateBillingCustomer(customer._id, {
+          addresses: [...saved.map(a => ({ ...a, isDefault: false })), { label: 'Billing', line: typed, isDefault: true }],
+        }).then(setCustomer).catch(() => {});
+      }
+
       const bill = await api.createBillingBillV1({
         paymentTerm,
         invoiceDate,
