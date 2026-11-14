@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useAdminAccess } from '@/lib/admin-access';
 import { useToast } from '@/components/ui/use-toast';
@@ -10,6 +11,7 @@ import { api } from '@/lib/api';
 import { cn, useDebouncedValue } from '@/lib/utils';
 import { istDateKey, istDaysAgoKey, istWeekStartKey, istMonthKey, startOfDayIST, endOfDayIST } from '@/lib/time';
 import { CHANNELS, CHANNEL_COLORS } from '@/lib/billing/channel';
+import { invalidateBilling } from '@/lib/billing/invalidate';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 
@@ -49,7 +51,7 @@ function CancelModal({ bill, orders, onClose }: { bill: any; orders: boolean; on
     mutationFn: () => api.cancelBillingBill(bill._id, reason.trim()),
     onSuccess: () => {
       toast({ title: `${bill.invoiceNo} cancelled`, description: orders ? undefined : 'Stock returned to the store' });
-      qc.invalidateQueries({ queryKey: ['billing-bills'] });
+      invalidateBilling(qc);
       onClose();
     },
     onError: (e: any) => toast({ title: e?.response?.data?.message ?? 'Failed to cancel bill', variant: 'destructive' }),
@@ -77,6 +79,7 @@ function CancelModal({ bill, orders, onClose }: { bill: any; orders: boolean; on
 /** Bills list; with orders it lists open sale orders instead (same screen, Confirm replaces payment status) */
 export function BillsList({ orders = false }: { orders?: boolean }) {
   const { can } = useAdminAccess();
+  const router = useRouter();
   const [cancelBill, setCancelBill] = useState<any>(null);
   const [search, setSearch] = useState('');
   const dSearch = useDebouncedValue(search, 300);
@@ -156,9 +159,9 @@ export function BillsList({ orders = false }: { orders?: boolean }) {
             </thead>
             <tbody>
               {bills.map(b => (
-                <tr key={b._id} className="border-t border-gray-100 hover:bg-[#f7faf8]">
+                <tr key={b._id} onClick={() => router.push(`/billing/invoice/${b._id}`)} className="border-t border-gray-100 hover:bg-[#f7faf8] cursor-pointer">
                   <td className="px-3 py-2 font-mono text-xs">
-                    <Link href={`/billing/invoice/${b._id}`} className="text-[#2d7a4f] hover:underline">{b.invoiceNo}</Link>
+                    <Link href={`/billing/invoice/${b._id}`} onClick={e => e.stopPropagation()} className="text-[#2d7a4f] hover:underline">{b.invoiceNo}</Link>
                     {b.notes?.trim() && <span title={b.notes}><StickyNote className="inline h-3.5 w-3.5 ml-1.5 text-amber-500" /></span>}
                   </td>
                   <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
@@ -177,7 +180,7 @@ export function BillsList({ orders = false }: { orders?: boolean }) {
                   <td className="px-3 py-2">
                     <span className={cn('text-[10px] px-2 py-0.5 rounded-full capitalize', orders ? 'bg-blue-100 text-blue-700' : STATUS_STYLE[b.paymentStatus] ?? 'bg-gray-100 text-gray-600')}>{orders ? 'open' : b.paymentStatus}</span>
                   </td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap space-x-3">
+                  <td onClick={e => e.stopPropagation()} className="px-3 py-2 text-right whitespace-nowrap space-x-3 cursor-default">
                     {can('billing_new.cancel') && can('billing_new.create') && (
                       <Link href={`${orders ? '/billing/orders/new' : '/billing/new'}?edit=${b._id}`} className="text-xs text-[#2d7a4f] hover:underline">Edit</Link>
                     )}

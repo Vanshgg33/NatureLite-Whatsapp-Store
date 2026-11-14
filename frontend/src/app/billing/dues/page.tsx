@@ -6,6 +6,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, IndianRupee, Clock, CheckCircle, ArrowDownUp } from 'lucide-react';
 import { api } from '@/lib/api';
+import { invalidateBilling } from '@/lib/billing/invalidate';
 import { istDateKey, istDaysAgoKey, istWeekStartKey, istMonthKey, startOfDayIST, endOfDayIST } from '@/lib/time';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -40,7 +41,7 @@ function PayModal({ bill, onClose }: { bill: any; onClose: () => void }) {
 
   const pay = useMutation({
     mutationFn: () => api.recordBillingPayment(bill._id, Number(amount)),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['billing-dues'] }); onClose(); },
+    onSuccess: () => { invalidateBilling(qc); onClose(); },
     onError: () => setErr('Payment failed'),
   });
 

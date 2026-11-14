@@ -7,6 +7,7 @@ import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Printer, ArrowLeft, XCircle } from 'lucide-react';
 import { api } from '@/lib/api';
+import { invalidateBilling } from '@/lib/billing/invalidate';
 import { Button } from '@/components/ui/button';
 import { amountInWords } from '@/lib/billing/utils/amountInWords';
 import { INVOICE_BANK } from '@/components/InvoiceLayout';
@@ -72,7 +73,7 @@ function CancelDialog({ billId, onClose }: { billId: string; onClose: () => void
   const qc = useQueryClient();
   const cancel = useMutation({
     mutationFn: () => api.cancelBillingBill(billId, reason.trim()),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['billing-bill', billId] }); onClose(); },
+    onSuccess: () => { invalidateBilling(qc); onClose(); },
   });
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center print:hidden">
@@ -156,7 +157,7 @@ export default function InvoicePage() {
     <>
       {/* Print controls */}
       <div className="print:hidden flex items-center gap-3 p-3 border-b bg-white sticky top-0 z-10">
-        <Button variant="ghost" size="sm" onClick={() => router.push('/billing/customers')} className="text-gray-600">
+        <Button variant="ghost" size="sm" onClick={() => router.push(bill.docType === 'SALE_ORDER' ? '/billing/orders' : '/billing/bills')} className="text-gray-600">
           <ArrowLeft className="h-4 w-4 mr-1" /> Back
         </Button>
         <Button size="sm" onClick={() => window.print()} className="bg-[#2d7a4f] hover:bg-[#245f3e] text-white">
@@ -202,9 +203,9 @@ export default function InvoicePage() {
               <tr>
                 <td style={{ width: '60%', verticalAlign: 'top', paddingRight: 8 }}>
                   <div style={{ fontSize: 16, fontWeight: 800, color: '#1a6b3c' }}>{SELLER.name}</div>
-                  <div style={{ fontSize: 9, color: '#555' }}>{SELLER.legal}</div>
-                  <div style={{ fontSize: 9, color: '#555', marginTop: 2 }}>{SELLER.addr}</div>
-                  <div style={{ fontSize: 9, color: '#555', marginTop: 2 }}>
+                  <div style={{ fontSize: 9, color: '#222' }}>{SELLER.legal}</div>
+                  <div style={{ fontSize: 9, color: '#222', marginTop: 2 }}>{SELLER.addr}</div>
+                  <div style={{ fontSize: 9, color: '#222', marginTop: 2 }}>
                     Ph: {SELLER.phone} · {SELLER.email}
                   </div>
                   <div style={{ fontSize: 9, marginTop: 2 }}>
@@ -212,16 +213,16 @@ export default function InvoicePage() {
                   </div>
                 </td>
                 <td style={{ verticalAlign: 'top', textAlign: 'right' }}>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', letterSpacing: 1 }}>TAX INVOICE</div>
-                  <div style={{ fontSize: 9, color: '#555', marginTop: 2 }}>Invoice No: <b>{bill.invoiceNo}</b></div>
-                  <div style={{ fontSize: 9, color: '#555' }}>Date: <b>{fmtDate(invoiceDate)}</b></div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', letterSpacing: 1 }}>{bill.docType === 'SALE_ORDER' ? 'SALE ORDER' : bill.docType === 'CREDIT_NOTE' ? 'CREDIT NOTE' : 'TAX INVOICE'}</div>
+                  <div style={{ fontSize: 9, color: '#222', marginTop: 2 }}>Invoice No: <b>{bill.invoiceNo}</b></div>
+                  <div style={{ fontSize: 9, color: '#222' }}>Date: <b>{fmtDate(invoiceDate)}</b></div>
                   {bill.paymentMode && (
-                    <div style={{ fontSize: 9, color: '#555' }}>
+                    <div style={{ fontSize: 9, color: '#222' }}>
                       Payment: <b style={{ textTransform: 'capitalize' }}>{bill.paymentMode}</b>
                     </div>
                   )}
                   {bill.placeOfSupply && (
-                    <div style={{ fontSize: 9, color: '#555' }}>
+                    <div style={{ fontSize: 9, color: '#222' }}>
                       Place of Supply: <b>{bill.placeOfSupply} – {isInterState ? 'Interstate' : SELLER.state}</b>
                     </div>
                   )}
@@ -237,26 +238,26 @@ export default function InvoicePage() {
             <tbody>
               <tr>
                 <td style={{ width: '50%', verticalAlign: 'top', paddingRight: 8 }}>
-                  <div style={{ fontSize: 8, fontWeight: 700, color: '#888', textTransform: 'uppercase', marginBottom: 2 }}>Bill To</div>
+                  <div style={{ fontSize: 8, fontWeight: 700, color: '#444', textTransform: 'uppercase', marginBottom: 2 }}>Bill To</div>
                   <div style={{ fontWeight: 700, fontSize: 11 }}>{bill.customerName}</div>
-                  <div style={{ color: '#444', fontSize: 9 }}>{bill.customerPhone}</div>
+                  <div style={{ color: '#111', fontSize: 9 }}>{bill.customerPhone}</div>
                   {bill.customerGstNo && (
                     <div style={{ fontSize: 9 }}>GSTIN: <b>{bill.customerGstNo}</b></div>
                   )}
-                  {bill.billingAddress && <div style={{ fontSize: 9, color: '#555', marginTop: 2 }}>{bill.billingAddress}</div>}
+                  {bill.billingAddress && <div style={{ fontSize: 9, color: '#222', marginTop: 2 }}>{bill.billingAddress}</div>}
                 </td>
                 {!bill.sameAsBilling && bill.shippingAddress && (
                   <td style={{ verticalAlign: 'top', paddingLeft: 8, borderLeft: '1px dashed #ccc' }}>
-                    <div style={{ fontSize: 8, fontWeight: 700, color: '#888', textTransform: 'uppercase', marginBottom: 2 }}>Ship To</div>
+                    <div style={{ fontSize: 8, fontWeight: 700, color: '#444', textTransform: 'uppercase', marginBottom: 2 }}>Ship To</div>
                     <div style={{ fontWeight: 700, fontSize: 11 }}>{bill.customerName}</div>
-                    <div style={{ fontSize: 9, color: '#555', marginTop: 2 }}>{bill.shippingAddress}</div>
+                    <div style={{ fontSize: 9, color: '#222', marginTop: 2 }}>{bill.shippingAddress}</div>
                   </td>
                 )}
                 <td style={{ verticalAlign: 'top', textAlign: 'right' }}>
-                  <div style={{ fontSize: 8, fontWeight: 700, color: '#888', textTransform: 'uppercase', marginBottom: 2 }}>Order Type</div>
+                  <div style={{ fontSize: 8, fontWeight: 700, color: '#444', textTransform: 'uppercase', marginBottom: 2 }}>Order Type</div>
                   <div style={{ fontWeight: 600, fontSize: 10 }}>{bill.orderTag}</div>
                   {bill.gstr1Section && (
-                    <div style={{ fontSize: 9, color: '#888', marginTop: 2 }}>GSTR-1: {bill.gstr1Section}</div>
+                    <div style={{ fontSize: 9, color: '#444', marginTop: 2 }}>GSTR-1: {bill.gstr1Section}</div>
                   )}
                   {isInterState && (
                     <div style={{ fontSize: 9, color: '#c05', marginTop: 2 }}>⚡ Inter-State (IGST)</div>
@@ -266,7 +267,7 @@ export default function InvoicePage() {
             </tbody>
           </table>
 
-          <div style={{ borderTop: '1px solid #ccc', marginBottom: 6 }} />
+          <div style={{ borderTop: '1px solid #777', marginBottom: 6 }} />
 
           {/* ── Items table ── */}
           <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 6, fontSize: 9 }}>
@@ -315,11 +316,11 @@ export default function InvoicePage() {
                 const rate    = it.rate   ?? it.unitPrice ?? 0;
                 const half    = (it.gstRate ?? 0) / 2;
                 return (
-                  <tr key={i} style={{ background: i % 2 === 1 ? '#f9fbf9' : '#fff', borderBottom: '1px solid #e8e8e8' }}>
+                  <tr key={i} style={{ background: i % 2 === 1 ? '#f9fbf9' : '#fff', borderBottom: '1px solid #999' }}>
                     <td style={TD}>{i + 1}</td>
                     <td style={{ ...TD, textAlign: 'left' }}>
                       <div style={{ fontWeight: 600 }}>{it.name}</div>
-                      <div style={{ fontSize: 8, color: '#888', fontFamily: 'monospace' }}>{it.sku}</div>
+                      <div style={{ fontSize: 8, color: '#444', fontFamily: 'monospace' }}>{it.sku}</div>
                     </td>
                     <td style={{ ...TD, fontFamily: 'monospace' }}>{it.hsnCode || '—'}</td>
                     <td style={TD}>{it.mrp > 0 ? inr(it.mrp) : '—'}</td>
@@ -345,7 +346,7 @@ export default function InvoicePage() {
               <tr>
                 {/* Left: GST summary */}
                 <td style={{ width: '55%', verticalAlign: 'top', paddingRight: 12 }}>
-                  <div style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', color: '#888', marginBottom: 3 }}>
+                  <div style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', color: '#444', marginBottom: 3 }}>
                     Tax Summary
                   </div>
                   <table style={{ width: '100%', fontSize: 9, borderCollapse: 'collapse' }}>
@@ -364,7 +365,7 @@ export default function InvoicePage() {
                     </thead>
                     <tbody>
                       {gstSummary.map(g => (
-                        <tr key={g.rate} style={{ borderBottom: '1px solid #e8e8e8' }}>
+                        <tr key={g.rate} style={{ borderBottom: '1px solid #999' }}>
                           <td style={TD}>{g.rate}%</td>
                           <td style={{ ...TD, textAlign: 'right' }}>{inr(p2r(g.taxable))}</td>
                           {isInterState ? (
@@ -380,7 +381,7 @@ export default function InvoicePage() {
                     </tbody>
                   </table>
 
-                  <div style={{ marginTop: 8, fontSize: 9, color: '#444' }}>
+                  <div style={{ marginTop: 8, fontSize: 9, color: '#111' }}>
                     <b>Amount in Words:</b>
                     <div style={{ fontStyle: 'italic', marginTop: 2, color: '#222' }}>
                       {amountInWords(grandP)}
@@ -432,7 +433,7 @@ export default function InvoicePage() {
                 <div><b>Terms &amp; Conditions:</b> {bill.terms}</div>
               )}
               {bill.notes && (
-                <div style={{ marginTop: 2, color: '#666' }}>Note: {bill.notes}</div>
+                <div style={{ marginTop: 2, color: '#222' }}>Note: {bill.notes}</div>
               )}
             </div>
           )}
@@ -445,22 +446,17 @@ export default function InvoicePage() {
           )}
 
           {/* ── Footer / signature ── */}
-          <div style={{ borderTop: '1px solid #ccc', paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 9, color: '#888', marginTop: 'auto' }}>
+          <div style={{ borderTop: '1px solid #777', paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 9, color: '#444', marginTop: 'auto' }}>
             <div>
-              <div style={{ fontWeight: 600, color: '#333', marginBottom: 2 }}>Thank you for your purchase!</div>
+              <div style={{ fontWeight: 600, color: '#111', marginBottom: 2 }}>Thank you for your purchase!</div>
               <div>{SELLER.name} · {SELLER.addr.split(',').slice(-2).join(',').trim()}</div>
               <div>Subject to Raipur jurisdiction · E.&amp;O.E.</div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div>For {SELLER.name}</div>
-              <div style={{ height: 36, borderBottom: '1px solid #888', width: 100, marginTop: 4, marginLeft: 'auto' }} />
-              <div style={{ marginTop: 4 }}>Authorised Signatory</div>
             </div>
           </div>
 
           {/* ── Reverse charge declaration (Rule 46) ── */}
-          <div style={{ marginTop: 6, fontSize: 8, color: '#999', textAlign: 'center' }}>
-            Tax is not payable on reverse charge basis · This is a computer-generated invoice
+          <div style={{ marginTop: 6, fontSize: 10, color: '#100b0b', textAlign: 'center' }}>
+           Free Home Delivery  - Phone Number -  8817200740     Email - support@naturelitefoods.com
           </div>
         </div>
       </div>
@@ -471,6 +467,7 @@ export default function InvoicePage() {
         @media print {
           @page { margin: 0; size: A4 portrait; }
           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          #invoice { color: #000; -webkit-font-smoothing: auto; text-rendering: geometricPrecision; }
           #invoice { box-shadow: none !important; }
         }
       `}</style>
@@ -484,13 +481,13 @@ const TH: React.CSSProperties = {
   fontWeight: 700, border: '1px solid #155534', textAlign: 'center',
 };
 const TD: React.CSSProperties = {
-  padding: '3px 4px', border: '1px solid #e8e8e8', textAlign: 'center', verticalAlign: 'middle',
+  padding: '3px 4px', border: '1px solid #999', textAlign: 'center', verticalAlign: 'middle',
 };
 
 function TRow({ label, value, bold, red, green }: { label: string; value: string; bold?: boolean; red?: boolean; green?: boolean }) {
   return (
     <tr>
-      <td style={{ padding: '3px 4px', color: '#555', fontSize: 9.5 }}>{label}</td>
+      <td style={{ padding: '3px 4px', color: '#222', fontSize: 9.5 }}>{label}</td>
       <td style={{ padding: '3px 4px', textAlign: 'right', fontWeight: bold ? 700 : 400, color: red ? '#c0392b' : green ? '#1a6b3c' : '#1a1a1a', fontSize: bold ? 11 : 9.5 }}>
         {value}
       </td>

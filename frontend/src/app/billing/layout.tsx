@@ -163,14 +163,14 @@ function BillingSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; on
 
   return (
     <>
-      <aside className="hidden md:flex md:w-[220px] md:flex-shrink-0 md:flex-col">{content}</aside>
+      <aside className="hidden md:flex md:w-[220px] md:flex-shrink-0 md:flex-col print:hidden">{content}</aside>
       {mounted && (
         <>
           {mobileOpen && (
             <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={onMobileClose} />
           )}
           <div className={cn(
-            'fixed inset-y-0 left-0 z-50 w-[220px] shadow-2xl transition-transform duration-200 ease-out md:hidden',
+            'fixed inset-y-0 left-0 z-50 w-[220px] shadow-2xl transition-transform duration-200 ease-out md:hidden print:hidden',
             mobileOpen ? 'translate-x-0' : '-translate-x-full',
           )}>
             {content}
@@ -195,23 +195,24 @@ export default function BillingLayout({ children }: { children: React.ReactNode 
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="flex h-screen bg-[#EDEEF2]">
+      {/* print: drop the screen-height lock, sidebar and bars so an invoice prints at full size on its own pages */}
+      <div className="flex h-screen bg-[#EDEEF2] print:block print:h-auto print:bg-white">
         <BillingSidebar mobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)} />
-        <div className="flex flex-1 flex-col min-w-0">
+        <div className="flex flex-1 flex-col min-w-0 print:block">
           {/* Mobile top bar */}
-          <div className="flex md:hidden h-12 items-center gap-3 border-b bg-white px-4 shrink-0">
+          <div className="flex md:hidden h-12 items-center gap-3 border-b bg-white px-4 shrink-0 print:hidden">
             <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} aria-label="Open menu" className="h-8 w-8">
               <Menu className="h-4 w-4" />
             </Button>
             <span className="font-semibold text-sm text-gray-800">Billing</span>
           </div>
-          <main className="flex-1 overflow-auto">
+          <main className="flex-1 overflow-auto print:overflow-visible">
             <AccessGate>
               <ErrorBoundary>{children}</ErrorBoundary>
             </AccessGate>
           </main>
         </div>
-        <AdminChatFab />
+        <div className="print:hidden"><AdminChatFab /></div>
       </div>
     </MotionConfig>
   );
