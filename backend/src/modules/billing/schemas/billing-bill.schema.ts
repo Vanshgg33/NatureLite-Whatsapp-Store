@@ -66,7 +66,9 @@ export class BillingBill {
   // WhatsApp auto-send state (queued | retrying | sending | sent | failed | skipped_no_phone | skipped_cancelled)
   @Prop({ type: Object }) whatsapp?: { status: string; attempts: number; lastError?: string; messageId?: string; sentAt?: Date; nextAttemptAt?: Date; runKey?: string };
 
-  @Prop({ enum: ['godown', 'store'], default: 'godown' }) stockLocation: string; // where this bill's stock left from
+  @Prop({ enum: ['godown', 'store'], default: 'godown' }) stockLocation: string; // legacy ledger location, kept for old bills
+  @Prop({ type: Types.ObjectId }) storeId?: Types.ObjectId; // IMS store this bill's stock was taken from (or returned to)
+  @Prop() storeName?: string;
   @Prop({ type: Object }) stockOverride?: { reason: string; by: string; short: string[] };
 
   @Prop() legacyTag?: string; // pre-channel tag, kept by the migration

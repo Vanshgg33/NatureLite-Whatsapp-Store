@@ -7,6 +7,8 @@ import { BillingCounter, BillingCounterDocument } from './schemas/billing-counte
 import { Godown } from './schemas/godown.schema';
 import { isChannel } from './channels';
 import { stockKey } from './reports/stock';
+import { StoreStockService } from '../store-stock/store-stock.service';
+import { StoresService } from '../stores/stores.service';
 import { BillingWhatsappService } from './billing-whatsapp.service';
 import { BillingStockService } from './billing-stock.service';
 import { AuditLog } from './schemas/audit-log.schema';
@@ -41,7 +43,68 @@ export class BillingService {
     private readonly logics: LogicsService,
     private readonly billingWhatsapp: BillingWhatsappService,
     private readonly billingStock: BillingStockService,
+    private readonly storeStock: StoreStockService,
+    private readonly stores: StoresService,
   ) {}
+
+  // ─── IMS stock (the stores' real stock) ───────────────────────────────────
+
+  private imsQty(ss: any, variantSku?: string): number {
+    if (!ss) return 0;
+    return variantSku ? (ss.variantStocks ?? []).find((v: any) => v.variantSku === variantSku)?.stock ?? 0 : ss.stock ?? 0;
+  }
+
+  /** The IMS store a bill works against; it must exist and be active. */
+  private async imsStore(storeId?: string) {
+    if (!storeId) throw new BadRequestException('Select the store this stock comes from');
+    const store = (await this.stores.findAll()).find((s: any) => String(s._id) === String(storeId));
+    if (!store) throw new BadRequestException('Store not found');
+    return store;
+  }
+
+  /**
+   * Checks the sale against the store's IMS stock. Returns what can be taken per line key; a shortage throws unless a
+   * role-approved override with a reason is given (then only what is actually there is taken, IMS never goes below zero).
+   */
+  private async checkImsStock(storeId: string, storeName: string, items: Array<{ productId: string; variantSku?: string; name: string; qty: number }>, override?: { reason?: string; allowed: boolean }) {
+    const need = new Map<string, { productId: string; variantSku?: string; name: string; qty: number }>();
+    for (const i of items) {
+      const k = stockKey(i.productId, i.variantSku);
+      const n = need.get(k);
+      need.set(k, { productId: i.productId, variantSku: i.variantSku, name: i.name, qty: (n?.qty ?? 0) + i.qty });
+    }
+    const map = await this.storeStock.getStockMapForStoreProducts(storeId, [...new Set([...need.values()].map(n => n.productId))]);
+    const take: Array<{ productId: string; variantSku?: string; qty: number }> = [];
+    const short: string[] = [];
+    for (const n of need.values()) {
+      const have = this.imsQty(map.get(n.productId), n.variantSku);
+      if (have < n.qty) short.push(`${n.name}: need ${n.qty}, ${storeName} has ${have}`);
+      take.push({ productId: n.productId, variantSku: n.variantSku, qty: Math.min(have, n.qty) });
+    }
+    if (!short.length) return { take, overridden: false as const, short };
+    if (override?.allowed && override.reason?.trim()) return { take, overridden: true as const, short };
+    throw new BadRequestException(`Not enough stock in ${storeName}: ${short.join('; ')}`);
+  }
+
+  /** Takes stock out of the store; if any line fails the ones already taken are put back. */
+  private async takeImsStock(storeId: string, take: Array<{ productId: string; variantSku?: string; qty: number }>) {
+    const done: typeof take = [];
+    try {
+      for (const t of take) {
+        if (t.qty <= 0) continue;
+        await this.storeStock.decrementStock(storeId, t.productId, t.qty, t.variantSku);
+        done.push(t);
+      }
+    } catch (e) {
+      await this.returnImsStock(storeId, done);
+      throw e;
+    }
+    return done;
+  }
+
+  private async returnImsStock(storeId: string, lines: Array<{ productId: string; variantSku?: string; qty: number }>) {
+    for (const t of lines) if (t.qty > 0) await this.storeStock.incrementStock(storeId, t.productId, t.qty, t.variantSku).catch(() => undefined);
+  }
 
   // Map a User document to the billing customer shape the frontend expects
   private mapUser(u: any) {
@@ -166,7 +229,7 @@ export class BillingService {
 
   // ─── Products (for billing search) ───────────────────────────────────────
 
-  async searchProductsForBilling(q: string) {
+  async searchProductsForBilling(q: string, storeId?: string) {
     const filter = q?.trim()
       ? { isActive: true, $or: [{ name: { $regex: q, $options: 'i' } }, { sku: { $regex: q, $options: 'i' } }, { 'variants.sku': { $regex: q, $options: 'i' } }, { 'variants.name': { $regex: q, $options: 'i' } }] }
       : { isActive: true };
@@ -195,8 +258,16 @@ export class BillingService {
         })),
       ];
     });
-    const stock = await this.billingStock.availability(rows.map(r => r.stockKey));
-    return rows.map(r => ({ ...r, stock: stock[r.stockKey] }));
+    // stock = what the chosen IMS store has (variants have their own); no store chosen yet = unknown
+    const ims = storeId ? await this.storeStock.getStockMapForStoreProducts(storeId, products.map((p: any) => String(p._id))) : undefined;
+    return rows.map(r => ({ ...r, stock: ims ? this.imsQty(ims.get(String(r._id)), r.variantSku) : undefined }));
+  }
+
+  /** Active IMS stores for the bill's store picker. */
+  async listStoresForBilling() {
+    return (await this.stores.findAll())
+      .filter((s: any) => s.isActive !== false)
+      .map((s: any) => ({ _id: String(s._id), name: s.name, isMainStore: !!s.isMainStore }));
   }
 
   // ─── Invoice numbering ────────────────────────────────────────────────────
@@ -764,6 +835,7 @@ export class BillingService {
     invoiceNo?: string;
     placeOfSupply?: string;
     godownId?: string;
+    storeId?: string; // IMS store the stock comes from
     customerId: string;
     billingAddress?: string;
     shippingAddress?: string;
@@ -804,12 +876,14 @@ export class BillingService {
     const docType = dto.docType ?? 'SALE';
     await this.taxSettings.assertPeriodOpen(dto.invoiceDate ? new Date(dto.invoiceDate) : new Date());
 
-    // 0. Stock: a sale may not take its location below zero (credit notes and orders do not check)
-    const stockLocation: 'godown' | 'store' = dto.stockLocation ?? (dto.orderTag === 'Home Delivery Order' || dto.orderTag === 'Store Order' ? 'store' : 'godown');
-    if (!['godown', 'store'].includes(stockLocation)) throw new BadRequestException('stockLocation must be godown or store');
+    // 0. Stock lives in IMS: a sale takes from the chosen store and may not take it below zero;
+    //    a credit note puts stock back into that store; a sale order does not touch stock.
     let stockOverride: { reason: string; by: string; short: string[] } | undefined;
+    const store: any = docType === 'SALE_ORDER' ? undefined : await this.imsStore(dto.storeId);
+    let imsTake: Array<{ productId: string; variantSku?: string; qty: number }> = [];
     if (docType === 'SALE') {
-      const chk = await this.billingStock.assertAvailable(dto.items.map(i => ({ productId: i.productId, variantSku: i.variantSku, name: i.name, qty: i.qty })), stockLocation, { reason: dto.stockOverrideReason, allowed: canOverrideStock });
+      const chk = await this.checkImsStock(String(store._id), store.name, dto.items, { reason: dto.stockOverrideReason, allowed: canOverrideStock });
+      imsTake = chk.take;
       if (chk.overridden) stockOverride = { reason: dto.stockOverrideReason!.trim(), by: userId, short: chk.short };
     }
 
@@ -965,7 +1039,11 @@ export class BillingService {
     const defaultBillingLine =
       (billingAddrs.find((a: any) => a.isDefault) ?? billingAddrs[0])?.line ?? '';
 
-    const bill = await this.billModel.create({
+    // take the stock first (atomic per line); if the bill cannot be saved it goes straight back
+    const taken = docType === 'SALE' ? await this.takeImsStock(String(store._id), imsTake) : [];
+    let bill: any;
+    try {
+    bill = await this.billModel.create({
       invoiceNo,
       invoiceDate: dto.invoiceDate ? new Date(dto.invoiceDate) : billedAt,
       docType,
@@ -984,7 +1062,8 @@ export class BillingService {
       deliveryUserId: dto.deliveryUserId,
       deliveryUserName: dto.deliveryUserName,
       godownId: dto.godownId,
-      stockLocation,
+      storeId: store ? new Types.ObjectId(String(store._id)) : undefined,
+      storeName: store?.name,
       stockOverride,
       placeOfSupply: pos,
       isInterState,
@@ -1014,6 +1093,12 @@ export class BillingService {
       notes: dto.notes,
       status: 'active',
     });
+    } catch (e) {
+      await this.returnImsStock(String(store?._id), taken);
+      throw e;
+    }
+    // a credit note brings the goods back into the same store
+    if (docType === 'CREDIT_NOTE') await this.returnImsStock(String(store._id), dto.items.map(i => ({ productId: i.productId, variantSku: i.variantSku, qty: i.qty })));
 
     await this.auditLogModel.create({
       targetCollection: 'BillingBill',
@@ -1049,6 +1134,12 @@ export class BillingService {
     await this.taxSettings.assertPeriodOpen(new Date(bill.invoiceDate ?? bill.createdAt));
 
     await this.billModel.updateOne({ _id: id }, { $set: { status: 'cancelled', cancelReason: reason.trim() } });
+    // IMS stock goes back (sale) or out again (credit note) in the store the bill used; old bills have no store and are left alone
+    if (bill.storeId && bill.docType !== 'SALE_ORDER') {
+      const lines = (bill.items ?? []).map((i: any) => ({ productId: String(i.productId), variantSku: i.variantSku || undefined, qty: Number(i.qty) || 0 }));
+      if (bill.docType === 'CREDIT_NOTE') await this.takeImsStock(String(bill.storeId), lines).catch(() => undefined);
+      else await this.returnImsStock(String(bill.storeId), lines);
+    }
     await this.auditLogModel.create({
       targetCollection: 'BillingBill',
       docId: bill._id,

@@ -21,6 +21,8 @@ import { MediaModule } from '../media/media.module';
 import { SettingsModule } from '../settings/settings.module';
 import { BillingWhatsappService } from './billing-whatsapp.service';
 import { BillingStockService } from './billing-stock.service';
+import { StoreStockModule } from '../store-stock/store-stock.module';
+import { StoresModule } from '../stores/stores.module';
 
 @Module({
   imports: [
@@ -40,6 +42,8 @@ import { BillingStockService } from './billing-stock.service';
       { name: BillingOpening.name, schema: BillingOpeningSchema },
     ]),
     CrmModule,
+    StoreStockModule, // IMS stock: bills read and deduct from the chosen store
+    StoresModule,
     TaxSettingsModule,
     WhatsAppModule,
     MediaModule,

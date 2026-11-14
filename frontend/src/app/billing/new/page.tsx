@@ -58,7 +58,7 @@ export default function NewBillPage() {
   const [terms, setTerms] = useState('');
   const [notes, setNotes] = useState('');
   const [sendWhatsApp, setSendWhatsApp] = useState(true);
-  const [stockLocation, setStockLocation] = useState<'godown' | 'store'>('store');
+  const [storeId, setStoreId] = useState(''); // IMS store the stock is checked and deducted from
 
   // ─── Derived ──────────────────────────────────────────────────────────────
   const isInterState = placeOfSupply !== '22';
@@ -71,6 +71,12 @@ export default function NewBillPage() {
     staleTime: 60_000,
   });
 
+  const { data: stores = [] } = useQuery({
+    queryKey: ['billing-stores'],
+    queryFn: () => api.getBillingStores(),
+    staleTime: 60_000,
+  });
+
   const { data: deliveryStaff = [] } = useQuery({
     queryKey: ['delivery-staff'],
     queryFn: () => api.getDeliveryStaff(),
@@ -79,6 +85,11 @@ export default function NewBillPage() {
   });
 
   // ─── Effects ──────────────────────────────────────────────────────────────
+  // start on the main IMS store; the cashier can switch
+  useEffect(() => {
+    if (!storeId && stores.length) setStoreId((stores.find(s => s.isMainStore) ?? stores[0])._id);
+  }, [stores]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const def = godowns.find((g: GodownDto) => g.isDefault);
     if (def && !godownId) setGodownId(def._id);
@@ -114,12 +125,7 @@ export default function NewBillPage() {
     setRawItems(prev => prev.map(i => ({ ...i, priceInclTax: next })));
   };
 
-  const changeChannel = (ch: SalesChannel | '') => {
-    setOrderTag(ch);
-    if (!ch) return;
-    // default stock location follows the channel; the cashier can still change it
-    setStockLocation(ch === 'Home Delivery Order' || ch === 'Store Order' ? 'store' : 'godown');
-  };
+  const changeChannel = (ch: SalesChannel | '') => setOrderTag(ch);
 
   // switching Retail / B2B pricing re-prices every line the cashier did not price by hand
   const changePriceMode = (tier: PriceTier) => {
@@ -199,6 +205,7 @@ export default function NewBillPage() {
       if (!customer) throw new Error('Select a customer first');
       if (!rawItems.length) throw new Error('Add at least one item');
       if (!orderTag) throw new Error('Select a sales channel');
+      if (!storeId) throw new Error('Select the store the stock comes from');
       const noRate = rawItems.find(i => i.missingTier);
       if (noRate) throw new Error(`No ${noRate.missingTier} rate set for ${noRate.name}`);
 
@@ -230,7 +237,7 @@ export default function NewBillPage() {
         })),
         billDiscountPct,
         billDiscountMode: discountMode,
-        stockLocation,
+        storeId,
         sendWhatsApp,
         // additional charges are a taxable service line (SAC 996511) so they flow into the GST reports
         charges: charges.map(c => ({ ...c, hsn: CHARGE_SAC, gstRate: CHARGE_GST_RATE })),
@@ -253,7 +260,16 @@ export default function NewBillPage() {
       }
     },
     onError: (e: any) => {
-      toast({ title: e?.message ?? e?.response?.data?.message ?? 'Failed to save bill', variant: 'destructive' });
+      // the server's message first (axios' own message is only "Request failed with status code 400"); validation errors come as an array
+      const raw = e?.response?.data?.message ?? e?.message ?? 'Failed to save bill';
+      const msg = Array.isArray(raw) ? raw.join(', ') : String(raw);
+      // "Not enough stock in Store: A2 GHEE: need 1, Store has 0" -> title + the shortfall lines
+      const stock = msg.match(/^(Not enough stock in [^:]+): (.+)$/);
+      if (stock) {
+        toast({ title: stock[1], description: stock[2].split('; ').join('\n') + '\nPick another store or add stock to this store first.', variant: 'destructive' });
+      } else {
+        toast({ title: msg, variant: 'destructive' });
+      }
     },
   });
 
@@ -316,7 +332,7 @@ export default function NewBillPage() {
               placeOfSupply={placeOfSupply} onPlaceOfSupplyChange={setPlaceOfSupply}
               isInterState={isInterState}
               orderTag={orderTag} onOrderTagChange={(v: string) => changeChannel(v as SalesChannel)}
-              stockLocation={stockLocation} onStockLocationChange={setStockLocation}
+              storeId={storeId} onStoreChange={setStoreId} stores={stores}
             />
           </div>
 
@@ -362,7 +378,7 @@ export default function NewBillPage() {
               isInterState={isInterState}
               channel={orderTag}
               tier={priceMode}
-              stockLocation={stockLocation}
+              storeId={storeId}
               globalPriceInclTax={globalPriceInclTax}
               onGlobalInclTaxToggle={toggleGlobalInclTax}
               onUpdate={(idx, patch) => setRawItems(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it))}

@@ -2112,8 +2112,14 @@ class ApiClient {
     return res.data.data;
   }
 
-  async searchBillingProducts(q = ''): Promise<any[]> {
-    const res = await this.client.get<ApiResponse<any[]>>(`/billing/products/search?q=${encodeURIComponent(q)}`);
+  async searchBillingProducts(q = '', storeId = ''): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>(`/billing/products/search?q=${encodeURIComponent(q)}${storeId ? `&storeId=${storeId}` : ''}`);
+    return res.data.data;
+  }
+
+  /** Active IMS stores for the bill's store picker. */
+  async getBillingStores(): Promise<Array<{ _id: string; name: string; isMainStore: boolean }>> {
+    const res = await this.client.get<ApiResponse<Array<{ _id: string; name: string; isMainStore: boolean }>>>('/billing/stores');
     return res.data.data;
   }
 
@@ -2230,6 +2236,7 @@ class ApiClient {
     invoiceNo?: string;
     placeOfSupply?: string;
     godownId?: string;
+    storeId?: string;
     customerId: string;
     billingAddress?: string;
     shippingAddress?: string;

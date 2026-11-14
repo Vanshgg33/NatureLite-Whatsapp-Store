@@ -67,8 +67,13 @@ export class BillingController {
   // ─── Products (billing-enriched search) ───────────────────────────────────
 
   @Get('products/search')
-  searchProducts(@Query('q') q: string) {
-    return this.billingService.searchProductsForBilling(q);
+  searchProducts(@Query('q') q: string, @Query('storeId') storeId?: string) {
+    return this.billingService.searchProductsForBilling(q, storeId || undefined);
+  }
+
+  @Get('stores')
+  listStores() {
+    return this.billingService.listStoresForBilling();
   }
 
   // ─── Godowns ──────────────────────────────────────────────────────────────

@@ -55,7 +55,7 @@ function QtyInput({ value, unit, onChange }: { value: number; unit: string; onCh
   );
 }
 
-function ProductSearch({ channel, tier, stockLocation, onAdd }: { channel: SalesChannel | ''; tier: string; stockLocation: 'godown' | 'store'; onAdd: (item: Omit<LineItem, 'discountAmt' | 'taxable' | 'cgst' | 'sgst' | 'igst' | 'total'>) => void }) {
+function ProductSearch({ channel, tier, storeId, onAdd }: { channel: SalesChannel | ''; tier: string; storeId: string; onAdd: (item: Omit<LineItem, 'discountAmt' | 'taxable' | 'cgst' | 'sgst' | 'igst' | 'total'>) => void }) {
   const [q, setQ] = useState('');
   const dq = useDebouncedValue(q, 250);
   const [results, setResults] = useState<any[]>([]);
@@ -64,8 +64,8 @@ function ProductSearch({ channel, tier, stockLocation, onAdd }: { channel: Sales
 
   useEffect(() => {
     if (!dq) { setResults([]); return; }
-    api.searchBillingProducts(dq).then(setResults).catch(() => {});
-  }, [dq]);
+    api.searchBillingProducts(dq, storeId).then(setResults).catch(() => {});
+  }, [dq, storeId]);
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -123,9 +123,9 @@ function ProductSearch({ channel, tier, stockLocation, onAdd }: { channel: Sales
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-gray-800 truncate">{p.name}</div>
                   <div className="text-xs text-gray-400 font-mono">{p.sku} · HSN: {p.hsnCode || '—'} · {p.gstRate ?? 5}% GST</div>
-                  {p.stock && (
-                    <div className={cn('text-[11px]', (p.stock[stockLocation] ?? 0) > 0 ? 'text-gray-500' : 'text-red-500')}>
-                      Store {p.stock.store} · Godown {p.stock.godown}
+                  {typeof p.stock === 'number' && (
+                    <div className={cn('text-[11px]', p.stock > 0 ? 'text-gray-500' : 'text-red-500')}>
+                      In stock: {p.stock}
                     </div>
                   )}
                 </div>
@@ -149,7 +149,7 @@ export interface ItemGridProps {
   isInterState: boolean;
   channel: SalesChannel | '';
   tier: string;
-  stockLocation: 'godown' | 'store';
+  storeId: string;
   onUpdate: (idx: number, patch: Partial<Pick<LineItem, 'mrp' | 'qty' | 'unit' | 'rate' | 'priceInclTax' | 'discountPct' | 'gstRate' | 'hsnCode' | 'manualRate' | 'missingTier'>>) => void;
   onRemove: (idx: number) => void;
   onAdd: (item: Omit<LineItem, 'discountAmt' | 'taxable' | 'cgst' | 'sgst' | 'igst' | 'total'>) => void;
@@ -158,7 +158,7 @@ export interface ItemGridProps {
 }
 
 export function ItemGrid({
-  lines, rawItems, isInterState, channel, tier, stockLocation,
+  lines, rawItems, isInterState, channel, tier, storeId,
   onUpdate, onRemove, onAdd,
   globalPriceInclTax, onGlobalInclTaxToggle,
 }: ItemGridProps) {
@@ -290,7 +290,7 @@ export function ItemGrid({
 
       {/* Product search row */}
       <div className="p-3 border-t border-gray-100">
-        <ProductSearch channel={channel} tier={tier} stockLocation={stockLocation} onAdd={onAdd} />
+        <ProductSearch channel={channel} tier={tier} storeId={storeId} onAdd={onAdd} />
       </div>
     </div>
   );

@@ -170,8 +170,10 @@ export interface BillHeaderProps {
   isInterState: boolean;
   orderTag: string;
   onOrderTagChange: (v: string) => void;
-  stockLocation: 'godown' | 'store';
-  onStockLocationChange: (v: 'godown' | 'store') => void;
+  /** IMS store the stock is taken from */
+  storeId: string;
+  onStoreChange: (v: string) => void;
+  stores: Array<{ _id: string; name: string }>;
 }
 
 export function BillHeader({
@@ -185,7 +187,7 @@ export function BillHeader({
   shippingAddress, onShippingAddressChange,
   sameAsBilling, onSameAsBillingChange,
   placeOfSupply, onPlaceOfSupplyChange, isInterState,
-  orderTag, onOrderTagChange, stockLocation, onStockLocationChange,
+  orderTag, onOrderTagChange, storeId, onStoreChange, stores,
 }: BillHeaderProps) {
   return (
     <div className="space-y-3">
@@ -326,11 +328,11 @@ export function BillHeader({
           </button>
         ))}
         <label className="ml-auto flex items-center gap-1.5 text-xs text-gray-500">
-          Stock from
-          <select value={stockLocation} onChange={e => onStockLocationChange(e.target.value as 'godown' | 'store')}
+          Store
+          <select value={storeId} onChange={e => onStoreChange(e.target.value)}
             className="border border-gray-200 rounded px-1.5 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#2d7a4f]/30">
-            <option value="store">Store</option>
-            <option value="godown">Godown</option>
+            <option value="">— Select store —</option>
+            {stores.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
           </select>
         </label>
       </div>
