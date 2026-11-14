@@ -37,7 +37,7 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
   const [settingPermanent, setSettingPermanent] = useState(false);
 
   const [paymentTerm, setPaymentTerm] = useState<'cash' | 'credit'>('credit');
-  const [invoiceNo, setInvoiceNo] = useState('');
+  const [invoiceNo, setInvoiceNo] = useState('NLF'); // always starts with NLF
   const [invoiceDate, setInvoiceDate] = useState(() => istDateKey());
   const [invoiceTime, setInvoiceTime] = useState(() => new Date().toTimeString().slice(0, 5));
   const [godownId, setGodownId] = useState('');
@@ -81,7 +81,7 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
     queryFn: () => api.getNextBillNumber(isOrder ? 'SALE_ORDER' : undefined),
     staleTime: 0,
   });
-  useEffect(() => { if (nextNo) setInvoiceNo(cur => cur || nextNo); }, [nextNo]);
+  useEffect(() => { if (nextNo) setInvoiceNo(cur => cur.length > 3 ? cur : nextNo); }, [nextNo]);
 
   const { data: stores = [] } = useQuery({
     queryKey: ['billing-stores'],
@@ -241,7 +241,7 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
     setRawItems([]);
     setCustomer(null);
     setOrderTag('');
-    setInvoiceNo('');
+    setInvoiceNo('NLF');
     setBillDiscountPct(0);
     setDiscountMode('percent');
     setCharges([]);
@@ -277,7 +277,7 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
         docType: isOrder ? ('SALE_ORDER' as const) : undefined,
         paymentTerm,
         invoiceDate,
-        invoiceNo: invoiceNo && invoiceNo !== nextNo ? invoiceNo : undefined,
+        invoiceNo: invoiceNo.length > 3 && invoiceNo !== nextNo ? invoiceNo : undefined, // bare "NLF" = nothing typed
         placeOfSupply,
         godownId: godownId || undefined,
         customerId: customer._id,
@@ -402,7 +402,7 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
           <div className="p-4 bg-white border-b border-gray-200">
             <BillHeader
               priceMode={priceMode} onPriceModeChange={changePriceMode}
-              invoiceNo={invoiceNo} onInvoiceNoChange={setInvoiceNo}
+              invoiceNo={invoiceNo} onInvoiceNoChange={v => setInvoiceNo(v.toUpperCase().startsWith('NLF') ? v.toUpperCase() : 'NLF' + v.toUpperCase())}
               invoiceDate={invoiceDate} onInvoiceDateChange={setInvoiceDate}
               invoiceTime={invoiceTime} onInvoiceTimeChange={setInvoiceTime}
               godownId={godownId} onGodownChange={setGodownId} godowns={godowns}

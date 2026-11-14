@@ -288,12 +288,12 @@ export class BillingService {
   }
 
   private async nextInvoiceNoV1(docType: 'SALE' | 'CREDIT_NOTE' | 'SALE_ORDER' = 'SALE', peek = false): Promise<string> {
-    // Indian financial year runs Apr–Mar; number looks like NIF-26-27/9321
+    // Indian financial year runs Apr–Mar; number looks like NLF-26-27/9321
     const now = new Date();
     const fyStart = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
     const yy = (n: number) => String(n).slice(2);
     const fyLabel = `${fyStart}-${yy(fyStart + 1)}`;
-    const prefix = `NIF-${yy(fyStart)}-${yy(fyStart + 1)}/`;
+    const prefix = `NLF-${yy(fyStart)}-${yy(fyStart + 1)}/`;
     // Three independent series: sale, credit note, sale order (blueprint §2.6)
     const series = docType === 'CREDIT_NOTE' ? 'cn' : docType === 'SALE_ORDER' ? 'so' : 'sale';
     if (peek) {

@@ -218,7 +218,7 @@ export function BillHeader({
           <label className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold shrink-0">Invoice No</label>
           <input value={invoiceNo} onChange={e => onInvoiceNoChange(e.target.value)}
             className="border border-gray-200 rounded px-2 py-1 text-xs font-mono w-36 focus:ring-2 focus:ring-[#2d7a4f]/30 focus:outline-none"
-            placeholder="Auto"
+            maxLength={16} placeholder="NLF-…"
           />
         </div>
 
