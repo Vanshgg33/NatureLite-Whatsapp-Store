@@ -9,15 +9,17 @@ import {
   HttpCode,
   HttpStatus,
   Res,
+  Req,
   NotFoundException,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { AdminChatbotService, HistoryItem } from './admin-chatbot.service';
+import { LogicsProposalService } from './logics-proposal.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
 @Controller('admin/chatbot')
@@ -25,7 +27,7 @@ import { RequireAccess } from '../../common/decorators/require-access.decorator'
 @Roles('admin', 'superadmin')
 @RequireAccess('chatbot.view')
 export class AdminChatbotController {
-  constructor(private readonly chatbotService: AdminChatbotService) {}
+  constructor(private readonly chatbotService: AdminChatbotService, private readonly proposals: LogicsProposalService) {}
 
   // ── Non-streaming chat ────────────────────────────────────────────────────────
   @Post('chat')
@@ -36,13 +38,33 @@ export class AdminChatbotController {
     @Body('message') message: string,
     @Body('history') history: HistoryItem[] = [],
     @CurrentUser() user: JwtPayload,
+    @Body('page') page?: unknown,
   ): Promise<{ reply: string }> {
     if (!message || typeof message !== 'string')
       return { reply: '⚠️ Please provide a valid chat message.' };
     if (message.length > 500)
       return { reply: '⚠️ Message too long. Keep it under 500 characters.' };
     const safeHistory = this.validateHistory(history);
-    return this.chatbotService.chat(message, safeHistory, user.sub);
+    // The admin page the question was asked from, e.g. /billing/logics. Anything odd-looking is dropped.
+    const safePage = typeof page === 'string' && /^\/[A-Za-z0-9_\-/]{0,80}$/.test(page) ? page : undefined;
+    return this.chatbotService.chat(message, safeHistory, user.sub, safePage);
+  }
+
+  // ── Changes the assistant prepared: only a person pressing Confirm applies one ──────
+  // The method-level permission replaces the class-level one: confirming needs the Logics edit permission.
+  @Post('proposals/:id/confirm')
+  @HttpCode(HttpStatus.OK)
+  @RequireAccess('billing_logics.edit')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  async confirmProposal(@Param('id') id: string, @CurrentUser() user: JwtPayload, @Req() req: Request) {
+    return this.proposals.confirm(user, id, req.ip ?? '');
+  }
+
+  @Post('proposals/:id/cancel')
+  @HttpCode(HttpStatus.OK)
+  async cancelProposal(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.proposals.cancel(user, id);
   }
 
   // ── Streaming chat (SSE) ──────────────────────────────────────────────────────

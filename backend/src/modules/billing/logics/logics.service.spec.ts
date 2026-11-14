@@ -47,6 +47,25 @@ describe('LogicsService.publish', () => {
   });
 });
 
+describe('LogicsService.publish concurrency', () => {
+  const bump = { ...DEFAULT_FORMULAS, taxAmt: 'floor(taxable * gstRate / 100)' };
+  it('refuses when a newer version was published since the caller loaded the page', async () => {
+    const { svc, setModel } = make({ latestSet: { version: 3, effectiveFrom: new Date('2026-01-01') } });
+    await expect(svc.publish(bump, '2026-06-01', 'r', 'u', '', 2)).rejects.toThrow(/Someone published a newer version/);
+    expect(setModel.create).not.toHaveBeenCalled();
+  });
+  it('accepts the current version, or no version (older callers)', async () => {
+    const { svc } = make({ latestSet: { version: 3, effectiveFrom: new Date('2026-01-01') } });
+    await expect(svc.publish(bump, '2026-06-01', 'r', 'u', '', 3)).resolves.toBeDefined();
+    await expect(svc.publish(bump, '2026-06-01', 'r', 'u', '')).resolves.toBeDefined();
+  });
+  it('treats version 0 as nothing published yet', async () => {
+    const { svc } = make();
+    await expect(svc.publish(bump, '2026-06-01', 'r', 'u', '', 0)).resolves.toBeDefined();
+    await expect(svc.publish(bump, '2026-06-01', 'r', 'u', '', 1)).rejects.toThrow(/newer version/);
+  });
+});
+
 describe('LogicsService.formulasFor', () => {
   it('returns the built-in set (version 0) when nothing is published', async () => {
     expect(await make().svc.formulasFor(new Date())).toEqual({ version: 0, formulas: DEFAULT_FORMULAS });
@@ -66,6 +85,16 @@ describe('LogicsService.setParam', () => {
     expect(prev!.updateOne).toHaveBeenCalledWith({ effectiveTo: new Date('2026-07-01T00:00:00+05:30') });
     expect(paramModel.create).toHaveBeenCalledWith(expect.objectContaining({ key: 'b2clThreshold', value: 5_000_000, unit: 'paise' }));
   });
+  it('saves the new value before closing the old one, and leaves the old one open if saving fails', async () => {
+    const a = make({ prevParam: { key: 'b2clThreshold', effectiveFrom: new Date('2024-08-01') } });
+    await a.svc.setParam('b2clThreshold', '5000000', '2026-07-01', 'r', 'u', '');
+    expect(a.paramModel.create.mock.invocationCallOrder[0]).toBeLessThan(a.prev!.updateOne.mock.invocationCallOrder[0]);
+    const b = make({ prevParam: { key: 'b2clThreshold', effectiveFrom: new Date('2024-08-01') } });
+    b.paramModel.create.mockRejectedValue(new Error('db down'));
+    await expect(b.svc.setParam('b2clThreshold', '5000000', '2026-07-01', 'r', 'u', '')).rejects.toThrow('db down');
+    expect(b.prev!.updateOne).not.toHaveBeenCalled();
+  });
+
   it('rejects a start date not after the current value, bad values, unknown keys, filed periods', async () => {
     const withPrev = () => make({ prevParam: { key: 'b2clThreshold', effectiveFrom: new Date('2026-07-01T00:00:00+05:30') } }).svc;
     await expect(withPrev().setParam('b2clThreshold', 1, '2026-07-01', 'x', 'u', '')).rejects.toThrow(/later than/);

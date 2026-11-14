@@ -16,6 +16,7 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { AccessGate } from '@/components/access-gate';
+import { AdminChatFab } from '@/components/admin/admin-chat-fab';
 import { useAdminAccess } from '@/lib/admin-access';
 
 const fraunces  = Fraunces({ subsets: ['latin'], variable: '--font-fraunces', display: 'swap', axes: ['opsz'] });
@@ -258,6 +259,7 @@ export default function FmsLayout({ children }: { children: React.ReactNode }) {
           </Link>
         ))}
       </nav>
+      <AdminChatFab />
     </div>
   );
 }

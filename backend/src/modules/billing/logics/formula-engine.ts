@@ -83,7 +83,7 @@ export function printExpr(n: Node, min = 0): string {
   let own = 8;
   let s: string;
   switch (n.t) {
-    case 'num': s = String(n.v); break;
+    case 'num': s = /e/i.test(String(n.v)) ? n.v.toFixed(20).replace(/0+$/, '').replace(/\.$/, '') : String(n.v); break;
     case 'var': s = n.n; break;
     case 'un': own = 7; s = n.op + printExpr(n.e, 7); break;
     case 'bin': own = PREC[n.op]; s = `${printExpr(n.l, own)} ${n.op} ${printExpr(n.r, own + 1)}`; break;
@@ -202,6 +202,16 @@ function ev(f: Formulas, k: SlotKey, vars: Vars): number {
   return r;
 }
 const sum = (a: number[]) => a.reduce((s, x) => s + x, 0);
+
+/** One fixed sample bill. The Logics page and the assistant both use it to show what a formula change does. */
+export const SAMPLE_BILL: { items: CalcLineIn[]; opts: CalcOpts; text: string } = {
+  items: [
+    { rate: 900, qty: 1, gstRate: 5, priceInclTax: true, discountPct: 0 },
+    { rate: 450.5, qty: 3, gstRate: 12, priceInclTax: false, discountPct: 5 },
+  ],
+  opts: { discountValue: 7.5, discountMode: 'percent', roundOff: true, isInterState: false, chargesTotalPaise: 5000 },
+  text: '₹900 item with 5% tax included, plus 3 × ₹450.50 with 5% discount and 12% tax added, 7.5% bill discount, ₹50 freight, same state, round-off on.',
+};
 
 export function calcBill(items: CalcLineIn[], o: CalcOpts, f: Formulas = DEFAULT_FORMULAS): CalcResult {
   const base = { isInterState: +o.isInterState, discountValue: o.discountValue, isAmountMode: +(o.discountMode === 'amount'), roundOff: +o.roundOff, chargesTotal: o.chargesTotalPaise };

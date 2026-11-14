@@ -121,7 +121,7 @@ function NumberChip({ v, onChange, disabled }: { v: number; onChange: (n: number
   const [txt, setTxt] = useState(String(v));
   useEffect(() => { if (Number(txt || 0) !== v) setTxt(String(v)); }, [v]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <input aria-label="Number" inputMode="decimal" disabled={disabled} value={txt} size={Math.max(2, txt.length)}
+    <input aria-label="Number" inputMode="decimal" maxLength={12} disabled={disabled} value={txt} size={Math.max(2, txt.length)}
       className="rounded-md bg-amber-100 px-1.5 py-0.5 text-center text-sm font-medium text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d7a4f] disabled:opacity-100"
       onChange={e => {
         const s = e.target.value;

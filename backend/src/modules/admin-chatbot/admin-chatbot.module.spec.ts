@@ -7,7 +7,11 @@ import { RouterAgent } from './agents/router.agent';
 import { OpsAgent } from './agents/ops.agent';
 import { BillingCrmAgent } from './agents/billing-crm.agent';
 import { PurchaseAgent } from './agents/purchase.agent';
+import { LogicsAgent } from './agents/logics.agent';
+import { LogicsProposalService } from './logics-proposal.service';
 import { SynthesizerAgent } from './agents/synthesizer.agent';
+import { TaxSettingsModule } from '../billing/tax-settings/tax-settings.module';
+import { LogicsService } from '../billing/logics/logics.service';
 
 // Nest cannot start if a provider injects a model the module never registered, and we cannot boot
 // the app against Mongo/Redis in unit tests — so check the wiring from the decorator metadata.
@@ -35,8 +39,13 @@ describe('AdminChatbotModule wiring', () => {
   });
 
   it.each([
-    AdminChatbotService, AdminChatbotToolsService, RouterAgent, OpsAgent, BillingCrmAgent, PurchaseAgent, SynthesizerAgent,
+    AdminChatbotService, AdminChatbotToolsService, RouterAgent, OpsAgent, BillingCrmAgent, PurchaseAgent, LogicsAgent, LogicsProposalService, SynthesizerAgent,
   ])('provides %p', (provider) => {
     expect(providers).toContain(provider);
+  });
+
+  it('can inject LogicsService into the logics guide: the module imports the module that exports it', () => {
+    expect(imports).toContain(TaxSettingsModule);
+    expect(Reflect.getMetadata('exports', TaxSettingsModule)).toContain(LogicsService);
   });
 });

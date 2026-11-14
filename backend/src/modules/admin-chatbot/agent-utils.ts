@@ -1,7 +1,7 @@
 import type { Content } from '@google/genai';
 
 export type HistoryItem = { role: 'user' | 'assistant'; text: string };
-export type Domain = 'ops' | 'billing_crm' | 'purchase';
+export type Domain = 'ops' | 'billing_crm' | 'purchase' | 'logics';
 export interface AgentOutput { domain: Domain; data: string }
 
 // Gemini 3.x can return null parts (thinking tokens); SDK's .text getter throws on them.
@@ -40,4 +40,25 @@ export function capArrays(obj: Record<string, unknown>, max: number): Record<str
     out[k] = Array.isArray(v) && v.length > max ? v.slice(0, max) : v;
   }
   return out;
+}
+
+/** A change the assistant has prepared. It does nothing until the admin presses Confirm on its card. */
+export interface ChatProposal {
+  id: string;
+  title: string;
+  /** Plain-language lines describing exactly what will change. */
+  lines: string[];
+  startsOn: string;
+  reason: string;
+  /** For formula changes: the sample bill worked out today and with the change. */
+  sample?: { text: string; today: Record<string, string>; withChange: Record<string, string> };
+  expiresAt: string;
+}
+
+/** Per-request context handed to the specialists. `proposals` collects the cards to show under the reply. */
+export interface ChatCtx {
+  adminId?: string;
+  proposals: ChatProposal[];
+  /** True only when the question came from the floating assistant, the one screen that can show a Confirm card. */
+  canPropose?: boolean;
 }

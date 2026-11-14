@@ -38,9 +38,10 @@ export class LogicsController {
 
   @Post('formulas')
   @RequireAccess('billing_logics.edit')
-  publish(@Body() b: { formulas: unknown; startsOn: string; reason: string }, @Req() req: any) {
+  publish(@Body() b: { formulas: unknown; startsOn: string; reason: string; baseVersion?: unknown }, @Req() req: any) {
     this.requireAdmin(req)
-    return this.svc.publish(b.formulas, b.startsOn, b.reason, req.user.sub, req.ip)
+    const base = Number.isInteger(b.baseVersion) ? (b.baseVersion as number) : undefined
+    return this.svc.publish(b.formulas, b.startsOn, b.reason, req.user.sub, req.ip, base)
   }
 
   @Post('params')

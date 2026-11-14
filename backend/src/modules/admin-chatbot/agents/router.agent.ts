@@ -3,7 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 import { Domain, HistoryItem, historyToContent, responseText, withTimeout } from '../agent-utils';
 
 const DEFAULT_ROUTER_MODEL = 'gemini-2.0-flash-001';
-const VALID_DOMAINS: Domain[] = ['ops', 'billing_crm', 'purchase'];
+const VALID_DOMAINS: Domain[] = ['ops', 'billing_crm', 'purchase', 'logics'];
 
 const ROUTER_SYSTEM_PROMPT = `You are a query router for an admin dashboard chatbot.
 
@@ -11,10 +11,12 @@ Classify the user query into one or more of these domains:
 - "ops" — orders, delivery, products, inventory, stock, raw materials, analytics, revenue, customers (general), wallet, subscriptions, coupons, feedback, WhatsApp, store sales, payments, audit logs, abandoned carts, reminders
 - "billing_crm" — B2B billing invoices, billing customers, outstanding amounts, godowns, CRM segments (active/overdue/at_risk/dormant), call logs, WhatsApp campaigns, customer reorder predictions, LTV, AOV
 - "purchase" — purchase requests, procurement, PO (purchase orders), vendors, raw material purchasing, department requisitions
+- "logics" — HOW TO CHANGE or edit how billing calculates, using the billing Logics page: formulas, rounding of tax / discount / round-off, the CGST/SGST split, price includes tax, the B2CL limit, GSTR-2B tolerance, WhatsApp bill retry delays, publishing or undoing a formula change. Not for looking up bills, customers or invoice data.
 
 Rules:
 - A query can belong to multiple domains — return all that apply.
 - When in doubt, include "ops" — it is the broadest domain.
+- A message may start with a tag like [On page /billing/logics]. It says which admin page the person is on; on /billing/logics, questions about changing settings, rounding or formulas are "logics".
 - Return ONLY valid JSON in this exact shape: {"domains": ["ops"]}
 - Never add explanation text outside the JSON.
 
@@ -29,6 +31,9 @@ Examples:
 "call log for Rahul" → {"domains": ["billing_crm"]}
 "low stock and pending POs" → {"domains": ["ops", "purchase"]}
 "unpaid bills and pending purchase requests" → {"domains": ["billing_crm", "purchase"]}
+"how do I make tax round down on bills" → {"domains": ["logics"]}
+"[On page /billing/logics] change the round-off so customers never pay more" → {"domains": ["logics"]}
+"what is our B2CL limit set to" → {"domains": ["logics"]}
 `.trim();
 
 @Injectable()

@@ -27,6 +27,14 @@ describe('RouterAgent.classify', () => {
     await expect(router.classify('billing outstanding for at-risk customers', [])).resolves.toEqual(['billing_crm']);
   });
 
+  it('accepts the logics domain and tells the model about the page tag', async () => {
+    mockSend.mockReturnValue(reply('{"domains": ["logics"]}'));
+    await expect(router.classify('[On page /billing/logics] make tax round down', [])).resolves.toEqual(['logics']);
+    const cfg = mockCreate.mock.calls[0][0];
+    expect(cfg.config.systemInstruction).toContain('"logics"');
+    expect(cfg.config.systemInstruction).toContain('[On page /billing/logics]');
+  });
+
   it('returns every domain for a cross-domain query', async () => {
     mockSend.mockReturnValue(reply('{"domains": ["ops", "purchase"]}'));
     await expect(router.classify('low stock and pending POs', [])).resolves.toEqual(['ops', 'purchase']);

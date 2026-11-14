@@ -14,6 +14,7 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { AccessGate } from '@/components/access-gate';
+import { AdminChatFab } from '@/components/admin/admin-chat-fab';
 import { useAdminAccess, pageForPath } from '@/lib/admin-access';
 import { MotionConfig } from 'framer-motion';
 
@@ -209,6 +210,7 @@ export default function BillingLayout({ children }: { children: React.ReactNode 
             </AccessGate>
           </main>
         </div>
+        <AdminChatFab />
       </div>
     </MotionConfig>
   );

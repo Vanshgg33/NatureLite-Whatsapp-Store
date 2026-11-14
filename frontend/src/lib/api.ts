@@ -85,6 +85,17 @@ import {
 // Local fallback helps development if env is missing.
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7001/api/v1';
 
+/** A change the admin assistant prepared. It does nothing until the admin confirms it. */
+export interface AdminChatProposal {
+  id: string;
+  title: string;
+  lines: string[];
+  startsOn: string;
+  reason: string;
+  sample?: { text: string; today: Record<string, string>; withChange: Record<string, string> };
+  expiresAt: string;
+}
+
 class ApiClient {
   private client: AxiosInstance;
   // BUG 16 FIX: use the promise itself as the flag — no separate isRefreshing boolean.
@@ -603,9 +614,20 @@ class ApiClient {
   async askAdminChatbot(
     message: string,
     history: Array<{ role: 'user' | 'assistant'; text: string }> = [],
-  ): Promise<{ reply: string }> {
-    const response = await this.client.post<ApiResponse<{ reply: string }>>('/admin/chatbot/chat', { message, history });
+    /** Admin page the question is asked from (e.g. /billing/logics); lets the assistant answer in context. */
+    page?: string,
+  ): Promise<{ reply: string; proposals?: AdminChatProposal[] }> {
+    const response = await this.client.post<ApiResponse<{ reply: string; proposals?: AdminChatProposal[] }>>('/admin/chatbot/chat', { message, history, page });
     return response.data.data;
+  }
+
+  /** Apply a change the assistant prepared. Only this call (a person pressing Confirm) changes anything. */
+  async confirmChatProposal(id: string): Promise<{ message: string }> {
+    return (await this.client.post<ApiResponse<{ message: string }>>(`/admin/chatbot/proposals/${id}/confirm`)).data.data;
+  }
+
+  async cancelChatProposal(id: string): Promise<{ message: string }> {
+    return (await this.client.post<ApiResponse<{ message: string }>>(`/admin/chatbot/proposals/${id}/cancel`)).data.data;
   }
 
   async getAdminChatbotBriefing(): Promise<Record<string, string | null>> {
@@ -2186,7 +2208,7 @@ class ApiClient {
   async testBillingFormulas(formulas: Record<string, string>): Promise<{ ok: boolean; problems: string[] }> {
     return (await this.client.post<ApiResponse<any>>('/billing/logics/formulas/test', { formulas })).data.data;
   }
-  async publishBillingFormulas(body: { formulas: Record<string, string>; startsOn: string; reason: string }): Promise<any> {
+  async publishBillingFormulas(body: { formulas: Record<string, string>; startsOn: string; reason: string; baseVersion?: number }): Promise<any> {
     return (await this.client.post<ApiResponse<any>>('/billing/logics/formulas', body)).data.data;
   }
   async setBillingParam(body: { key: string; value: string | number; startsOn: string; reason: string }): Promise<any> {

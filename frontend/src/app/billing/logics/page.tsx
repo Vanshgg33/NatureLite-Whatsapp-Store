@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowRight, Check, Lock, SlidersHorizontal } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { formatINR } from '@/lib/billing/utils/formatINR';
-import { calcBill, slotNames, VAR_LABELS, type Formulas, type SlotKey } from '@/lib/billing/formula-engine';
+import { calcBill, slotNames, SAMPLE_BILL, VAR_LABELS, type Formulas, type SlotKey } from '@/lib/billing/formula-engine';
 import { FormulaBuilder } from './FormulaBuilder';
 import { cn } from '@/lib/utils';
 
@@ -24,6 +24,8 @@ interface ParamRow { key: string; module: string; label: string; help: string; u
 interface Registry {
   slots: Slot[]; groups: Group[]; defaults: F;
   active: { version: number; formulas: F };
+  /** Newest published version, including ones that start in the future. */
+  latestVersion: number;
   history: Array<{ version: number; effectiveFrom: string; reason: string }>;
   params: ParamRow[];
 }
@@ -48,14 +50,9 @@ const errText = (e: any) => { const m = e?.response?.data?.message; return Array
 const humanSec = (s: number) => (s < 60 ? `${s} sec` : s < 3600 ? `${+(s / 60).toFixed(1)} min` : `${+(s / 3600).toFixed(1)} h`);
 
 // A sample bill so the effect of a change is visible before publishing.
-const SAMPLE_ITEMS = [
-  { rate: 900, qty: 1, gstRate: 5, priceInclTax: true, discountPct: 0 },
-  { rate: 450.5, qty: 3, gstRate: 12, priceInclTax: false, discountPct: 5 },
-];
-const SAMPLE_OPTS = { discountValue: 7.5, discountMode: 'percent' as const, roundOff: true, isInterState: false, chargesTotalPaise: 5000 };
 function sampleRows(f: F): Array<[string, number]> | string {
   try {
-    const r = calcBill(SAMPLE_ITEMS, SAMPLE_OPTS, f as unknown as Formulas);
+    const r = calcBill(SAMPLE_BILL.items, SAMPLE_BILL.opts, f as unknown as Formulas);
     return [['Taxable value', r.taxableTotal], ['CGST', r.cgstTotal], ['SGST', r.sgstTotal], ['Round-off', r.roundOffPaise], ['Bill total', r.grandTotalPaise]];
   } catch (e: any) { return e.message; }
 }
@@ -74,7 +71,13 @@ export default function LogicsPage() {
   const [check, setCheck] = useState<{ ok: boolean; problems: string[] } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { if (reg) { setDraft(reg.active.formulas); setPick(p => p ?? { kind: 'group', id: reg.groups[0].id }); } }, [reg]);
+  const draftBase = useRef<number | null>(null);
+  useEffect(() => {
+    if (!reg) return;
+    // Rebuild the draft only when a new version was published (by this admin or another): saving a setting must not wipe unpublished edits.
+    if (draftBase.current !== reg.latestVersion) { draftBase.current = reg.latestVersion; setDraft(reg.active.formulas); }
+    setPick(p => p ?? { kind: 'group', id: reg.groups[0].id });
+  }, [reg]);
 
   const live = reg?.active.formulas ?? {};
   const changed = (g: Group) => g.slots.some(s => draft[s] !== live[s]);
@@ -90,7 +93,7 @@ export default function LogicsPage() {
   const publish = async () => {
     setBusy(true);
     try {
-      await api.publishBillingFormulas({ formulas: draft, startsOn, reason });
+      await api.publishBillingFormulas({ formulas: draft, startsOn, reason, baseVersion: reg?.latestVersion });
       toast({ title: 'Published', description: `Applies to bills dated ${startsOn} onward. Older bills are unchanged.` });
       setReason(''); setCheck(null); refresh();
     } catch (e) { setCheck({ ok: false, problems: [errText(e)] }); } finally { setBusy(false); }
@@ -137,7 +140,7 @@ export default function LogicsPage() {
 
               <section aria-label="Sample bill" className="rounded-2xl border border-[#2d7a4f]/30 bg-white p-4">
                 <h2 className="font-semibold text-gray-900">Try it on a sample bill</h2>
-                <p className="text-xs text-gray-500 mb-3">₹900 item with 5% tax included, plus 3 × ₹450.50 with 5% discount and 12% tax added, 7.5% bill discount, ₹50 freight, same state, round-off on.</p>
+                <p className="text-xs text-gray-500 mb-3">{SAMPLE_BILL.text}</p>
                 {typeof before === 'string' || typeof after === 'string' ? (
                   <p className="text-sm text-red-700">{typeof after === 'string' ? after : before as string}</p>
                 ) : (

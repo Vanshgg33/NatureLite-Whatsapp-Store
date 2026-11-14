@@ -98,6 +98,12 @@ describe('parse tree and printer (used by the block editor)', () => {
   it('printing then parsing gives the same tree', () => {
     for (const t of texts) expect([t, parseExpr(printExpr(parseExpr(t)))]).toEqual([t, parseExpr(t)]);
   });
+  it('prints very small numbers without an exponent, so they still parse', () => {
+    for (const v of [0.0000001, 0.00000125, 0.5, 12.75]) {
+      const text = printExpr({ t: 'num', v });
+      expect([v, /e/i.test(text), parseExpr(text)]).toEqual([v, false, { t: 'num', v }]);
+    }
+  });
   it('printed text means the same thing', () => {
     const v = { a: 7, b: 3, c: 2, x: 1, y: 0 };
     for (const t of texts.slice(Object.values(DEFAULT_FORMULAS).length)) {

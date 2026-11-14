@@ -8,8 +8,9 @@ import { RouterAgent } from './agents/router.agent';
 import { OpsAgent } from './agents/ops.agent';
 import { BillingCrmAgent } from './agents/billing-crm.agent';
 import { PurchaseAgent } from './agents/purchase.agent';
+import { LogicsAgent } from './agents/logics.agent';
 import { SynthesizerAgent } from './agents/synthesizer.agent';
-import { AgentOutput, Domain, HistoryItem } from './agent-utils';
+import { AgentOutput, ChatCtx, ChatProposal, Domain, HistoryItem } from './agent-utils';
 import { EmailService } from '../email/email.service';
 
 export type { HistoryItem };
@@ -18,6 +19,7 @@ const DOMAIN_LABEL: Record<Domain, string> = {
   ops: 'operations',
   billing_crm: 'billing/CRM',
   purchase: 'purchase',
+  logics: 'billing logic guide',
 };
 
 /**
@@ -40,6 +42,7 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     private readonly emailService: EmailService,
     @InjectQueue(QUEUE_ADMIN) private readonly adminQueue: Queue,
     @InjectQueue(QUEUE_CHATBOT) private readonly chatbotQueue: Queue,
+    private readonly logicsAgent: LogicsAgent,
   ) {}
 
   // ─── Core orchestration ──────────────────────────────────────────────────────
@@ -48,19 +51,20 @@ export class AdminChatbotService implements OnApplicationBootstrap {
    * Answer one question. `notice` is a warning for the admin (e.g. a specialist failed); it is shown
    * but kept out of the saved history so later turns don't treat it as something the assistant said.
    */
-  private async orchestrate(message: string, history: HistoryItem[]): Promise<{ reply: string; notice: string }> {
+  private async orchestrate(message: string, history: HistoryItem[], ctx: ChatCtx): Promise<{ reply: string; notice: string }> {
     const domains = await this.router.classify(message, history);
     this.logger.log(`[Orchestrator] domains=[${domains.join(', ')}] for "${message.slice(0, 60)}"`);
 
-    const specialists: Record<Domain, { run(q: string, h: HistoryItem[]): Promise<string> }> = {
+    const specialists: Record<Domain, { run(q: string, h: HistoryItem[], ctx: ChatCtx): Promise<string> }> = {
       ops: this.opsAgent,
       billing_crm: this.billingCrmAgent,
       purchase: this.purchaseAgent,
+      logics: this.logicsAgent,
     };
 
     // allSettled: one specialist failing must not discard the others' data.
     const settled = await Promise.allSettled(
-      domains.map(async (domain): Promise<AgentOutput> => ({ domain, data: await specialists[domain].run(message, history) })),
+      domains.map(async (domain): Promise<AgentOutput> => ({ domain, data: await specialists[domain].run(message, history, ctx) })),
     );
 
     const outputs: AgentOutput[] = [];
@@ -89,8 +93,13 @@ export class AdminChatbotService implements OnApplicationBootstrap {
   }
 
   /** Orchestrate, save the clean answer for a signed-in admin, and return the text to show them. */
-  private async respond(message: string, adminId: string | undefined, clientHistory: HistoryItem[]): Promise<string> {
-    const { reply, notice } = await this.orchestrate(message, await this.resolveHistory(adminId, clientHistory));
+  private async respond(
+    message: string, adminId: string | undefined, clientHistory: HistoryItem[], page?: string,
+    ctx: ChatCtx = { adminId, proposals: [] },
+  ): Promise<string> {
+    // The page tag helps the router and the guide; the saved history keeps only what the admin typed.
+    const asked = page ? `[On page ${page}] ${message}` : message;
+    const { reply, notice } = await this.orchestrate(asked, await this.resolveHistory(adminId, clientHistory), ctx);
     if (adminId) await this.persistSession(adminId, message, reply);
     return notice ? `${reply}\n\n${notice}` : reply;
   }
@@ -124,10 +133,13 @@ export class AdminChatbotService implements OnApplicationBootstrap {
     message: string,
     history: HistoryItem[],
     adminId: string | undefined,
-  ): Promise<{ reply: string }> {
+    page?: string,
+  ): Promise<{ reply: string; proposals?: ChatProposal[] }> {
     try {
-      const reply = await this.respond(this.tools.sanitize(message), adminId, history);
-      return { reply };
+      const ctx: ChatCtx = { adminId, proposals: [], canPropose: !!page };
+      const reply = await this.respond(this.tools.sanitize(message), adminId, history, page, ctx);
+      // Changes the assistant prepared come back as cards; they do nothing until the admin confirms.
+      return ctx.proposals.length ? { reply, proposals: ctx.proposals } : { reply };
     } catch (err) {
       this.logger.error(`chat() error: ${(err as Error).message}`);
       return { reply: '⚠️ Something went wrong. Please try again.' };

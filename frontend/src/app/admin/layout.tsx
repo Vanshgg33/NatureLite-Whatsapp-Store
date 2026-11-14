@@ -9,6 +9,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Button } from '@/components/ui/button';
+import { AdminChatFab } from '@/components/admin/admin-chat-fab';
 
 export default function AdminLayout({
   children,
@@ -108,6 +109,7 @@ export default function AdminLayout({
           </AccessGate>
         </main>
       </div>
+      <AdminChatFab />
     </div>
   );
 }

@@ -42,7 +42,8 @@ export class LogicsService {
       const last = await this.paramModel.findOne({ key: d.key }).sort({ effectiveFrom: -1 }).lean()
       return { ...d, value: await this.taxSettings.paramOrDefault(d.key, now), lastChange: last ? { effectiveFrom: last.effectiveFrom, reason: last.reason } : null }
     }))
-    return { slots: SLOT_META, groups: NODE_GROUPS, defaults: DEFAULT_FORMULAS, active, history, params }
+    // newest published version, including ones that start in the future (history is newest first)
+    return { slots: SLOT_META, groups: NODE_GROUPS, defaults: DEFAULT_FORMULAS, active, latestVersion: history[0]?.version ?? 0, history, params }
   }
 
   private cleanSlots(raw: unknown): Formulas {
@@ -62,23 +63,44 @@ export class LogicsService {
     return { ok: problems.length === 0, problems }
   }
 
-  async publish(raw: unknown, startsOn: string, reason: string, userId: string, ip: string) {
-    const slots = this.cleanSlots(raw)
-    reason = String(reason ?? '')
-    if (!reason.trim()) throw new BadRequestException('A reason is required')
+  /** A new formula version may not start in a filed period or before an existing version (it would never apply). Returns the start. */
+  async assertFormulaStart(startsOn: string): Promise<Date> {
     const effectiveFrom = startDate(startsOn)
     await this.taxSettings.assertPeriodOpen(effectiveFrom)
-    // An earlier start than an existing version would be shadowed by it and never apply.
     const latest = await this.setModel.findOne().sort({ effectiveFrom: -1, version: -1 }).lean()
     if (latest && effectiveFrom < new Date(latest.effectiveFrom)) {
       const d = new Date(latest.effectiveFrom).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
       throw new BadRequestException(`A version already starts on ${d}. Choose that date or later.`)
     }
+    return effectiveFrom
+  }
+
+  /** A new value for a setting may not start in a filed period or on/before the current value's start. Returns the start. */
+  async assertParamStart(key: string, startsOn: string): Promise<Date> {
+    const effectiveFrom = startDate(startsOn)
+    await this.taxSettings.assertPeriodOpen(effectiveFrom)
+    const prev = await this.paramModel.findOne({ key, effectiveTo: null }).sort({ effectiveFrom: -1 })
+    if (prev && new Date(prev.effectiveFrom) >= effectiveFrom) throw new BadRequestException('Start date must be later than the current value\'s start date')
+    return effectiveFrom
+  }
+
+  /**
+   * `baseVersion` = the newest version the caller was looking at when it built `raw`. The Logics page sends the full set of formulas,
+   * so without this check two admins editing at once would silently undo each other's boxes.
+   */
+  async publish(raw: unknown, startsOn: string, reason: string, userId: string, ip: string, baseVersion?: number) {
+    const slots = this.cleanSlots(raw)
+    reason = String(reason ?? '')
+    if (!reason.trim()) throw new BadRequestException('A reason is required')
+    const effectiveFrom = await this.assertFormulaStart(startsOn)
     const problems = selfCheck(slots)
     if (problems.length) throw new BadRequestException(`Formulas failed the checks: ${problems.join('; ')}`)
 
     const before = await this.formulasFor(effectiveFrom)
     const last = await this.setModel.findOne().sort({ version: -1 }).lean()
+    if (baseVersion !== undefined && baseVersion !== (last?.version ?? 0)) {
+      throw new BadRequestException('Someone published a newer version while you were editing. Reload the page and make your change again.')
+    }
     const doc = await this.setModel.create({ version: (last?.version ?? 0) + 1, slots, effectiveFrom, reason: reason.trim(), createdBy: userId })
     await this.changelogModel.create({
       entity: 'FormulaSet', entityId: doc._id, action: 'create',
@@ -95,15 +117,13 @@ export class LogicsService {
     if (!reason.trim()) throw new BadRequestException('A reason is required')
     const checked = checkParamValue(def, value)
     if ('error' in checked) throw new BadRequestException(checked.error)
-    const effectiveFrom = startDate(startsOn)
-    await this.taxSettings.assertPeriodOpen(effectiveFrom)
+    const effectiveFrom = await this.assertParamStart(key, startsOn)
 
     const prev = await this.paramModel.findOne({ key, effectiveTo: null }).sort({ effectiveFrom: -1 })
-    if (prev) {
-      if (new Date(prev.effectiveFrom) >= effectiveFrom) throw new BadRequestException('Start date must be later than the current value\'s start date')
-      await prev.updateOne({ effectiveTo: effectiveFrom })
-    }
+    // Create the new value first: if this fails nothing has changed. Closing the old one afterwards is harmless even if it fails,
+    // because the lookup always prefers the latest start date.
     const doc = await this.paramModel.create({ key, value: checked.value, unit: def.unit, effectiveFrom, effectiveTo: null, reason: reason.trim(), createdBy: userId })
+    if (prev) await prev.updateOne({ effectiveTo: effectiveFrom })
     await this.changelogModel.create({
       entity: 'ComplianceParam', entityId: doc._id, action: 'create',
       before: prev?.toObject() ?? null, after: doc.toObject(), reason: reason.trim(), userId, at: new Date(), ip,

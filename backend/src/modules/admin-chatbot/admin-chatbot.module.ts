@@ -9,6 +9,9 @@ import { RouterAgent } from './agents/router.agent';
 import { OpsAgent } from './agents/ops.agent';
 import { BillingCrmAgent } from './agents/billing-crm.agent';
 import { PurchaseAgent } from './agents/purchase.agent';
+import { LogicsAgent } from './agents/logics.agent';
+import { LogicsProposalService } from './logics-proposal.service';
+import { TaxSettingsModule } from '../billing/tax-settings/tax-settings.module';
 import { SynthesizerAgent } from './agents/synthesizer.agent';
 import { QUEUE_ADMIN, QUEUE_CHATBOT } from '../queues/queues.constants';
 import { AdminChatSessionRepository } from './repositories/admin-chat-session.repository';
@@ -85,6 +88,7 @@ import { AdminModule } from '../admin/admin.module';
     StoreStockModule,
     CategoriesModule,
     AdminModule,
+    TaxSettingsModule, // provides LogicsService for the Logics guide agent
   ],
   controllers: [AdminChatbotController],
   providers: [
@@ -97,6 +101,8 @@ import { AdminModule } from '../admin/admin.module';
     OpsAgent,
     BillingCrmAgent,
     PurchaseAgent,
+    LogicsAgent,
+    LogicsProposalService,
     SynthesizerAgent,
   ],
 })

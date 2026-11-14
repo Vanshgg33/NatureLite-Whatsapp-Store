@@ -31,6 +31,7 @@ function setup() {
   const ops = { run: jest.fn().mockResolvedValue('OPS REPLY'), warmUp: jest.fn().mockResolvedValue(undefined) };
   const billing = { run: jest.fn().mockResolvedValue('BILLING REPLY') };
   const purchase = { run: jest.fn().mockResolvedValue('PURCHASE REPLY') };
+  const logics = { run: jest.fn().mockResolvedValue('LOGICS REPLY') };
   const synth = { synthesize: jest.fn().mockResolvedValue('SYNTHESIZED REPLY') };
   const email = { sendAdminReport: jest.fn().mockResolvedValue(undefined) };
   const adminQueue = {
@@ -44,9 +45,9 @@ function setup() {
   };
   const service = new AdminChatbotService(
     sessions as any, tools as any, router as any, ops as any, billing as any,
-    purchase as any, synth as any, email as any, adminQueue as any, chatbotQueue as any,
+    purchase as any, synth as any, email as any, adminQueue as any, chatbotQueue as any, logics as any,
   );
-  return { service, sessions, tools, router, ops, billing, purchase, synth, email, adminQueue, chatbotQueue };
+  return { service, sessions, tools, router, ops, billing, purchase, logics, synth, email, adminQueue, chatbotQueue };
 }
 
 const OLD_ENV = process.env;
@@ -59,6 +60,65 @@ beforeEach(() => {
 });
 afterAll(() => {
   process.env = OLD_ENV;
+});
+
+describe('billing logic guide', () => {
+  it('sends a logics question to the logics guide only', async () => {
+    const s = setup();
+    s.router.classify.mockResolvedValue(['logics']);
+    expect(await s.service.chat('how do I make tax round down', [], 'admin1')).toEqual({ reply: 'LOGICS REPLY' });
+    expect(s.logics.run).toHaveBeenCalledTimes(1);
+    expect(s.ops.run).not.toHaveBeenCalled();
+    expect(s.synth.synthesize).not.toHaveBeenCalled();
+  });
+
+  it('tells the router and the guide which page the question came from, but saves only what the admin typed', async () => {
+    const s = setup();
+    s.router.classify.mockResolvedValue(['logics']);
+    await s.service.chat('round off down please', [], 'admin1', '/billing/logics');
+    expect(s.router.classify.mock.calls[0][0]).toBe('[On page /billing/logics] round off down please');
+    expect(s.logics.run.mock.calls[0][0]).toBe('[On page /billing/logics] round off down please');
+    expect(s.sessions.appendMessages.mock.calls[0][1][0].text).toBe('round off down please');
+  });
+
+  it('adds no tag when no page is given', async () => {
+    const s = setup();
+    await s.service.chat('orders today', [], 'admin1');
+    expect(s.router.classify.mock.calls[0][0]).toBe('orders today');
+  });
+});
+
+describe('changes prepared by the assistant', () => {
+  it('returns the cards with the reply, and gives every specialist the same request context', async () => {
+    const s = setup();
+    s.router.classify.mockResolvedValue(['logics']);
+    const card = { id: 'p1', title: 't', lines: [], startsOn: '2026-12-01', reason: 'r', expiresAt: '' };
+    s.logics.run.mockImplementation(async (_q: string, _h: any, ctx: any) => { ctx.proposals.push(card); return 'Press Confirm.'; });
+    const res = await s.service.chat('round down from 1 Dec, reason r', [], 'admin1');
+    expect(res).toEqual({ reply: 'Press Confirm.', proposals: [card] });
+    expect(s.logics.run.mock.calls[0][2].adminId).toBe('admin1');
+    expect(s.logics.run.mock.calls[0][2].canPropose).toBe(false); // no page given: not the floating assistant
+  });
+
+  it('allows proposing only for questions that come from the floating assistant (a page is given)', async () => {
+    const s = setup();
+    s.router.classify.mockResolvedValue(['logics']);
+    await s.service.chat('round off down', [], 'admin1', '/billing/logics');
+    expect(s.logics.run.mock.calls[0][2].canPropose).toBe(true);
+  });
+
+  it('never allows proposing on the streaming path used by the full chat page', async () => {
+    const s = setup();
+    s.router.classify.mockResolvedValue(['logics']);
+    const res = { write: jest.fn() };
+    await s.service.streamChat('round off down', [], 'admin1', res);
+    expect(s.logics.run.mock.calls[0][2].canPropose).toBeFalsy();
+  });
+
+  it('adds no proposals field when nothing was prepared', async () => {
+    const s = setup();
+    expect(await s.service.chat('orders today', [], 'admin1')).toEqual({ reply: 'OPS REPLY' });
+  });
 });
 
 describe('orchestration', () => {
