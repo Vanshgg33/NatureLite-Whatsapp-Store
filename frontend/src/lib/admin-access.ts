@@ -43,6 +43,7 @@ export const ADMIN_PAGE_HREFS: { page: string; href: string }[] = [
   { page: 'stores_dashboard', href: '/admin/stores/dashboard' }, // before 'stores': pageForPath returns the first prefix match
   { page: 'stores', href: '/admin/stores' },
   // CRM: more specific hrefs first; '/crm' (Today) is a prefix of every CRM path so it goes last.
+  { page: 'crm_logics', href: '/crm/logics' },
   { page: 'crm_queue', href: '/crm/queue' },
   { page: 'crm_abandoned', href: '/crm/abandoned' },
   { page: 'crm_caller', href: '/crm/caller' },

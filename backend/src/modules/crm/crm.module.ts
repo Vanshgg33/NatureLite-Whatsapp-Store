@@ -28,6 +28,8 @@ import { AuditLog, AuditLogSchema } from '../audit/schemas/audit-log.schema';
 import { CrmMarketingSpend, CrmMarketingSpendSchema } from './schemas/crm-marketing-spend.schema';
 import { Subscription, SubscriptionSchema } from '../subscriptions/schemas/subscription.schema';
 import { CrmController } from './crm.controller';
+import { CrmLogicsService } from './logics/crm-logics.service';
+import { CrmLogicsController } from './logics/crm-logics.controller';
 import { CrmLogicSet, CrmLogicSetSchema } from './schemas/crm-logic-set.schema';
 import { CrmLogicLog, CrmLogicLogSchema } from './schemas/crm-logic-log.schema';
 
@@ -63,8 +65,8 @@ import { CrmLogicLog, CrmLogicLogSchema } from './schemas/crm-logic-log.schema';
     WhatsAppModule,
     MediaModule,
   ],
-  controllers: [CrmController],
-  providers: [CrmEngineService, CrmService, CrmFoundationService, CrmInsightsService, CrmOpsService],
-  exports: [CrmEngineService],
+  controllers: [CrmController, CrmLogicsController],
+  providers: [CrmEngineService, CrmService, CrmFoundationService, CrmInsightsService, CrmOpsService, CrmLogicsService],
+  exports: [CrmEngineService, CrmLogicsService],
 })
 export class CrmModule {}

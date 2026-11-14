@@ -101,6 +101,7 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   def('billing_tax', 'Tax & Compliance', 'Billing', '/billing/settings/tax', true, [a('view', 'View'), a('edit', 'Edit rules')]),
   def('billing_logics', 'Logics', 'Billing', '/billing/logics', true, [a('view', 'View'), a('edit', 'Edit formulas and values')]),
 
+  def('crm_logics', 'Logics', 'CRM', '/crm/logics', true, [a('view', 'View'), a('edit', 'Edit formulas and values')]),
   def('crm_today', 'CRM Today', 'CRM', '/crm', true, [a('view', 'View')]),
   def('crm_queue', 'Call Queue', 'CRM', '/crm/queue', true, [a('view', 'View'), a('act', 'Snooze / dismiss / escalate / assign')]),
   def('crm_abandoned', 'Abandoned Carts', 'CRM', '/crm/abandoned', true, [a('view', 'View')]),
