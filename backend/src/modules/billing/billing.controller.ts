@@ -173,6 +173,8 @@ export class BillingController {
     search?: string;
     docType?: 'SALE_ORDER';
     hasNotes?: string;
+    productName?: string;
+    minQty?: string;
     page?: string;
     limit?: string;
   }) {

@@ -2128,7 +2128,7 @@ class ApiClient {
     return res.data.data;
   }
 
-  async getBillingBills(params?: { customerId?: string; paymentStatus?: string; orderTag?: string; startDate?: string; endDate?: string; search?: string; docType?: 'SALE_ORDER'; hasNotes?: boolean; page?: number; limit?: number }): Promise<any> {
+  async getBillingBills(params?: { customerId?: string; paymentStatus?: string; orderTag?: string; startDate?: string; endDate?: string; search?: string; docType?: 'SALE_ORDER'; hasNotes?: boolean; productName?: string; minQty?: number; page?: number; limit?: number }): Promise<any> {
     const res = await this.client.get<ApiResponse<any>>('/billing/bills', { params });
     return res.data.data;
   }

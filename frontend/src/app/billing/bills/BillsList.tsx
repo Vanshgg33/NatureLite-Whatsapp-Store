@@ -12,6 +12,7 @@ import { cn, useDebouncedValue } from '@/lib/utils';
 import { istDateKey, istDaysAgoKey, istWeekStartKey, istMonthKey, startOfDayIST, endOfDayIST } from '@/lib/time';
 import { CHANNELS, CHANNEL_COLORS } from '@/lib/billing/channel';
 import { invalidateBilling } from '@/lib/billing/invalidate';
+import { PartyReport } from './PartyReport';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 
@@ -90,17 +91,23 @@ export function BillsList({ orders = false }: { orders?: boolean }) {
   const [customEnd, setCustomEnd] = useState('');
   const [page, setPage] = useState(1);
   const [hasNotes, setHasNotes] = useState(false);
+  const [showParty, setShowParty] = useState(false);
 
   const range = useMemo(() => getRange(preset, customStart, customEnd), [preset, customStart, customEnd]);
-  useEffect(() => { setPage(1); }, [dSearch, status, channel, range, hasNotes]);
+  const [product, setProduct] = useState('');
+  const dProduct = useDebouncedValue(product, 300);
+  const [minQty, setMinQty] = useState('');
+  const dMinQty = useDebouncedValue(minQty, 300);
+  // the same filters feed the list and the party report
+  const filters = useMemo(() => ({
+    search: dSearch || undefined, paymentStatus: status || undefined, orderTag: channel || undefined, hasNotes: hasNotes || undefined,
+    productName: dProduct.trim() || undefined, minQty: Number(dMinQty) > 0 ? Number(dMinQty) : undefined, ...range,
+  }), [dSearch, status, channel, hasNotes, dProduct, dMinQty, range]);
+  useEffect(() => { setPage(1); }, [filters]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['billing-bills', orders, dSearch, status, channel, range, page, hasNotes],
-    queryFn: () => api.getBillingBills({
-      docType: orders ? 'SALE_ORDER' : undefined, search: dSearch || undefined, paymentStatus: status || undefined, orderTag: channel || undefined,
-      hasNotes: hasNotes || undefined,
-      ...range, page, limit: PAGE_SIZE,
-    }),
+    queryKey: ['billing-bills', orders, filters, page],
+    queryFn: () => api.getBillingBills({ docType: orders ? 'SALE_ORDER' : undefined, ...filters, page, limit: PAGE_SIZE }),
     placeholderData: keepPreviousData,
   });
 
@@ -133,6 +140,16 @@ export function BillsList({ orders = false }: { orders?: boolean }) {
               {CHANNELS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
             <button onClick={() => setHasNotes(v => !v)} className={chip(hasNotes)}>Internal notes</button>
+            <input value={product} onChange={e => setProduct(e.target.value)} placeholder="Product name…"
+              className="border border-gray-200 rounded-md px-2 py-1.5 text-xs w-40" />
+            <input type="number" min="0" value={minQty} onChange={e => setMinQty(e.target.value)} placeholder="Min qty"
+              className="border border-gray-200 rounded-md px-2 py-1.5 text-xs w-20" />
+            {!orders && (
+              <button onClick={() => setShowParty(v => !v)}
+                className="ml-auto px-3 py-1.5 text-xs font-medium rounded-md border border-[#2d7a4f] text-[#2d7a4f] hover:bg-[#e8f5ee]">
+                {showParty ? 'Hide party report' : 'Party report'}
+              </button>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {PRESETS.map(p => <button key={p.key} onClick={() => setPreset(p.key)} className={chip(preset === p.key)}>{p.label}</button>)}
@@ -145,6 +162,13 @@ export function BillsList({ orders = false }: { orders?: boolean }) {
             )}
           </div>
         </div>
+
+        {showParty && !orders && (
+          <PartyReport
+            filters={filters}
+            onClose={() => setShowParty(false)}
+          />
+        )}
 
         <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
           <table className="w-full text-sm">

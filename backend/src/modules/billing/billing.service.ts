@@ -427,11 +427,22 @@ export class BillingService {
     search?: string;
     docType?: 'SALE_ORDER';
     hasNotes?: string;
+    productName?: string;
+    minQty?: string;
     page?: number;
     limit?: number;
   }) {
     const q: any = { status: 'active' };
     if (filters.hasNotes === 'true') q.notes = { $regex: /\S/ }; // internal notes with something typed (blank/whitespace excluded)
+    // one line item must match both: the product name AND at least minQty of it
+    const prod = filters.productName?.trim();
+    const minQty = Number(filters.minQty);
+    if (prod || minQty > 0) {
+      const line: any = {};
+      if (prod) line.name = new RegExp(prod.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      if (minQty > 0) line.qty = { $gte: minQty };
+      q.items = { $elemMatch: line };
+    }
     if (filters.docType === 'SALE_ORDER') q.docType = 'SALE_ORDER'; // open sale orders (hidden from sales lists by default)
     if (filters.customerId) q.customerId = new Types.ObjectId(filters.customerId);
     const term = filters.search?.trim();
@@ -442,9 +453,11 @@ export class BillingService {
     if (filters.paymentStatus) q.paymentStatus = filters.paymentStatus;
     if (filters.orderTag) q.orderTag = filters.orderTag;
     if (filters.startDate || filters.endDate) {
-      q.createdAt = {};
-      if (filters.startDate) q.createdAt.$gte = new Date(filters.startDate);
-      if (filters.endDate) q.createdAt.$lte = new Date(filters.endDate);
+      // by invoice date (what the list shows and Reports use); legacy bills without one fall back to createdAt
+      const r: any = {};
+      if (filters.startDate) r.$gte = new Date(filters.startDate);
+      if (filters.endDate) r.$lte = new Date(filters.endDate);
+      q.$and = [{ $or: [{ invoiceDate: r }, { invoiceDate: null, createdAt: r }, { invoiceDate: { $exists: false }, createdAt: r }] }];
     }
 
     const limit = Math.min(filters.limit ?? 50, 200);
