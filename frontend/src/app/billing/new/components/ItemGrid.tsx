@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { formatINR } from '@/lib/billing/utils/formatINR';
 import { type SalesChannel } from '@/lib/billing/channel';
 import type { LineItem } from '../types';
+import { useListNav } from '../useListNav';
 
 /** Exactly two tiers exist. A missing tier price is an error, never a silent fallback. */
 const tierPriceOf = (tagPrices: Array<{ tag: string; price: number }>, tier: string) => tagPrices.find(t => t.tag === tier)?.price;
@@ -59,12 +60,18 @@ function ProductSearch({ channel, tier, storeId, onAdd }: { channel: SalesChanne
   const [q, setQ] = useState('');
   const dq = useDebouncedValue(q, 250);
   const [results, setResults] = useState<any[]>([]);
+  const [searchedFor, setSearchedFor] = useState(''); // query the shown results belong to
+  const [failed, setFailed] = useState(false);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!dq) { setResults([]); return; }
-    api.searchBillingProducts(dq, storeId).then(setResults).catch(() => {});
+    if (!dq) { setResults([]); setSearchedFor(''); return; }
+    let live = true; // a slow older response must not overwrite a newer one
+    api.searchBillingProducts(dq, storeId)
+      .then(r => { if (live) { setResults(r); setFailed(false); setSearchedFor(dq); } })
+      .catch(() => { if (live) { setResults([]); setFailed(true); setSearchedFor(dq); } });
+    return () => { live = false; };
   }, [dq, storeId]);
 
   useEffect(() => {
@@ -76,7 +83,7 @@ function ProductSearch({ channel, tier, storeId, onAdd }: { channel: SalesChanne
   }, []);
 
   const add = (p: any) => {
-    const price = tierPriceOf(p.tagPrices ?? [], tier);
+    const price = p && tierPriceOf(p.tagPrices ?? [], tier);
     if (price === undefined) return;
     onAdd({
       _key: crypto.randomUUID(),
@@ -97,28 +104,43 @@ function ProductSearch({ channel, tier, storeId, onAdd }: { channel: SalesChanne
     setQ('');
     setOpen(false);
     setResults([]);
+    setSearchedFor('');
   };
+
+  const showing = open && !!q;
+  const nav = useListNav(showing ? results.length : 0, i => add(results[i]), () => setOpen(false));
+  const settled = searchedFor === dq && dq === q.trim(); // results are for what is typed now
 
   return (
     <div ref={ref} className="relative">
       <div className="relative">
         <Package className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
         <input
+          id="product-search"
           value={q}
           onChange={e => { setQ(e.target.value); setOpen(true); }}
           onFocus={() => q && setOpen(true)}
-          placeholder={channel ? 'Search by product name or SKU to add item…' : 'Select a sales channel first'}
+          onKeyDown={nav.onKeyDown}
+          placeholder={channel ? 'Search by product name or SKU to add item… (F4, ↑↓ Enter)' : 'Select a sales channel first'}
           disabled={!channel}
+          role="combobox" aria-expanded={showing && results.length > 0} aria-controls="product-results" aria-autocomplete="list"
           className="w-full pl-9 pr-4 py-2 border border-dashed border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f]/30 bg-gray-50 hover:bg-white transition-colors focus:bg-white focus:border-solid"
           autoComplete="off"
         />
       </div>
-      {open && results.length > 0 && (
-        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded shadow-lg overflow-hidden max-h-64 overflow-y-auto">
-          {results.map(p => {
+      {showing && settled && results.length === 0 && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded shadow-lg px-4 py-3 text-xs text-gray-500">
+          {failed ? 'Search failed. Check your connection and type again.' : <>No product matches “{q.trim()}”. Products are added in Products / IMS with stock in this store.</>}
+        </div>
+      )}
+      {showing && results.length > 0 && (
+        <div id="product-results" role="listbox" className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded shadow-lg overflow-hidden max-h-64 overflow-y-auto animate-in fade-in-0 slide-in-from-top-1 duration-150 motion-reduce:animate-none">
+          {results.map((p, i) => {
             const price = tierPriceOf(p.tagPrices ?? [], tier);
             return (
-              <button key={p.key ?? p._id} disabled={price === undefined} className="w-full flex disabled:opacity-60 disabled:cursor-not-allowed items-center gap-3 px-4 py-2.5 hover:bg-[#f7faf8] text-left transition-colors"
+              <button key={p.key ?? p._id} disabled={price === undefined} role="option" aria-selected={nav.active === i}
+                onMouseEnter={() => nav.setActive(i)}
+                className={cn('w-full flex disabled:opacity-60 disabled:cursor-not-allowed items-center gap-3 px-4 py-2.5 hover:bg-[#f7faf8] text-left transition-colors', nav.active === i && 'bg-[#f7faf8]')}
                 onClick={() => add(p)}>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-gray-800 truncate">{p.name}</div>
@@ -256,8 +278,8 @@ export function ItemGrid({
                     {formatINR(line.total)}
                   </td>
                   <td className="px-2 py-2">
-                    <button onClick={() => onRemove(idx)}
-                      className="text-gray-200 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all">
+                    <button type="button" onClick={() => onRemove(idx)} aria-label={`Remove ${line.name}`} title="Remove item"
+                      className="text-gray-300 hover:text-red-500 focus-visible:text-red-500 lg:opacity-0 lg:group-hover:opacity-100 focus-visible:opacity-100 transition-all">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </td>

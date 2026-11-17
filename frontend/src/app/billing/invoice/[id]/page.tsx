@@ -5,13 +5,15 @@ import { useAdminAccess } from '@/lib/admin-access';
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Printer, ArrowLeft, XCircle } from 'lucide-react';
+import { Printer, ArrowLeft, XCircle, IndianRupee, Copy } from 'lucide-react';
 import { api } from '@/lib/api';
 import { invalidateBilling } from '@/lib/billing/invalidate';
 import { billTime } from '@/lib/billing/datetime';
 import { Button } from '@/components/ui/button';
 import { amountInWords } from '@/lib/billing/utils/amountInWords';
 import { INVOICE_BANK } from '@/components/InvoiceLayout';
+import { getApiError } from '@/lib/api-error';
+import { RecordPaymentDialog } from '@/components/billing/record-payment-dialog';
 
 // ─── Seller constants ─────────────────────────────────────────────────────────
 const SELLER = {
@@ -97,7 +99,7 @@ function CancelDialog({ billId, onClose }: { billId: string; onClose: () => void
           </Button>
         </div>
         {cancel.isError && (
-          <p className="text-xs text-red-500 mt-2">{(cancel.error as any)?.message ?? 'Failed'}</p>
+          <p className="text-xs text-red-500 mt-2">{getApiError(cancel.error)}</p>
         )}
       </div>
     </div>
@@ -112,6 +114,7 @@ export default function InvoicePage() {
   const router = useRouter();
   const autoPrint = searchParams.get('print') === '1';
   const [showCancel, setShowCancel] = useState(false);
+  const [showPay, setShowPay] = useState(false);
 
   const { data: bill, isLoading, isError } = useQuery({
     queryKey: ['billing-bill', id],
@@ -157,7 +160,7 @@ export default function InvoicePage() {
   return (
     <>
       {/* Print controls */}
-      <div className="print:hidden flex items-center gap-3 p-3 border-b bg-white sticky top-0 z-10">
+      <div className="print:hidden flex flex-wrap items-center gap-3 p-3 border-b bg-white sticky top-0 z-10">
         <Button variant="ghost" size="sm" onClick={() => router.push(bill.docType === 'SALE_ORDER' ? '/billing/orders' : '/billing/bills')} className="text-gray-600">
           <ArrowLeft className="h-4 w-4 mr-1" /> Back
         </Button>
@@ -168,6 +171,16 @@ export default function InvoicePage() {
           <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50"
             onClick={() => setShowCancel(true)}>
             <XCircle className="h-4 w-4 mr-1.5" /> Cancel Invoice
+          </Button>
+        )}
+        {!isCancelled && (bill.docType ?? 'SALE') === 'SALE' && dueP > 0 && can('billing_dues.record') && (
+          <Button size="sm" variant="outline" className="text-[#2d7a4f] border-[#2d7a4f]/30 hover:bg-[#f7faf8]" onClick={() => setShowPay(true)}>
+            <IndianRupee className="h-4 w-4 mr-1" /> Record Payment
+          </Button>
+        )}
+        {(bill.docType ?? 'SALE') === 'SALE' && can('billing_new.create') && (
+          <Button size="sm" variant="outline" title="Start a new bill with this customer and items" onClick={() => router.push(`/billing/new?duplicate=${bill._id}`)}>
+            <Copy className="h-4 w-4 mr-1" /> Duplicate
           </Button>
         )}
         {!isCancelled && (
@@ -463,6 +476,7 @@ export default function InvoicePage() {
       </div>
 
       {showCancel && <CancelDialog billId={id} onClose={() => setShowCancel(false)} />}
+      {showPay && <RecordPaymentDialog bill={bill} onClose={() => setShowPay(false)} />}
 
       <style>{`
         @media print {

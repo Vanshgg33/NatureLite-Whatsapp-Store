@@ -41,6 +41,9 @@ export function buildCreatedAtFilter(
   return filter;
 }
 
+/** Escape user text so it matches literally inside a $regex (no 500s on "(" or "+"). */
+export const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /**
  * Build a $or array for case-insensitive regex search on multiple string fields.
  */

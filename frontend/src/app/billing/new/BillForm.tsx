@@ -1,10 +1,11 @@
 'use client';
 import { istDateKey } from '@/lib/time';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, X, Pin } from 'lucide-react';
+import { MotionConfig } from 'framer-motion';
 import { api } from '@/lib/api';
 import { invalidateBilling } from '@/lib/billing/invalidate';
 import { useToast } from '@/components/ui/use-toast';
@@ -103,19 +104,21 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
   useEffect(() => {
     const qs = new URLSearchParams(window.location.search);
     const convert = qs.get('convert');
-    const id = convert || qs.get('edit');
+    // ?duplicate=<billId>: a brand-new bill prefilled from an old one (new number, today's date, no payments copied)
+    const dup = convert ? null : qs.get('duplicate');
+    const id = convert || qs.get('edit') || dup;
     if (!id) return;
     (async () => {
       try {
         const b = await api.getBillingBill(id);
         const want = convert || isOrder ? 'SALE_ORDER' : 'SALE';
-        if (b.status !== 'active' || (b.docType ?? 'SALE') !== want) { toast({ title: 'This document cannot be edited or confirmed', variant: 'destructive' }); return; }
+        if ((b.docType ?? 'SALE') !== want || (!dup && b.status !== 'active')) { toast({ title: dup ? 'This document cannot be duplicated as a bill' : 'This document cannot be edited or confirmed', variant: 'destructive' }); return; }
         setCustomer(await api.getBillingCustomer(String(b.customerId)));
-        if (convert) setConvertId(id); else setEditId(id);
-        setEditInvoiceNo(b.invoiceNo);
+        if (convert) setConvertId(id); else if (!dup) setEditId(id);
+        if (!dup) setEditInvoiceNo(b.invoiceNo);
         setOrderTag(b.orderTag); setPriceMode(CHANNEL_TIER[b.orderTag as SalesChannel] ?? 'Store/Retail');
         setPlaceOfSupply(b.placeOfSupply ?? '22');
-        setInvoiceDate(new Date(b.invoiceDate ?? b.createdAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }));
+        if (!dup) setInvoiceDate(new Date(b.invoiceDate ?? b.createdAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }));
         if (b.godownId) setGodownId(b.godownId);
         if (b.storeId) setStoreId(String(b.storeId));
         setBillingAddress(b.billingAddress ?? ''); setShippingAddress(b.shippingAddress ?? ''); setSameAsBilling(b.sameAsBilling !== false);
@@ -130,11 +133,15 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
         })));
         if (b.billDiscountAmtPaise > 0) { setDiscountMode('amount'); setBillDiscountPct(b.billDiscountAmtPaise / 100); }
         setCharges((b.charges ?? []).map((c: any) => ({ label: c.label, amtRupees: c.amtPaise / 100 })));
+        if (dup) {
+          toast({ title: `Copied from ${b.invoiceNo}`, description: 'Rates are the old bill\'s. Check quantities, rates and payment before saving.' });
+          return;
+        }
         const sum = (m: string) => (b.payments ?? []).filter((p: any) => p.mode === m).reduce((s: number, p: any) => s + p.amountPaise, 0) / 100;
         setPaid({ cash: sum('cash'), upi: sum('upi') });
         if (!convert) setSendWhatsApp(false); // the customer already got the original (a confirmed order sends its first invoice)
       } catch {
-        toast({ title: 'Could not load the bill to edit', variant: 'destructive' });
+        toast({ title: dup ? 'Could not load the bill to duplicate' : 'Could not load the bill to edit', variant: 'destructive' });
       }
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -349,14 +356,33 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
     },
   });
 
+  // One save at a time: a ref, not isPending, because two fast F8 presses land before React re-renders
+  const savingRef = useRef(false);
+  const save = (opts: { print: boolean; saveNew: boolean }) => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    saveMutation.mutate(opts, { onSettled: () => { savingRef.current = false; } });
+  };
+  const saveRef = useRef(save);
+  saveRef.current = save;
+  const dirtyRef = useRef(false);
+  dirtyRef.current = rawItems.length > 0 || !!customer;
+
   // ─── Keyboard shortcuts ───────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'F2') { e.preventDefault(); resetForm(); }
+      const discard = (msg: string) => !dirtyRef.current || window.confirm(msg);
+      if (e.key === 'F2') { e.preventDefault(); if (discard('Clear this bill and start a new one?')) resetForm(); }
       if (e.key === 'F3') { e.preventDefault(); document.getElementById('customer-search')?.focus(); }
-      if (e.key === 'Escape') router.push('/billing/customers');
-      if (e.key === 'F8') { e.preventDefault(); saveMutation.mutate({ print: false, saveNew: false }); }
-      if (e.key === 'F9') { e.preventDefault(); saveMutation.mutate({ print: true, saveNew: false }); }
+      if (e.key === 'F4') { e.preventDefault(); document.getElementById('product-search')?.focus(); }
+      // Esc that closed a dropdown/dialog or left a field must not throw the whole bill away
+      if (e.key === 'Escape') {
+        const t = e.target as HTMLElement | null;
+        if (e.defaultPrevented || t?.closest('input, select, textarea, [role="dialog"]')) return;
+        if (discard('Leave this bill? Unsaved changes will be lost.')) router.push('/billing/customers');
+      }
+      if (e.key === 'F8') { e.preventDefault(); saveRef.current({ print: false, saveNew: false }); }
+      if (e.key === 'F9') { e.preventDefault(); saveRef.current({ print: true, saveNew: false }); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -364,6 +390,7 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
+    <MotionConfig reducedMotion="user">
     <div className="flex flex-col min-h-full">
       {/* Page header bar */}
       <div className="sticky top-0 z-20 flex items-center gap-3 px-4 h-12 bg-white border-b border-gray-200 shrink-0">
@@ -383,6 +410,7 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
         {isOrder && !editId && <span className="text-[11px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded">Sale order: no stock or balance effect until confirmed</span>}
         <span className="hidden lg:flex items-center gap-1 text-[11px] text-gray-400 ml-1">
           <kbd className="px-1 py-0.5 bg-gray-100 rounded text-[10px] font-mono">F3</kbd> Customer ·
+          <kbd className="px-1 py-0.5 bg-gray-100 rounded text-[10px] font-mono">F4</kbd> Item ·
           <kbd className="px-1 py-0.5 bg-gray-100 rounded text-[10px] font-mono">F8</kbd> Save ·
           <kbd className="px-1 py-0.5 bg-gray-100 rounded text-[10px] font-mono">F9</kbd> Print ·
           <kbd className="px-1 py-0.5 bg-gray-100 rounded text-[10px] font-mono">Esc</kbd> Cancel
@@ -490,13 +518,14 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
             totals={totals}
             isInterState={isInterState}
             lines={lines}
-            onSave={() => saveMutation.mutate({ print: false, saveNew: false })}
-            onSaveAndPrint={() => saveMutation.mutate({ print: true, saveNew: false })}
-            onSaveAndNew={() => saveMutation.mutate({ print: false, saveNew: true })}
+            onSave={() => save({ print: false, saveNew: false })}
+            onSaveAndPrint={() => save({ print: true, saveNew: false })}
+            onSaveAndNew={() => save({ print: false, saveNew: true })}
             isSaving={saveMutation.isPending}
           />
         </div>
       </div>
     </div>
+    </MotionConfig>
   );
 }

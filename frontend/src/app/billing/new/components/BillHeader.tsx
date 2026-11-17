@@ -11,6 +11,8 @@ import { useToast } from '@/components/ui/use-toast';
 import { GST_STATE_CODES } from '@/lib/billing/constants/stateCodes';
 import { CHANNELS, CHANNEL_COLORS, type PriceTier } from '@/lib/billing/channel';
 import type { GodownDto } from '../types';
+import { useListNav } from '../useListNav';
+import { getApiError } from '@/lib/api-error';
 
 type CTag = 'B2B' | 'Transport' | 'Home Delivery' | 'Store/Retail' | 'Wholesale' | 'Retail';
 const ALL_TAGS: CTag[] = ['B2B', 'Transport', 'Home Delivery', 'Store/Retail', 'Wholesale', 'Retail'];
@@ -36,15 +38,31 @@ function CustomerSearch({ onSelect }: { onSelect: (c: any) => void }) {
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newAddress, setNewAddress] = useState('');
+  const [newGst, setNewGst] = useState('');
   const [newTags, setNewTags] = useState<CTag[]>([]);
   const [creating, setCreating] = useState(false);
+  const [createErr, setCreateErr] = useState('');
   const { toast } = useToast();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!dq) { setResults([]); return; }
-    api.searchBillingCustomers(dq).then(setResults).catch(() => {});
+    let live = true; // a slow older response must not overwrite a newer one
+    api.searchBillingCustomers(dq).then(r => { if (live) setResults(r); }).catch(() => {});
+    return () => { live = false; };
   }, [dq]);
+
+  const pick = (c: any) => { onSelect(c); setQ(''); setOpen(false); };
+  const startCreate = () => {
+    // prefill from what was typed in the search box
+    if (/^[\d\s+-]{6,}$/.test(q)) setNewPhone(q.trim()); else setNewName(q.trim());
+    setCreateErr('');
+    setShowCreate(true);
+  };
+  const showing = open && (q.length > 0 || showCreate);
+  // options: each result, then "Add New Customer"
+  const nav = useListNav(showing && !showCreate ? results.length + 1 : 0,
+    i => (i < results.length ? pick(results[i]) : startCreate()), () => setOpen(false));
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -55,20 +73,26 @@ function CustomerSearch({ onSelect }: { onSelect: (c: any) => void }) {
   }, []);
 
   const handleCreate = async () => {
-    if (!newName.trim() || !newPhone.trim()) return;
+    if (creating || !newName.trim() || !newPhone.trim()) return;
+    const gst = newGst.trim().toUpperCase();
+    if (newPhone.replace(/\D/g, '').length < 10) { setCreateErr('Enter a valid phone number (at least 10 digits)'); return; }
+    if (gst && !/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gst)) { setCreateErr('Enter a valid 15-character GSTIN'); return; }
+    setCreateErr('');
     setCreating(true);
     try {
       const line = newAddress.trim();
       const customer = await api.createBillingCustomer({
-        name: newName.trim(), phone: newPhone.trim(), tags: newTags,
+        name: newName.trim(), phone: newPhone.trim(), tags: newTags, gstNo: gst || undefined,
         addresses: line ? [{ label: 'Billing', line, isDefault: true }] : [],
       });
       onSelect(customer);
+      toast({ title: `${customer.name} added and selected` });
       setShowCreate(false);
+      setNewName(''); setNewPhone(''); setNewAddress(''); setNewGst(''); setNewTags([]);
       setQ('');
       setOpen(false);
     } catch (e: any) {
-      toast({ title: e?.response?.data?.message ?? 'Failed to create customer', variant: 'destructive' });
+      setCreateErr(getApiError(e, 'Failed to create customer')); // stays open with what was typed
     } finally {
       setCreating(false);
     }
@@ -83,17 +107,20 @@ function CustomerSearch({ onSelect }: { onSelect: (c: any) => void }) {
           value={q}
           onChange={e => { setQ(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
-          placeholder="Search by name or phone…"
+          onKeyDown={nav.onKeyDown}
+          role="combobox" aria-expanded={showing} aria-autocomplete="list"
+          placeholder="Search by name or phone… (↑↓ Enter)"
           className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f]/30 bg-white"
           autoComplete="off"
         />
       </div>
-      {open && (q.length > 0 || showCreate) && (
-        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded shadow-lg overflow-hidden">
-          {results.map(c => (
-            <button key={c._id}
-              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#f7faf8] text-left transition-colors"
-              onClick={() => { onSelect(c); setQ(''); setOpen(false); }}
+      {showing && (
+        <div role="listbox" className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded shadow-lg overflow-hidden animate-in fade-in-0 slide-in-from-top-1 duration-150 motion-reduce:animate-none">
+          {results.map((c, i) => (
+            <button key={c._id} role="option" aria-selected={nav.active === i}
+              onMouseEnter={() => nav.setActive(i)}
+              className={cn('w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#f7faf8] text-left transition-colors', nav.active === i && !showCreate && 'bg-[#f7faf8]')}
+              onClick={() => pick(c)}
             >
               <div className="h-8 w-8 rounded-full bg-[#e8f5ee] flex items-center justify-center text-[#2d7a4f] font-bold text-sm shrink-0">
                 {c.name[0].toUpperCase()}
@@ -110,24 +137,27 @@ function CustomerSearch({ onSelect }: { onSelect: (c: any) => void }) {
             </button>
           ))}
           {!showCreate ? (
-            <button
-              className="w-full flex items-center gap-2 px-4 py-2.5 text-[#2d7a4f] font-medium text-sm hover:bg-[#f7faf8] border-t border-gray-100 transition-colors"
-              onClick={() => {
-                // prefill from what was typed in the search box
-                if (/^[\d\s+-]{6,}$/.test(q)) setNewPhone(q.trim()); else setNewName(q.trim());
-                setShowCreate(true);
-              }}
+            <button role="option" aria-selected={nav.active === results.length}
+              onMouseEnter={() => nav.setActive(results.length)}
+              className={cn('w-full flex items-center gap-2 px-4 py-2.5 text-[#2d7a4f] font-medium text-sm hover:bg-[#f7faf8] border-t border-gray-100 transition-colors', nav.active === results.length && 'bg-[#f7faf8]')}
+              onClick={startCreate}
             >
               <Plus className="h-4 w-4" /> Add New Customer
+              {dq && results.length === 0 && <span className="ml-auto text-xs font-normal text-gray-400">No match for “{dq}”</span>}
             </button>
           ) : (
-            <div className="p-4 border-t border-gray-100 space-y-3">
+            <div className="p-4 border-t border-gray-100 space-y-3 animate-in fade-in-0 duration-150"
+              onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') { e.preventDefault(); handleCreate(); } }}>
               <p className="text-xs font-semibold text-gray-600">Quick Create Customer</p>
-              <div className="grid grid-cols-2 gap-2">
-                <Input placeholder="Name *" value={newName} onChange={e => setNewName(e.target.value)} className="text-sm h-8" />
-                <Input placeholder="Phone *" value={newPhone} onChange={e => setNewPhone(e.target.value)} className="text-sm h-8" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <Input autoFocus aria-label="Customer name" placeholder="Name *" value={newName} onChange={e => { setNewName(e.target.value); setCreateErr(''); }} className="text-sm h-8" disabled={creating} />
+                <Input aria-label="Phone" type="tel" inputMode="tel" placeholder="Phone *" value={newPhone} onChange={e => { setNewPhone(e.target.value); setCreateErr(''); }} className="text-sm h-8" disabled={creating} />
               </div>
-              <Input placeholder="Address (optional)" value={newAddress} onChange={e => setNewAddress(e.target.value)} className="text-sm h-8" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <Input aria-label="Address" placeholder="Address (optional)" value={newAddress} onChange={e => setNewAddress(e.target.value)} className="text-sm h-8" disabled={creating} />
+                <Input aria-label="GSTIN" placeholder="GSTIN (optional, B2B)" maxLength={15} value={newGst} onChange={e => { setNewGst(e.target.value.toUpperCase()); setCreateErr(''); }} className="text-sm h-8 font-mono" disabled={creating} />
+              </div>
+              {createErr && <p role="alert" className="text-xs text-red-600">{createErr}</p>}
               <div className="flex flex-wrap gap-1.5">
                 {ALL_TAGS.map(t => (
                   <button key={t} type="button"

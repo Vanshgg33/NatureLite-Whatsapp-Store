@@ -2143,8 +2143,8 @@ class ApiClient {
     return res.data.data;
   }
 
-  async recordBillingPayment(id: string, amount: number): Promise<any> {
-    const res = await this.client.post<ApiResponse<any>>(`/billing/bills/${id}/payment`, { amount });
+  async recordBillingPayment(id: string, amount: number, mode: 'cash' | 'upi' | 'card' | 'bank' = 'cash'): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>(`/billing/bills/${id}/payment`, { amount, mode });
     return res.data.data;
   }
 

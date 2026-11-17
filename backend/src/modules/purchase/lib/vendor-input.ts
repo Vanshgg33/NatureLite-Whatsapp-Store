@@ -47,4 +47,4 @@ export function cleanVendorInput(data: VendorInput): Required<VendorInput> {
   return out;
 }
 
-export const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export { escapeRegex } from '../../../common/utils/query.util';

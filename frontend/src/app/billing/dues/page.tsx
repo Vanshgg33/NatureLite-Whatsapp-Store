@@ -4,15 +4,15 @@ import { usePageState } from '@/hooks/usePageState';
 import { useAdminAccess } from '@/lib/admin-access';
 
 import { useState, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { AlertCircle, IndianRupee, Clock, CheckCircle, ArrowDownUp } from 'lucide-react';
 import { api } from '@/lib/api';
-import { invalidateBilling } from '@/lib/billing/invalidate';
 import { billDate, billTime } from '@/lib/billing/datetime';
 import { istDateKey, istDaysAgoKey, istWeekStartKey, istMonthKey, startOfDayIST, endOfDayIST } from '@/lib/time';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { WaSendButton } from '@/components/billing/wa-send-button';
+import { RecordPaymentDialog } from '@/components/billing/record-payment-dialog';
 
 function fmt(n: number) {
   return '₹' + (n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -34,56 +34,6 @@ function getRange(preset: DatePreset, customStart: string, customEnd: string) {
   if (preset === 'week') return { startDate: at(istWeekStartKey()), endDate: undefined };
   if (preset === 'month') return { startDate: at(`${istMonthKey()}-01`), endDate: undefined };
   return {};
-}
-
-function PayModal({ bill, onClose }: { bill: any; onClose: () => void }) {
-  const qc = useQueryClient();
-  const [amount, setAmount] = useState(String(bill.amountDue));
-  const [err, setErr] = useState('');
-
-  const pay = useMutation({
-    mutationFn: () => api.recordBillingPayment(bill._id, Number(amount)),
-    onSuccess: () => { invalidateBilling(qc); onClose(); },
-    onError: () => setErr('Payment failed'),
-  });
-
-  const max = bill.amountDue;
-  const val = Number(amount);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-xl border border-gray-200 shadow-2xl w-full max-w-sm mx-4 p-5">
-        <h3 className="font-semibold text-gray-800 mb-1">Record Payment</h3>
-        <p className="text-sm text-gray-500 mb-3">{bill.customerName} · <span className="font-mono text-xs">{bill.invoiceNo}</span></p>
-        <div className="bg-red-50 rounded-lg p-3 mb-3 flex justify-between items-center">
-          <span className="text-sm text-red-700 font-medium">Amount Due</span>
-          <span className="text-xl font-bold text-red-600 tabular-nums">{fmt(bill.amountDue)}</span>
-        </div>
-        <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Payment Amount</label>
-        <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
-          <input
-            type="number" value={amount} min={0.01} max={max} step={0.01}
-            onChange={e => { setAmount(e.target.value); setErr(''); }}
-            className="w-full pl-7 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2d7a4f]"
-            autoFocus
-          />
-        </div>
-        {err && <p className="text-red-500 text-xs mt-1">{err}</p>}
-        <div className="flex gap-2 mt-4">
-          <Button variant="outline" className="flex-1" onClick={onClose} disabled={pay.isPending}>Cancel</Button>
-          <Button
-            className="flex-1 bg-[#2d7a4f] hover:bg-[#245f3d] text-white"
-            onClick={() => {
-              if (!val || val <= 0 || val > max) { setErr(`Enter between ₹0.01 and ${fmt(max)}`); return; }
-              pay.mutate();
-            }}
-            disabled={pay.isPending}
-          >{pay.isPending ? 'Saving…' : 'Record Payment'}</Button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 const PRESETS: { key: DatePreset; label: string }[] = [
@@ -321,7 +271,7 @@ export default function DuesPage() {
         </div>
       </div>
 
-      {payBill && <PayModal bill={payBill} onClose={() => setPayBill(null)} />}
+      {payBill && <RecordPaymentDialog bill={payBill} onClose={() => setPayBill(null)} />}
     </div>
   );
 }

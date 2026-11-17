@@ -15,6 +15,10 @@ import { User } from '../users/schemas/user.schema';
 import { TaxSettingsService } from './tax-settings/tax-settings.service';
 import { LogicsService } from './logics/logics.service';
 import { calcBill, CalcResult } from './logics/formula-engine';
+import { escapeRegex } from '../../common/utils/query.util';
+import { isValidGstin } from './gst-utils';
+
+export const LATER_PAYMENT_MODES = ['cash', 'upi', 'card', 'bank'];
 
 function validateInvoiceNo(no: string): boolean {
   return /^[A-Za-z0-9/\-]{1,16}$/.test(no);
@@ -143,7 +147,7 @@ export class BillingService {
       return users.map(u => this.mapUser(u));
     }
     const digits = q.replace(/[^\d]/g, '');
-    const orConds: any[] = [{ name: { $regex: q.trim(), $options: 'i' } }];
+    const orConds: any[] = [{ name: { $regex: escapeRegex(q.trim()), $options: 'i' } }];
     if (digits) orConds.push({ phone: { $regex: digits } });
     const users = await this.userModel.find({ $or: orConds }).limit(20).lean();
     return users.map(u => this.mapUser(u));
@@ -163,9 +167,13 @@ export class BillingService {
     tags?: string[];
     addresses?: Array<{ label: string; line: string; isDefault?: boolean }>;
   }) {
+    if (!data?.name?.trim()) throw new BadRequestException('Customer name is required');
     // Normalize phone: 10-digit → 91XXXXXXXXXX
-    const digits = data.phone.replace(/[^\d]/g, '');
+    const digits = String(data.phone ?? '').replace(/[^\d]/g, '');
     const normalizedPhone = digits.length === 10 ? '91' + digits : digits;
+    if (!/^\d{10,15}$/.test(normalizedPhone)) throw new BadRequestException('Enter a valid phone number (at least 10 digits)');
+    const gstNo = data.gstNo?.trim().toUpperCase() || undefined;
+    if (gstNo && !isValidGstin(gstNo)) throw new BadRequestException('Enter a valid 15-character GSTIN');
 
     const existing = await this.userModel.findOne({ phone: normalizedPhone }).lean();
     if (existing) throw new ConflictException('Customer with this phone already exists');
@@ -185,7 +193,7 @@ export class BillingService {
     const u = await this.userModel.create({
       name: resolvedName,
       phone: normalizedPhone,
-      gstNo: data.gstNo,
+      gstNo,
       tags: data.tags ?? [],
       billingAddresses,
       isActive: true,
@@ -229,8 +237,9 @@ export class BillingService {
   // ─── Products (for billing search) ───────────────────────────────────────
 
   async searchProductsForBilling(q: string, storeId?: string) {
-    const filter = q?.trim()
-      ? { isActive: true, $or: [{ name: { $regex: q, $options: 'i' } }, { sku: { $regex: q, $options: 'i' } }, { 'variants.sku': { $regex: q, $options: 'i' } }, { 'variants.name': { $regex: q, $options: 'i' } }] }
+    const rx = escapeRegex(q?.trim() ?? '');
+    const filter = rx
+      ? { isActive: true, $or: [{ name: { $regex: rx, $options: 'i' } }, { sku: { $regex: rx, $options: 'i' } }, { 'variants.sku': { $regex: rx, $options: 'i' } }, { 'variants.name': { $regex: rx, $options: 'i' } }] }
       : { isActive: true };
 
     const products = await this.productModel
@@ -1236,36 +1245,48 @@ export class BillingService {
   }
 
   async recordPayment(id: string, amount: number, mode = 'cash') {
-    const bill = await this.billModel.findById(id);
+    const m = String(mode || 'cash').toLowerCase();
+    // cheque is not offered: the ledger parks bill cheques in an account with no clearing flow
+    if (!LATER_PAYMENT_MODES.includes(m)) throw new BadRequestException(`Payment mode must be one of: ${LATER_PAYMENT_MODES.join(', ')}`);
+    const amountPaise = Math.round(Number(amount) * 100);
+    if (!Number.isFinite(amountPaise) || amountPaise <= 0) throw new BadRequestException('Enter a payment amount above ₹0');
+
+    const bill = await this.billModel.findById(id).lean();
     if (!bill) throw new NotFoundException('Bill not found');
     if (bill.status === 'cancelled') throw new BadRequestException('Cannot record payment on cancelled bill');
 
-    const newPaid = Math.min(bill.amountPaid + amount, bill.grandTotal);
-    const newDue = Math.round((bill.grandTotal - newPaid) * 100) / 100;
-    const newStatus = newDue <= 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid';
+    // integer paise throughout; amountPaid (rupees) is always maintained, amountPaidPaise is 0 on legacy bills
+    const grandP = bill.grandTotalPaise > 0 ? bill.grandTotalPaise : Math.round(bill.grandTotal * 100);
+    const paidP = Math.round(bill.amountPaid * 100);
+    const dueP = grandP - paidP;
+    if (dueP <= 0) throw new BadRequestException('This bill is already fully paid');
+    if (amountPaise > dueP) throw new BadRequestException(`Payment is more than the amount due (₹${(dueP / 100).toFixed(2)})`);
+    const newPaidP = paidP + amountPaise;
+    const newDueP = dueP - amountPaise;
 
-    const prevDue = bill.amountDue;
-    const prevPaidPaise = Math.round(bill.amountPaid * 100);
-    bill.amountPaid = newPaid;
-    bill.amountDue = newDue;
-    bill.amountPaidPaise = Math.round(newPaid * 100);
-    bill.amountDuePaise = Math.round(newDue * 100);
+    const pushes: any[] = [];
     // legacy bill with no payments array: keep what was paid at creation as its INITIAL payment
-    if (!bill.payments.length && prevPaidPaise > 0) {
-      bill.payments.push({ mode: bill.paymentMode || 'cash', amountPaise: prevPaidPaise, at: (bill as any).createdAt, kind: 'INITIAL' });
+    if (!bill.payments?.length && paidP > 0) {
+      pushes.push({ mode: bill.paymentMode || 'cash', amountPaise: paidP, at: (bill as any).createdAt, kind: 'INITIAL' });
     }
-    bill.payments.push({ mode, amountPaise: Math.round((prevDue - newDue) * 100), at: new Date(), kind: 'LATER' });
-    bill.paymentStatus = newStatus as any;
-    await bill.save();
+    pushes.push({ mode: m, amountPaise, at: new Date(), kind: 'LATER' });
 
-    // Update outstanding on User
-    const reduction = prevDue - newDue;
-    if (reduction > 0) {
-      await this.userModel.findByIdAndUpdate(bill.customerId, {
-        $inc: { outstanding: -reduction },
-      });
-    }
+    // conditional on the paid amount we read: a double-click or a second cashier can't apply the same payment twice
+    const updated = await this.billModel.findOneAndUpdate(
+      { _id: bill._id, amountPaid: bill.amountPaid, status: { $ne: 'cancelled' } },
+      {
+        $set: {
+          amountPaid: newPaidP / 100, amountDue: newDueP / 100,
+          amountPaidPaise: newPaidP, amountDuePaise: newDueP,
+          paymentStatus: newDueP === 0 ? 'paid' : 'partial',
+        },
+        $push: { payments: { $each: pushes } },
+      },
+      { new: true },
+    );
+    if (!updated) throw new ConflictException('This bill was just updated (payment already recorded?). Reload and check before trying again.');
 
-    return bill;
+    await this.userModel.findByIdAndUpdate(bill.customerId, { $inc: { outstanding: -amountPaise / 100 } });
+    return updated;
   }
 }
