@@ -1919,11 +1919,16 @@ class ApiClient {
 
   async createPurchaseVendor(data: {
     name: string;
+    contactPerson?: string;
     phone?: string;
     email?: string;
     address?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
     gstin?: string;
     paymentTerms?: string;
+    notes?: string;
   }): Promise<any> {
     const res = await this.client.post<ApiResponse<any>>('/purchase/vendors', data);
     return res.data.data;

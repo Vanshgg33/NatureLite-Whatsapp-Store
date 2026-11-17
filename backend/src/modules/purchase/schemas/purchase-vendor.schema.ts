@@ -18,6 +18,21 @@ export class PurchaseVendor {
   address: string;
 
   @Prop({ default: '' })
+  contactPerson: string;
+
+  @Prop({ default: '' })
+  city: string;
+
+  @Prop({ default: '' })
+  state: string;
+
+  @Prop({ default: '' })
+  pincode: string;
+
+  @Prop({ default: '' })
+  notes: string;
+
+  @Prop({ default: '' })
   gstin: string;
 
   @Prop({ default: '' })

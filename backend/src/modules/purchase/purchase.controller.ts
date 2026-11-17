@@ -2,6 +2,7 @@ import {
   Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards,
 } from '@nestjs/common';
 import { PurchaseService } from './purchase.service';
+import { VendorInput } from './lib/vendor-input';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
@@ -85,14 +86,7 @@ export class PurchaseController {
 
   @Post('vendors')
   @RequirePermission('vendors.manage')
-  createVendor(@Body() body: {
-    name: string;
-    phone?: string;
-    email?: string;
-    address?: string;
-    gstin?: string;
-    paymentTerms?: string;
-  }) {
+  createVendor(@Body() body: VendorInput) {
     return this.purchaseService.createVendor(body);
   }
 

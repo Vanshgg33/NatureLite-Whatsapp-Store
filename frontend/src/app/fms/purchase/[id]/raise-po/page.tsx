@@ -11,6 +11,8 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { getApiError } from '@/lib/api-error';
 import { shortPr } from '@/lib/fms/format';
+import { usePermission } from '@/lib/fms/permissions';
+import { QuickAddVendorDialog, ADD_VENDOR_VALUE, vendorAddressLine } from '@/components/fms/purchase/quick-add-vendor-dialog';
 
 interface PoItem {
   materialId: string;
@@ -113,6 +115,8 @@ export default function FmsRaisePoPage() {
   const [initialized, setInitialized] = useState(false);
   const [poItems, setPoItems] = useState<PoItem[]>([]);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [addVendorFor, setAddVendorFor] = useState<number | null>(null);
+  const canAddVendor = usePermission('vendors.manage');
 
   const { data: req } = useQuery({
     queryKey: ['purchase-request', params.id],
@@ -161,7 +165,13 @@ export default function FmsRaisePoPage() {
     },
   });
 
+  const setVendor = (idx: number, v: any) =>
+    setPoItems(prev => prev.map((p, i) => i !== idx ? p : {
+      ...p, vendorId: v._id, vendorName: v.name,
+      vendorPhone: v.phone || '', vendorAddress: vendorAddressLine(v), terms: v.paymentTerms || '',
+    }));
   const applyVendor = (idx: number, vid: string) => {
+    if (vid === ADD_VENDOR_VALUE) { setAddVendorFor(idx); return; }
     const v = vendors.find((x: any) => x._id === vid);
     if (!v) {
       // Clear vendor if deselected
@@ -170,10 +180,7 @@ export default function FmsRaisePoPage() {
       }));
       return;
     }
-    setPoItems(prev => prev.map((p, i) => i !== idx ? p : {
-      ...p, vendorId: v._id, vendorName: v.name,
-      vendorPhone: v.phone || '', vendorAddress: v.address || '', terms: v.paymentTerms || '',
-    }));
+    setVendor(idx, v);
   };
   const updateItem = (idx: number, field: keyof PoItem, val: string) =>
     setPoItems(prev => prev.map((p, i) => i !== idx ? p : { ...p, [field]: val }));
@@ -338,6 +345,7 @@ export default function FmsRaisePoPage() {
                         {vendors.map((v: any) => (
                           <option key={v._id} value={v._id}>{v.name}{v.phone ? ` · ${v.phone}` : ''}</option>
                         ))}
+                        {canAddVendor && <option value={ADD_VENDOR_VALUE} className="font-semibold text-[#1E5E3F]">＋ Add New Vendor</option>}
                       </select>
                     </div>
 
@@ -439,6 +447,14 @@ export default function FmsRaisePoPage() {
 
           </div>
         </form>
+      )}
+      {canAddVendor && (
+        <QuickAddVendorDialog
+          open={addVendorFor !== null}
+          materialName={addVendorFor !== null ? poItems[addVendorFor]?.materialName : undefined}
+          onClose={() => setAddVendorFor(null)}
+          onCreated={v => { if (addVendorFor !== null) setVendor(addVendorFor, v); }}
+        />
       )}
     </div>
   );

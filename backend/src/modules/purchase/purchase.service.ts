@@ -12,6 +12,7 @@ import { SettingsService } from '../settings/settings.service';
 import { PurchaseMaterial, PurchaseMaterialDocument } from './schemas/purchase-material.schema';
 import { PurchaseRequest, PurchaseRequestDocument } from './schemas/purchase-request.schema';
 import { PurchaseVendor, PurchaseVendorDocument } from './schemas/purchase-vendor.schema';
+import { VendorInput, cleanVendorInput, escapeRegex } from './lib/vendor-input';
 import { PurchaseTag, PurchaseTagDocument } from './schemas/purchase-tag.schema';
 import { AdminUser, AdminUserDocument } from '../admin/schemas/admin-user.schema';
 import { EmailService } from '../email/email.service';
@@ -257,23 +258,22 @@ export class PurchaseService {
     return this.vendorModel.find(filter).sort({ name: 1 }).lean();
   }
 
-  async createVendor(data: {
-    name: string;
-    phone?: string;
-    email?: string;
-    address?: string;
-    gstin?: string;
-    paymentTerms?: string;
-  }) {
+  async createVendor(data: VendorInput) {
+    const clean = cleanVendorInput(data);
+    // Case/space-insensitive name match, or same GSTIN; includes inactive vendors so we never silently duplicate.
+    const or: Record<string, unknown>[] = [
+      { name: { $regex: `^${escapeRegex(clean.name).replace(/ /g, '\\s+')}\\s*$`, $options: 'i' } },
+    ];
+    if (clean.gstin) or.push({ gstin: clean.gstin });
+    const existing = await this.vendorModel.findOne({ $or: or }).lean();
+    if (existing) {
+      const by = clean.gstin && existing.gstin === clean.gstin ? `GSTIN ${clean.gstin}` : 'this name';
+      throw new ConflictException(
+        `Vendor "${existing.name}" with ${by} already exists${existing.isActive ? '' : ' but is inactive — reactivate it on the Vendors page'}`,
+      );
+    }
     try {
-      return await this.vendorModel.create({
-        name: data.name.trim(),
-        phone: data.phone || '',
-        email: data.email || '',
-        address: data.address || '',
-        gstin: data.gstin || '',
-        paymentTerms: data.paymentTerms || '',
-      });
+      return await this.vendorModel.create(clean);
     } catch (err: any) {
       if (err?.code === 11000) throw new ConflictException('A vendor with this name already exists');
       throw err;

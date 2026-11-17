@@ -20,6 +20,7 @@ import { StageBadge, WaitChip } from '@/components/fms/purchase/chips';
 import { getStage, getOverdueMs } from '@/lib/fms/stage';
 import { fmtDate, shortPr } from '@/lib/fms/format';
 import { usePermission } from '@/lib/fms/permissions';
+import { QuickAddVendorDialog, ADD_VENDOR_VALUE, vendorAddressLine } from '@/components/fms/purchase/quick-add-vendor-dialog';
 
 function fmtIST(d: string | Date) {
   return new Date(d).toLocaleString('en-IN', {
@@ -283,12 +284,16 @@ function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void })
     req.items.map((i: any) => ({ ...i, ratePerKg: '', vendorId: '', vendorName: '', vendorPhone: '', vendorAddress: '', terms: '' }))
   );
   const { data: vendors = [] } = useQuery({ queryKey: ['purchase-vendors'], queryFn: () => api.getPurchaseVendors() });
-  const applyVendor = (idx: number, vid: string) => {
-    const v = vendors.find((x: any) => x._id === vid);
-    if (!v) return;
+  const canAddVendor = usePermission('vendors.manage');
+  const [addVendorFor, setAddVendorFor] = useState<number | null>(null);
+  const setVendor = (idx: number, v: any) =>
     setPoItems((prev: any[]) => prev.map((p, i) => i !== idx ? p :
-      { ...p, vendorId: v._id, vendorName: v.name, vendorPhone: v.phone || '', vendorAddress: v.address || '', terms: v.paymentTerms || '' }
+      { ...p, vendorId: v._id, vendorName: v.name, vendorPhone: v.phone || '', vendorAddress: vendorAddressLine(v), terms: v.paymentTerms || '' }
     ));
+  const applyVendor = (idx: number, vid: string) => {
+    if (vid === ADD_VENDOR_VALUE) { setAddVendorFor(idx); return; }
+    const v = vendors.find((x: any) => x._id === vid);
+    if (v) setVendor(idx, v);
   };
   const mutation = useMutation({
     mutationFn: (data: any) => api.splitPurchasePO(req._id, data),
@@ -312,6 +317,7 @@ function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void })
     });
   };
   return (
+    <>
     <form id={PO_FORM_ID} onSubmit={handleSubmit} className="space-y-3">
       <Link href={`/fms/purchase/${req._id}/raise-po`}
         className="block text-center text-xs text-[#1E5E3F] hover:underline font-jakarta">
@@ -329,6 +335,7 @@ function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void })
             value={item.vendorId} onChange={e => applyVendor(i, e.target.value)}>
             <option value="">— vendor —</option>
             {vendors.map((v: any) => <option key={v._id} value={v._id}>{v.name}</option>)}
+            {canAddVendor && <option value={ADD_VENDOR_VALUE} className="font-semibold text-[#1E5E3F]">＋ Add New Vendor</option>}
           </select>
           <div className="flex items-center gap-1">
             <span className="h-7 flex items-center px-2 border border-r-0 rounded-l-[8px] bg-white text-xs text-[#66706A] shrink-0 font-jakarta">₹/kg</span>
@@ -350,6 +357,15 @@ function POCreatorPanel({ req, onSuccess }: { req: any; onSuccess: () => void })
         </div>
       )}
     </form>
+    {canAddVendor && (
+      <QuickAddVendorDialog
+        open={addVendorFor !== null}
+        materialName={addVendorFor !== null ? poItems[addVendorFor]?.materialName : undefined}
+        onClose={() => setAddVendorFor(null)}
+        onCreated={v => { if (addVendorFor !== null) setVendor(addVendorFor, v); }}
+      />
+    )}
+    </>
   );
 }
 
