@@ -209,7 +209,11 @@ export class BillingService {
     addresses: Array<{ label: string; line: string; isDefault: boolean }>;
   }>) {
     const update: any = {};
-    if (data.gstNo !== undefined) update.gstNo = data.gstNo;
+    if (data.gstNo !== undefined) {
+      const g = String(data.gstNo ?? '').trim().toUpperCase(); // '' clears it
+      if (g && !isValidGstin(g)) throw new BadRequestException('Enter a valid 15-character GSTIN');
+      update.gstNo = g;
+    }
     if (data.tags !== undefined) update.tags = data.tags;
     if (data.addresses !== undefined) update.billingAddresses = data.addresses;
 

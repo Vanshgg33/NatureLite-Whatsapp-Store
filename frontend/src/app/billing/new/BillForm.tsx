@@ -435,6 +435,11 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
               invoiceTime={invoiceTime} onInvoiceTimeChange={setInvoiceTime}
               godownId={godownId} onGodownChange={setGodownId} godowns={godowns}
               customer={customer} onCustomerSelect={handleCustomerSelect} onCustomerClear={handleCustomerClear}
+              onCustomerUpdate={c => {
+                // keep the bill's typed address, channel and delivery; only a new GSTIN moves the state of supply
+                setCustomer(c);
+                if (c.gstNo && c.gstNo !== customer?.gstNo && /^[0-9]{2}/.test(c.gstNo)) setPlaceOfSupply(c.gstNo.slice(0, 2));
+              }}
               billingAddress={billingAddress} onBillingAddressChange={setBillingAddress}
               shippingAddress={shippingAddress} onShippingAddressChange={setShippingAddress}
               sameAsBilling={sameAsBilling} onSameAsBillingChange={setSameAsBilling}

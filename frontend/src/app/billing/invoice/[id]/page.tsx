@@ -199,6 +199,31 @@ export default function InvoicePage() {
         </span>
       </div>
 
+      {/* Payment history: on screen only, the printed invoice is unchanged */}
+      {(bill.docType ?? 'SALE') === 'SALE' && (bill.payments ?? []).some((p: any) => p.amountPaise > 0) && (
+        <div className="print:hidden bg-white border-b px-4 py-3">
+          <div className="max-w-[210mm] mx-auto">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Payments received</h2>
+              <span className="text-xs text-gray-500">
+                Paid <b className="text-gray-800 tabular-nums">{inrP(paidP)}</b>
+                {dueP > 0 && <> · Due <b className="text-red-600 tabular-nums">{inrP(dueP)}</b></>}
+              </span>
+            </div>
+            <ul className="divide-y divide-gray-100 border border-gray-100 rounded">
+              {(bill.payments as any[]).filter(p => p.amountPaise > 0).map((p, i) => (
+                <li key={i} className="flex items-center gap-3 px-3 py-1.5 text-xs">
+                  <span className="text-gray-500 w-36 shrink-0 tabular-nums">{p.at ? `${fmtDate(p.at)} ${billTime(p.at)}` : '—'}</span>
+                  <span className="capitalize font-medium text-gray-700 w-16">{p.mode === 'upi' ? 'UPI' : p.mode}</span>
+                  <span className="text-gray-400">{p.kind === 'INITIAL' ? 'At billing' : 'Later payment'}</span>
+                  <span className="ml-auto font-semibold text-gray-800 tabular-nums">{inrP(p.amountPaise)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
       {/* A4 canvas */}
       <div className="bg-[#f0f0f0] print:bg-white py-8 print:py-0 flex justify-center min-h-screen">
         <div id="invoice" style={{ fontFamily: 'Arial, sans-serif', fontSize: 10, color: '#1a1a1a' }}

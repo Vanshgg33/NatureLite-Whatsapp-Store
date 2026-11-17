@@ -65,6 +65,26 @@ describe('BillingService.recordPayment', () => {
   });
 });
 
+describe('BillingService.updateCustomer GSTIN', () => {
+  const make = () => {
+    const findByIdAndUpdate = jest.fn().mockReturnValue({ lean: () => Promise.resolve({ _id: 'c1', name: 'A', phone: '919876543210' }) });
+    return { svc: new (BillingService as any)({ findByIdAndUpdate }) as BillingService, findByIdAndUpdate };
+  };
+
+  it('normalises a valid GSTIN to upper case', async () => {
+    const { svc, findByIdAndUpdate } = make();
+    await svc.updateCustomer('c1', { gstNo: ' 22abjcs3598l1zr ' });
+    expect(findByIdAndUpdate.mock.calls[0][1].$set.gstNo).toBe('22ABJCS3598L1ZR');
+  });
+
+  it('allows clearing and rejects garbage', async () => {
+    const { svc, findByIdAndUpdate } = make();
+    await svc.updateCustomer('c1', { gstNo: '' });
+    expect(findByIdAndUpdate.mock.calls[0][1].$set.gstNo).toBe('');
+    await expect(svc.updateCustomer('c1', { gstNo: 'NOTAGSTIN' })).rejects.toThrow(BadRequestException);
+  });
+});
+
 describe('BillingService search escaping', () => {
   it('treats regex characters in a customer search literally', async () => {
     const find = jest.fn().mockReturnValue({ limit: () => ({ lean: () => Promise.resolve([]) }) });

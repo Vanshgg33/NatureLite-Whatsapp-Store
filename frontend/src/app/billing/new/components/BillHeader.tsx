@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Plus, X, Pin } from 'lucide-react';
+import { User, Plus, X, Pin, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useDebouncedValue } from '@/lib/utils';
 import { api } from '@/lib/api';
@@ -184,6 +184,63 @@ function CustomerSearch({ onSelect }: { onSelect: (c: any) => void }) {
   );
 }
 
+/** Edits the customer master (GSTIN, tags). Saved invoices keep their own GSTIN snapshot. */
+function CustomerQuickEdit({ customer, onDone }: { customer: any; onDone: (updated?: any) => void }) {
+  const [gst, setGst] = useState(customer.gstNo ?? '');
+  const [tags, setTags] = useState<string[]>(customer.tags ?? []);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const { toast } = useToast();
+
+  const save = async () => {
+    if (saving) return;
+    const g = gst.trim().toUpperCase();
+    if (g && !/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(g)) { setErr('Enter a valid 15-character GSTIN'); return; }
+    setSaving(true); setErr('');
+    try {
+      const updated = await api.updateBillingCustomer(customer._id, { gstNo: g, tags });
+      toast({ title: `${customer.name} updated`, description: 'Applies to this and future bills. Saved invoices are unchanged.' });
+      onDone(updated);
+    } catch (e) {
+      setErr(getApiError(e, 'Could not update customer')); // keep what was typed
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="px-3 pb-3 pt-2 border-t border-[#2d7a4f]/10 space-y-2 animate-in fade-in-0 slide-in-from-top-1 duration-150 motion-reduce:animate-none"
+      onKeyDown={e => {
+        if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') { e.preventDefault(); save(); }
+        if (e.key === 'Escape') { e.preventDefault(); onDone(); }
+      }}>
+      <label className="block">
+        <span className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">GSTIN</span>
+        <Input autoFocus value={gst} maxLength={15} disabled={saving} placeholder="Leave empty for B2C"
+          onChange={e => { setGst(e.target.value.toUpperCase()); setErr(''); }} className="h-8 text-sm font-mono mt-1 bg-white" />
+      </label>
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Customer tags">
+        {ALL_TAGS.map(t => (
+          <button key={t} type="button" disabled={saving} aria-pressed={tags.includes(t)}
+            onClick={() => setTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}
+            className={cn('px-2 py-0.5 rounded text-xs border transition-all',
+              tags.includes(t) ? TAG_COLORS[t] + ' border-current' : 'bg-white text-gray-400 border-gray-200')}>
+            {t}
+          </button>
+        ))}
+      </div>
+      {err && <p role="alert" className="text-xs text-red-600">{err}</p>}
+      <div className="flex items-center gap-2">
+        <Button type="button" size="sm" onClick={save} disabled={saving} className="bg-[#2d7a4f] hover:bg-[#245f3e] text-white text-xs h-7">
+          {saving ? 'Saving…' : 'Save customer'}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => onDone()} disabled={saving} className="text-xs h-7">Cancel</Button>
+        <span className="text-[10px] text-gray-400 ml-auto">Name &amp; phone are changed in Customers</span>
+      </div>
+    </div>
+  );
+}
+
 export interface BillHeaderProps {
   priceMode: PriceTier;
   onPriceModeChange: (v: PriceTier) => void;
@@ -199,6 +256,8 @@ export interface BillHeaderProps {
   customer: any | null;
   onCustomerSelect: (c: any) => void;
   onCustomerClear: () => void;
+  /** customer master was edited from the bill (GSTIN / tags) */
+  onCustomerUpdate: (c: any) => void;
   billingAddress: string;
   onBillingAddressChange: (v: string) => void;
   shippingAddress: string;
@@ -222,13 +281,15 @@ export function BillHeader({
   invoiceDate, onInvoiceDateChange,
   invoiceTime, onInvoiceTimeChange,
   godownId, onGodownChange, godowns,
-  customer, onCustomerSelect, onCustomerClear,
+  customer, onCustomerSelect, onCustomerClear, onCustomerUpdate,
   billingAddress, onBillingAddressChange,
   shippingAddress, onShippingAddressChange,
   sameAsBilling, onSameAsBillingChange,
   placeOfSupply, onPlaceOfSupplyChange, isInterState,
   orderTag, onOrderTagChange, storeId, onStoreChange, stores,
 }: BillHeaderProps) {
+  const [editing, setEditing] = useState(false);
+  useEffect(() => { setEditing(false); }, [customer?._id]); // a different customer starts closed
   return (
     <div className="space-y-3">
       {/* Row 1: Retail/B2B pricing + Invoice meta + Godown */}
@@ -299,23 +360,30 @@ export function BillHeader({
 
       {/* Row 3: Customer */}
       {customer ? (
-        <div className="flex items-center gap-3 p-3 bg-[#f7faf8] rounded border border-[#2d7a4f]/20">
-          <div className="h-9 w-9 rounded-full bg-[#e8f5ee] flex items-center justify-center text-[#2d7a4f] font-bold shrink-0">
-            {customer.name[0].toUpperCase()}
+        <div className="rounded border border-[#2d7a4f]/20 bg-[#f7faf8]">
+          <div className="flex items-center gap-3 p-3">
+            <div className="h-9 w-9 rounded-full bg-[#e8f5ee] flex items-center justify-center text-[#2d7a4f] font-bold shrink-0">
+              {customer.name[0].toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-sm text-gray-800 truncate">{customer.name}</div>
+              <div className="text-xs text-gray-400 font-mono">{customer.phone}</div>
+              {customer.gstNo && <div className="text-xs text-gray-500 font-mono">{customer.gstNo}</div>}
+            </div>
+            <div className="hidden sm:flex gap-1 shrink-0">
+              {customer.tags?.slice(0, 3).map((t: string) => (
+                <span key={t} className={cn('text-[10px] px-1.5 py-0.5 rounded', TAG_COLORS[t] ?? 'bg-gray-100 text-gray-600')}>{t}</span>
+              ))}
+            </div>
+            <button type="button" onClick={() => setEditing(v => !v)} aria-expanded={editing} aria-label="Edit customer GSTIN and tags" title="Edit GSTIN / tags"
+              className={cn('transition-colors', editing ? 'text-[#2d7a4f]' : 'text-gray-300 hover:text-gray-500')}>
+              <Pencil className="h-4 w-4" />
+            </button>
+            <button type="button" onClick={onCustomerClear} aria-label="Change customer" className="text-gray-300 hover:text-gray-500 transition-colors">
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-semibold text-sm text-gray-800 truncate">{customer.name}</div>
-            <div className="text-xs text-gray-400 font-mono">{customer.phone}</div>
-            {customer.gstNo && <div className="text-xs text-gray-500 font-mono">{customer.gstNo}</div>}
-          </div>
-          <div className="flex gap-1 shrink-0">
-            {customer.tags?.slice(0, 3).map((t: string) => (
-              <span key={t} className={cn('text-[10px] px-1.5 py-0.5 rounded', TAG_COLORS[t] ?? 'bg-gray-100 text-gray-600')}>{t}</span>
-            ))}
-          </div>
-          <button onClick={onCustomerClear} className="text-gray-300 hover:text-gray-500 transition-colors">
-            <X className="h-4 w-4" />
-          </button>
+          {editing && <CustomerQuickEdit key={customer._id} customer={customer} onDone={c => { if (c) onCustomerUpdate(c); setEditing(false); }} />}
         </div>
       ) : (
         <CustomerSearch onSelect={onCustomerSelect} />
