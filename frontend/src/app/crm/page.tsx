@@ -2,11 +2,12 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { ArrowRight, CalendarDays } from 'lucide-react';
+import { ArrowRight, CalendarDays, Receipt } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCrmMetrics } from '@/lib/crm/metrics';
-import { formatINRCompact } from '@/lib/crm/format';
-import { istGreeting, istDateKey, istDayLabel, istFullDate } from '@/lib/time';
+import { formatINR, formatINRCompact } from '@/lib/crm/format';
+import { istGreeting, istDateKey, istDayLabel, istFullDate, formatIST } from '@/lib/time';
+import { BillStatusPill } from '@/components/crm/BillStatusPill';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { ProgressRing } from '@/components/crm/ProgressRing';
 import { StackedBar, type SegmentSlice } from '@/components/crm/StackedBar';
@@ -106,6 +107,55 @@ function ForecastChart({ data }: { data: { date: string; count: number }[] }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function LiveStoreBills() {
+  // polled: new bills, payments and cancellations from Billing show up within 10s, no reload
+  const { data: bills = [], isError, dataUpdatedAt } = useQuery({
+    queryKey: ['crm-live-bills'],
+    queryFn: () => api.getCrmLiveBills(),
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
+  });
+  if (isError) return null; // roles without dashboard access get a 403; the rest of the page still works
+
+  return (
+    <div className="crm-card-v2 p-5">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-[14px] font-semibold flex items-center gap-1.5" style={{ color: 'var(--crm-ink)' }}>
+          <Receipt className="h-4 w-4" style={{ color: 'var(--crm-gold)' }} />
+          Live Store Bills
+          <span className="h-2 w-2 rounded-full animate-pulse" style={{ background: 'var(--crm-success)' }} aria-label="live" />
+        </h2>
+        <p className="text-[11px]" style={{ color: 'var(--crm-muted)' }}>
+          {dataUpdatedAt ? `Updated ${formatIST(dataUpdatedAt, true)}` : ''}
+        </p>
+      </div>
+      {!(bills as any[]).length ? (
+        <p className="text-[12px] py-6 text-center" style={{ color: 'var(--crm-muted)' }}>No store bills yet</p>
+      ) : (
+        <div className="divide-y" style={{ borderColor: 'var(--crm-line)' }}>
+          {(bills as any[]).map(b => (
+            <div key={b._id} className="flex items-center gap-3 py-2.5 text-[13px]">
+              <div className="flex-1 min-w-0">
+                <Link href={`/crm/customers/${b.customerId}`} className="font-semibold truncate block hover:underline" style={{ color: 'var(--crm-ink)' }}>
+                  {b.customerName}
+                </Link>
+                <p className="text-[11px] truncate" style={{ color: 'var(--crm-muted)' }}>
+                  <Link href={`/billing/invoice/${b._id}`} className="hover:underline">#{b.invoiceNo}</Link>
+                  {' · '}{formatIST(b.createdAt, true)}{b.storeName ? ` · ${b.storeName}` : ''}
+                </p>
+              </div>
+              <p className="font-semibold crm-tabular" style={{ color: b.docType === 'CREDIT_NOTE' ? 'var(--crm-danger)' : 'var(--crm-forest)' }}>
+                {b.docType === 'CREDIT_NOTE' ? '−' : ''}{formatINR(b.grandTotal)}
+              </p>
+              <BillStatusPill bill={b} />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -259,6 +309,8 @@ export default function CrmDashboardPage() {
             </div>
           </div>
         </div>
+
+        <LiveStoreBills />
 
         {/* § 3.4 Pipeline tiles — 5 urgent segments */}
         <div>

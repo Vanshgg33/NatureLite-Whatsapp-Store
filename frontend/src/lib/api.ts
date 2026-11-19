@@ -2460,6 +2460,11 @@ class ApiClient {
     return res.data.data;
   }
 
+  async getCrmLiveBills(): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>('/crm/live-bills');
+    return res.data.data ?? [];
+  }
+
   async getCrmCalendar(): Promise<any[]> {
     const res = await this.client.get<ApiResponse<any[]>>('/crm/calendar');
     return res.data.data ?? [];

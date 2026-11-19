@@ -1207,6 +1207,8 @@ export class BillingService {
       ip,
       at: new Date(),
     });
+    // a cancelled bill no longer counts toward the customer's CRM segment / LTV
+    if (bill.customerId) this.crmEngine.refreshUser(bill.customerId).catch(() => {});
     return { ok: true };
   }
 
@@ -1231,6 +1233,7 @@ export class BillingService {
       }
       const due = Number(old.amountDue) || 0;
       if (due > 0 && oldType === 'SALE') await this.userModel.findByIdAndUpdate(old.customerId, { $inc: { outstanding: due } });
+      this.crmEngine.refreshUser(old.customerId).catch(() => {}); // cancelBill refreshed it as cancelled
       throw e;
     }
     await this.billModel.updateOne({ _id: id }, { $set: { cancelReason: `Edited - replaced by ${created.invoiceNo}` } });

@@ -39,3 +39,34 @@ describe('CrmFoundationService.listOrders', () => {
     expect(orderModel.find).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('CrmFoundationService store bills (read live from BillingBill)', () => {
+  const make = () => {
+    const q = { setOptions: jest.fn().mockReturnThis(), select: jest.fn().mockReturnThis(), sort: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue([]) };
+    const billModel: any = { find: jest.fn(() => q) };
+    return { q, billModel, svc: new CrmFoundationService({} as any, {} as any, billModel) };
+  };
+  const uid = '64b7f0c2a1b2c3d4e5f60718';
+
+  it('customer history: links by the real customer ObjectId, keeps sales + credit notes (incl. cancelled), skips sale orders', async () => {
+    const { svc, billModel, q } = make();
+    await svc.customerBills(uid);
+    const filter = billModel.find.mock.calls[0][0];
+    expect(String(filter.customerId)).toBe(uid);
+    expect(filter.customerId.constructor.name).toBe('ObjectId');
+    expect(filter.docType.$in).toEqual(['SALE', 'CREDIT_NOTE', null]);
+    expect(filter.status).toBeUndefined(); // cancelled bills stay in the history, flagged in the UI
+    expect(q.setOptions).toHaveBeenCalledWith({ allDocTypes: true }); // else the schema hook hides credit notes
+    expect(q.sort).toHaveBeenCalledWith({ createdAt: -1 });
+    expect(q.select.mock.calls[0][0]).toEqual(expect.stringContaining('amountDue'));
+  });
+
+  it('live feed: newest first, limit clamped to 1..50', async () => {
+    const { svc, q } = make();
+    await svc.liveBills(500);
+    await svc.liveBills(0);
+    expect(q.limit.mock.calls).toEqual([[50], [1]]);
+    expect(q.sort).toHaveBeenCalledWith({ createdAt: -1 });
+    expect(q.select.mock.calls[0][0]).toEqual(expect.stringContaining('customerId'));
+  });
+});

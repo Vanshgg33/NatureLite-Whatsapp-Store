@@ -2,7 +2,9 @@
 // Order / User / BillingBill collections. No new collections: the CRM reads the live store, so there is nothing to sync.
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
+
+const BILL_FIELDS = 'invoiceNo invoiceDate createdAt docType status customerName grandTotal amountPaid amountDue paymentStatus';
 
 /** Last 10 digits of an Indian number, or null if it has fewer (+91 / 91 / 0 prefixes, spaces, dashes stripped). */
 export const normalisePhone = (p?: string | null): string | null => {
@@ -66,6 +68,22 @@ export class CrmFoundationService {
       bills: { count: bills[0]?.count ?? 0, lastAt: (latestBill as any)?.createdAt ?? null },
       unmatchedOrders: orphan[0]?.n ?? 0, // orders whose customer record no longer exists
     };
+  }
+
+  /** A customer's store bills (sales + credit notes, cancelled ones kept and flagged), newest first. Sale orders are not purchases. */
+  customerBills(userId: string) {
+    return this.billModel.find({ customerId: new Types.ObjectId(userId), docType: { $in: ['SALE', 'CREDIT_NOTE', null] } })
+      .setOptions({ allDocTypes: true })
+      .select(`${BILL_FIELDS} subtotal totalGst billDiscountAmtPaise payments paymentMode refInvoiceNo cancelReason items.name items.qty items.unit items.unitPrice items.discountPct items.discountAmt items.gstRate items.gstAmount items.total`)
+      .sort({ createdAt: -1 }).limit(500).lean(); // shortcut: capped at 500 bills per customer, paginate if a customer passes that
+  }
+
+  /** Newest store bills for the CRM dashboard feed; the page polls this, so payment and cancel changes show up too. */
+  liveBills(limit = 20) {
+    return this.billModel.find({ docType: { $in: ['SALE', 'CREDIT_NOTE', null] } })
+      .setOptions({ allDocTypes: true })
+      .select(`${BILL_FIELDS} customerId storeName`)
+      .sort({ createdAt: -1 }).limit(Math.min(50, Math.max(1, limit))).lean();
   }
 
   async findDuplicates() {

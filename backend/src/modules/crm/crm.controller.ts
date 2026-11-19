@@ -56,8 +56,9 @@ export class CrmController {
 
   @Get('customers/:id')
   @RequireAccess('crm_customers.view', 'crm_caller.view')
-  getCustomer360(@Param('id') id: string) {
-    return this.crm.getCustomer360(id);
+  async getCustomer360(@Param('id') id: string) {
+    const [c360, bills] = await Promise.all([this.crm.getCustomer360(id), this.foundation.customerBills(id)]);
+    return { ...c360, bills };
   }
 
   // ─── Queue ───────────────────────────────────────────────────────────────
@@ -280,6 +281,14 @@ export class CrmController {
   getDashboard(@CurrentUser() user: JwtPayload) {
     if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') throw new ForbiddenException();
     return this.crm.getDashboard();
+  }
+
+  // Live Store Bills feed on the dashboard (polled); same access as the dashboard itself
+  @Get('live-bills')
+  @RequireAccess('crm_today.view', 'crm_analytics.view')
+  getLiveBills(@Query('limit') limit: string, @CurrentUser() user: JwtPayload) {
+    if (user.departmentType === 'crm_senior' || user.departmentType === 'crm_viewer') throw new ForbiddenException();
+    return this.foundation.liveBills(parseInt(limit) || 20);
   }
 
   // ─── Reorder Calendar ────────────────────────────────────────────────────

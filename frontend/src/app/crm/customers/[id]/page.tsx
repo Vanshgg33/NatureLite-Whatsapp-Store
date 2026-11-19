@@ -16,6 +16,7 @@ import { formatIST } from '@/lib/time';
 import { CustomerAvatar } from '@/components/crm/CustomerAvatar';
 import { Pill } from '@/components/crm/Pill';
 import { ComplaintsCard } from '@/components/crm/ComplaintsCard';
+import { BillStatusPill } from '@/components/crm/BillStatusPill';
 import { CALL_OUTCOMES } from '@/components/crm/LogCallPanel';
 import type { PillVariant } from '@/components/crm/Pill';
 
@@ -159,7 +160,7 @@ export default function Customer360Page() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const [activeTab, setActiveTab]       = usePageState<'timeline' | 'recordings' | 'orders'>('activeTab', 'timeline');
+  const [activeTab, setActiveTab]       = usePageState<'timeline' | 'recordings' | 'orders' | 'bills'>('activeTab', 'timeline');
   const [activePanel, setActivePanel]   = useState<'call' | 'note' | 'wa'>('call');
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [callOutcome, setCallOutcome]   = useState('');
@@ -172,6 +173,7 @@ export default function Customer360Page() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['crm-customer360', id],
     queryFn: () => api.getCrmCustomer360(id),
+    refetchInterval: 30_000, // new store bills for this customer appear without a reload
   });
 
   const { data: settings } = useQuery({
@@ -214,7 +216,7 @@ export default function Customer360Page() {
     </div>
   );
 
-  const { user, stats, calls = [], orders = [] } = data ?? {};
+  const { user, stats, calls = [], orders = [], bills = [] } = data ?? {};
 
   // Unified timeline: calls + WA + orders merged and sorted
   const allEvents = [
@@ -546,7 +548,7 @@ export default function Customer360Page() {
         <div className="lg:col-span-3 crm-card-v2 overflow-hidden flex flex-col">
           {/* Tabs */}
           <div className="flex flex-shrink-0" style={{ borderBottom: '1px solid var(--crm-line)' }}>
-            {(['timeline', 'recordings', 'orders'] as const).map(t => {
+            {(['timeline', 'recordings', 'orders', 'bills'] as const).map(t => {
               const recordedCalls = (calls as any[]).filter((c: any) => c.recordingUrl);
               return (
                 <button
@@ -561,7 +563,9 @@ export default function Customer360Page() {
                     ? `Activity (${allEvents.length})`
                     : t === 'recordings'
                     ? `Recordings (${recordedCalls.length})`
-                    : `Orders (${user?.totalOrders ?? orders.length})`}
+                    : t === 'orders'
+                    ? `Orders (${user?.totalOrders ?? orders.length})`
+                    : `Store Bills (${bills.length})`}
                 </button>
               );
             })}
@@ -810,6 +814,93 @@ export default function Customer360Page() {
                               </div>
                             );
                           })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ─ Store bills (Billing module, read live) ─ */}
+            {activeTab === 'bills' && (
+              <div className="p-5 space-y-2">
+                {!(bills as any[]).length ? (
+                  <div className="flex flex-col items-center justify-center py-16">
+                    <ShoppingBag className="h-8 w-8 mb-3" style={{ color: 'var(--crm-line)' }} />
+                    <p className="text-[14px] font-semibold" style={{ color: 'var(--crm-ink)' }}>No store bills found</p>
+                  </div>
+                ) : (bills as any[]).map((b: any) => {
+                  const expanded = expandedOrders.has(b._id);
+                  const toggle = () => setExpandedOrders(prev => {
+                    const next = new Set(prev);
+                    next.has(b._id) ? next.delete(b._id) : next.add(b._id);
+                    return next;
+                  });
+                  const isReturn = b.docType === 'CREDIT_NOTE';
+                  const muted = b.status === 'cancelled';
+                  const modes = Array.from(new Set(((b.payments ?? []) as any[]).map(p => p.mode).filter(Boolean))).join(', ') || b.paymentMode;
+                  const row = (label: string, value: string, strong = false) => (
+                    <div className="flex justify-between" key={label}>
+                      <span style={{ color: 'var(--crm-muted)' }}>{label}</span>
+                      <span className={`crm-tabular ${strong ? 'font-semibold' : ''}`} style={{ color: 'var(--crm-ink)' }}>{value}</span>
+                    </div>
+                  );
+                  return (
+                    <div key={b._id} className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--crm-line)', opacity: muted ? 0.65 : 1 }}>
+                      <button
+                        onClick={toggle}
+                        className="w-full flex items-center gap-4 p-4 text-left transition-colors"
+                        style={{ background: expanded ? 'var(--crm-amber-bg)' : 'var(--crm-sand)' }}
+                        aria-expanded={expanded}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-semibold" style={{ color: 'var(--crm-ink)', textDecoration: muted ? 'line-through' : undefined }}>
+                            {isReturn ? 'Credit note' : 'Invoice'} #{b.invoiceNo}
+                          </p>
+                          <p className="text-[12px]" style={{ color: 'var(--crm-muted)' }}>
+                            {fmtDate(b.invoiceDate ?? b.createdAt)} · {(b.items ?? []).length} item{(b.items ?? []).length !== 1 ? 's' : ''}
+                            {isReturn && b.refInvoiceNo ? ` · against #${b.refInvoiceNo}` : ''}
+                          </p>
+                        </div>
+                        <BillStatusPill bill={b} />
+                        <p className="text-[14px] font-semibold crm-tabular mr-2" style={{ color: isReturn ? 'var(--crm-danger)' : 'var(--crm-forest)' }}>
+                          {isReturn ? '−' : ''}{formatINR(b.grandTotal)}
+                        </p>
+                        {expanded
+                          ? <ChevronDown className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--crm-muted)' }} />
+                          : <ChevronRight className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--crm-muted)' }} />}
+                      </button>
+
+                      {expanded && (
+                        <div className="text-[12px]" style={{ borderTop: '1px solid var(--crm-line)', background: 'var(--crm-paper)' }}>
+                          {(b.items ?? []).map((it: any, idx: number) => (
+                            <div key={idx} className="flex items-center gap-3 px-4 py-2.5" style={idx > 0 ? { borderTop: '1px solid var(--crm-line)' } : undefined}>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[13px] font-medium truncate" style={{ color: 'var(--crm-ink)' }}>{it.name}</p>
+                                <p className="text-[11px]" style={{ color: 'var(--crm-muted)' }}>
+                                  {it.qty} {it.unit ?? ''} × {formatINR(it.unitPrice)}
+                                  {it.discountPct ? ` · ${it.discountPct}% off` : ''}
+                                  {` · GST ${it.gstRate ?? 0}% (${formatINR(Math.round((it.gstAmount ?? 0) * 100) / 100)})`}
+                                </p>
+                              </div>
+                              <p className="font-semibold crm-tabular" style={{ color: 'var(--crm-ink)' }}>{formatINR(it.total)}</p>
+                            </div>
+                          ))}
+                          <div className="px-4 py-3 space-y-1" style={{ borderTop: '1px solid var(--crm-line)' }}>
+                            {row('Taxable subtotal', formatINR(Math.round((b.subtotal ?? 0) * 100) / 100))}
+                            {row('GST', formatINR(Math.round((b.totalGst ?? 0) * 100) / 100))}
+                            {b.billDiscountAmtPaise > 0 && row('Bill discount', `−${formatINR(b.billDiscountAmtPaise / 100)}`)}
+                            {row('Grand total', formatINR(b.grandTotal), true)}
+                            {row('Paid', `${formatINR(b.amountPaid ?? 0)}${modes ? ` (${modes})` : ''}`)}
+                            {row('Outstanding', formatINR(b.amountDue ?? 0), true)}
+                            {muted && b.cancelReason && row('Cancelled', b.cancelReason)}
+                          </div>
+                          <div className="px-4 pb-3">
+                            <Link href={`/billing/invoice/${b._id}`} className="text-[12px] font-semibold hover:underline" style={{ color: 'var(--crm-blue)' }}>
+                              Open original bill →
+                            </Link>
+                          </div>
                         </div>
                       )}
                     </div>
