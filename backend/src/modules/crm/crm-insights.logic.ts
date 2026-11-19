@@ -5,7 +5,8 @@ export interface OrderRow { user: string; total: number; discount: number; creat
 
 const DAY = 86_400_000;
 
-/** Same definition the CRM engine uses for LTV: delivered, non-replacement orders. Keeps reports and customer LTV in agreement. */
+/** Online revenue orders for reports (revenue, cohorts, attribution). Per-customer LTV is NOT summed from these:
+ *  callers pass the CRM's stored net LTV (store bills, returns and refunds included) so reports match the profile. */
 export const REVENUE_ORDERS = { status: 'delivered', orderType: { $ne: 'replacement' } } as const;
 // One shared formatter: building an Intl.DateTimeFormat per order is far too slow across tens of thousands of orders.
 const IST_MONTH = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' });
@@ -21,7 +22,7 @@ export const monthAdd = (key: string, n: number) => {
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 1000) / 10 : null);
 
 interface Cust { user: string; orders: number; ltv: number; first: Date; last: Date; allDiscounted: boolean; cats: Set<string>; firstSource: string }
-function byCustomer(rows: OrderRow[]): Cust[] {
+function byCustomer(rows: OrderRow[], ltvOf?: Map<string, number>): Cust[] {
   const m = new Map<string, Cust>();
   for (const r of [...rows].sort((a, b) => +a.createdAt - +b.createdAt)) {
     const c = m.get(r.user) ?? { user: r.user, orders: 0, ltv: 0, first: r.createdAt, last: r.createdAt, allDiscounted: true, cats: new Set<string>(), firstSource: r.source || 'unknown' };
@@ -29,12 +30,14 @@ function byCustomer(rows: OrderRow[]): Cust[] {
     (r.cats ?? []).forEach((x) => c.cats.add(String(x)));
     m.set(r.user, c);
   }
-  return [...m.values()];
+  const cs = [...m.values()];
+  if (ltvOf) for (const c of cs) c.ltv = ltvOf.get(c.user) ?? c.ltv;
+  return cs;
 }
 
 /** Rule-based segments (M09). Gifting and Referrers need festival / referral data the store does not have yet. */
-export function buildSegments(rows: OrderRow[], now = new Date(), minLtv = 2000) {
-  const cs = byCustomer(rows);
+export function buildSegments(rows: OrderRow[], now = new Date(), minLtv = 2000, ltvOf?: Map<string, number>) {
+  const cs = byCustomer(rows, ltvOf);
   const defs = [
     { key: 'win_back', name: 'Win-back', rule: `Last order over 90 days ago and lifetime value ≥ ₹${minLtv}`, test: (c: Cust) => +now - +c.last > 90 * DAY && c.ltv >= minLtv },
     { key: 'price_sensitive', name: 'Price-sensitive', rule: '2+ orders and every order used a discount', test: (c: Cust) => c.orders >= 2 && c.allDiscounted },
@@ -88,8 +91,8 @@ export function buildInvestorSnapshot(rows: OrderRow[], now = new Date()) {
 }
 
 /** CAC per channel for one month (M20). A customer's channel is the source of their first order. */
-export function buildAcquisition(rows: OrderRow[], spend: { channel: string; amount: number }[], month: string) {
-  const cs = byCustomer(rows);
+export function buildAcquisition(rows: OrderRow[], spend: { channel: string; amount: number }[], month: string, ltvOf?: Map<string, number>) {
+  const cs = byCustomer(rows, ltvOf);
   const channels = new Map<string, { spend: number; newCustomers: number; ltvSum: number }>();
   const get = (ch: string) => channels.get(ch) ?? channels.set(ch, { spend: 0, newCustomers: 0, ltvSum: 0 }).get(ch)!;
   spend.forEach((s) => { get(s.channel).spend += s.amount; });

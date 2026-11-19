@@ -10,6 +10,7 @@ import { BillingBill, BillingBillSchema } from '../billing/schemas/billing-bill.
 import { AuditLogSchema as BillingAuditLogSchema } from '../billing/schemas/audit-log.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { Order, OrderSchema } from '../orders/schemas/order.schema';
+import { Payment, PaymentSchema } from '../payments/schemas/payment.schema';
 import { AdminUser, AdminUserSchema } from '../admin/schemas/admin-user.schema';
 import { Product, ProductSchema } from '../products/schemas/product.schema';
 import { ChatSession, ChatSessionSchema } from '../chatbot/schemas/chat-session.schema';
@@ -57,6 +58,7 @@ import { CrmLogicLog, CrmLogicLogSchema } from './schemas/crm-logic-log.schema';
       { name: Subscription.name, schema: SubscriptionSchema },
       { name: User.name, schema: UserSchema },
       { name: Order.name, schema: OrderSchema },
+      { name: Payment.name, schema: PaymentSchema },
       { name: AdminUser.name, schema: AdminUserSchema },
       { name: Product.name, schema: ProductSchema },
       { name: ChatSession.name, schema: ChatSessionSchema },

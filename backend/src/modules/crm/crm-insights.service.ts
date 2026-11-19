@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { CrmCallLog } from './schemas/crm-call-log.schema';
+import { CrmCustomerStats } from './schemas/crm-customer-stats.schema';
 import { CrmMarketingSpend } from './schemas/crm-marketing-spend.schema';
 import { Subscription } from '../subscriptions/schemas/subscription.schema';
 import { attributeOrders, buildAcquisition, buildInvestorSnapshot, buildSegments, monthKey, OrderRow, REVENUE_ORDERS } from './crm-insights.logic';
@@ -17,7 +18,14 @@ export class CrmInsightsService {
     @InjectModel(CrmCallLog.name) private readonly callModel: Model<any>,
     @InjectModel(CrmMarketingSpend.name) private readonly spendModel: Model<any>,
     @InjectModel(Subscription.name) private readonly subModel: Model<any>,
+    @InjectModel(CrmCustomerStats.name) private readonly statsModel: Model<any>,
   ) {}
+
+  /** The CRM's net LTV per customer, the same number the profile and customer list show. */
+  private async ltvMap(): Promise<Map<string, number>> {
+    const s: any[] = await this.statsModel.find().select('userId ltv').lean();
+    return new Map(s.map((x) => [String(x.userId), Number(x.ltv) || 0]));
+  }
 
   private async orderRows(withCategories = false): Promise<OrderRow[]> {
     const pipeline: any[] = [{ $match: VALID }, { $limit: MAX_ROWS }];
@@ -28,7 +36,8 @@ export class CrmInsightsService {
   }
 
   async segments() {
-    const segs = buildSegments(await this.orderRows(true));
+    const [rows, ltv] = await Promise.all([this.orderRows(true), this.ltvMap()]);
+    const segs = buildSegments(rows, new Date(), undefined, ltv);
     const ids = [...new Set(segs.flatMap((s) => s.top.map((m) => m.user)))].map((i) => new Types.ObjectId(i));
     const users = await this.userModel.find({ _id: { $in: ids } }).select('name phone').lean();
     const u = new Map(users.map((x: any) => [String(x._id), x]));
@@ -66,7 +75,8 @@ export class CrmInsightsService {
   async acquisition(month?: string) {
     const m = month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : monthKey(new Date());
     const spend = await this.spendModel.find({ month: m }).lean();
-    return { month: m, channels: buildAcquisition(await this.orderRows(), spend as any, m), spend };
+    const [rows, ltv] = await Promise.all([this.orderRows(), this.ltvMap()]);
+    return { month: m, channels: buildAcquisition(rows, spend as any, m, ltv), spend };
   }
 
   async addSpend(body: { channel?: string; month?: string; amount?: number; note?: string }) {

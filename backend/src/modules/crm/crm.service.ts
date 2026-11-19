@@ -17,6 +17,7 @@ import { MediaService } from '../media/media.service';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
 import { Complaint, ComplaintDocument } from '../complaints/schemas/complaint.schema';
 import { ExtraFilters, extraStatsFilter, needsStats } from './crm-filters';
+import { PURCHASE_ORDER_MATCH, withNetTotals } from './crm-purchases';
 
 @Injectable()
 export class CrmService {
@@ -34,6 +35,7 @@ export class CrmService {
     @InjectModel('ChatSession') private chatSessionModel: Model<any>,
     @InjectModel('Cart') private cartModel: Model<any>,
     @InjectModel('MessageLog') private messageLogModel: Model<any>,
+    @InjectModel('Payment') private paymentModel: Model<any>,
     private readonly engine: CrmEngineService,
     private readonly whatsapp: WhatsAppService,
     private readonly media: MediaService,
@@ -144,10 +146,12 @@ export class CrmService {
       this.userModel.findById(uid).lean(),
       this.statsModel.findOne({ userId: uid }).lean(),
       this.callLogModel.find({ customerId: uid }).sort({ createdAt: -1 }).limit(50).populate('agentId', 'name').lean(),
-      this.orderModel.find({ user: uid, status: 'delivered' }).select('orderNumber total createdAt items').sort({ createdAt: -1 }).limit(20).populate('items.product', 'name images sku').lean(),
+      // same purchases the LTV counts (see crm-purchases), so the history adds up to the LTV
+      this.orderModel.find({ user: uid, ...PURCHASE_ORDER_MATCH }).select('orderNumber total status createdAt items').sort({ createdAt: -1 })
+        .limit(500).populate('items.product', 'name images sku').lean(), // shortcut: 500 orders per customer, paginate past that
     ]);
     if (!user) throw new NotFoundException('Customer not found');
-    return { user, stats, calls, orders };
+    return { user, stats, calls, orders: await withNetTotals(this.paymentModel, orders as any[]) };
   }
 
   /** Customers with an unresolved complaint: no sales calls or campaigns until it is closed out. */

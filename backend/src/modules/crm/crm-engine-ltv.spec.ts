@@ -11,7 +11,7 @@ describe('netLtv', () => {
 
 describe('CrmEngineService.refreshUser LTV', () => {
   const lean = (v: any) => ({ lean: () => Promise.resolve(v) });
-  function make(orders: any[], sales: any[], creditNotes: any[]) {
+  function make(orders: any[], sales: any[], creditNotes: any[], refundPayments: any[] = []) {
     const cnQuery = { setOptions: jest.fn().mockReturnThis(), select: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue(creditNotes) };
     const billModel = { aggregate: jest.fn().mockResolvedValue(sales), find: jest.fn(() => cnQuery) };
     const statsModel = { findOne: () => ({ select: () => lean(null) }), findOneAndUpdate: jest.fn().mockResolvedValue({}) };
@@ -19,8 +19,9 @@ describe('CrmEngineService.refreshUser LTV', () => {
     const logicSetModel = { findOne: () => ({ sort: () => lean(null) }) };
     const userModel = { findById: () => ({ select: () => lean({ name: 'Asha', phone: '919876543210' }) }) };
     const orderModel = { aggregate: jest.fn().mockResolvedValue(orders) };
-    const svc = new (CrmEngineService as any)(statsModel, settingsModel, {}, orderModel, userModel, billModel, logicSetModel) as CrmEngineService;
-    return { svc, billModel, cnQuery, statsModel };
+    const paymentModel = { find: jest.fn(() => ({ select: () => lean(refundPayments) })) };
+    const svc = new (CrmEngineService as any)(statsModel, settingsModel, {}, orderModel, userModel, billModel, logicSetModel, paymentModel) as CrmEngineService;
+    return { svc, billModel, cnQuery, statsModel, orderModel };
   }
   const uid = '64b7f0c2a1b2c3d4e5f60718';
   const day = (d: number) => new Date(Date.UTC(2026, 10, d));
@@ -49,5 +50,25 @@ describe('CrmEngineService.refreshUser LTV', () => {
     await svc.refreshUser(uid);
     const [a, b] = statsModel.findOneAndUpdate.mock.calls.map((c: any) => c[1].$set.ltv);
     expect([a, b]).toEqual([750, 750]);
+  });
+
+  it('a partly refunded online order counts net of the refund; a fully refunded one drops out entirely', async () => {
+    const { svc, statsModel, orderModel } = make(
+      [
+        { _id: 'o1', status: 'refunded', createdAt: day(2), total: 1000, items: [] },
+        { _id: 'o2', status: 'refunded', createdAt: day(3), total: 600, items: [] },
+        { _id: 'o3', status: 'delivered', createdAt: day(4), total: 400, items: [] },
+      ],
+      [], [],
+      [{ order: 'o1', amount: 1000, refundAmount: 150 }, { order: 'o2', amount: 600, refundAmount: 600 }],
+    );
+    await svc.refreshUser(uid);
+    const set = statsModel.findOneAndUpdate.mock.calls[0][1].$set;
+    expect(set.ltv).toBe(1250); // 1000 - 150 + 400; o2 fully refunded
+    expect(set.aov).toBe(625);  // over the 2 orders that still count
+    const pipeline = orderModel.aggregate.mock.calls[0][0];
+    expect(pipeline[0].$match.$or).toBeDefined(); // shared purchase definition, not just 'delivered'
+    // orders / bills with no line items are still counted (the history lists them)
+    expect(pipeline.find((st: any) => st.$unwind && (st.$unwind.path ?? st.$unwind) === '$items').$unwind.preserveNullAndEmptyArrays).toBe(true);
   });
 });

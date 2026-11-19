@@ -5,7 +5,7 @@ const lean = (v: unknown) => ({ lean: jest.fn().mockResolvedValue(v) });
 function make(settings: any, set: any) {
   const settingsModel: any = { findOne: jest.fn(() => lean(settings)) };
   const setModel: any = { findOne: jest.fn(() => ({ sort: jest.fn(() => lean(set)) })) };
-  return new CrmEngineService({} as any, settingsModel, {} as any, {} as any, {} as any, {} as any, setModel);
+  return new CrmEngineService({} as any, settingsModel, {} as any, {} as any, {} as any, {} as any, setModel, {} as any);
 }
 
 describe('CrmEngineService.loadRules', () => {

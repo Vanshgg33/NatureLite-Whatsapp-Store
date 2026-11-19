@@ -273,6 +273,10 @@ export default function Customer360Page() {
     ...(orders as any[]),
     ...(bills as any[]).map((b: any) => ({ ...b, _kind: 'bill' })),
   ].sort(byNewest);
+  // what the CRM engine counts: online orders with something left after refunds, active sale bills (returns subtract)
+  const countedPurchases = purchases.filter((p: any) => p._kind === 'bill' ? p.status === 'active' && p.docType !== 'CREDIT_NOTE' : (p.netTotal ?? p.total) > 0);
+  const netPurchases = Math.round(purchases.reduce((s: number, p: any) => p._kind !== 'bill' ? s + (p.netTotal ?? p.total ?? 0)
+    : p.status !== 'active' ? s : s + (p.docType === 'CREDIT_NOTE' ? -1 : 1) * (p.grandTotal ?? 0), 0) * 100) / 100;
 
   const nba = getNextBestAction(stats, user?.phone);
 
@@ -422,7 +426,7 @@ export default function Customer360Page() {
             {[
               { label: 'Lifetime Value',  value: formatINR(stats?.ltv ?? 0),          color: 'var(--crm-forest)' },
               { label: 'Avg Order Value', value: formatINR(stats?.aov ?? 0),           color: 'var(--crm-amber)' },
-              { label: 'Total Orders',    value: String(user?.totalOrders ?? orders.length), color: 'var(--crm-blue)' },
+              { label: 'Total Orders',    value: String(countedPurchases.length), color: 'var(--crm-blue)' },
               { label: 'Reorder Cycle',   value: stats?.personalCycle ? `${stats.personalCycle}d` : '—', color: 'var(--crm-muted)' },
             ].map(s => (
               <div key={s.label}>
@@ -500,7 +504,7 @@ export default function Customer360Page() {
               {[
                 { label: 'Top Product',  value: stats?.topProduct || '—' },
                 { label: 'Top Category', value: stats?.topCategory || '—' },
-                { label: 'Last Order',   value: fmtDate(user?.lastOrderAt ?? stats?.lastOrderAt) },
+                { label: 'Last Order',   value: fmtDate(countedPurchases[0]?.createdAt) },
                 { label: 'Next Due',     value: fmtDate(stats?.predictedReorderDate) },
               ].map(s => (
                 <div key={s.label} className="p-2.5 rounded-xl" style={{ background: 'var(--crm-sand)' }}>
@@ -691,7 +695,7 @@ export default function Customer360Page() {
                     ? `Activity (${allEvents.length})`
                     : t === 'recordings'
                     ? `Recordings (${recordedCalls.length})`
-                    : `Purchase History (${(user?.totalOrders ?? orders.length) + bills.length})`}
+                    : `Purchase History (${purchases.length})`}
                 </button>
               );
             })}
@@ -758,7 +762,7 @@ export default function Customer360Page() {
                                 className="text-[12px] font-semibold crm-tabular px-2 py-0.5 rounded-full"
                                 style={{ background: 'var(--crm-success-bg)', color: 'var(--crm-success)' }}
                               >
-                                {formatINR(ev.total)}
+                                {formatINR(ev.netTotal ?? ev.total)}
                               </span>
                             </>
                           ) : isWA ? (
@@ -850,6 +854,12 @@ export default function Customer360Page() {
             {/* ─ Orders ─ */}
             {activeTab === 'orders' && (
               <div className="p-5 space-y-2">
+                {purchases.length > 0 && (
+                  <div className="flex justify-between text-[12px] px-1 pb-1" style={{ color: 'var(--crm-muted)' }}>
+                    <span>Net purchases (after returns, refunds, cancellations)</span>
+                    <span className="font-semibold crm-tabular" style={{ color: 'var(--crm-ink)' }}>{formatINR(netPurchases)}</span>
+                  </div>
+                )}
                 {!purchases.length ? (
                   <div className="flex flex-col items-center justify-center py-16">
                     <ShoppingBag className="h-8 w-8 mb-3" style={{ color: 'var(--crm-line)' }} />
@@ -894,7 +904,12 @@ export default function Customer360Page() {
                           className="text-[14px] font-semibold crm-tabular mr-2"
                           style={{ color: 'var(--crm-forest)', fontFamily: 'var(--font-serif, Fraunces, Georgia, serif)' }}
                         >
-                          {formatINR(o.total)}
+                          {formatINR(o.netTotal ?? o.total)}
+                          {o.refundedAmount > 0 && (
+                            <span className="block text-[11px] font-normal" style={{ color: 'var(--crm-danger)' }}>
+                              {formatINR(o.total)} − refunded {formatINR(o.refundedAmount)}
+                            </span>
+                          )}
                         </p>
                         {expanded
                           ? <ChevronDown className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--crm-muted)' }} />

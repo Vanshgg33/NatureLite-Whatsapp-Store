@@ -21,9 +21,10 @@ import {
 import { BillingBill } from '../billing/schemas/billing-bill.schema';
 import { CrmLogicSet } from './schemas/crm-logic-set.schema';
 import { DEFAULT_CRM_FORMULAS, DEFAULT_CRM_RULES, type CrmRules } from './engine/crm-formulas';
+import { PURCHASE_ORDER_MATCH, withNetTotals } from './crm-purchases';
 
 /** Net lifetime value: finalized purchases minus returns/refunds, in rupees (2 dp), never below 0.
- *  Cancelled bills and refunded online orders are already excluded from `purchases` by their status. */
+ *  `purchases` are already net: cancelled bills excluded, refunded online orders counted after their refund. */
 export function netLtv(purchases: { total?: number }[], returns: { grandTotal?: number }[]): number {
   const gross = purchases.reduce((s, r) => s + (Number(r.total) || 0), 0);
   const back = returns.reduce((s, r) => s + (Number(r.grandTotal) || 0), 0);
@@ -50,6 +51,7 @@ export class CrmEngineService implements OnModuleInit {
     @InjectModel('User') private userModel: Model<any>,
     @InjectModel(BillingBill.name) private billModel: Model<any>,
     @InjectModel(CrmLogicSet.name) private logicSetModel: Model<CrmLogicSet>,
+    @InjectModel('Payment') private paymentModel: Model<any>,
   ) {}
 
   async onModuleInit() {
@@ -101,9 +103,9 @@ export class CrmEngineService implements OnModuleInit {
     const [user, orderRows, billRows, returns] = await Promise.all([
       this.userModel.findById(uid).select('name phone').lean<{ name?: string; phone?: string }>(),
       this.orderModel.aggregate([
-        { $match: { user: uid, status: 'delivered', orderType: { $ne: 'replacement' } } },
+        { $match: { user: uid, ...PURCHASE_ORDER_MATCH } },
         { $sort: { createdAt: -1 } },
-        { $unwind: '$items' },
+        { $unwind: { path: '$items', preserveNullAndEmptyArrays: true } },
         {
           $lookup: {
             from: 'products',
@@ -127,6 +129,7 @@ export class CrmEngineService implements OnModuleInit {
             _id: '$_id',
             createdAt: { $first: '$createdAt' },
             total: { $first: '$total' },
+            status: { $first: '$status' },
             items: {
               $push: {
                 productName: '$items.name',
@@ -141,7 +144,7 @@ export class CrmEngineService implements OnModuleInit {
       this.billModel.aggregate([
         { $match: { customerId: uid, status: 'active' } },
         { $sort: { createdAt: -1 } },
-        { $unwind: '$items' },
+        { $unwind: { path: '$items', preserveNullAndEmptyArrays: true } },
         {
           $group: {
             _id: '$_id',
@@ -163,7 +166,9 @@ export class CrmEngineService implements OnModuleInit {
         .setOptions({ allDocTypes: true }).select('grandTotal').lean<{ grandTotal?: number }[]>(),
     ]);
 
-    const rows = [...orderRows, ...billRows].sort(
+    // refunded-after-delivery orders count net of the refund; fully refunded ones drop out
+    const netOrders = (await withNetTotals(this.paymentModel, orderRows)).filter(o => o.netTotal > 0).map(o => ({ ...o, total: o.netTotal }));
+    const rows = [...netOrders, ...billRows].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
 

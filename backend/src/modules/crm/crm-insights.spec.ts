@@ -84,3 +84,21 @@ describe('performance at store scale', () => {
     expect(r.items[0].touchAt).toEqual(d('2026-11-01'));
   });
 });
+
+describe('insights use the CRM net LTV when given', () => {
+  const NOW2 = new Date('2026-11-19T12:00:00Z');
+  const old = new Date('2026-06-01T12:00:00Z');
+  const rows2 = [{ user: 'a', total: 5000, discount: 0, createdAt: old, source: 'instagram' }];
+
+  it('win-back uses net LTV: big online spend fully returned in store no longer qualifies', () => {
+    const seg = (ltv?: Map<string, number>) => buildSegments(rows2, NOW2, 2000, ltv).find((s) => s.key === 'win_back')!;
+    expect(seg().count).toBe(1);
+    expect(seg(new Map([['a', 0]])).count).toBe(0);
+    expect(seg(new Map([['a', 6500]])).top[0].ltv).toBe(6500); // store bills add to it
+  });
+
+  it('acquisition average LTV uses net LTV; customers without a stats row fall back to their order total', () => {
+    const r = buildAcquisition([...rows2.map((x) => ({ ...x, createdAt: NOW2 })), { user: 'b', total: 300, discount: 0, createdAt: NOW2, source: 'instagram' }], [], '2026-11', new Map([['a', 4000]]));
+    expect(r.find((c) => c.channel === 'instagram')!.avgLtv).toBe(2150); // (4000 + 300) / 2
+  });
+});
