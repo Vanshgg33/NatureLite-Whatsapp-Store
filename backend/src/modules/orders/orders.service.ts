@@ -897,6 +897,8 @@ export class OrdersService implements OnModuleInit {
       return;
     }
     this.clearChatbotCache();
+    // a refunded order drops out of the customer's CRM LTV / segment now, not at the nightly run
+    this.crmEngine.refreshUser(updated.user).catch(() => {});
   }
 
   private static readonly VALID_TRANSITIONS: Record<string, string[]> = {

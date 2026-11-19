@@ -21,7 +21,7 @@ describe('CrmFoundationService.listOrders', () => {
   const make = () => {
     const find = { select: jest.fn().mockReturnThis(), sort: jest.fn().mockReturnThis(), skip: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue([]) };
     const orderModel: any = { find: jest.fn(() => find), countDocuments: jest.fn().mockResolvedValue(0) };
-    return { orderModel, svc: new CrmFoundationService(orderModel, {} as any, {} as any) };
+    return { orderModel, svc: new CrmFoundationService(orderModel, {} as any, {} as any, {} as any) };
   };
 
   it('escapes regex characters in search so input cannot break the query', async () => {
@@ -44,7 +44,9 @@ describe('CrmFoundationService store bills (read live from BillingBill)', () => 
   const make = () => {
     const q = { setOptions: jest.fn().mockReturnThis(), select: jest.fn().mockReturnThis(), sort: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue([]) };
     const billModel: any = { find: jest.fn(() => q) };
-    return { q, billModel, svc: new CrmFoundationService({} as any, {} as any, billModel) };
+    const logs = { select: jest.fn().mockReturnThis(), sort: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue([]) };
+    const auditModel: any = { find: jest.fn(() => logs) };
+    return { q, logs, auditModel, billModel, svc: new CrmFoundationService({} as any, {} as any, billModel, auditModel) };
   };
   const uid = '64b7f0c2a1b2c3d4e5f60718';
 
@@ -59,6 +61,21 @@ describe('CrmFoundationService store bills (read live from BillingBill)', () => 
     expect(q.setOptions).toHaveBeenCalledWith({ allDocTypes: true }); // else the schema hook hides credit notes
     expect(q.sort).toHaveBeenCalledWith({ createdAt: -1 });
     expect(q.select.mock.calls[0][0]).toEqual(expect.stringContaining('amountDue'));
+  });
+
+  it('cancelled bills get their cancel time from the billing audit log (latest cancel wins); active bills skip the lookup', async () => {
+    const { svc, q, logs, auditModel } = make();
+    q.lean.mockResolvedValueOnce([{ _id: 'a', status: 'active' }]);
+    await svc.customerBills(uid);
+    expect(auditModel.find).not.toHaveBeenCalled();
+
+    q.lean.mockResolvedValueOnce([{ _id: 'a', status: 'active' }, { _id: 'c', status: 'cancelled' }, { _id: 'd', status: 'cancelled' }]);
+    const t1 = new Date('2026-11-01'), t2 = new Date('2026-11-05');
+    logs.lean.mockResolvedValueOnce([{ docId: 'c', at: t1 }, { docId: 'c', at: t2 }]);
+    const out: any[] = await svc.customerBills(uid);
+    expect(auditModel.find.mock.calls[0][0]).toEqual({ targetCollection: 'BillingBill', action: 'cancel', docId: { $in: ['c', 'd'] } });
+    expect(logs.sort).toHaveBeenCalledWith({ at: 1 });
+    expect(out.map(b => b.cancelledAt)).toEqual([undefined, t2, null]);
   });
 
   it('live feed: newest first, limit clamped to 1..50', async () => {

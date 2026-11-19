@@ -28,3 +28,26 @@ describe('Billing → CRM stats refresh', () => {
     await expect(svc.cancelBill('b1', 'x')).resolves.toEqual({ ok: true });
   });
 });
+
+describe('Returns (credit notes) cannot double-count a refund', () => {
+  function make(sale: any, priorReturns: any[]) {
+    const chain = (v: any) => ({ setOptions: () => ({ lean: () => Promise.resolve(v), select: () => ({ lean: () => Promise.resolve(v) }) }) });
+    const billModel = { findOne: jest.fn(() => chain(sale)), find: jest.fn(() => chain(priorReturns)) };
+    const svc: any = new (BillingService as any)({}, billModel);
+    return { check: (paise: number, customer = 'c1') => svc.assertReturnFits('NLF-1', customer, paise), billModel };
+  }
+  const sale = { invoiceNo: 'NLF-1', customerId: 'c1', status: 'active', grandTotalPaise: 100000 };
+
+  it('allows partial returns up to the invoice total, counting earlier active returns (legacy rupee totals too)', async () => {
+    const { check, billModel } = make(sale, [{ grandTotalPaise: 30000 }, { grandTotalPaise: 0, grandTotal: 200 }]);
+    await expect(check(50000)).resolves.toBeUndefined();          // 300 + 200 + 500 = 1000
+    await expect(check(50001)).rejects.toThrow('more than what is left'); // one paisa over
+    expect((billModel.find.mock.calls[0] as any[])[0]).toEqual({ refInvoiceNo: 'NLF-1', docType: 'CREDIT_NOTE', status: 'active' });
+  });
+
+  it('rejects a return against a cancelled invoice, another customer\'s invoice, or a missing one', async () => {
+    await expect(make({ ...sale, status: 'cancelled' }, []).check(100)).rejects.toThrow('cancelled');
+    await expect(make(sale, []).check(100, 'c2')).rejects.toThrow('another customer');
+    await expect(make(null, []).check(100)).rejects.toThrow('not found');
+  });
+});

@@ -28,6 +28,7 @@ export class CrmFoundationService {
     @InjectModel('Order') private readonly orderModel: Model<any>,
     @InjectModel('User') private readonly userModel: Model<any>,
     @InjectModel('BillingBill') private readonly billModel: Model<any>,
+    @InjectModel('BillingAuditLog') private readonly billAuditModel: Model<any>,
   ) {}
 
   async listOrders(q: { status?: string; search?: string; from?: string; to?: string; page?: number; limit?: number }) {
@@ -71,11 +72,20 @@ export class CrmFoundationService {
   }
 
   /** A customer's store bills (sales + credit notes, cancelled ones kept and flagged), newest first. Sale orders are not purchases. */
-  customerBills(userId: string) {
-    return this.billModel.find({ customerId: new Types.ObjectId(userId), docType: { $in: ['SALE', 'CREDIT_NOTE', null] } })
+  async customerBills(userId: string) {
+    const bills: any[] = await this.billModel.find({ customerId: new Types.ObjectId(userId), docType: { $in: ['SALE', 'CREDIT_NOTE', null] } })
       .setOptions({ allDocTypes: true })
       .select(`${BILL_FIELDS} subtotal totalGst billDiscountAmtPaise payments paymentMode refInvoiceNo cancelReason items.name items.qty items.unit items.unitPrice items.discountPct items.discountAmt items.gstRate items.gstAmount items.total`)
       .sort({ createdAt: -1 }).limit(500).lean(); // shortcut: capped at 500 bills per customer, paginate if a customer passes that
+    // bills keep no cancel time; Billing's audit log does (sorted oldest first so the latest cancel wins)
+    const cancelled = bills.filter(b => b.status === 'cancelled').map(b => b._id);
+    if (cancelled.length) {
+      const logs: any[] = await this.billAuditModel.find({ targetCollection: 'BillingBill', action: 'cancel', docId: { $in: cancelled } })
+        .select('docId at').sort({ at: 1 }).lean();
+      const at = new Map(logs.map(l => [String(l.docId), l.at]));
+      for (const b of bills) if (b.status === 'cancelled') b.cancelledAt = at.get(String(b._id)) ?? null;
+    }
+    return bills;
   }
 
   /** Newest store bills for the CRM dashboard feed; the page polls this, so payment and cancel changes show up too. */

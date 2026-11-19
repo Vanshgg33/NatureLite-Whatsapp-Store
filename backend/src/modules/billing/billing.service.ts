@@ -1053,6 +1053,7 @@ export class BillingService {
     const igstTotalPaise = calc.igstTotal + chargesPaise.reduce((s, c) => s + (c.igst ?? 0), 0);
     const taxableTotalPaise = calc.taxableTotal + chargesPaise.reduce((s, c) => s + (c.taxablePaise ?? 0), 0);
     const { roundOffPaise, grandTotalPaise } = calc;
+    if (docType === 'CREDIT_NOTE' && dto.refInvoiceNo) await this.assertReturnFits(dto.refInvoiceNo, dto.customerId, grandTotalPaise);
 
     const billedAt = new Date();
     // split tender (e.g. 500 cash + 600 UPI) comes as dto.payments; amountPaidRupees + paymentMode stays for older callers
@@ -1172,6 +1173,20 @@ export class BillingService {
     // fire and forget: a WhatsApp problem must never fail or delay the bill
     if (dto.sendWhatsApp !== false && docType !== 'SALE_ORDER') this.billingWhatsapp.queue(String(bill._id)).catch(() => {});
     return bill;
+  }
+
+  /** A return must be against an active sale of the same customer, and all its returns together can't exceed that sale,
+   *  so a refund is never counted twice (outstanding, CRM LTV, GSTR-1). */
+  private async assertReturnFits(refInvoiceNo: string, customerId: string, newPaise: number) {
+    const sale: any = await this.billModel.findOne({ invoiceNo: refInvoiceNo, docType: 'SALE' }).setOptions({ allDocTypes: true }).lean();
+    if (!sale) throw new BadRequestException(`Invoice ${refInvoiceNo} not found`);
+    if (String(sale.customerId) !== String(customerId)) throw new BadRequestException(`Invoice ${refInvoiceNo} belongs to another customer`);
+    if (sale.status !== 'active') throw new BadRequestException(`Invoice ${refInvoiceNo} is cancelled; it no longer counts, so it can't be returned`);
+    const prior: any[] = await this.billModel.find({ refInvoiceNo, docType: 'CREDIT_NOTE', status: 'active' }).setOptions({ allDocTypes: true }).select('grandTotalPaise grandTotal').lean();
+    const paise = (b: any) => (b.grandTotalPaise > 0 ? b.grandTotalPaise : Math.round((Number(b.grandTotal) || 0) * 100));
+    const left = paise(sale) - prior.reduce((s, b) => s + paise(b), 0);
+    // shortcut: check-then-insert; two returns saved in the same instant could both pass. No UI creates credit notes yet; reserve atomically on the sale if one is added.
+    if (newPaise > left) throw new BadRequestException(`Return of ₹${(newPaise / 100).toFixed(2)} is more than what is left to return on ${refInvoiceNo} (₹${(Math.max(0, left) / 100).toFixed(2)})`);
   }
 
   retryWhatsapp(id: string) {

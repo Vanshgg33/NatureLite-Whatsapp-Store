@@ -7,6 +7,7 @@ export default defineConfig({
       'src/app/billing/**/*.test.ts',
       'src/lib/fms/**/*.test.ts',
       'src/app/fms/**/*.test.ts',
+      'src/lib/crm/**/*.test.ts',
     ],
     environment: 'node',
     globals: true,

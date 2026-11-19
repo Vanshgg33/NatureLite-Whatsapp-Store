@@ -22,6 +22,14 @@ import { BillingBill } from '../billing/schemas/billing-bill.schema';
 import { CrmLogicSet } from './schemas/crm-logic-set.schema';
 import { DEFAULT_CRM_FORMULAS, DEFAULT_CRM_RULES, type CrmRules } from './engine/crm-formulas';
 
+/** Net lifetime value: finalized purchases minus returns/refunds, in rupees (2 dp), never below 0.
+ *  Cancelled bills and refunded online orders are already excluded from `purchases` by their status. */
+export function netLtv(purchases: { total?: number }[], returns: { grandTotal?: number }[]): number {
+  const gross = purchases.reduce((s, r) => s + (Number(r.total) || 0), 0);
+  const back = returns.reduce((s, r) => s + (Number(r.grandTotal) || 0), 0);
+  return Math.max(0, Math.round((gross - back) * 100) / 100);
+}
+
 interface SettingsSnapshot {
   reorderCycles: Record<string, number>;
   fallbackCycleDays: number;
@@ -90,7 +98,7 @@ export class CrmEngineService implements OnModuleInit {
     const settings = await this.getSettings();
     const today = getISTDate();
 
-    const [user, orderRows, billRows] = await Promise.all([
+    const [user, orderRows, billRows, returns] = await Promise.all([
       this.userModel.findById(uid).select('name phone').lean<{ name?: string; phone?: string }>(),
       this.orderModel.aggregate([
         { $match: { user: uid, status: 'delivered', orderType: { $ne: 'replacement' } } },
@@ -150,6 +158,9 @@ export class CrmEngineService implements OnModuleInit {
         },
         { $sort: { createdAt: -1 } },
       ]),
+      // returns / refunds issued from Billing (active credit notes; a cancelled credit note no longer reduces LTV)
+      this.billModel.find({ customerId: uid, status: 'active', docType: 'CREDIT_NOTE' })
+        .setOptions({ allDocTypes: true }).select('grandTotal').lean<{ grandTotal?: number }[]>(),
     ]);
 
     const rows = [...orderRows, ...billRows].sort(
@@ -186,7 +197,7 @@ export class CrmEngineService implements OnModuleInit {
     }
 
     const totalOrders = rows.length;
-    const ltv = rows.reduce((s: number, r: any) => s + (r.total ?? 0), 0);
+    const ltv = netLtv(rows, returns);
     const aov = Math.round(ltv / totalOrders);
     const lastOrderDate: Date = new Date(rows[0].createdAt);
 

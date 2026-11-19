@@ -7,6 +7,7 @@ import { CrmSettings, CrmSettingsSchema } from './schemas/crm-settings.schema';
 import { CrmEngineRun, CrmEngineRunSchema } from './schemas/crm-engine-run.schema';
 import { CrmActivityEvent, CrmActivityEventSchema } from './schemas/crm-activity-event.schema';
 import { BillingBill, BillingBillSchema } from '../billing/schemas/billing-bill.schema';
+import { AuditLogSchema as BillingAuditLogSchema } from '../billing/schemas/audit-log.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { Order, OrderSchema } from '../orders/schemas/order.schema';
 import { AdminUser, AdminUserSchema } from '../admin/schemas/admin-user.schema';
@@ -45,6 +46,7 @@ import { CrmLogicLog, CrmLogicLogSchema } from './schemas/crm-logic-log.schema';
       { name: CrmEngineRun.name, schema: CrmEngineRunSchema },
       { name: CrmActivityEvent.name, schema: CrmActivityEventSchema },
       { name: BillingBill.name, schema: BillingBillSchema },
+      { name: 'BillingAuditLog', schema: BillingAuditLogSchema },
       { name: CrmMarketingSpend.name, schema: CrmMarketingSpendSchema },
       { name: CrmGoal.name, schema: CrmGoalSchema },
       { name: CrmSavedView.name, schema: CrmSavedViewSchema },
