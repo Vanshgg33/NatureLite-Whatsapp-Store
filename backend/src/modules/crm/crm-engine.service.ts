@@ -57,11 +57,22 @@ export class CrmEngineService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    const count = await this.statsModel.countDocuments();
-    if (count === 0) {
-      this.logger.log('CRM engine: no stats found, seeding initial data...');
-      this.refreshAll('cron').catch(err => this.logger.error(`Initial seed failed: ${err.message}`));
-    }
+    if (!(await this.needsCatchUp())) return;
+    this.logger.log('CRM engine: stats missing or last full refresh over 26h ago (missed 2 AM run?), catching up shortly...');
+    // after boot settles; a missed nightly run (server asleep / restarted / failed) must not leave LTVs stale for days
+    setTimeout(() => this.refreshAll('cron').catch(err => this.logger.error(`Catch-up refresh failed: ${err.message}`)), 30_000);
+  }
+
+  /** True when no stats exist, or no full refresh finished in the last 26h and none is already running (started < 1h ago). */
+  async needsCatchUp(now = Date.now()): Promise<boolean> {
+    const [count, last] = await Promise.all([
+      this.statsModel.countDocuments(),
+      this.runModel.findOne().sort({ startedAt: -1 }).select('startedAt finishedAt').lean<{ startedAt?: Date; finishedAt?: Date }>(),
+    ]);
+    if (count === 0) return true;
+    if (!last) return true;
+    if (!last.finishedAt) return now - +new Date(last.startedAt ?? 0) > 3_600_000; // stuck or crashed run
+    return now - +new Date(last.finishedAt) > 26 * 3_600_000;
   }
 
   /** The rules in force: newest published formulas over the built-ins, plus the stored numbers. */

@@ -344,6 +344,11 @@ async function run() {
   console.log(`Orders skipped (in DB)     : ${orderSkipped}`);
   console.log(`Orphaned orders relinked   : ${relinkOps.length}`);
   console.log(`Customers stats recomputed : ${dryRun ? `${touched.size} (would be)` : touchedIds.length}`);
+  // these orders were written straight to the DB, so the CRM engine (LTV, AOV, segment, next due) has not seen them
+  if (!dryRun && toInsert.length) {
+    console.log('\nNEXT STEP: open CRM > Settings > Trigger Refresh so CRM lifetime value, segments and reorder dates include these orders.');
+    console.log('(Each customer profile also recalculates when opened, and the 2 AM run catches up, but the customer list stays stale until then.)');
+  }
 }
 
 run().catch(err => { console.error(err); process.exit(1); });

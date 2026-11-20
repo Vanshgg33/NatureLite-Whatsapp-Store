@@ -92,3 +92,22 @@ describe('CrmEngineService.refreshAll (historical recalculation)', () => {
     expect(runModel.updateOne.mock.calls[0][1].$set.customersProcessed).toBe(120);
   });
 });
+
+describe('CrmEngineService.needsCatchUp (missed 2 AM run)', () => {
+  const H = 3_600_000, now = Date.UTC(2026, 10, 20, 12);
+  const make = (count: number, last: any) => new (CrmEngineService as any)(
+    { countDocuments: () => Promise.resolve(count) }, {},
+    { findOne: () => ({ sort: () => ({ select: () => ({ lean: () => Promise.resolve(last) }) }) }) },
+  ) as CrmEngineService;
+
+  it.each([
+    ['no stats yet', 0, { startedAt: now - H, finishedAt: now - H }, true],
+    ['never ran', 10, null, true],
+    ['last full run 3 days ago (server asleep at 2 AM)', 10, { startedAt: now - 72 * H, finishedAt: now - 72 * H }, true],
+    ['ran last night', 10, { startedAt: now - 10 * H, finishedAt: now - 10 * H }, false],
+    ['a run started 10 min ago is still going: do not start another', 10, { startedAt: now - H / 6 }, false],
+    ['a run started 5h ago never finished (crashed)', 10, { startedAt: now - 5 * H }, true],
+  ])('%s', async (_label, count, last, want) => {
+    expect(await make(count as number, last).needsCatchUp(now)).toBe(want);
+  });
+});

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { formatIST } from '@/lib/time';
 import { Settings, RefreshCw, Clock, Save, AlertTriangle, Star, Target, Globe, FileText } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
@@ -92,7 +93,7 @@ export default function CrmSettingsPage() {
 
   const { mutate: refresh, isPending: refreshing } = useMutation({
     mutationFn: () => api.triggerCrmRefresh(),
-    onSuccess: () => toast({ title: 'Refresh started — runs in background' }),
+    onSuccess: () => { toast({ title: 'Refresh started — runs in background' }); setTimeout(() => qc.invalidateQueries({ queryKey: ['crm-settings'] }), 3000); },
   });
 
   const spinner = (
@@ -254,10 +255,27 @@ export default function CrmSettingsPage() {
               <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
               {refreshing ? 'Starting…' : 'Trigger Refresh'}
             </button>
-            <p className="text-[11px]" style={{ color: 'var(--crm-muted)' }}>Last auto-run: 2:00 AM IST daily</p>
+            <EngineRunStatus run={(data as any)?.lastEngineRun} />
           </div>
         </Section>
       </div>
     </div>
+  );
+}
+
+/** The real last engine run (not a fixed label), so a 2 AM job that never ran or failed is visible. */
+function EngineRunStatus({ run }: { run?: { startedAt?: string; finishedAt?: string; trigger?: string; customersProcessed?: number; errors?: string[] } | null }) {
+  const muted = { color: 'var(--crm-muted)' };
+  if (!run?.startedAt) return <p className="text-[11px]" style={{ color: 'var(--crm-danger)' }}>The engine has never run. Click Trigger Refresh.</p>;
+  const ageH = (Date.now() - new Date(run.finishedAt ?? run.startedAt).getTime()) / 3_600_000;
+  const errs = run.errors?.length ?? 0;
+  const bad = !run.finishedAt ? ageH > 1 : ageH > 26 || errs > 0;
+  return (
+    <p className="text-[11px]" style={bad ? { color: 'var(--crm-danger)' } : muted}>
+      {run.finishedAt
+        ? `Last run ${formatIST(run.finishedAt, true)} (${run.trigger}) · ${run.customersProcessed ?? 0} customers${errs ? ` · ${errs} failed` : ''}`
+        : `Running since ${formatIST(run.startedAt, true)}…`}
+      {bad && ' · numbers may be out of date, click Trigger Refresh'}
+    </p>
   );
 }

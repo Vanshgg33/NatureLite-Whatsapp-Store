@@ -142,6 +142,10 @@ export class CrmService {
 
   async getCustomer360(userId: string) {
     const uid = new Types.ObjectId(userId);
+    if (!(await this.userModel.exists({ _id: uid }))) throw new NotFoundException('Customer not found');
+    // recompute this customer's LTV / AOV / cycle from the records first: purchases that arrived outside the app
+    // (e.g. the Vyapar import) or a missed nightly run must never show a stale LTV next to the live history
+    await this.engine.refreshUser(uid).catch(() => undefined); // on failure show the last saved stats
     const [user, stats, calls, orders] = await Promise.all([
       this.userModel.findById(uid).lean(),
       this.statsModel.findOne({ userId: uid }).lean(),
