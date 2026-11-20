@@ -5,7 +5,8 @@ import { CrmCallLog } from './schemas/crm-call-log.schema';
 import { CrmCustomerStats } from './schemas/crm-customer-stats.schema';
 import { CrmMarketingSpend } from './schemas/crm-marketing-spend.schema';
 import { Subscription } from '../subscriptions/schemas/subscription.schema';
-import { attributeOrders, buildAcquisition, buildInvestorSnapshot, buildSegments, monthKey, OrderRow, REVENUE_ORDERS } from './crm-insights.logic';
+import { AOV_SEGMENTS } from './engine/aov-segments';
+import { attributeOrders, buildAcquisition, buildInvestorSnapshot, monthKey, OrderRow, REVENUE_ORDERS } from './crm-insights.logic';
 
 const VALID = REVENUE_ORDERS;
 const MAX_ROWS = 200_000; // shortcut: whole-history scan in memory; move to $group pipelines past ~200k orders
@@ -27,21 +28,26 @@ export class CrmInsightsService {
     return new Map(s.map((x) => [String(x.userId), Number(x.ltv) || 0]));
   }
 
-  private async orderRows(withCategories = false): Promise<OrderRow[]> {
-    const pipeline: any[] = [{ $match: VALID }, { $limit: MAX_ROWS }];
-    if (withCategories) pipeline.push({ $lookup: { from: 'products', localField: 'items.product', foreignField: '_id', as: 'p' } });
-    pipeline.push({ $project: { user: 1, total: 1, discount: 1, createdAt: 1, source: 1, ...(withCategories && { cats: '$p.category' }) } });
-    const rows = await this.orderModel.aggregate(pipeline);
-    return rows.map((r) => ({ ...r, user: String(r.user), discount: r.discount ?? 0, cats: r.cats?.map(String) }));
+  private async orderRows(): Promise<OrderRow[]> {
+    const rows = await this.orderModel.aggregate([{ $match: VALID }, { $limit: MAX_ROWS }, { $project: { user: 1, total: 1, discount: 1, createdAt: 1, source: 1 } }]);
+    return rows.map((r) => ({ ...r, user: String(r.user), discount: r.discount ?? 0 }));
   }
 
+  /** AOV segments, read from the engine-maintained aovSegment. Like the customer list, stats of deleted users are
+   *  skipped, so each count equals the list behind /crm/customers?aovSegment=<key>. */
   async segments() {
-    const [rows, ltv] = await Promise.all([this.orderRows(true), this.ltvMap()]);
-    const segs = buildSegments(rows, new Date(), undefined, ltv);
-    const ids = [...new Set(segs.flatMap((s) => s.top.map((m) => m.user)))].map((i) => new Types.ObjectId(i));
-    const users = await this.userModel.find({ _id: { $in: ids } }).select('name phone').lean();
-    const u = new Map(users.map((x: any) => [String(x._id), x]));
-    return segs.map((s) => ({ ...s, top: s.top.map((m) => ({ ...m, name: (u.get(m.user) as any)?.name ?? '', phone: (u.get(m.user) as any)?.phone ?? '' })) }));
+    return Promise.all(AOV_SEGMENTS.map(async ({ key, name, rule }) => {
+      const [r] = await this.statsModel.aggregate([
+        { $match: { aovSegment: key } },
+        { $lookup: { from: this.userModel.collection.name, let: { id: '$userId' }, pipeline: [{ $match: { $expr: { $eq: ['$_id', '$$id'] } } }, { $project: { name: 1, phone: 1 } }], as: 'u' } },
+        { $unwind: '$u' },
+        { $facet: { n: [{ $count: 'n' }], top: [{ $sort: { ltv: -1 } }, { $limit: 20 }] } },
+      ]);
+      return {
+        key, name, rule, count: r?.n[0]?.n ?? 0,
+        top: (r?.top ?? []).map((s: any) => ({ user: String(s.userId), name: s.u.name ?? '', phone: s.u.phone ?? '', orders: s.validOrders, ltv: s.ltv, aov: s.aov })),
+      };
+    }));
   }
 
   async subscriptions() {

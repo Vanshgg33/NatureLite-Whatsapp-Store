@@ -35,3 +35,13 @@ describe('sanitizeView', () => {
     expect(sanitizeView({ segment: '$ne' }).segment).toBeUndefined();
   });
 });
+
+describe('aovSegment filter', () => {
+  it('accepts only a known AOV segment and filters stats on it', () => {
+    expect(parseExtraFilters({ aovSegment: 'aov_1999_2999' })).toEqual({ aovSegment: 'aov_1999_2999' });
+    expect(parseExtraFilters({ aovSegment: { $ne: null } as any })).toEqual({});
+    expect(parseExtraFilters({ aovSegment: 'win_back' })).toEqual({});
+    expect(extraStatsFilter({ aovSegment: 'aov_3999_plus' })).toEqual({ aovSegment: 'aov_3999_plus' });
+    expect(needsStats({ aovSegment: 'aov_below_1000' })).toBe(true);
+  });
+});

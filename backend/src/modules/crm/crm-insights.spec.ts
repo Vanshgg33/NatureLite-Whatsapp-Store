@@ -1,4 +1,4 @@
-import { buildSegments, buildInvestorSnapshot, buildAcquisition, attributeOrders, monthAdd } from './crm-insights.logic';
+import { buildInvestorSnapshot, buildAcquisition, attributeOrders, monthAdd } from './crm-insights.logic';
 
 const d = (s: string) => new Date(s + 'T06:00:00Z');
 const o = (user: string, date: string, total: number, extra: any = {}) => ({ user, total, discount: 0, createdAt: d(date), ...extra });
@@ -8,20 +8,6 @@ describe('monthAdd', () => {
   it('crosses year boundaries', () => {
     expect(monthAdd('2026-11', 3)).toBe('2027-02');
     expect(monthAdd('2026-01', -1)).toBe('2025-12');
-  });
-});
-
-describe('buildSegments', () => {
-  const rows = [
-    o('a', '2026-05-01', 3000), // win-back: old, high ltv
-    o('b', '2026-10-01', 500, { discount: 50, cats: ['oil'] }), o('b', '2026-11-01', 500, { discount: 50, cats: ['oil'] }), // price-sensitive + cross-sell
-    o('c', '2026-10-01', 500, { cats: ['oil'] }), o('c', '2026-11-01', 500, { cats: ['ghee'] }), // two categories
-  ];
-  const by = Object.fromEntries(buildSegments(rows, NOW).map((s) => [s.key, s]));
-  it('finds each rule', () => {
-    expect(by.win_back.top.map((m) => m.user)).toEqual(['a']);
-    expect(by.price_sensitive.top.map((m) => m.user)).toEqual(['b']);
-    expect(by.cross_sell.top.map((m) => m.user)).toEqual(['b']);
   });
 });
 
@@ -90,15 +76,27 @@ describe('insights use the CRM net LTV when given', () => {
   const old = new Date('2026-06-01T12:00:00Z');
   const rows2 = [{ user: 'a', total: 5000, discount: 0, createdAt: old, source: 'instagram' }];
 
-  it('win-back uses net LTV: big online spend fully returned in store no longer qualifies', () => {
-    const seg = (ltv?: Map<string, number>) => buildSegments(rows2, NOW2, 2000, ltv).find((s) => s.key === 'win_back')!;
-    expect(seg().count).toBe(1);
-    expect(seg(new Map([['a', 0]])).count).toBe(0);
-    expect(seg(new Map([['a', 6500]])).top[0].ltv).toBe(6500); // store bills add to it
-  });
-
   it('acquisition average LTV uses net LTV; customers without a stats row fall back to their order total', () => {
     const r = buildAcquisition([...rows2.map((x) => ({ ...x, createdAt: NOW2 })), { user: 'b', total: 300, discount: 0, createdAt: NOW2, source: 'instagram' }], [], '2026-11', new Map([['a', 4000]]));
     expect(r.find((c) => c.channel === 'instagram')!.avgLtv).toBe(2150); // (4000 + 300) / 2
+  });
+});
+
+describe('CrmInsightsService.segments (AOV segments from stored stats)', () => {
+  it('returns all five segments in order, counting only stats of existing users, top customers by net LTV', async () => {
+    const { CrmInsightsService } = await import('./crm-insights.service');
+    const statsModel = {
+      aggregate: jest.fn(async (p: any[]) => p[0].$match.aovSegment === 'aov_1999_2999'
+        ? [{ n: [{ n: 2 }], top: [{ userId: 'u1', ltv: 6000, aov: 2000, validOrders: 3, u: { name: 'Asha', phone: '91' } }] }]
+        : [{ n: [], top: [] }]),
+    };
+    const svc = new (CrmInsightsService as any)({}, { collection: { name: 'users' } }, {}, {}, {}, statsModel);
+    const out = await svc.segments();
+    expect(out.map((s: any) => s.key)).toEqual(['aov_below_1000', 'aov_1000_1999', 'aov_1999_2999', 'aov_2999_3999', 'aov_3999_plus']);
+    expect(out[2]).toMatchObject({ name: '₹1,999–₹2,998.99', count: 2, top: [{ user: 'u1', name: 'Asha', orders: 3, ltv: 6000, aov: 2000 }] });
+    expect(out[0].count).toBe(0);
+    const p = statsModel.aggregate.mock.calls[0][0];
+    expect(p[1].$lookup.from).toBe('users');
+    expect(p[2]).toEqual({ $unwind: '$u' }); // stats of deleted users drop out, as in the customer list
   });
 });

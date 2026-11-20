@@ -10,7 +10,7 @@ const REPORTS = [
   { href: '/crm/acquisition', title: 'Acquisition & CAC', text: 'Cost to win a customer by channel.' },
   { href: '/crm/attribution', title: 'Revenue recovered by CRM', text: 'Orders that followed a call.' },
   { href: '/crm/analytics', title: 'Agent performance', text: 'Calls, conversions and revenue per agent.' },
-  { href: '/crm/segments', title: 'Segments', text: 'Win-back, price-sensitive, cross-sell audiences.' },
+  { href: '/crm/segments', title: 'Segments', text: 'Customers by average order value (net of returns and refunds).' },
   { href: '/crm/orders', title: 'Orders & sync health', text: 'All orders with 90-day totals.' },
   { href: '/crm/feedback', title: 'Feedback', text: 'Ratings and recent reviews.' },
   { href: '/crm/complaints', title: 'Complaints', text: 'Open and overdue complaints.' },

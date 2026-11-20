@@ -1,7 +1,7 @@
-// Pure calculations for segments, investor snapshot, acquisition (CAC) and attribution (blueprint M09, M27, M20, M26).
+// Pure calculations for investor snapshot, acquisition (CAC) and attribution (blueprint M09, M27, M20, M26).
 // No DB access here so every formula can be unit tested. Money is rupees, months are IST "YYYY-MM".
 
-export interface OrderRow { user: string; total: number; discount: number; createdAt: Date; source?: string; cats?: string[] }
+export interface OrderRow { user: string; total: number; discount: number; createdAt: Date; source?: string }
 
 const DAY = 86_400_000;
 
@@ -21,32 +21,17 @@ export const monthAdd = (key: string, n: number) => {
 };
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 1000) / 10 : null);
 
-interface Cust { user: string; orders: number; ltv: number; first: Date; last: Date; allDiscounted: boolean; cats: Set<string>; firstSource: string }
+interface Cust { user: string; orders: number; ltv: number; first: Date; last: Date; firstSource: string }
 function byCustomer(rows: OrderRow[], ltvOf?: Map<string, number>): Cust[] {
   const m = new Map<string, Cust>();
   for (const r of [...rows].sort((a, b) => +a.createdAt - +b.createdAt)) {
-    const c = m.get(r.user) ?? { user: r.user, orders: 0, ltv: 0, first: r.createdAt, last: r.createdAt, allDiscounted: true, cats: new Set<string>(), firstSource: r.source || 'unknown' };
-    c.orders++; c.ltv += r.total; c.last = r.createdAt; c.allDiscounted &&= r.discount > 0;
-    (r.cats ?? []).forEach((x) => c.cats.add(String(x)));
+    const c = m.get(r.user) ?? { user: r.user, orders: 0, ltv: 0, first: r.createdAt, last: r.createdAt, firstSource: r.source || 'unknown' };
+    c.orders++; c.ltv += r.total; c.last = r.createdAt;
     m.set(r.user, c);
   }
   const cs = [...m.values()];
   if (ltvOf) for (const c of cs) c.ltv = ltvOf.get(c.user) ?? c.ltv;
   return cs;
-}
-
-/** Rule-based segments (M09). Gifting and Referrers need festival / referral data the store does not have yet. */
-export function buildSegments(rows: OrderRow[], now = new Date(), minLtv = 2000, ltvOf?: Map<string, number>) {
-  const cs = byCustomer(rows, ltvOf);
-  const defs = [
-    { key: 'win_back', name: 'Win-back', rule: `Last order over 90 days ago and lifetime value ≥ ₹${minLtv}`, test: (c: Cust) => +now - +c.last > 90 * DAY && c.ltv >= minLtv },
-    { key: 'price_sensitive', name: 'Price-sensitive', rule: '2+ orders and every order used a discount', test: (c: Cust) => c.orders >= 2 && c.allDiscounted },
-    { key: 'cross_sell', name: 'Cross-sell', rule: '2+ orders, all from a single category', test: (c: Cust) => c.orders >= 2 && c.cats.size === 1 },
-  ];
-  return defs.map((d) => {
-    const members = cs.filter(d.test).sort((a, b) => b.ltv - a.ltv);
-    return { key: d.key, name: d.name, rule: d.rule, count: members.length, top: members.slice(0, 20).map((c) => ({ user: c.user, orders: c.orders, ltv: c.ltv, lastOrderAt: c.last })) };
-  });
 }
 
 /** Investor snapshot (M27): last 6 months, new vs repeat, 90-day repeat rate and cohort retention. */

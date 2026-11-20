@@ -2299,9 +2299,9 @@ class ApiClient {
 
   // ─── CRM ─────────────────────────────────────────────────────────────────
 
-  async getCrmCustomers(params: { segment?: string; search?: string; page?: number; isEscalated?: boolean; minLtv?: string; maxLtv?: string; minDaysLate?: string; tag?: string; hasComplaint?: boolean } = {}): Promise<any> {
+  async getCrmCustomers(params: { segment?: string; search?: string; page?: number; isEscalated?: boolean; minLtv?: string; maxLtv?: string; minDaysLate?: string; tag?: string; hasComplaint?: boolean; aovSegment?: string } = {}): Promise<any> {
     const qs = new URLSearchParams();
-    for (const k of ['minLtv', 'maxLtv', 'minDaysLate', 'tag'] as const) if (params[k]) qs.set(k, params[k]!);
+    for (const k of ['minLtv', 'maxLtv', 'minDaysLate', 'tag', 'aovSegment'] as const) if (params[k]) qs.set(k, params[k]!);
     if (params.hasComplaint) qs.set('hasComplaint', 'true');
     if (params.segment) qs.set('segment', params.segment);
     if (params.search) qs.set('search', params.search);

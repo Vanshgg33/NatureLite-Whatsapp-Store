@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import type { Segment, CycleSource, PriorityBand } from '../engine/status-model';
+import { AOV_SEGMENT_KEYS, type AovSegmentKey } from '../engine/aov-segments';
 
 export type { Segment, CycleSource, PriorityBand };
 export type CrmSegment = Segment; // backward-compat alias
@@ -54,6 +55,14 @@ export class CrmCustomerStats {
 
   @Prop({ default: 0 })
   ltvPct: number;
+
+  /** Purchases that still count: delivered orders not fully refunded, active bills not fully returned. */
+  @Prop({ default: 0 })
+  validOrders: number;
+
+  /** AOV band (engine/aov-segments); null with no valid orders. */
+  @Prop({ type: String, enum: [...AOV_SEGMENT_KEYS, null], default: null })
+  aovSegment: AovSegmentKey | null;
 
   @Prop({ default: 0 })
   priorityScore: number;
@@ -116,3 +125,4 @@ CrmCustomerStatsSchema.index({ predictedReorderDate: 1 });
 CrmCustomerStatsSchema.index({ callbackAt: 1 });
 CrmCustomerStatsSchema.index({ snoozedUntil: 1 });
 CrmCustomerStatsSchema.index({ isVip: 1 });
+CrmCustomerStatsSchema.index({ aovSegment: 1, ltv: -1 });

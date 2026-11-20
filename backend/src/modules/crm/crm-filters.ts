@@ -1,6 +1,8 @@
 // Combinable customer filters and saved views (blueprint M04). Pure functions so every rule is unit tested.
 
-export interface ExtraFilters { minLtv?: number; maxLtv?: number; minDaysLate?: number; tag?: string; hasComplaint?: boolean }
+import { AOV_SEGMENT_KEYS, type AovSegmentKey } from './engine/aov-segments';
+
+export interface ExtraFilters { minLtv?: number; maxLtv?: number; minDaysLate?: number; tag?: string; hasComplaint?: boolean; aovSegment?: AovSegmentKey }
 export interface ViewFilters extends ExtraFilters { segment?: string; search?: string; isEscalated?: boolean }
 
 const num = (v: unknown): number | undefined => {
@@ -19,6 +21,7 @@ export function parseExtraFilters(q: Record<string, unknown> = {}): ExtraFilters
   const tag = typeof q.tag === 'string' ? q.tag.trim().toLowerCase() : '';
   if (tag && tag.length <= 30) out.tag = tag;
   if (q.hasComplaint === true || q.hasComplaint === 'true') out.hasComplaint = true;
+  if (AOV_SEGMENT_KEYS.includes(q.aovSegment as AovSegmentKey)) out.aovSegment = q.aovSegment as AovSegmentKey;
   return out;
 }
 
@@ -28,6 +31,7 @@ export function extraStatsFilter(f: ExtraFilters): Record<string, unknown> {
   if (f.minLtv !== undefined || f.maxLtv !== undefined) out.ltv = { ...(f.minLtv !== undefined && { $gte: f.minLtv }), ...(f.maxLtv !== undefined && { $lte: f.maxLtv }) };
   if (f.minDaysLate !== undefined) out.daysLate = { $gte: f.minDaysLate };
   if (f.tag) out.tags = f.tag;
+  if (f.aovSegment) out.aovSegment = f.aovSegment;
   return out;
 }
 

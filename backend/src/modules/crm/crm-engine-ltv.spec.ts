@@ -41,7 +41,34 @@ describe('CrmEngineService.refreshUser LTV', () => {
     expect(billModel.aggregate.mock.calls[0][0][0].$match).toMatchObject({ status: 'active' });
     const set = statsModel.findOneAndUpdate.mock.calls[0][1].$set;
     expect(set.ltv).toBe(2000); // 500 + 1200 + 800 - 300 - 200
-    expect(set.aov).toBe(667);  // net LTV over 3 purchases
+    expect(set.aov).toBe(666.67);  // net LTV over 3 purchases, to the paisa
+    expect(set.validOrders).toBe(3);
+    expect(set.aovSegment).toBe('aov_below_1000');
+  });
+
+  it('a store bill fully returned by its credit notes is no longer a valid order; a partly returned one still is', async () => {
+    const { svc, statsModel } = make(
+      [],
+      [
+        { invoiceNo: 'NLF-1', createdAt: day(5), total: 3000, items: [] }, // fully returned in two credit notes
+        { invoiceNo: 'NLF-2', createdAt: day(6), total: 2500, items: [] }, // partly returned
+        { invoiceNo: 'NLF-3', createdAt: day(7), total: 1500, items: [] },
+      ],
+      [{ grandTotal: 1000, refInvoiceNo: 'NLF-1' }, { grandTotal: 2000, refInvoiceNo: 'NLF-1' }, { grandTotal: 500, refInvoiceNo: 'NLF-2' }, { grandTotal: 100 }],
+    );
+    await svc.refreshUser(uid);
+    const set = statsModel.findOneAndUpdate.mock.calls[0][1].$set;
+    expect(set.ltv).toBe(3400);         // 7000 - 3000 - 500 - 100: each credit note subtracted exactly once
+    expect(set.validOrders).toBe(2);    // NLF-2 and NLF-3
+    expect(set.aov).toBe(1700);
+    expect(set.aovSegment).toBe('aov_1000_1999');
+  });
+
+  it('every purchase returned or refunded: no valid orders, so no AOV segment', async () => {
+    const { svc, statsModel } = make([], [{ invoiceNo: 'NLF-9', createdAt: day(5), total: 999.5, items: [] }], [{ grandTotal: 999.5, refInvoiceNo: 'NLF-9' }]);
+    await svc.refreshUser(uid);
+    const set = statsModel.findOneAndUpdate.mock.calls[0][1].$set;
+    expect(set).toMatchObject({ segment: 'no_orders', ltv: 0, validOrders: 0, aovSegment: null });
   });
 
   it('refreshing twice gives the same LTV (recomputed from source, never accumulated)', async () => {
@@ -66,6 +93,7 @@ describe('CrmEngineService.refreshUser LTV', () => {
     const set = statsModel.findOneAndUpdate.mock.calls[0][1].$set;
     expect(set.ltv).toBe(1250); // 1000 - 150 + 400; o2 fully refunded
     expect(set.aov).toBe(625);  // over the 2 orders that still count
+    expect(set.validOrders).toBe(2);
     const pipeline = orderModel.aggregate.mock.calls[0][0];
     expect(pipeline[0].$match.$or).toBeDefined(); // shared purchase definition, not just 'delivered'
     // orders / bills with no line items are still counted (the history lists them)
@@ -95,8 +123,8 @@ describe('CrmEngineService.refreshAll (historical recalculation)', () => {
 
 describe('CrmEngineService.needsCatchUp (missed 2 AM run)', () => {
   const H = 3_600_000, now = Date.UTC(2026, 10, 20, 12);
-  const make = (count: number, last: any) => new (CrmEngineService as any)(
-    { countDocuments: () => Promise.resolve(count) }, {},
+  const make = (count: number, last: any, unsegmented = false) => new (CrmEngineService as any)(
+    { countDocuments: () => Promise.resolve(count), exists: () => Promise.resolve(unsegmented ? { _id: 'x' } : null) }, {},
     { findOne: () => ({ sort: () => ({ select: () => ({ lean: () => Promise.resolve(last) }) }) }) },
   ) as CrmEngineService;
 
@@ -109,5 +137,10 @@ describe('CrmEngineService.needsCatchUp (missed 2 AM run)', () => {
     ['a run started 5h ago never finished (crashed)', 10, { startedAt: now - 5 * H }, true],
   ])('%s', async (_label, count, last, want) => {
     expect(await make(count as number, last).needsCatchUp(now)).toBe(want);
+  });
+
+  it('ran last night but some customers have no AOV segment yet (first deploy): backfill now', async () => {
+    expect(await make(10, { startedAt: now - 10 * H, finishedAt: now - 10 * H }, true).needsCatchUp(now)).toBe(true);
+    expect(await make(10, { startedAt: now - H / 6 }, true).needsCatchUp(now)).toBe(false); // never start a second concurrent run
   });
 });

@@ -22,6 +22,7 @@ import { BillingBill } from '../billing/schemas/billing-bill.schema';
 import { CrmLogicSet } from './schemas/crm-logic-set.schema';
 import { DEFAULT_CRM_FORMULAS, DEFAULT_CRM_RULES, type CrmRules } from './engine/crm-formulas';
 import { PURCHASE_ORDER_MATCH, withNetTotals } from './crm-purchases';
+import { aovSegment } from './engine/aov-segments';
 
 /** Net lifetime value: finalized purchases minus returns/refunds, in rupees (2 dp), never below 0.
  *  `purchases` are already net: cancelled bills excluded, refunded online orders counted after their refund. */
@@ -72,7 +73,8 @@ export class CrmEngineService implements OnModuleInit {
     if (count === 0) return true;
     if (!last) return true;
     if (!last.finishedAt) return now - +new Date(last.startedAt ?? 0) > 3_600_000; // stuck or crashed run
-    return now - +new Date(last.finishedAt) > 26 * 3_600_000;
+    if (now - +new Date(last.finishedAt) > 26 * 3_600_000) return true;
+    return !!(await this.statsModel.exists({ validOrders: { $exists: false } })); // AOV segments never computed for these
   }
 
   /** The rules in force: newest published formulas over the built-ins, plus the stored numbers. */
@@ -163,6 +165,7 @@ export class CrmEngineService implements OnModuleInit {
             _id: '$_id',
             createdAt: { $first: '$createdAt' },
             total: { $first: '$grandTotal' },
+            invoiceNo: { $first: '$invoiceNo' },
             items: {
               $push: {
                 productName: '$items.name',
@@ -176,12 +179,17 @@ export class CrmEngineService implements OnModuleInit {
       ]),
       // returns / refunds issued from Billing (active credit notes; a cancelled credit note no longer reduces LTV)
       this.billModel.find({ customerId: uid, status: 'active', docType: 'CREDIT_NOTE' })
-        .setOptions({ allDocTypes: true }).select('grandTotal').lean<{ grandTotal?: number }[]>(),
+        .setOptions({ allDocTypes: true }).select('grandTotal refInvoiceNo').lean<{ grandTotal?: number; refInvoiceNo?: string }[]>(),
     ]);
 
     // refunded-after-delivery orders count net of the refund; fully refunded ones drop out
     const netOrders = (await withNetTotals(this.paymentModel, orderRows)).filter(o => o.netTotal > 0).map(o => ({ ...o, total: o.netTotal }));
-    const rows = [...netOrders, ...billRows].sort(
+    // LTV subtracts every credit note once; a bill its credit notes fully return is no longer a valid order
+    const ltv = netLtv([...netOrders, ...billRows], returns);
+    const returnedPaise = new Map<string, number>();
+    for (const r of returns) if (r.refInvoiceNo) returnedPaise.set(r.refInvoiceNo, (returnedPaise.get(r.refInvoiceNo) ?? 0) + Math.round((Number(r.grandTotal) || 0) * 100));
+    const validBills = billRows.filter((b: any) => Math.round((Number(b.total) || 0) * 100) > (returnedPaise.get(b.invoiceNo) ?? 0));
+    const rows = [...netOrders, ...validBills].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
 
@@ -204,6 +212,8 @@ export class CrmEngineService implements OnModuleInit {
             topProduct: '',
             ltv: 0,
             aov: 0,
+            validOrders: 0,
+            aovSegment: null,
             priorityScore: 0,
             priorityBand: 'low',
             nameMissing,
@@ -215,8 +225,7 @@ export class CrmEngineService implements OnModuleInit {
     }
 
     const totalOrders = rows.length;
-    const ltv = netLtv(rows, returns);
-    const aov = Math.round(ltv / totalOrders);
+    const aov = Math.round((ltv / totalOrders) * 100) / 100; // display only; the segment compares exact paise
     const lastOrderDate: Date = new Date(rows[0].createdAt);
 
     const catQty: Record<string, number> = {};
@@ -272,6 +281,8 @@ export class CrmEngineService implements OnModuleInit {
           topProduct,
           ltv,
           aov,
+          validOrders: totalOrders,
+          aovSegment: aovSegment(ltv, totalOrders),
           priorityScore,
           priorityBand,
           nameMissing,

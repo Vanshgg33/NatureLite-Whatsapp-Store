@@ -35,3 +35,12 @@ const SEGMENT_LABEL: Record<string, string> = {
 export function segmentLabel(seg: string): string {
   return SEGMENT_LABEL[seg] ?? seg;
 }
+
+/** CRM Segments by AOV; keys match the backend's engine/aov-segments. */
+export const AOV_SEGMENTS = [
+  { key: 'aov_below_1000', name: 'Below ₹1,000' },
+  { key: 'aov_1000_1999', name: '₹1,000–₹1,998.99' },
+  { key: 'aov_1999_2999', name: '₹1,999–₹2,998.99' },
+  { key: 'aov_2999_3999', name: '₹2,999–₹3,998.99' },
+  { key: 'aov_3999_plus', name: '₹3,999 and above' },
+] as const;

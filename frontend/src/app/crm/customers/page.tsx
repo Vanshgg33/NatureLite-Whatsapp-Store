@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation';
 import { Search, ChevronRight, ChevronLeft, AlertTriangle, SlidersHorizontal } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useDebouncedValue } from '@/lib/utils';
-import { formatINR, segmentLabel } from '@/lib/crm/format';
+import { AOV_SEGMENTS, formatINR, segmentLabel } from '@/lib/crm/format';
 import { CustomerAvatar } from '@/components/crm/CustomerAvatar';
 import { Pill } from '@/components/crm/Pill';
 import { LateBar } from '@/components/crm/LateBar';
@@ -126,7 +126,7 @@ export default function CustomersPage() {
   const [segment, setSegment] = useState('');
   const [issues, setIssues] = useState(false);
   const [page, setPage] = usePageState('page', 1);
-  const [extra, setExtra] = useState({ minLtv: '', maxLtv: '', minDaysLate: '', tag: '', complaint: false });
+  const [extra, setExtra] = useState({ minLtv: '', maxLtv: '', minDaysLate: '', tag: '', complaint: false, aovSegment: '' });
   const [ready, setReady] = useState(false); // filters are read from the URL after mount (avoids a hydration mismatch)
   const [viewId, setViewId] = usePageState('viewId', '');
   const dSearch = useDebouncedValue(search, 350);
@@ -155,7 +155,7 @@ export default function CustomersPage() {
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     setSegment(q.get('segment') ?? ''); setSearch(q.get('search') ?? ''); setIssues(q.get('issues') === '1');
-    setExtra({ minLtv: q.get('minLtv') ?? '', maxLtv: q.get('maxLtv') ?? '', minDaysLate: q.get('minDaysLate') ?? '', tag: q.get('tag') ?? '', complaint: q.get('complaint') === '1' });
+    setExtra({ minLtv: q.get('minLtv') ?? '', maxLtv: q.get('maxLtv') ?? '', minDaysLate: q.get('minDaysLate') ?? '', tag: q.get('tag') ?? '', complaint: q.get('complaint') === '1', aovSegment: q.get('aovSegment') ?? '' });
     setReady(true);
   }, []);
   useEffect(() => {
@@ -169,6 +169,7 @@ export default function CustomersPage() {
     if (extra.minDaysLate) q.set('minDaysLate', extra.minDaysLate);
     if (extra.tag) q.set('tag', extra.tag);
     if (extra.complaint) q.set('complaint', '1');
+    if (extra.aovSegment) q.set('aovSegment', extra.aovSegment);
     window.history.replaceState(null, '', q.toString() ? `?${q}` : window.location.pathname);
   }, [ready, segment, search, issues, extra]);
 
@@ -178,12 +179,12 @@ export default function CustomersPage() {
     const f = (views as any[]).find(v => v._id === id)?.filters;
     if (!f) return;
     setSegment(f.segment ?? ''); setSearch(f.search ?? ''); setIssues(!!f.isEscalated); setPage(1);
-    setExtra({ minLtv: f.minLtv != null ? String(f.minLtv) : '', maxLtv: f.maxLtv != null ? String(f.maxLtv) : '', minDaysLate: f.minDaysLate != null ? String(f.minDaysLate) : '', tag: f.tag ?? '', complaint: !!f.hasComplaint });
+    setExtra({ minLtv: f.minLtv != null ? String(f.minLtv) : '', maxLtv: f.maxLtv != null ? String(f.maxLtv) : '', minDaysLate: f.minDaysLate != null ? String(f.minDaysLate) : '', tag: f.tag ?? '', complaint: !!f.hasComplaint, aovSegment: f.aovSegment ?? '' });
   };
   const saveView = useMutation({
     mutationFn: (name: string) => api.saveCrmView({
       name, shared: window.confirm('Share this view with the team? (Cancel keeps it private)'),
-      filters: { segment, search, isEscalated: issues, minLtv: extra.minLtv, maxLtv: extra.maxLtv, minDaysLate: extra.minDaysLate, tag: extra.tag, hasComplaint: extra.complaint },
+      filters: { segment, search, isEscalated: issues, minLtv: extra.minLtv, maxLtv: extra.maxLtv, minDaysLate: extra.minDaysLate, tag: extra.tag, hasComplaint: extra.complaint, aovSegment: extra.aovSegment },
     }),
     onSuccess: (v) => { qc.invalidateQueries({ queryKey: ['crm-views'] }); setViewId(v._id); },
   });
@@ -198,7 +199,7 @@ export default function CustomersPage() {
       search: dSearch || undefined,
       isEscalated: issues || undefined,
       minLtv: extra.minLtv || undefined, maxLtv: extra.maxLtv || undefined, minDaysLate: extra.minDaysLate || undefined,
-      tag: extra.tag || undefined, hasComplaint: extra.complaint || undefined,
+      tag: extra.tag || undefined, hasComplaint: extra.complaint || undefined, aovSegment: extra.aovSegment || undefined,
       page,
     }),
   });
@@ -301,6 +302,10 @@ export default function CustomersPage() {
           <input aria-label="Minimum days late" type="number" min={0} placeholder="Days late ≥" value={extra.minDaysLate} onChange={e => setX('minDaysLate', e.target.value)} className="px-2 py-1.5 rounded-lg w-28" style={{ border: '1px solid var(--crm-line)' }} />
           <input aria-label="Tag" placeholder="Tag" value={extra.tag} onChange={e => setX('tag', e.target.value)} className="px-2 py-1.5 rounded-lg w-24" style={{ border: '1px solid var(--crm-line)' }} />
           <label className="flex items-center gap-1"><input type="checkbox" checked={extra.complaint} onChange={e => setX('complaint', e.target.checked)} /> Open complaint</label>
+          <select aria-label="AOV segment" value={extra.aovSegment} onChange={e => setX('aovSegment', e.target.value)} className="px-2 py-1.5 rounded-lg" style={{ border: '1px solid var(--crm-line)' }}>
+            <option value="">Any AOV</option>
+            {AOV_SEGMENTS.map(s => <option key={s.key} value={s.key}>AOV {s.name}</option>)}
+          </select>
           <span className="ml-auto flex items-center gap-2">
             <select aria-label="Saved views" value={viewId} onChange={e => applyView(e.target.value)} className="px-2 py-1.5 rounded-lg" style={{ border: '1px solid var(--crm-line)' }}>
               <option value="">Saved views…</option>
