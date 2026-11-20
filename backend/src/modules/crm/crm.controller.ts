@@ -15,6 +15,7 @@ import { CrmOpsService } from './crm-ops.service';
 import { parseExtraFilters } from './crm-filters';
 import { CallOutcome } from './schemas/crm-call-log.schema';
 import { RequireAccess } from '../../common/decorators/require-access.decorator';
+import { parseObjectId } from '../../common/utils/objectid.util';
 
 @Controller('crm')
 @UseGuards(RolesGuard)
@@ -57,6 +58,7 @@ export class CrmController {
   @Get('customers/:id')
   @RequireAccess('crm_customers.view', 'crm_caller.view')
   async getCustomer360(@Param('id') id: string) {
+    parseObjectId(id, 'customer id'); // 400 for a bad link instead of a 500
     const [c360, bills] = await Promise.all([this.crm.getCustomer360(id), this.foundation.customerBills(id)]);
     return { ...c360, bills };
   }

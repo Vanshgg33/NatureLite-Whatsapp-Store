@@ -72,3 +72,23 @@ describe('CrmEngineService.refreshUser LTV', () => {
     expect(pipeline.find((st: any) => st.$unwind && (st.$unwind.path ?? st.$unwind) === '$items').$unwind.preserveNullAndEmptyArrays).toBe(true);
   });
 });
+
+describe('CrmEngineService.refreshAll (historical recalculation)', () => {
+  const lean = (v: any) => ({ lean: () => Promise.resolve(v) });
+  it('recalculates every customer in batches of at most 50, and zeroes the rank of customers whose LTV fell to 0', async () => {
+    const users = Array.from({ length: 120 }, (_, i) => ({ _id: `u${i}` }));
+    const statsModel = {
+      find: () => ({ select: () => lean([]) }),
+      updateOne: jest.fn(), updateMany: jest.fn().mockResolvedValue({}), aggregate: jest.fn().mockResolvedValue([]),
+    };
+    const runModel = { create: jest.fn().mockResolvedValue({ _id: 'r1' }), updateOne: jest.fn().mockResolvedValue({}) };
+    const svc: any = new (CrmEngineService as any)(statsModel, { findOne: () => lean(null) }, runModel, {}, { find: () => ({ select: () => lean(users) }) }, {}, { findOne: () => ({ sort: () => lean(null) }) }, {});
+    let running = 0, peak = 0; const done: string[] = [];
+    svc.refreshUser = jest.fn(async (id: string) => { running++; peak = Math.max(peak, running); await new Promise(r => setImmediate(r)); running--; done.push(id); });
+    await svc.refreshAll('manual');
+    expect(done).toHaveLength(120);
+    expect(peak).toBeLessThanOrEqual(50);
+    expect(statsModel.updateMany).toHaveBeenCalledWith({ ltv: { $lte: 0 }, ltvPct: { $ne: 0 } }, { $set: { ltvPct: 0 } });
+    expect(runModel.updateOne.mock.calls[0][1].$set.customersProcessed).toBe(120);
+  });
+});

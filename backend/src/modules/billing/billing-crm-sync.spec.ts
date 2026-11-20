@@ -51,3 +51,47 @@ describe('Returns (credit notes) cannot double-count a refund', () => {
     await expect(make(null, []).check(100)).rejects.toThrow('not found');
   });
 });
+
+describe('Billing customers: one customer per phone however it is typed', () => {
+  function make(existing: any = null, createImpl?: any) {
+    const userModel: any = {
+      findOne: jest.fn((q: any) => ({ lean: () => Promise.resolve(q.phone ? existing : null) })),
+      create: jest.fn(createImpl ?? ((d: any) => Promise.resolve({ _id: 'u1', ...d }))),
+      find: jest.fn(() => ({ limit: () => ({ lean: () => Promise.resolve([]) }) })),
+    };
+    const crmEngine = { refreshUser: jest.fn().mockResolvedValue(undefined) };
+    const svc: any = new (BillingService as any)(userModel, {}, {}, {}, {}, {}, crmEngine);
+    svc.mapUser = (u: any) => u;
+    return { svc, userModel };
+  }
+
+  it.each(['9876543210', '09876543210', '+91 98765-43210', '919876543210'])('"%s" is stored and looked up as 919876543210', async (typed) => {
+    const { svc, userModel } = make();
+    await svc.createCustomer({ name: 'Asha', phone: typed });
+    expect(userModel.findOne.mock.calls[0][0]).toEqual({ phone: '919876543210' });
+    expect(userModel.create.mock.calls[0][0].phone).toBe('919876543210');
+  });
+
+  it('an existing customer typed with a 0 prefix is refused, not duplicated', async () => {
+    const { svc, userModel } = make({ _id: 'old', phone: '919876543210' });
+    await expect(svc.createCustomer({ name: 'Asha', phone: '09876543210' })).rejects.toThrow('already exists');
+    expect(userModel.create).not.toHaveBeenCalled();
+  });
+
+  it('two counters creating the same number at once: the loser gets a clear conflict, not a server error', async () => {
+    const { svc } = make(null, () => Promise.reject(Object.assign(new Error('E11000 duplicate key'), { code: 11000 })));
+    await expect(svc.createCustomer({ name: 'Asha', phone: '9876543210' })).rejects.toThrow('already exists');
+  });
+
+  it('too-short numbers are rejected', async () => {
+    await expect(make().svc.createCustomer({ name: 'Asha', phone: '12345' })).rejects.toThrow('valid phone');
+  });
+
+  it('search by a full number with 0 / +91 prefix matches on the last 10 digits', async () => {
+    const { svc, userModel } = make();
+    await svc.searchCustomers('09876543210');
+    await svc.searchCustomers('98765');
+    expect(userModel.find.mock.calls[0][0].$or[1]).toEqual({ phone: { $regex: '9876543210' } });
+    expect(userModel.find.mock.calls[1][0].$or[1]).toEqual({ phone: { $regex: '98765' } });
+  });
+});

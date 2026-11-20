@@ -12,6 +12,7 @@ import { StoresService } from '../stores/stores.service';
 import { BillingWhatsappService } from './billing-whatsapp.service';
 import { BillingStockService } from './billing-stock.service';
 import { User } from '../users/schemas/user.schema';
+import { UsersService } from '../users/users.service';
 import { TaxSettingsService } from './tax-settings/tax-settings.service';
 import { LogicsService } from './logics/logics.service';
 import { calcBill, CalcResult } from './logics/formula-engine';
@@ -148,7 +149,8 @@ export class BillingService {
     }
     const digits = q.replace(/[^\d]/g, '');
     const orConds: any[] = [{ name: { $regex: escapeRegex(q.trim()), $options: 'i' } }];
-    if (digits) orConds.push({ phone: { $regex: digits } });
+    // 098…, +91 98… and 98… all find 9198…: a full number is matched on its last 10 digits
+    if (digits) orConds.push({ phone: { $regex: digits.length > 10 ? digits.slice(-10) : digits } });
     const users = await this.userModel.find({ $or: orConds }).limit(20).lean();
     return users.map(u => this.mapUser(u));
   }
@@ -168,9 +170,8 @@ export class BillingService {
     addresses?: Array<{ label: string; line: string; isDefault?: boolean }>;
   }) {
     if (!data?.name?.trim()) throw new BadRequestException('Customer name is required');
-    // Normalize phone: 10-digit → 91XXXXXXXXXX
-    const digits = String(data.phone ?? '').replace(/[^\d]/g, '');
-    const normalizedPhone = digits.length === 10 ? '91' + digits : digits;
+    // Same canonical form as every other customer entry point (91XXXXXXXXXX), so 98…, 098… and +91 98… are one customer
+    const normalizedPhone = UsersService.normalizePhone(String(data.phone ?? '')) ?? '';
     if (!/^\d{10,15}$/.test(normalizedPhone)) throw new BadRequestException('Enter a valid phone number (at least 10 digits)');
     const gstNo = data.gstNo?.trim().toUpperCase() || undefined;
     if (gstNo && !isValidGstin(gstNo)) throw new BadRequestException('Enter a valid 15-character GSTIN');
@@ -197,6 +198,10 @@ export class BillingService {
       tags: data.tags ?? [],
       billingAddresses,
       isActive: true,
+    }).catch((e: any) => {
+      // two counters adding the same number at once: the unique phone index lets one through
+      if (e?.code === 11000) throw new ConflictException('Customer with this phone already exists');
+      throw e;
     });
     this.crmEngine.refreshUser(u._id).catch(() => {});
     return this.mapUser(u);

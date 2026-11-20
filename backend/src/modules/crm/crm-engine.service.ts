@@ -31,6 +31,8 @@ export function netLtv(purchases: { total?: number }[], returns: { grandTotal?: 
   return Math.max(0, Math.round((gross - back) * 100) / 100);
 }
 
+const REFRESH_BATCH = 50;
+
 interface SettingsSnapshot {
   reorderCycles: Record<string, number>;
   fallbackCycleDays: number;
@@ -284,15 +286,20 @@ export class CrmEngineService implements OnModuleInit {
     const rules = await this.loadRules();
     const users = await this.userModel.find().select('_id').lean();
 
-    await Promise.all(
-      users.map((u: any) =>
-        this.refreshUser(u._id).catch(err => {
-          const msg = `user ${u._id}: ${err.message}`;
-          errors.push(msg);
-          this.logger.warn(`CRM refresh failed for ${msg}`);
-        }),
-      ),
-    );
+    // in batches: every customer at once would queue thousands of aggregations on the connection pool
+    for (let i = 0; i < users.length; i += REFRESH_BATCH) {
+      await Promise.all(
+        users.slice(i, i + REFRESH_BATCH).map((u: any) =>
+          this.refreshUser(u._id).catch(err => {
+            const msg = `user ${u._id}: ${err.message}`;
+            errors.push(msg);
+            this.logger.warn(`CRM refresh failed for ${msg}`);
+          }),
+        ),
+      );
+    }
+    // a customer whose net LTV fell to 0 (all returned / refunded) must not keep an old value rank
+    await this.statsModel.updateMany({ ltv: { $lte: 0 }, ltvPct: { $ne: 0 } }, { $set: { ltvPct: 0 } });
 
     // Recompute LTV percentiles and priority for all customers with orders
     const allStats = await this.statsModel
