@@ -2621,6 +2621,46 @@ class ApiClient {
     await this.client.post('/crm/heartbeat', {});
   }
 
+  // ─── Caller Command Center ────────────────────────────────────────────────
+  private async cc<T = any>(method: 'get' | 'post' | 'patch' | 'put', path: string, body?: unknown): Promise<T> {
+    const res = method === 'get'
+      ? await this.client.get<ApiResponse<T>>(`/crm/caller${path}`)
+      : await this.client[method]<ApiResponse<T>>(`/crm/caller${path}`, body ?? {});
+    return res.data.data as T;
+  }
+  callerShift() { return this.cc('get', '/shift'); }
+  callerShiftAction(action: 'start' | 'break' | 'resume' | 'end', reason?: string) { return this.cc('post', '/shift', { action, reason }); }
+  callerHeartbeat(interacted: boolean) { return this.cc('post', '/heartbeat', { interacted }); }
+  callerSetMode(mode: string) { return this.cc('post', '/mode', { mode }); }
+  callerNext(mode?: string) { return this.cc('get', `/next${mode ? `?mode=${encodeURIComponent(mode)}` : ''}`); }
+  callerSkip(assignmentId: string, reason: string) { return this.cc('post', '/skip', { assignmentId, reason }); }
+  callerPullMore() { return this.cc('post', '/pull-more'); }
+  callerWarmup() { return this.cc('post', '/warmup'); }
+  callerStartCall(customerId: string) { return this.cc('post', '/calls/start', { customerId }); }
+  callerHangup() { return this.cc('post', '/calls/hangup'); }
+  callerEndCall(data: { customerId: string; outcome: string; notes?: string; callbackAt?: string; reason?: string }) { return this.cc('post', '/calls/end', data); }
+  callerMe() { return this.cc('get', '/me'); }
+  callerList(params: Record<string, string | undefined>) {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== '') as [string, string][]).toString();
+    return this.cc('get', `/list${qs ? `?${qs}` : ''}`);
+  }
+  callerReport(date?: string) { return this.cc('get', `/report${date ? `?date=${date}` : ''}`); }
+  callerReminders(scope?: 'all', customerId?: string) {
+    const qs = new URLSearchParams({ ...(scope ? { scope } : {}), ...(customerId ? { customerId } : {}) }).toString();
+    return this.cc('get', `/reminders${qs ? `?${qs}` : ''}`);
+  }
+  callerAddReminder(data: { customerId?: string; callerId?: string; dueAt?: string; text: string }) { return this.cc('post', '/reminders', data); }
+  callerUpdateReminder(id: string, data: { action: 'done' | 'snooze' | 'reschedule'; minutes?: number; dueAt?: string }) { return this.cc('patch', `/reminders/${id}`, data); }
+  callerLive() { return this.cc('get', '/live'); }
+  callerDistribute(mode: 'fresh' | 'rebalance', dryRun = false) { return this.cc('post', '/distribute', { mode, dryRun }); }
+  callerForceMode(callerId: string, mode: string | null, minutes?: number) { return this.cc('post', `/callers/${callerId}/force-mode`, { mode, minutes }); }
+  callerReassign(callerId: string) { return this.cc('post', `/callers/${callerId}/reassign`); }
+  callerPullFor(callerId: string) { return this.cc('post', `/callers/${callerId}/pull-more`); }
+  callerPause(callerId: string) { return this.cc('post', `/callers/${callerId}/pause`); }
+  callerDuel(a: string, b: string, minutes?: number) { return this.cc('post', '/duel', { a, b, minutes }); }
+  callerSettings() { return this.cc('get', '/settings'); }
+  callerSaveSettings(data: unknown) { return this.cc('put', '/settings', data); }
+
   async getCrmEmployeeStats(id: string, days?: number): Promise<any> {
     const qs = days ? `?days=${days}` : '';
     const res = await this.client.get<ApiResponse<any>>(`/crm/admin/employees/${id}/analytics${qs}`);

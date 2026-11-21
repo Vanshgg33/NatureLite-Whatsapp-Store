@@ -21,6 +21,8 @@ import { BillStatusPill } from '@/components/crm/BillStatusPill';
 import { billEvents, type BillEvent } from '@/lib/crm/bill-events';
 import { CALL_OUTCOMES } from '@/components/crm/LogCallPanel';
 import { CrmBillSheet, useCanBillFromCrm } from '@/components/crm/CrmBillSheet';
+import { CustomerReminders } from '@/components/crm/CustomerReminders';
+import { getApiError } from '@/lib/api-error';
 import type { PillVariant } from '@/components/crm/Pill';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -231,9 +233,9 @@ export default function Customer360Page() {
   const invalidate = () => qc.invalidateQueries({ queryKey: ['crm-customer360', id] });
 
   const { mutate: logCall, isPending: loggingCall } = useMutation({
-    mutationFn: () => api.logCrmCall({ customerId: id, outcome: callOutcome, notes: callNotes, callbackAt: callbackAt || undefined }),
+    mutationFn: () => api.logCrmCall({ customerId: id, outcome: callOutcome, notes: callNotes, callbackAt: callbackAt ? new Date(callbackAt).toISOString() : undefined }),
     onSuccess: () => { toast({ title: callOutcome === 'ordered' ? '✓ Order conversion!' : 'Call logged' }); setCallOutcome(''); setCallNotes(''); setCallbackAt(''); invalidate(); },
-    onError: () => toast({ title: 'Failed', variant: 'destructive' }),
+    onError: (e) => toast({ title: 'Could not log the call', description: getApiError(e), variant: 'destructive' }),
   });
   const { mutate: addNote, isPending: addingNote } = useMutation({
     mutationFn: () => api.addCrmNote(id, noteText),
@@ -535,6 +537,8 @@ export default function Customer360Page() {
 
           <ComplaintsCard customerId={id} orders={orders as any[]} />
 
+          <div className="crm-card-v2 p-5"><CustomerReminders customerId={id} /></div>
+
           {/* Action panels */}
           <div className="crm-card-v2 overflow-hidden">
             {/* Panel tabs */}
@@ -595,7 +599,7 @@ export default function Customer360Page() {
                   )}
                   <button
                     onClick={() => callOutcome && logCall()}
-                    disabled={!callOutcome || loggingCall}
+                    disabled={!callOutcome || loggingCall || (callOutcome === 'callback' && !callbackAt)}
                     className="w-full py-2.5 rounded-xl text-[13px] font-semibold disabled:opacity-40 transition-opacity"
                     style={{ background: 'var(--crm-forest)', color: 'var(--crm-gold)' }}
                   >

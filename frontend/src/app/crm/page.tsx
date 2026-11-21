@@ -11,6 +11,7 @@ import { BillStatusPill } from '@/components/crm/BillStatusPill';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { ProgressRing } from '@/components/crm/ProgressRing';
 import { StackedBar, type SegmentSlice } from '@/components/crm/StackedBar';
+import { MyDayPanel } from '@/components/crm/MyDayPanel';
 
 
 const SEG_COLORS: Record<string, string> = {
@@ -214,7 +215,7 @@ export default function CrmDashboardPage() {
           </p>
         </div>
         <Link
-          href="/crm/queue"
+          href="/crm/caller"
           className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-opacity hover:opacity-80"
           style={{ background: 'var(--crm-forest)', color: 'var(--crm-gold)' }}
         >
@@ -222,7 +223,8 @@ export default function CrmDashboardPage() {
         </Link>
       </div>
 
-      <div className="p-7 space-y-6">
+      <div className="p-4 sm:p-7 space-y-6">
+        <MyDayPanel />
         {/* § 3.3 Hero row */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {/* Mission card — dark forest bg */}

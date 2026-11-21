@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Bell, Target, Users, Layers, Repeat, Gift, GitMerge, ListChecks, Phone, CalendarClock,
   MessageCircle, Megaphone, FileText, Zap, ShoppingCart, UserPlus, TrendingUp, Store, AlertTriangle, Star,
-  Receipt, Package, Ticket, Briefcase, BarChart3, Trophy, Sparkles, Shield, ScrollText, Lock, Plug, Settings,
+  Receipt, Package, Ticket, Briefcase, BarChart3, Trophy, Sparkles, Shield, ScrollText, Lock, Plug, Settings, Radio,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -32,6 +32,7 @@ export const NAV_GROUPS: NavGroup[] = [
     { label: 'Call queue', href: '/crm/queue', icon: ListChecks, module: 'M10', priority: 'P2', page: 'crm_queue' },
     { label: 'Caller mode', href: '/crm/caller', icon: Phone, module: 'M11', priority: 'P1', page: 'crm_caller' },
     { label: 'Callbacks', href: '/crm/callbacks', icon: CalendarClock, module: 'M12', priority: 'P2', page: 'crm_callbacks' },
+    { label: 'Live Board', href: '/crm/live', icon: Radio, module: 'CC', priority: 'P1', page: 'crm_team', adminOnly: true },
   ] },
   { label: 'WhatsApp', items: [
     { label: 'Inbox', href: '/crm/inbox', icon: MessageCircle, module: 'M14', priority: 'P1', page: 'crm_inbox', adminOnly: true },

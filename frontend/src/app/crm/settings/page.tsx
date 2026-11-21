@@ -7,6 +7,8 @@ import { Settings, RefreshCw, Clock, Save, AlertTriangle, Star, Target, Globe, F
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
 
+import { CallerSettingsSection } from '@/components/crm/CallerSettingsSection';
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function Section({ icon: Icon, iconColor, title, sub, children, delay = 0 }: {
@@ -258,6 +260,7 @@ export default function CrmSettingsPage() {
             <EngineRunStatus run={(data as any)?.lastEngineRun} />
           </div>
         </Section>
+        <CallerSettingsSection />
       </div>
     </div>
   );

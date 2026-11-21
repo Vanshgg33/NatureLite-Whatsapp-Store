@@ -434,6 +434,8 @@ export class CrmService {
     outcome: CallOutcome;
     notes?: string;
     callbackAt?: string;
+    /** Caller Command Center fields (timer, mode, attempt, flags) */
+    extra?: Record<string, unknown>;
   }) {
     const customerId = new Types.ObjectId(dto.customerId);
     const agentId = new Types.ObjectId(dto.agentId);
@@ -444,6 +446,7 @@ export class CrmService {
       notes: dto.notes ?? '',
       callbackAt: dto.callbackAt ? new Date(dto.callbackAt) : null,
       istDate: istDateKey(),
+      ...(dto.extra ?? {}),
     });
 
     // Win-back: customer ordered after being dormant or lost

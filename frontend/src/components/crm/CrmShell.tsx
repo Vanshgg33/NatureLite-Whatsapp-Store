@@ -14,6 +14,7 @@ import { useAdminAccess } from '@/lib/admin-access';
 import { NAV_GROUPS } from './nav.config';
 import { useNavVisibility } from './useNavVisibility';
 import CommandPalette from './CommandPalette';
+import { ReminderBell } from './ReminderBell';
 
 const ROLE_LABEL: Record<string, string> = {
   crm_head:    'CRM Head',
@@ -261,6 +262,19 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
   const crmRoles = ['crm_head', 'crm_manager', 'crm_senior', 'crm_viewer'];
   const isCrmEmployee = isAuthenticated && !!user?.departmentType && crmRoles.includes(user.departmentType);
 
+  // Caller presence for the Live Board: every 20 s from any CRM page, flagging whether the caller touched the page
+  useEffect(() => {
+    if (!isCrmEmployee || user?.departmentType !== 'crm_senior') return;
+    let touched = true;
+    const mark = () => { touched = true; };
+    const evs = ['mousemove', 'keydown', 'click', 'touchstart'] as const;
+    evs.forEach((e) => window.addEventListener(e, mark, { passive: true }));
+    const beat = () => { api.callerHeartbeat(touched).catch(() => {}); touched = false; };
+    beat();
+    const id = setInterval(beat, 20_000);
+    return () => { clearInterval(id); evs.forEach((e) => window.removeEventListener(e, mark)); };
+  }, [isCrmEmployee, user?.departmentType]);
+
   useEffect(() => {
     if (!isCrmEmployee) return;
     api.crmHeartbeat().catch(() => {});
@@ -276,22 +290,23 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
       <CommandPalette />
 
       <div className="flex flex-1 flex-col min-w-0">
-        {/* Mobile top bar */}
+        {/* Top bar: menu + title on mobile, reminder bell everywhere */}
         <div
-          className="flex md:hidden h-12 items-center gap-3 px-4 flex-shrink-0"
+          className="flex h-12 md:h-11 items-center gap-3 px-4 flex-shrink-0"
           style={{ background: 'var(--crm-paper)', borderBottom: '1px solid var(--crm-line)' }}
         >
           <button
             onClick={() => setSidebarOpen(true)}
             aria-label="Open menu"
-            className="h-9 w-9 flex items-center justify-center rounded-lg"
+            className="md:hidden h-9 w-9 flex items-center justify-center rounded-lg"
             style={{ background: 'var(--crm-sand)' }}
           >
             <Menu className="h-4 w-4" style={{ color: 'var(--crm-ink)' }} />
           </button>
-          <span className="font-semibold text-sm" style={{ color: 'var(--crm-ink)', fontFamily: 'var(--font-sans)' }}>
+          <span className="md:hidden font-semibold text-sm" style={{ color: 'var(--crm-ink)', fontFamily: 'var(--font-sans)' }}>
             NatureLite CRM
           </span>
+          <div className="ml-auto"><ReminderBell /></div>
         </div>
 
         <main className="flex-1 overflow-auto">

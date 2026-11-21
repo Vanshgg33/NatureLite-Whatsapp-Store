@@ -12,6 +12,7 @@ import { CrmService } from './crm.service';
 import { CrmFoundationService } from './crm-foundation.service';
 import { CrmInsightsService } from './crm-insights.service';
 import { CrmOpsService } from './crm-ops.service';
+import { CrmCallerService } from './crm-caller.service';
 import { parseExtraFilters } from './crm-filters';
 import { CallOutcome } from './schemas/crm-call-log.schema';
 import { RequireAccess } from '../../common/decorators/require-access.decorator';
@@ -21,7 +22,7 @@ import { parseObjectId } from '../../common/utils/objectid.util';
 @UseGuards(RolesGuard)
 @Roles('admin', 'superadmin')
 export class CrmController {
-  constructor(private readonly crm: CrmService, private readonly foundation: CrmFoundationService, private readonly insights: CrmInsightsService, private readonly ops: CrmOpsService) {}
+  constructor(private readonly crm: CrmService, private readonly foundation: CrmFoundationService, private readonly insights: CrmInsightsService, private readonly ops: CrmOpsService, private readonly caller: CrmCallerService) {}
 
   private notViewer(user: JwtPayload) {
     if (user.departmentType === 'crm_viewer') throw new ForbiddenException('Viewers are read-only');
@@ -126,7 +127,9 @@ export class CrmController {
     @Body() body: { customerId: string; outcome: CallOutcome; notes?: string; callbackAt?: string },
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.crm.logCall({ ...body, agentId: user.sub, agentName: user.name ?? 'Agent' });
+    this.notViewer(user);
+    // same path as the Caller cockpit: attempt ladder, callbacks, reminders (fixes callbacks never reaching the Callbacks page)
+    return this.caller.logDisposition(user, body).then((r) => r.log);
   }
 
   @Get('calls/:customerId')

@@ -32,8 +32,11 @@ export class RolesGuard implements CanActivate {
       );
     }
 
-    // CRM and FMS roles get full read/write access to their allowed modules — no handler restriction
-    const isCrmRole = user.departmentType === 'crm_head' || user.departmentType === 'crm_senior';
+    // CRM and FMS roles get full read/write access to their allowed modules — no handler restriction.
+    // CRM managers / viewers reach the CRM controllers only (write limits live in those controllers and AccessGuard).
+    const crmController = /^Crm/.test(context.getClass()?.name ?? '');
+    const isCrmRole = user.departmentType === 'crm_head' || user.departmentType === 'crm_senior'
+      || (crmController && (user.departmentType === 'crm_manager' || user.departmentType === 'crm_viewer'));
     const isFmsRole = user.departmentType === 'fms';
 
     // Department staff may only access specific order workflow endpoints; other admin routes are forbidden

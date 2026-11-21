@@ -9,16 +9,13 @@ import { formatINR, segmentLabel } from '@/lib/crm/format';
 import { CustomerAvatar } from './CustomerAvatar';
 import { Pill } from './Pill';
 import type { PillVariant } from './Pill';
+import { OUTCOMES } from '@/lib/crm/caller';
+import { getApiError } from '@/lib/api-error';
 
 // ─── Outcome config ───────────────────────────────────────────────────────────
 
-export const CALL_OUTCOMES = [
-  { value: 'connected',      label: 'Connected',      key: '1', color: 'var(--crm-blue)',    pillVariant: 'upcoming' as PillVariant },
-  { value: 'ordered',        label: 'Ordered ✓',      key: '2', color: 'var(--crm-success)', pillVariant: 'success'  as PillVariant },
-  { value: 'no_answer',      label: 'No Answer',      key: '3', color: 'var(--crm-muted)',   pillVariant: 'neutral'  as PillVariant },
-  { value: 'not_interested', label: 'Not Interested', key: '4', color: 'var(--crm-danger)',  pillVariant: 'overdue'  as PillVariant },
-  { value: 'callback',       label: 'Callback',       key: '5', color: 'var(--crm-amber)',   pillVariant: 'dueToday' as PillVariant },
-] as const;
+// Same outcomes as the Caller cockpit; each maps to the attempt ladder on the server (keys 1–9, 0).
+export const CALL_OUTCOMES = OUTCOMES.map((o, i) => ({ ...o, key: i < 9 ? String(i + 1) : i === 9 ? '0' : '' }));
 
 // Map segment → Pill variant (reused from queue page)
 function segToPill(segment: string): PillVariant {
@@ -71,7 +68,7 @@ export function LogCallPanel({ item, onClose, queueKey, onSaved }: LogCallPanelP
         customerId: item.userId,
         outcome,
         notes: notes.trim() || undefined,
-        callbackAt: callbackAt || undefined,
+        callbackAt: callbackAt ? new Date(callbackAt).toISOString() : undefined,
       });
       if (recordingFile && callLog?._id) {
         await api.uploadCrmRecording(callLog._id, recordingFile);
@@ -86,7 +83,7 @@ export function LogCallPanel({ item, onClose, queueKey, onSaved }: LogCallPanelP
       onSaved?.();
       closePanel();
     },
-    onError: () => toast({ title: 'Failed to log call', variant: 'destructive' }),
+    onError: (e) => toast({ title: 'Failed to log call', description: getApiError(e), variant: 'destructive' }),
   });
 
   // Keyboard shortcuts
@@ -98,11 +95,11 @@ export function LogCallPanel({ item, onClose, queueKey, onSaved }: LogCallPanelP
       if (inInput) return;
       const byKey = CALL_OUTCOMES.find(o => o.key === e.key);
       if (byKey) { setOutcome(byKey.value); return; }
-      if (e.key === 'Enter' && !isPending) mutate();
+      if (e.key === 'Enter' && !isPending && !(outcome === 'callback' && !callbackAt)) mutate();
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [closePanel, isPending, mutate]);
+  }, [closePanel, isPending, mutate, outcome, callbackAt]);
 
   const name = item.user?.name ?? item.user?.phone ?? '—';
   const phone = item.user?.phone ?? '';
@@ -198,7 +195,7 @@ export function LogCallPanel({ item, onClose, queueKey, onSaved }: LogCallPanelP
               className="text-[10px] font-bold uppercase tracking-[0.14em] mb-2"
               style={{ color: 'var(--crm-muted)' }}
             >
-              Outcome <span className="normal-case font-normal tracking-normal">(press 1–5)</span>
+              Outcome <span className="normal-case font-normal tracking-normal">(press 1–9, 0)</span>
             </p>
             <div className="space-y-1.5">
               {CALL_OUTCOMES.map(o => {
@@ -327,7 +324,7 @@ export function LogCallPanel({ item, onClose, queueKey, onSaved }: LogCallPanelP
           </button>
           <button
             onClick={() => mutate()}
-            disabled={isPending}
+            disabled={isPending || (outcome === 'callback' && !callbackAt)}
             className="flex-[2] py-2.5 rounded-xl text-[13px] font-semibold disabled:opacity-50 transition-colors"
             style={{
               background: isOrdered ? 'var(--crm-success)' : 'var(--crm-forest)',

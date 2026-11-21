@@ -68,6 +68,10 @@ export class CrmSettings {
 
   @Prop({ type: Object, default: {} })
   waTemplates: Record<string, string>;
+
+  /** Caller Command Center tuning (engine/caller-logic mergeCallerConfig); missing keys use defaults */
+  @Prop({ type: Object, default: {} })
+  caller: Record<string, unknown>;
 }
 
 export const CrmSettingsSchema = SchemaFactory.createForClass(CrmSettings);

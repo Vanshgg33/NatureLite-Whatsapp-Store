@@ -34,6 +34,9 @@ import { CrmLogicsService } from './logics/crm-logics.service';
 import { CrmLogicsController } from './logics/crm-logics.controller';
 import { CrmLogicSet, CrmLogicSetSchema } from './schemas/crm-logic-set.schema';
 import { CrmLogicLog, CrmLogicLogSchema } from './schemas/crm-logic-log.schema';
+import { CrmCallerShift, CrmCallerShiftSchema, CrmLeadAssignment, CrmLeadAssignmentSchema, CrmReminder, CrmReminderSchema } from './schemas/crm-caller.schemas';
+import { CrmCallerService } from './crm-caller.service';
+import { CrmCallerController } from './crm-caller.controller';
 
 @Module({
   imports: [
@@ -65,12 +68,15 @@ import { CrmLogicLog, CrmLogicLogSchema } from './schemas/crm-logic-log.schema';
       { name: Cart.name, schema: CartSchema },
       { name: MessageLog.name, schema: MessageLogSchema },
       { name: Complaint.name, schema: ComplaintSchema },
+      { name: CrmCallerShift.name, schema: CrmCallerShiftSchema },
+      { name: CrmLeadAssignment.name, schema: CrmLeadAssignmentSchema },
+      { name: CrmReminder.name, schema: CrmReminderSchema },
     ]),
     WhatsAppModule,
     MediaModule,
   ],
-  controllers: [CrmController, CrmLogicsController],
-  providers: [CrmEngineService, CrmService, CrmFoundationService, CrmInsightsService, CrmOpsService, CrmLogicsService],
+  controllers: [CrmCallerController, CrmController, CrmLogicsController],
+  providers: [CrmEngineService, CrmService, CrmCallerService, CrmFoundationService, CrmInsightsService, CrmOpsService, CrmLogicsService],
   exports: [CrmEngineService, CrmLogicsService],
 })
 export class CrmModule {}

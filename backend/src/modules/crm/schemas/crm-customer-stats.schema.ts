@@ -76,7 +76,7 @@ export class CrmCustomerStats {
   @Prop({ default: null })
   lastCallAt: Date | null;
 
-  @Prop({ enum: ['connected', 'no_answer', 'ordered', 'not_interested', 'callback', 'wrong_number', null], default: null })
+  @Prop({ enum: ['connected', 'interested', 'ordered', 'callback', 'not_interested', 'complaint', 'no_answer', 'busy', 'switched_off', 'call_dropped', 'wrong_number', 'unlogged', null], default: null })
   lastCallOutcome: string | null;
 
   @Prop({ default: 0 })
@@ -105,6 +105,10 @@ export class CrmCustomerStats {
 
   @Prop({ default: false })
   isEscalated: boolean;
+
+  /** never call: customer asked not to be called (Caller Command Center guard) */
+  @Prop({ default: false })
+  doNotCall: boolean;
 
   @Prop({
     type: [{ _id: { type: Types.ObjectId, auto: true }, agentId: Types.ObjectId, agentName: String, text: String, createdAt: Date }],
