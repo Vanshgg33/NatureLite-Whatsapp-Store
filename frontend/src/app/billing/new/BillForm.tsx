@@ -115,6 +115,7 @@ export function BillForm({ mode = 'bill', presetCustomerId, onExit, onSaved }: {
   const [editInvoiceNo, setEditInvoiceNo] = useState('');
   const [convertId, setConvertId] = useState(''); // /billing/new?convert=<orderId>: confirming a sale order into a real bill
   useEffect(() => {
+    if (presetCustomerId) return; // embedded in a CRM profile: that page's URL params are not ours
     const qs = new URLSearchParams(window.location.search);
     const convert = qs.get('convert');
     // ?duplicate=<billId>: a brand-new bill prefilled from an old one (new number, today's date, no payments copied)
