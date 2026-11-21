@@ -123,7 +123,7 @@ function CustomerSearch({ onSelect }: { onSelect: (c: any) => void }) {
               onClick={() => pick(c)}
             >
               <div className="h-8 w-8 rounded-full bg-[#e8f5ee] flex items-center justify-center text-[#2d7a4f] font-bold text-sm shrink-0">
-                {c.name[0].toUpperCase()}
+                {(c.name || c.phone || "?")[0].toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-gray-800 truncate">{c.name}</div>
@@ -255,7 +255,8 @@ export interface BillHeaderProps {
   godowns: GodownDto[];
   customer: any | null;
   onCustomerSelect: (c: any) => void;
-  onCustomerClear: () => void;
+  /** omitted = the customer is fixed (bill opened from that customer's CRM profile) */
+  onCustomerClear?: () => void;
   /** customer master was edited from the bill (GSTIN / tags) */
   onCustomerUpdate: (c: any) => void;
   billingAddress: string;
@@ -363,10 +364,10 @@ export function BillHeader({
         <div className="rounded border border-[#2d7a4f]/20 bg-[#f7faf8]">
           <div className="flex items-center gap-3 p-3">
             <div className="h-9 w-9 rounded-full bg-[#e8f5ee] flex items-center justify-center text-[#2d7a4f] font-bold shrink-0">
-              {customer.name[0].toUpperCase()}
+              {(customer.name || customer.phone || '?')[0].toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="font-semibold text-sm text-gray-800 truncate">{customer.name}</div>
+              <div className="font-semibold text-sm text-gray-800 truncate">{customer.name || 'Unnamed customer'}</div>
               <div className="text-xs text-gray-400 font-mono">{customer.phone}</div>
               {customer.gstNo && <div className="text-xs text-gray-500 font-mono">{customer.gstNo}</div>}
             </div>
@@ -379,9 +380,11 @@ export function BillHeader({
               className={cn('transition-colors', editing ? 'text-[#2d7a4f]' : 'text-gray-300 hover:text-gray-500')}>
               <Pencil className="h-4 w-4" />
             </button>
-            <button type="button" onClick={onCustomerClear} aria-label="Change customer" className="text-gray-300 hover:text-gray-500 transition-colors">
-              <X className="h-4 w-4" />
-            </button>
+            {onCustomerClear && (
+              <button type="button" onClick={onCustomerClear} aria-label="Change customer" className="text-gray-300 hover:text-gray-500 transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
           {editing && <CustomerQuickEdit key={customer._id} customer={customer} onDone={c => { if (c) onCustomerUpdate(c); setEditing(false); }} />}
         </div>

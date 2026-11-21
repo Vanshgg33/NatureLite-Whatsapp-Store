@@ -918,7 +918,17 @@ export class BillingService {
     sendWhatsApp?: boolean;
     stockLocation?: 'godown' | 'store';
     stockOverrideReason?: string;
+    clientRequestId?: string;
   }, userId = 'system', ip = '', canOverrideStock = false) {
+    const requestId = typeof dto.clientRequestId === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(dto.clientRequestId) ? dto.clientRequestId : undefined;
+    if (requestId) {
+      // same save sent twice (double click, network retry, two tabs): hand back the bill it already made, with no second stock/balance effect
+      const done = await this.billModel.findOne({ clientRequestId: requestId }).setOptions({ allDocTypes: true }).lean() as any;
+      if (done) {
+        if (String(done.customerId) !== String(dto.customerId)) throw new ConflictException('This bill request was already used for another customer. Reload the form and try again.');
+        return done;
+      }
+    }
     if (!dto.items?.length) throw new BadRequestException('Bill must have at least one item');
     if (!dto.customerId) throw new BadRequestException('Select a customer first');
     const noId = dto.items.find(i => !i.productId);
@@ -1150,9 +1160,15 @@ export class BillingService {
       terms: dto.terms,
       notes: dto.notes,
       status: 'active',
+      clientRequestId: requestId,
     });
-    } catch (e) {
+    } catch (e: any) {
       await this.returnImsStock(String(store?._id), taken);
+      // two identical saves raced past the check above: the other one made the bill, return it
+      if (requestId && e?.code === 11000 && e?.keyPattern?.clientRequestId) {
+        const done = await this.billModel.findOne({ clientRequestId: requestId }).setOptions({ allDocTypes: true }).lean();
+        if (done) return done;
+      }
       throw e;
     }
     // a credit note brings the goods back into the same store
@@ -1243,7 +1259,7 @@ export class BillingService {
     await this.cancelBill(id, `Edited - replaced by a corrected invoice`, userId, ip);
     let created: any;
     try {
-      created = await this.createBillV1(dto, userId, ip, canOverrideStock);
+      created = await this.createBillV1({ ...dto, clientRequestId: undefined }, userId, ip, canOverrideStock);
     } catch (e) {
       // put the old bill back exactly as it was: active, stock taken again, balance restored
       await this.billModel.updateOne({ _id: id }, { $set: { status: 'active' }, $unset: { cancelReason: 1 } });
@@ -1266,7 +1282,7 @@ export class BillingService {
     if (!order) throw new NotFoundException('Sale order not found');
     if (order.docType !== 'SALE_ORDER') throw new BadRequestException('Not a sale order');
     if (order.status !== 'active') throw new BadRequestException('This sale order is already confirmed or cancelled');
-    const bill = await this.createBillV1({ ...dto, docType: 'SALE', convertedFromOrderNo: order.invoiceNo }, userId, ip, canOverrideStock);
+    const bill = await this.createBillV1({ ...dto, docType: 'SALE', convertedFromOrderNo: order.invoiceNo, clientRequestId: undefined }, userId, ip, canOverrideStock);
     await this.billModel.updateOne({ _id: id }, { $set: { status: 'converted', cancelReason: `Confirmed as ${bill.invoiceNo}` } });
     return bill;
   }

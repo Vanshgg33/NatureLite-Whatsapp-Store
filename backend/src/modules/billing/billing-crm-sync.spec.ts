@@ -95,3 +95,44 @@ describe('Billing customers: one customer per phone however it is typed', () => 
     expect(userModel.find.mock.calls[1][0].$or[1]).toEqual({ phone: { $regex: '98765' } });
   });
 });
+
+describe('Duplicate invoices: one bill-form save makes at most one bill (Billing page and CRM profile alike)', () => {
+  const dto = (over: any = {}) => ({ customerId: 'c1', orderTag: 'Store Order', items: [{ productId: 'p1', name: 'Ghee', sku: 'G', hsnCode: '', qty: 1, rate: 100, gstRate: 5 }], clientRequestId: 'req-12345678', ...over });
+  function make(existing: any) {
+    const billModel = { findOne: jest.fn(() => ({ setOptions: () => ({ lean: () => Promise.resolve(existing) }) })), create: jest.fn() };
+    const taxSettings = { assertPeriodOpen: jest.fn().mockRejectedValue(new Error('reached creation')) };
+    const svc: any = new (BillingService as any)({}, billModel, {}, {}, {}, {}, {}, taxSettings);
+    return { svc, billModel, taxSettings };
+  }
+
+  it('a repeated save returns the bill already created: no new invoice number, stock, balance or audit entry', async () => {
+    const done = { _id: 'b1', invoiceNo: 'NLF-26-27/18', customerId: 'c1' };
+    const { svc, billModel, taxSettings } = make(done);
+    await expect(svc.createBillV1(dto())).resolves.toBe(done);
+    expect((billModel.findOne.mock.calls[0] as any[])[0]).toEqual({ clientRequestId: 'req-12345678' });
+    expect(taxSettings.assertPeriodOpen).not.toHaveBeenCalled();
+    expect(billModel.create).not.toHaveBeenCalled();
+  });
+
+  it('the same key for a different customer is refused, never handed another customer\'s bill', async () => {
+    const { svc } = make({ _id: 'b1', customerId: 'c9' });
+    await expect(svc.createBillV1(dto())).rejects.toThrow('another customer');
+  });
+
+  it('a first save, or a malformed key, goes on to create the bill normally', async () => {
+    await expect(make(null).svc.createBillV1(dto())).rejects.toThrow('reached creation');
+    const bad = make({ _id: 'b1', customerId: 'c1' });
+    await expect(bad.svc.createBillV1(dto({ clientRequestId: { $ne: null } }))).rejects.toThrow('reached creation');
+    expect(bad.billModel.findOne).not.toHaveBeenCalled();
+  });
+
+  it('editing (reissue) and confirming a sale order never reuse a client key', async () => {
+    const svc: any = new (BillingService as any)({}, {
+      findById: () => ({ setOptions: () => ({ lean: () => Promise.resolve({ _id: 'o1', docType: 'SALE_ORDER', status: 'active', invoiceNo: 'SO-1' }) }) }),
+      updateOne: jest.fn().mockResolvedValue({}),
+    });
+    svc.createBillV1 = jest.fn().mockResolvedValue({ _id: 'b2', invoiceNo: 'NLF-2' });
+    await svc.convertOrder('o1', dto());
+    expect(svc.createBillV1.mock.calls[0][0].clientRequestId).toBeUndefined();
+  });
+});

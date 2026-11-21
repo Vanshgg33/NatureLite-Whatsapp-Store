@@ -25,9 +25,22 @@ const CHARGE_SAC = '996511';
 const CHARGE_GST_RATE = 18;
 
 /** mode 'order' = sale order: the same form, but no stock/balance/WhatsApp effect until the order is confirmed into a bill */
-export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
+export function BillForm({ mode = 'bill', presetCustomerId, onExit, onSaved }: {
+  mode?: 'bill' | 'order';
+  /** bill for this customer only (opened from their CRM profile): preselected and not changeable */
+  presetCustomerId?: string;
+  /** Back / Cancel / Esc; default goes to Billing customers */
+  onExit?: () => void;
+  /** called after a successful Save or Save & Print instead of opening the Billing invoice page */
+  onSaved?: (bill: any, opts: { print: boolean }) => void;
+} = {}) {
   const isOrder = mode === 'order';
   const router = useRouter();
+  const exit = () => (onExit ? onExit() : router.push('/billing/customers'));
+  const exitRef = useRef(exit);
+  exitRef.current = exit;
+  // one key per bill being written: a retried or double-sent save returns the bill already created instead of a second invoice
+  const requestIdRef = useRef(crypto.randomUUID());
   const qc = useQueryClient();
   const { toast } = useToast();
 
@@ -210,6 +223,15 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
     if (!c.assignedDeliveryUserId) setDeliveryUserName('');
   };
 
+  // CRM profile: the customer is already known, so fill them in exactly as if picked from the search
+  const loadPresetCustomer = () => {
+    if (!presetCustomerId) return;
+    api.getBillingCustomer(presetCustomerId)
+      .then(handleCustomerSelect)
+      .catch(() => toast({ title: 'Could not load this customer for billing', variant: 'destructive' }));
+  };
+  useEffect(loadPresetCustomer, [presetCustomerId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleCustomerClear = () => {
     setCustomer(null);
     setOrderTag('');
@@ -259,6 +281,8 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
     setBillingAddress('');
     setDeliveryUserId('');
     setDeliveryUserName('');
+    requestIdRef.current = crypto.randomUUID();
+    loadPresetCustomer();
   };
 
   // ─── Save mutation ────────────────────────────────────────────────────────
@@ -318,6 +342,8 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
         notes,
         deliveryUserId: deliveryUserId || undefined,
         deliveryUserName: deliveryUserName || undefined,
+        // only a brand-new bill carries it; edits and order confirmations have their own guards
+        clientRequestId: convertId || editId ? undefined : requestIdRef.current,
       };
       const bill = convertId ? await api.convertBillingOrder(convertId, payload)
         : editId ? await api.reissueBillingBill(editId, payload)
@@ -331,9 +357,12 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
       toast(isOrder
         ? { title: `Sale order ${bill.invoiceNo} saved`, description: 'No stock or balance changes until you confirm it' }
         : { title: `Invoice ${bill.invoiceNo} saved`, description: bill.whatsapp?.status === 'skipped_no_phone' ? 'No WhatsApp number' : sendWhatsApp ? 'WhatsApp queued' : undefined });
+      requestIdRef.current = crypto.randomUUID(); // the next save is a new bill
       if (saveNew) {
         setEditId(''); setConvertId('');
         resetForm();
+      } else if (onSaved) {
+        onSaved(bill, { print });
       } else if (print) {
         router.push(`/billing/invoice/${bill._id}?print=1`);
       } else if (isOrder) {
@@ -366,7 +395,7 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
   const saveRef = useRef(save);
   saveRef.current = save;
   const dirtyRef = useRef(false);
-  dirtyRef.current = rawItems.length > 0 || !!customer;
+  dirtyRef.current = rawItems.length > 0 || (!!customer && !presetCustomerId);
 
   // ─── Keyboard shortcuts ───────────────────────────────────────────────────
   useEffect(() => {
@@ -379,7 +408,7 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
       if (e.key === 'Escape') {
         const t = e.target as HTMLElement | null;
         if (e.defaultPrevented || t?.closest('input, select, textarea, [role="dialog"]')) return;
-        if (discard('Leave this bill? Unsaved changes will be lost.')) router.push('/billing/customers');
+        if (discard('Leave this bill? Unsaved changes will be lost.')) exitRef.current();
       }
       if (e.key === 'F8') { e.preventDefault(); saveRef.current({ print: false, saveNew: false }); }
       if (e.key === 'F9') { e.preventDefault(); saveRef.current({ print: true, saveNew: false }); }
@@ -395,7 +424,7 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
       {/* Page header bar */}
       <div className="sticky top-0 z-20 flex items-center gap-3 px-4 h-12 bg-white border-b border-gray-200 shrink-0">
         <button
-          onClick={() => router.push('/billing/customers')}
+          onClick={exit}
           className="flex items-center gap-1 text-gray-400 hover:text-gray-700 text-sm transition-colors"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -416,7 +445,7 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
           <kbd className="px-1 py-0.5 bg-gray-100 rounded text-[10px] font-mono">Esc</kbd> Cancel
         </span>
         <div className="ml-auto flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => router.push('/billing/customers')} className="text-xs h-8">
+          <Button variant="outline" size="sm" onClick={exit} className="text-xs h-8">
             <X className="h-3.5 w-3.5 mr-1" /> Cancel
           </Button>
         </div>
@@ -434,7 +463,7 @@ export function BillForm({ mode = 'bill' }: { mode?: 'bill' | 'order' }) {
               invoiceDate={invoiceDate} onInvoiceDateChange={setInvoiceDate}
               invoiceTime={invoiceTime} onInvoiceTimeChange={setInvoiceTime}
               godownId={godownId} onGodownChange={setGodownId} godowns={godowns}
-              customer={customer} onCustomerSelect={handleCustomerSelect} onCustomerClear={handleCustomerClear}
+              customer={customer} onCustomerSelect={handleCustomerSelect} onCustomerClear={presetCustomerId ? undefined : handleCustomerClear}
               onCustomerUpdate={c => {
                 // keep the bill's typed address, channel and delivery; only a new GSTIN moves the state of supply
                 setCustomer(c);

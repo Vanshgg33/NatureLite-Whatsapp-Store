@@ -20,6 +20,7 @@ import { ComplaintsCard } from '@/components/crm/ComplaintsCard';
 import { BillStatusPill } from '@/components/crm/BillStatusPill';
 import { billEvents, type BillEvent } from '@/lib/crm/bill-events';
 import { CALL_OUTCOMES } from '@/components/crm/LogCallPanel';
+import { CrmBillSheet, useCanBillFromCrm } from '@/components/crm/CrmBillSheet';
 import type { PillVariant } from '@/components/crm/Pill';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -212,6 +213,8 @@ export default function Customer360Page() {
   const [waTemplate, setWaTemplate]     = useState('');
   const [waMessage, setWaMessage]       = useState('');
   const [noteText, setNoteText]         = useState('');
+  const [billOpen, setBillOpen]         = useState(false);
+  const canBill = useCanBillFromCrm();
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['crm-customer360', id],
@@ -371,6 +374,7 @@ export default function Customer360Page() {
 
   return (
     <div className="min-h-full" style={{ background: 'var(--crm-sand)' }}>
+      {canBill && <CrmBillSheet open={billOpen} customerId={id} onClose={() => setBillOpen(false)} />}
       {/* Hero header */}
       <div style={{ background: 'var(--crm-paper)', borderBottom: '1px solid var(--crm-line)' }}>
         <div className="px-7 pt-4">
@@ -407,6 +411,17 @@ export default function Customer360Page() {
               </div>
             </div>
 
+            {canBill && user && (
+              <button
+                type="button"
+                onClick={() => setBillOpen(true)}
+                aria-label="Create New Bill"
+                className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-[13px] font-semibold flex-shrink-0 transition-transform duration-150 hover:scale-[1.03] active:scale-[0.97]"
+                style={{ background: 'var(--crm-forest)', color: 'var(--crm-gold)' }}
+              >
+                <Receipt className="h-4 w-4" /> <span className="hidden sm:inline">Create New Bill</span>
+              </button>
+            )}
             {user?.phone && (
               <a
                 href={`tel:${user.phone}`}

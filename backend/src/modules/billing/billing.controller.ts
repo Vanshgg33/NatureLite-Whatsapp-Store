@@ -125,7 +125,7 @@ export class BillingController {
   @Post('bills/v1')
   @RequireAccess('billing_new.create')
   createBillV1(@Body() body: any, @Req() req: any) {
-    const userId = req.user?._id?.toString() ?? 'system';
+    const userId = String(req.user?.sub ?? req.user?._id ?? 'system'); // the JWT payload carries the admin id as `sub`
     const ip = req.ip ?? '';
     // only a super admin may sell below zero stock, and only with a reason (logged on the bill)
     const canOverrideStock = String(req.user?.role ?? '').toLowerCase() === 'superadmin';
@@ -147,7 +147,7 @@ export class BillingController {
   @Post('bills/:id/convert')
   @RequireAccess('billing_new.create')
   convertOrder(@Param('id') id: string, @Body() body: any, @Req() req: any) {
-    const userId = req.user?._id?.toString() ?? 'system';
+    const userId = String(req.user?.sub ?? req.user?._id ?? 'system'); // the JWT payload carries the admin id as `sub`
     const canOverrideStock = String(req.user?.role ?? '').toLowerCase() === 'superadmin';
     return this.billingService.convertOrder(id, body, userId, req.ip ?? '', canOverrideStock);
   }
@@ -155,7 +155,7 @@ export class BillingController {
   @Post('bills/:id/reissue')
   @RequireAccess('billing_new.cancel')
   reissueBill(@Param('id') id: string, @Body() body: any, @Req() req: any) {
-    const userId = req.user?._id?.toString() ?? 'system';
+    const userId = String(req.user?.sub ?? req.user?._id ?? 'system'); // the JWT payload carries the admin id as `sub`
     const canOverrideStock = String(req.user?.role ?? '').toLowerCase() === 'superadmin';
     return this.billingService.reissueBill(id, body, userId, req.ip ?? '', canOverrideStock);
   }
@@ -163,7 +163,7 @@ export class BillingController {
   @Patch('bills/:id/cancel')
   @RequireAccess('billing_new.cancel')
   cancelBill(@Param('id') id: string, @Body('reason') reason: string, @Req() req: any) {
-    const userId = req.user?._id?.toString() ?? 'system';
+    const userId = String(req.user?.sub ?? req.user?._id ?? 'system'); // the JWT payload carries the admin id as `sub`
     const ip = req.ip ?? '';
     return this.billingService.cancelBill(id, reason, userId, ip);
   }

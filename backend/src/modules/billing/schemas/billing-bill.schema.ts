@@ -164,6 +164,7 @@ export class BillingBill {
   @Prop() refInvoiceNo?: string;          // credit note -> original invoice
   @Prop() convertedFromOrderNo?: string;  // sale converted from a sale order
   @Prop({ type: [{ mode: String, amountPaise: Number, at: Date, kind: String }], default: [] }) payments: BillPayment[];
+  @Prop() clientRequestId?: string;       // idempotency key from the bill form: one key, one bill
 
   createdAt: Date;
   updatedAt: Date;
@@ -177,6 +178,8 @@ BillingBillSchema.index({ createdAt: -1 });
 BillingBillSchema.index({ docType: 1, invoiceDate: 1 });
 BillingBillSchema.index({ orderTag: 1, createdAt: -1 });
 BillingBillSchema.index({ 'items.productId': 1 }); // per-location stock reads
+// a double-sent or retried save (Billing or CRM) can never create a second invoice
+BillingBillSchema.index({ clientRequestId: 1 }, { unique: true, partialFilterExpression: { clientRequestId: { $type: 'string' } } });
 
 // Credit notes and sale orders live in the same collection but are NOT sales: hide them from every
 // existing sales/dues/insight query unless the caller opts in with .setOptions({ allDocTypes: true }).

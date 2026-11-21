@@ -2271,6 +2271,8 @@ class ApiClient {
     notes?: string;
     deliveryUserId?: string;
     deliveryUserName?: string;
+    /** idempotency key: the same key never creates a second bill */
+    clientRequestId?: string;
   }): Promise<any> {
     const res = await this.client.post<ApiResponse<any>>('/billing/bills/v1', data);
     return res.data.data;
