@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Types } from 'mongoose';
+import { noDrawer } from './cash-drawer/no-drawer.stub';
 import { BillingService } from './billing.service';
 
 const BILL = new Types.ObjectId();
@@ -37,7 +38,7 @@ function make(bill: any, updateResult = { matchedCount: 1 }) {
     decrementStock: jest.fn().mockResolvedValue({}), incrementStock: jest.fn().mockResolvedValue({}),
   };
   const stores: any = { findAll: jest.fn().mockResolvedValue([{ _id: STORE, name: 'Main Store' }]) };
-  const svc: any = new (BillingService as any)(userModel, billModel, {}, {}, {}, auditLogModel, crmEngine, taxSettings, {}, {}, {}, storeStock, stores);
+  const svc: any = new (BillingService as any)(userModel, billModel, {}, {}, {}, auditLogModel, crmEngine, taxSettings, {}, {}, {}, storeStock, stores, noDrawer());
   // pricing is createBillV1's own (priceBill); stubbed here to test what an edit does around it
   jest.spyOn(svc, 'priceBill').mockImplementation(async (d: any) => ({
     customer: { name: 'Om J', tags: [] }, pos: '22', isInterState: false, customerPhone: '9561883384', defaultBillingLine: '',

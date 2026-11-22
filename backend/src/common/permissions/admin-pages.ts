@@ -92,6 +92,8 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   ]),
   def('billing_dues', 'Unpaid Dues', 'Billing', '/billing/dues', true, [a('view', 'View'), a('record', 'Record payment')]),
   def('billing_reports', 'Sales Reports', 'Billing', '/billing/reports', true, [a('view', 'View & export')]),
+  // counting, adjusting and settings are superadmin-only (enforced in the controller)
+  def('billing_cash_drawer', 'Cash Drawer', 'Billing', '/billing/cash-drawer', true, [a('view', 'View')]),
   def('billing_books', 'Books & Stock', 'Billing', '/billing/books', true, [
     a('view', 'View'), a('edit', 'Add / edit entries'), a('delete', 'Delete / cancel entries'),
   ]),

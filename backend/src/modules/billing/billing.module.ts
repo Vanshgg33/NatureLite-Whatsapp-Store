@@ -23,6 +23,9 @@ import { BillingWhatsappService } from './billing-whatsapp.service';
 import { BillingStockService } from './billing-stock.service';
 import { StoreStockModule } from '../store-stock/store-stock.module';
 import { StoresModule } from '../stores/stores.module';
+import { CashDrawerSchema, CashDrawerTxnSchema } from './cash-drawer/cash-drawer.schema';
+import { CashDrawerService } from './cash-drawer/cash-drawer.service';
+import { CashDrawerController } from './cash-drawer/cash-drawer.controller';
 
 @Module({
   imports: [
@@ -40,6 +43,8 @@ import { StoresModule } from '../stores/stores.module';
       { name: BillingPurchase.name, schema: BillingPurchaseSchema },
       { name: BillingStockEntry.name, schema: BillingStockEntrySchema },
       { name: BillingOpening.name, schema: BillingOpeningSchema },
+      { name: 'CashDrawer', schema: CashDrawerSchema },
+      { name: 'CashDrawerTxn', schema: CashDrawerTxnSchema },
     ]),
     CrmModule,
     StoreStockModule, // IMS stock: bills read and deduct from the chosen store
@@ -49,8 +54,8 @@ import { StoresModule } from '../stores/stores.module';
     MediaModule,
     SettingsModule,
   ],
-  controllers: [BillingController, ReportsController, BooksController],
-  providers: [BillingService, ReportsService, BooksService, BillingWhatsappService, BillingStockService],
+  controllers: [BillingController, ReportsController, BooksController, CashDrawerController],
+  providers: [BillingService, ReportsService, BooksService, BillingWhatsappService, BillingStockService, CashDrawerService],
   exports: [BillingService, BillingStockService],
 })
 export class BillingModule {}

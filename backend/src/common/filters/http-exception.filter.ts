@@ -33,6 +33,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     let status: number;
     let message: string | string[];
     let error: string;
+    let extra: { code?: string; details?: unknown } = {};
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -42,6 +43,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
         const responseObj = exceptionResponse as Record<string, unknown>;
         message = (responseObj.message as string | string[]) || exception.message;
         error = (responseObj.error as string) || 'Error';
+        // machine-readable code + details (e.g. the cash drawer's fresh counts) for clients that react to them
+        if (typeof responseObj.code === 'string') extra = { code: responseObj.code, details: responseObj.details };
       } else {
         message = exception.message;
         error = 'Error';
@@ -76,6 +79,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       error,
       path: request.url,
       timestamp: new Date().toISOString(),
+      ...extra,
     };
 
     response.status(status).json(errorResponse);

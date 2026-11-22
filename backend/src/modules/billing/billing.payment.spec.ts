@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import { noDrawer } from './cash-drawer/no-drawer.stub';
 import { BillingService } from './billing.service';
 
 const bill = (over: any = {}) => ({
@@ -12,7 +13,7 @@ function make(doc: any, updateResult: any = { ok: true }) {
     findOneAndUpdate: jest.fn().mockResolvedValue(updateResult),
   };
   const userModel = { findByIdAndUpdate: jest.fn().mockResolvedValue({}), findOne: jest.fn() };
-  const svc = new (BillingService as any)(userModel, billModel) as BillingService;
+  const svc = new (BillingService as any)(userModel, billModel, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, noDrawer()) as BillingService;
   return { svc, billModel, userModel };
 }
 

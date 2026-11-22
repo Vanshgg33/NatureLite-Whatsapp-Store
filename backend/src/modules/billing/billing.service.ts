@@ -20,6 +20,7 @@ import { calcBill, CalcResult } from './logics/formula-engine';
 import { escapeRegex } from '../../common/utils/query.util';
 import { incompleteLeadFilter, type IncompleteLead } from '../../common/utils/incomplete-lead.util';
 import { isValidGstin } from './gst-utils';
+import { CashDrawerService, DrawerError, type CashBlock } from './cash-drawer/cash-drawer.service';
 
 export const LATER_PAYMENT_MODES = ['cash', 'upi', 'card', 'bank'];
 
@@ -68,6 +69,7 @@ export class BillingService {
     private readonly billingStock: BillingStockService,
     private readonly storeStock: StoreStockService,
     private readonly stores: StoresService,
+    private readonly cashDrawer: CashDrawerService,
   ) {}
 
   // ─── IMS stock (the stores' real stock) ───────────────────────────────────
@@ -957,6 +959,8 @@ export class BillingService {
     stockLocation?: 'godown' | 'store';
     stockOverrideReason?: string;
     clientRequestId?: string;
+    /** counted notes from the cash counter (only when the store's cash drawer is on) */
+    cash?: CashBlock;
   }, userId = 'system', ip = '', canOverrideStock = false) {
     const requestId = typeof dto.clientRequestId === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(dto.clientRequestId) ? dto.clientRequestId : undefined;
     if (requestId) {
@@ -1023,12 +1027,21 @@ export class BillingService {
     const paymentStatus: PaymentStatus = amountDuePaise <= 0 ? 'paid' : amountPaidPaise > 0 ? 'partial' : 'unpaid';
     const billPaymentMode = splits.length ? ([...new Set(payments.map(p => p.mode))].join(', ') || 'credit') : (dto.paymentMode ?? 'credit');
 
+    // cash drawer (only when the store's drawer is on): the counted notes are checked now, before any stock moves
+    const modePaise = (m: string) => payments.filter(p => p.mode === m).reduce((s, p) => s + p.amountPaise, 0);
+    const cashPlan = await this.cashDrawer.planSale({
+      storeId: store ? String(store._id) : undefined, docType, cashPaise: modePaise('cash'), upiPaise: modePaise('upi'), grandTotalPaise, cash: dto.cash,
+    });
 
     // take the stock first (atomic per line); if the bill cannot be saved it goes straight back
     const taken = docType === 'SALE' ? await this.takeImsStock(String(store._id), imsTake) : [];
     let bill: any;
+    const billId = new Types.ObjectId();
     try {
-    bill = await this.billModel.create({
+    // with a drawer step, the bill and the drawer change commit in one transaction (or neither does)
+    bill = await this.cashDrawer.withCash(cashPlan, { storeId: store?._id, billId, invoiceNo, clientRequestId: requestId, user: { userId } }, async session => {
+    const doc = {
+      ...(session ? { _id: billId, cashCounted: cashPlan!.type !== 'UNCOUNTED_SALE' } : {}),
       invoiceNo,
       invoiceDate: dto.invoiceDate ? new Date(dto.invoiceDate) : billedAt,
       docType,
@@ -1078,6 +1091,8 @@ export class BillingService {
       notes: dto.notes,
       status: 'active',
       clientRequestId: requestId,
+    };
+    return session ? (await this.billModel.create([doc], { session }))[0] : this.billModel.create(doc);
     });
     } catch (e: any) {
       await this.returnImsStock(String(store?._id), taken);
@@ -1264,14 +1279,20 @@ export class BillingService {
     return this.billingWhatsapp.retry(id);
   }
 
-  async cancelBill(id: string, reason: string, userId = 'system', ip = '') {
+  async cancelBill(id: string, reason: string, userId = 'system', ip = '', cash?: CashBlock) {
     if (!reason?.trim()) throw new BadRequestException('Cancel reason required');
     const bill = await this.billModel.findById(id).setOptions({ allDocTypes: true }).lean() as any;
     if (!bill) throw new NotFoundException('Bill not found');
     if (bill.status === 'cancelled') throw new BadRequestException('Already cancelled');
     await this.taxSettings.assertPeriodOpen(new Date(bill.invoiceDate ?? bill.createdAt));
 
-    await this.billModel.updateOne({ _id: id }, { $set: { status: 'cancelled', cancelReason: reason.trim() } });
+    // counted cash on a sale goes back out of the drawer, in the notes the cashier picked, in the same transaction
+    const refund = (bill.docType ?? 'SALE') === 'SALE' && bill.storeId ? await this.cashDrawer.planRefund({ storeId: String(bill.storeId), billId: bill._id, cash }) : null;
+    await this.cashDrawer.withCash(refund, { storeId: bill.storeId, billId: bill._id, invoiceNo: bill.invoiceNo, user: { userId } }, async session => {
+      // only an un-cancelled bill: two cancels at once must not give the stock (or the cash) back twice
+      const r: any = await this.billModel.updateOne({ _id: id, status: { $ne: 'cancelled' } }, { $set: { status: 'cancelled', cancelReason: reason.trim() } }, session ? { session } : undefined);
+      if (r?.matchedCount === 0) throw new BadRequestException('Already cancelled');
+    });
     // IMS stock goes back (sale) or out again (credit note) in the store the bill used; old bills have no store and are left alone
     if (bill.storeId && bill.docType !== 'SALE_ORDER') {
       const lines = (bill.items ?? []).map((i: any) => ({ productId: String(i.productId), variantSku: i.variantSku || undefined, qty: Number(i.qty) || 0 }));
@@ -1365,6 +1386,15 @@ export class BillingService {
       const laterPaise = later.filter((x: any) => x.mode === mode).reduce((t: number, x: any) => t + x.amountPaise, 0);
       if (want < laterPaise) throw new BadRequestException(`₹${(laterPaise / 100).toFixed(2)} was received by ${mode} after billing; the ${mode} amount can't go below that`);
       if (want > laterPaise) initial.push({ mode, amountPaise: want - laterPaise, at: old.createdAt ?? new Date(), kind: 'INITIAL' });
+    }
+    // cash that went through (or would go around) the cash drawer can't be edited here: Record Payment / cancel use the counter
+    if (docType === 'SALE') {
+      const legacyCash = !(old.payments ?? []).length && !String(old.paymentMode ?? '').includes('upi') ? Math.round((Number(old.amountPaid) || 0) * 100) : 0;
+      const oldCashP = (old.payments ?? []).filter((x: any) => x.mode === 'cash').reduce((t: number, x: any) => t + x.amountPaise, 0) + legacyCash;
+      const newCashP = Math.round(splits.filter(s => s.mode === 'cash').reduce((t, s) => t + s.amountRupees, 0) * 100);
+      if (newCashP !== oldCashP && (old.cashCounted || await this.cashDrawer.activeFor(dto.storeId || old.storeId) || await this.cashDrawer.billHasTxns(old._id))) {
+        throw new DrawerError(422, 'CASH_EDIT_BLOCKED');
+      }
     }
     const payments = [...initial, ...later];
     const amountPaidPaise = payments.reduce((t, x) => t + x.amountPaise, 0);
@@ -1518,7 +1548,7 @@ export class BillingService {
     return bill;
   }
 
-  async recordPayment(id: string, amount: number, mode = 'cash') {
+  async recordPayment(id: string, amount: number, mode = 'cash', cash?: CashBlock, userId = 'system') {
     const m = String(mode || 'cash').toLowerCase();
     // cheque is not offered: the ledger parks bill cheques in an account with no clearing flow
     if (!LATER_PAYMENT_MODES.includes(m)) throw new BadRequestException(`Payment mode must be one of: ${LATER_PAYMENT_MODES.join(', ')}`);
@@ -1545,20 +1575,26 @@ export class BillingService {
     }
     pushes.push({ mode: m, amountPaise, at: new Date(), kind: 'LATER' });
 
-    // conditional on the paid amount we read: a double-click or a second cashier can't apply the same payment twice
-    const updated = await this.billModel.findOneAndUpdate(
-      { _id: bill._id, amountPaid: bill.amountPaid, status: { $ne: 'cancelled' } },
-      {
-        $set: {
-          amountPaid: newPaidP / 100, amountDue: newDueP / 100,
-          amountPaidPaise: newPaidP, amountDuePaise: newDueP,
-          paymentStatus: newDueP === 0 ? 'paid' : 'partial',
+    // cash into a store whose drawer is on: the counted notes must match the payment; bill + drawer in one transaction
+    const cashPlan = bill.docType === 'SALE_ORDER' ? null : await this.cashDrawer.planPayment({ storeId: bill.storeId ? String(bill.storeId) : undefined, amountPaise, mode: m, cash });
+    const updated = await this.cashDrawer.withCash(cashPlan, { storeId: bill.storeId!, billId: bill._id as any, invoiceNo: bill.invoiceNo, user: { userId } }, async session => {
+      // conditional on the paid amount we read: a double-click or a second cashier can't apply the same payment twice
+      const u = await this.billModel.findOneAndUpdate(
+        { _id: bill._id, amountPaid: bill.amountPaid, status: { $ne: 'cancelled' } },
+        {
+          $set: {
+            amountPaid: newPaidP / 100, amountDue: newDueP / 100,
+            amountPaidPaise: newPaidP, amountDuePaise: newDueP,
+            paymentStatus: newDueP === 0 ? 'paid' : 'partial',
+            ...(cashPlan && cashPlan.type !== 'UNCOUNTED_SALE' ? { cashCounted: true } : {}),
+          },
+          $push: { payments: { $each: pushes } },
         },
-        $push: { payments: { $each: pushes } },
-      },
-      { new: true },
-    );
-    if (!updated) throw new ConflictException('This bill was just updated (payment already recorded?). Reload and check before trying again.');
+        session ? { new: true, session } : { new: true },
+      );
+      if (!u) throw new ConflictException('This bill was just updated (payment already recorded?). Reload and check before trying again.');
+      return u;
+    });
 
     await this.userModel.findByIdAndUpdate(bill.customerId, { $inc: { outstanding: -amountPaise / 100 } });
     return updated;

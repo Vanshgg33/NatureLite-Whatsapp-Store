@@ -165,6 +165,7 @@ export class BillingBill {
   @Prop() convertedFromOrderNo?: string;  // sale converted from a sale order
   @Prop({ type: [{ mode: String, amountPaise: Number, at: Date, kind: String }], default: [] }) payments: BillPayment[];
   @Prop() clientRequestId?: string;       // idempotency key from the bill form: one key, one bill
+  @Prop() cashCounted?: boolean;          // cash on this bill went through the store's cash drawer (notes counted)
 
   createdAt: Date;
   updatedAt: Date;

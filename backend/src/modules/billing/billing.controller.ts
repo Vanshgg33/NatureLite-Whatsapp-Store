@@ -178,10 +178,10 @@ export class BillingController {
 
   @Patch('bills/:id/cancel')
   @RequireAccess('billing_new.cancel')
-  cancelBill(@Param('id') id: string, @Body('reason') reason: string, @Req() req: any) {
+  cancelBill(@Param('id') id: string, @Body('reason') reason: string, @Req() req: any, @Body('cash') cash?: any) {
     const userId = String(req.user?.sub ?? req.user?._id ?? 'system'); // the JWT payload carries the admin id as `sub`
     const ip = req.ip ?? '';
-    return this.billingService.cancelBill(id, reason, userId, ip);
+    return this.billingService.cancelBill(id, reason, userId, ip, cash);
   }
 
   @Get('bills')
@@ -216,8 +216,8 @@ export class BillingController {
 
   @Post('bills/:id/payment')
   @RequireAccess('billing_dues.record')
-  recordPayment(@Param('id') id: string, @Body() body: { amount: number; mode?: string }) {
-    return this.billingService.recordPayment(id, body.amount, body.mode);
+  recordPayment(@Param('id') id: string, @Body() body: { amount: number; mode?: string; cash?: any }, @Req() req: any) {
+    return this.billingService.recordPayment(id, body.amount, body.mode, body.cash, String(req.user?.sub ?? req.user?._id ?? 'system'));
   }
 
   // ─── Dues ──────────────────────────────────────────────────────────────────

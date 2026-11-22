@@ -1,3 +1,4 @@
+import { noDrawer } from './cash-drawer/no-drawer.stub';
 import { BillingService } from './billing.service';
 
 // Bills are read live by the CRM; only the per-customer CRM stats (segment / LTV) are derived and must be refreshed.
@@ -10,7 +11,7 @@ function make(doc: any) {
   const auditLogModel = { create: jest.fn().mockResolvedValue({}) };
   const crmEngine = { refreshUser: jest.fn().mockResolvedValue(undefined) };
   const taxSettings = { assertPeriodOpen: jest.fn().mockResolvedValue(undefined) };
-  const svc = new (BillingService as any)(userModel, billModel, {}, {}, {}, auditLogModel, crmEngine, taxSettings) as BillingService;
+  const svc = new (BillingService as any)(userModel, billModel, {}, {}, {}, auditLogModel, crmEngine, taxSettings, {}, {}, {}, {}, {}, noDrawer()) as BillingService;
   return { svc, crmEngine, userModel };
 }
 
