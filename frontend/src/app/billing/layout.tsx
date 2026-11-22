@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   Users, FileText, AlertCircle, BarChart3, Trophy, FileSpreadsheet,
-  LayoutDashboard, Plus, LogOut, BookOpen, Menu, X, Settings, Network, SlidersHorizontal, Receipt, ClipboardList, type LucideIcon,
+  LayoutDashboard, Plus, LogOut, BookOpen, Menu, X, Settings, Network, SlidersHorizontal, Receipt, ClipboardList, History, type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAdminAuthStore } from '@/lib/admin-store';
@@ -29,6 +29,7 @@ const BILLING_NAV: NavGroup[] = [
       { name: 'Dashboard', href: '/billing/dashboard', icon: LayoutDashboard },
       { name: 'Bills', href: '/billing/bills', icon: Receipt },
       { name: 'Sale Orders', href: '/billing/orders', icon: ClipboardList },
+      { name: 'Edit History', href: '/billing/edit-history', icon: History },
     ],
   },
   {

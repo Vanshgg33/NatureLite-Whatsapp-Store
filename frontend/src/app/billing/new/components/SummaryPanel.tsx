@@ -13,7 +13,8 @@ export interface SummaryPanelProps {
   lines: LineItem[];
   onSave: () => void;
   onSaveAndPrint: () => void;
-  onSaveAndNew: () => void;
+  /** omitted while editing a bill */
+  onSaveAndNew?: () => void;
   isSaving: boolean;
 }
 
@@ -129,9 +130,11 @@ export function SummaryPanel({ totals, isInterState, lines, onSave, onSaveAndPri
             <Save className="h-3.5 w-3.5 mr-1" /> Save
             <kbd className="ml-auto text-[10px] bg-gray-100 px-1 py-0.5 rounded font-mono text-gray-400">F8</kbd>
           </Button>
-          <Button variant="outline" className="flex-1 h-8 text-xs" onClick={onSaveAndNew} disabled={isSaving}>
-            <Plus className="h-3.5 w-3.5 mr-1" /> Save & New
-          </Button>
+          {onSaveAndNew && (
+            <Button variant="outline" className="flex-1 h-8 text-xs" onClick={onSaveAndNew} disabled={isSaving}>
+              <Plus className="h-3.5 w-3.5 mr-1" /> Save & New
+            </Button>
+          )}
         </div>
       </div>
     </div>

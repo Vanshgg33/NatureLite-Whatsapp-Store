@@ -2290,6 +2290,17 @@ class ApiClient {
   }
 
   /** Edit = cancel the bill and issue a corrected one (same payload as createBillingBillV1) */
+  /** edit a bill in place: same bill, same invoice number; recorded in the edit history */
+  async updateBillingBill(id: string, data: any): Promise<any> {
+    const res = await this.client.put<ApiResponse<any>>(`/billing/bills/${id}`, data);
+    return res.data.data;
+  }
+
+  async getBillingEditHistory(billId?: string): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>(`/billing/edit-history${billId ? `?billId=${billId}` : ''}`);
+    return res.data.data ?? [];
+  }
+
   async reissueBillingBill(id: string, data: any): Promise<any> {
     const res = await this.client.post<ApiResponse<any>>(`/billing/bills/${id}/reissue`, data);
     return res.data.data;

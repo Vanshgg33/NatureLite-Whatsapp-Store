@@ -5,7 +5,8 @@ import { useAdminAccess } from '@/lib/admin-access';
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Printer, ArrowLeft, XCircle, IndianRupee, Copy } from 'lucide-react';
+import { Printer, ArrowLeft, XCircle, IndianRupee, Copy, Pencil } from 'lucide-react';
+import { BillEditHistory, canEditBill, isEditableBill } from '@/components/billing/BillEditHistory';
 import { api } from '@/lib/api';
 import { invalidateBilling } from '@/lib/billing/invalidate';
 import { billTime } from '@/lib/billing/datetime';
@@ -167,6 +168,11 @@ export default function InvoicePage() {
         <Button size="sm" onClick={() => window.print()} className="bg-[#2d7a4f] hover:bg-[#245f3e] text-white">
           <Printer className="h-4 w-4 mr-1.5" /> Print
         </Button>
+        {isEditableBill(bill) && canEditBill(can) && (
+          <Button size="sm" variant="outline" onClick={() => router.push(`/billing/bills/${bill._id}/edit`)}>
+            <Pencil className="h-4 w-4 mr-1" /> Edit
+          </Button>
+        )}
         {!isCancelled && can('billing_new.cancel') && (
           <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50"
             onClick={() => setShowCancel(true)}>
@@ -499,6 +505,11 @@ export default function InvoicePage() {
           </div>
         </div>
       </div>
+
+      <section className="print:hidden max-w-[900px] mx-auto px-4 pb-10">
+        <h2 className="text-sm font-semibold text-gray-800 mb-2">Edit history</h2>
+        <BillEditHistory billId={id} />
+      </section>
 
       {showCancel && <CancelDialog billId={id} onClose={() => setShowCancel(false)} />}
       {showPay && <RecordPaymentDialog bill={bill} onClose={() => setShowPay(false)} />}

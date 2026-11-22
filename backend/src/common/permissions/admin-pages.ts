@@ -85,7 +85,7 @@ export const ADMIN_PAGES: AdminPageDef[] = [
     a('view', 'View'), a('create', 'Create'), a('edit', 'Edit'), a('delete', 'Delete'),
   ]),
 
-  def('billing_new', 'New Bill', 'Billing', '/billing/new', true, [a('view', 'View'), a('create', 'Create bill'), a('cancel', 'Cancel bill')]),
+  def('billing_new', 'New Bill', 'Billing', '/billing/new', true, [a('view', 'View'), a('create', 'Create bill'), a('edit', 'Edit bill'), a('cancel', 'Cancel bill')]),
   def('billing_dashboard', 'Billing Dashboard', 'Billing', '/billing/dashboard', true, [a('view', 'View')]),
   def('billing_customers', 'Billing Customers', 'Billing', '/billing/customers', true, [
     a('view', 'View'), a('create', 'Create'), a('edit', 'Edit'),

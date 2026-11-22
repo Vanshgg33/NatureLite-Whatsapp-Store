@@ -20,7 +20,8 @@ import { ComplaintsCard } from '@/components/crm/ComplaintsCard';
 import { BillStatusPill } from '@/components/crm/BillStatusPill';
 import { billEvents, type BillEvent } from '@/lib/crm/bill-events';
 import { CALL_OUTCOMES } from '@/components/crm/LogCallPanel';
-import { CrmBillSheet, useCanBillFromCrm } from '@/components/crm/CrmBillSheet';
+import { CrmBillSheet, useCanBillFromCrm, useCanEditBillFromCrm } from '@/components/crm/CrmBillSheet';
+import { isEditableBill } from '@/components/billing/BillEditHistory';
 import { CustomerReminders } from '@/components/crm/CustomerReminders';
 import { getApiError } from '@/lib/api-error';
 import type { PillVariant } from '@/components/crm/Pill';
@@ -216,7 +217,9 @@ export default function Customer360Page() {
   const [waMessage, setWaMessage]       = useState('');
   const [noteText, setNoteText]         = useState('');
   const [billOpen, setBillOpen]         = useState(false);
+  const [editBillId, setEditBillId]     = useState('');
   const canBill = useCanBillFromCrm();
+  const canEditBill = useCanEditBillFromCrm();
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['crm-customer360', id],
@@ -357,10 +360,15 @@ export default function Customer360Page() {
               {row('Outstanding', formatINR(b.amountDue ?? 0), true)}
               {muted && row('Cancelled', [b.cancelledAt ? formatIST(b.cancelledAt, true) : '', b.cancelReason].filter(Boolean).join(' · ') || '—')}
             </div>
-            <div className="px-4 pb-3">
+            <div className="px-4 pb-3 flex items-center gap-4">
               <Link href={`/billing/invoice/${b._id}`} className="text-[12px] font-semibold hover:underline" style={{ color: 'var(--crm-blue)' }}>
                 Open original bill →
               </Link>
+              {canEditBill && isEditableBill(b) && (
+                <button type="button" onClick={() => setEditBillId(String(b._id))} className="text-[12px] font-semibold hover:underline" style={{ color: 'var(--crm-forest)' }}>
+                  Edit bill
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -377,6 +385,7 @@ export default function Customer360Page() {
   return (
     <div className="min-h-full" style={{ background: 'var(--crm-sand)' }}>
       {canBill && <CrmBillSheet open={billOpen} customerId={id} onClose={() => setBillOpen(false)} />}
+      {canEditBill && <CrmBillSheet open={!!editBillId} customerId={id} editBillId={editBillId || undefined} onClose={() => setEditBillId('')} />}
       {/* Hero header */}
       <div style={{ background: 'var(--crm-paper)', borderBottom: '1px solid var(--crm-line)' }}>
         <div className="px-7 pt-4">

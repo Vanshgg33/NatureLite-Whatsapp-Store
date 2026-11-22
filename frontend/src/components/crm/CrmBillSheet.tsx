@@ -19,7 +19,14 @@ export function useCanBillFromCrm() {
   return !access.isLoading && access.can('billing_new.view') && access.can('billing_new.create') && (!dept || BILLING_DEPTS.includes(dept));
 }
 
-export function CrmBillSheet({ open, customerId, onClose }: { open: boolean; customerId: string; onClose: () => void }) {
+/** editing also needs edit (or the older cancel) permission */
+export function useCanEditBillFromCrm() {
+  const access = useAdminAccess();
+  const dept = useAdminAuthStore((s) => s.user?.departmentType);
+  return !access.isLoading && access.can('billing_new.view') && (access.can('billing_new.edit') || access.can('billing_new.cancel')) && (!dept || BILLING_DEPTS.includes(dept));
+}
+
+export function CrmBillSheet({ open, customerId, editBillId, onClose }: { open: boolean; customerId: string; editBillId?: string; onClose: () => void }) {
   const router = useRouter();
   const qc = useQueryClient();
 
@@ -53,7 +60,9 @@ export function CrmBillSheet({ open, customerId, onClose }: { open: boolean; cus
           transition={{ duration: 0.18, ease: 'easeOut' }}
         >
           {/* closing also refreshes: bills made with Save & New keep the sheet open */}
-          <BillForm presetCustomerId={customerId} onExit={() => { refreshCrm(); onClose(); }} onSaved={onSaved} />
+          {editBillId
+            ? <BillForm editBillId={editBillId} onExit={() => { refreshCrm(); onClose(); }} onSaved={onSaved} />
+            : <BillForm presetCustomerId={customerId} onExit={() => { refreshCrm(); onClose(); }} onSaved={onSaved} />}
         </motion.div>
       )}
     </AnimatePresence>

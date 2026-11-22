@@ -9,6 +9,7 @@ export class AuditLog extends Document {
   @Prop({ type: Object }) before: Record<string, unknown>
   @Prop({ type: Object }) after: Record<string, unknown>
   @Prop() userId: string
+  @Prop() userName?: string
   @Prop({ required: true, default: () => new Date() }) at: Date
   @Prop() ip: string
 }

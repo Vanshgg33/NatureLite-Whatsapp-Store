@@ -5,6 +5,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { canEditBill, isEditableBill } from '@/components/billing/BillEditHistory';
 import { useAdminAccess } from '@/lib/admin-access';
 import { useToast } from '@/components/ui/use-toast';
 import { Receipt, Search, StickyNote } from 'lucide-react';
@@ -214,8 +215,8 @@ export function BillsList({ orders = false }: { orders?: boolean }) {
                     <span className={cn('text-[10px] px-2 py-0.5 rounded-full capitalize', orders ? 'bg-blue-100 text-blue-700' : STATUS_STYLE[b.paymentStatus] ?? 'bg-gray-100 text-gray-600')}>{orders ? 'open' : b.paymentStatus}</span>
                   </td>
                   <td onClick={e => e.stopPropagation()} className="px-3 py-2 text-right whitespace-nowrap space-x-3 cursor-default">
-                    {can('billing_new.cancel') && can('billing_new.create') && (
-                      <Link href={`${orders ? '/billing/orders/new' : '/billing/new'}?edit=${b._id}`} className="text-xs text-[#2d7a4f] hover:underline">Edit</Link>
+                    {canEditBill(can) && isEditableBill(b) && (
+                      <Link href={`/billing/bills/${b._id}/edit`} className="text-xs text-[#2d7a4f] hover:underline">Edit</Link>
                     )}
                     {orders && can('billing_new.create') && (
                       <Link href={`/billing/new?convert=${b._id}`} className="text-xs font-medium text-blue-600 hover:underline">Confirm</Link>

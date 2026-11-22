@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Param, Body, Query, UseGuards, Req,
+  Controller, Get, Post, Patch, Put, Param, Body, Query, UseGuards, Req,
 } from '@nestjs/common';
 import { BillingService } from './billing.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -151,6 +151,21 @@ export class BillingController {
     const userId = String(req.user?.sub ?? req.user?._id ?? 'system'); // the JWT payload carries the admin id as `sub`
     const canOverrideStock = String(req.user?.role ?? '').toLowerCase() === 'superadmin';
     return this.billingService.convertOrder(id, body, userId, req.ip ?? '', canOverrideStock);
+  }
+
+  // edit in place (same bill, same number); cancel permission keeps working for roles that edited before 'edit' existed
+  @Put('bills/:id')
+  @RequireAccess('billing_new.edit', 'billing_new.cancel')
+  updateBill(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const userId = String(req.user?.sub ?? req.user?._id ?? 'system');
+    const canOverrideStock = String(req.user?.role ?? '').toLowerCase() === 'superadmin';
+    return this.billingService.updateBill(id, body, userId, req.ip ?? '', canOverrideStock, String(req.user?.name ?? req.user?.email ?? ''));
+  }
+
+  // same read access as the bills themselves (GET bills / bills/:id)
+  @Get('edit-history')
+  editHistory(@Query('billId') billId: string, @Query('limit') limit: string) {
+    return this.billingService.getEditHistory(billId || undefined, limit ? Number(limit) : 100);
   }
 
   @Post('bills/:id/reissue')

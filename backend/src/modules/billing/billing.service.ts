@@ -7,6 +7,7 @@ import { BillingCounter, BillingCounterDocument } from './schemas/billing-counte
 import { Godown } from './schemas/godown.schema';
 import { isChannel } from './channels';
 import { stockKey } from './reports/stock';
+import { diffBill } from './bill-edit-diff';
 import { StoreStockService } from '../store-stock/store-stock.service';
 import { StoresService } from '../stores/stores.service';
 import { BillingWhatsappService } from './billing-whatsapp.service';
@@ -964,6 +965,123 @@ export class BillingService {
       invoiceNo = await this.nextInvoiceNoV1(docType);
     }
 
+    // 2–9. Customer snapshot, GST rates, line maths, totals, GSTR-1 section (shared with in-place edits)
+    const {
+      customer, pos, isInterState, lines, billDiscountPct, billDiscAmtPaise, chargesPaise, roundOffPaise, cgstTotalPaise, sgstTotalPaise,
+      igstTotalPaise, grandTotalPaise, formulaVersion, taxableTotalPaise, gstr1Section, customerPhone, defaultBillingLine,
+    } = await this.priceBill(dto);
+    if (docType === 'CREDIT_NOTE' && dto.refInvoiceNo) await this.assertReturnFits(dto.refInvoiceNo, dto.customerId, grandTotalPaise);
+
+    const billedAt = new Date();
+    // split tender (e.g. 500 cash + 600 UPI) comes as dto.payments; amountPaidRupees + paymentMode stays for older callers
+    const splits = dto.payments ?? [];
+    for (const p of splits) {
+      if (!['cash', 'upi'].includes(p.mode) || !(p.amountRupees >= 0)) throw new BadRequestException('Payments must be cash or upi with a valid amount');
+    }
+    const payments = splits.length
+      ? splits.filter(p => p.amountRupees > 0).map(p => ({ mode: p.mode, amountPaise: Math.round(p.amountRupees * 100), at: billedAt, kind: 'INITIAL' as const }))
+      : (dto.amountPaidRupees ?? 0) > 0
+        ? [{ mode: dto.paymentMode ?? 'cash', amountPaise: Math.round(dto.amountPaidRupees! * 100), at: billedAt, kind: 'INITIAL' as const }]
+        : [];
+    const amountPaidPaise = payments.reduce((s, p) => s + p.amountPaise, 0);
+    if (splits.length && amountPaidPaise > grandTotalPaise) throw new BadRequestException('Payments exceed the bill total');
+    const amountDuePaise = Math.max(0, grandTotalPaise - amountPaidPaise);
+    const paymentStatus: PaymentStatus = amountDuePaise <= 0 ? 'paid' : amountPaidPaise > 0 ? 'partial' : 'unpaid';
+    const billPaymentMode = splits.length ? ([...new Set(payments.map(p => p.mode))].join(', ') || 'credit') : (dto.paymentMode ?? 'credit');
+
+
+    // take the stock first (atomic per line); if the bill cannot be saved it goes straight back
+    const taken = docType === 'SALE' ? await this.takeImsStock(String(store._id), imsTake) : [];
+    let bill: any;
+    try {
+    bill = await this.billModel.create({
+      invoiceNo,
+      invoiceDate: dto.invoiceDate ? new Date(dto.invoiceDate) : billedAt,
+      docType,
+      refInvoiceNo: dto.refInvoiceNo,
+      convertedFromOrderNo: dto.convertedFromOrderNo,
+      payments,
+      customerId: new Types.ObjectId(dto.customerId),
+      customerName: customer.name ?? '',
+      customerPhone,
+      customerGstNo: customer.gstNo,
+      billingAddress: dto.billingAddress ?? defaultBillingLine,
+      shippingAddress: (dto.sameAsBilling !== false) ? (dto.billingAddress ?? defaultBillingLine) : (dto.shippingAddress ?? ''),
+      sameAsBilling: dto.sameAsBilling !== false,
+      customerTags: customer.tags ?? [],
+      orderTag: dto.orderTag,
+      deliveryUserId: dto.deliveryUserId,
+      deliveryUserName: dto.deliveryUserName,
+      godownId: dto.godownId,
+      storeId: store ? new Types.ObjectId(String(store._id)) : undefined,
+      storeName: store?.name,
+      stockOverride,
+      placeOfSupply: pos,
+      isInterState,
+      paymentTerm: dto.paymentTerm ?? 'credit',
+      paymentMode: billPaymentMode,
+      items: lines,
+      billDiscountPct,
+      billDiscountAmtPaise: billDiscAmtPaise,
+      charges: chargesPaise,
+      roundOffPaise,
+      cgstTotalPaise,
+      sgstTotalPaise,
+      igstTotalPaise,
+      grandTotalPaise,
+      amountPaidPaise,
+      amountDuePaise,
+      gstr1Section,
+      formulaVersion,
+      // backward compat float fields:
+      subtotal: +(taxableTotalPaise / 100).toFixed(2),
+      totalGst: +((cgstTotalPaise + sgstTotalPaise + igstTotalPaise) / 100).toFixed(2),
+      grandTotal: +(grandTotalPaise / 100).toFixed(2),
+      amountPaid: +(amountPaidPaise / 100).toFixed(2),
+      amountDue: +(amountDuePaise / 100).toFixed(2),
+      paymentStatus,
+      terms: dto.terms,
+      notes: dto.notes,
+      status: 'active',
+      clientRequestId: requestId,
+    });
+    } catch (e: any) {
+      await this.returnImsStock(String(store?._id), taken);
+      // two identical saves raced past the check above: the other one made the bill, return it
+      if (requestId && e?.code === 11000 && e?.keyPattern?.clientRequestId) {
+        const done = await this.billModel.findOne({ clientRequestId: requestId }).setOptions({ allDocTypes: true }).lean();
+        if (done) return done;
+      }
+      throw e;
+    }
+    // a credit note brings the goods back into the same store
+    if (docType === 'CREDIT_NOTE') await this.returnImsStock(String(store._id), dto.items.map(i => ({ productId: i.productId, variantSku: i.variantSku, qty: i.qty })));
+
+    await this.auditLogModel.create({
+      targetCollection: 'BillingBill',
+      docId: bill._id,
+      action: 'create',
+      before: null,
+      after: { invoiceNo, grandTotalPaise, paymentStatus },
+      userId,
+      ip,
+      at: new Date(),
+    });
+
+    // Sale orders never touch the party balance; credit notes reduce it
+    const outstandingDelta = docType === 'SALE' ? amountDuePaise : docType === 'CREDIT_NOTE' ? -amountDuePaise : 0;
+    if (outstandingDelta !== 0) {
+      await this.userModel.findByIdAndUpdate(dto.customerId, { $inc: { outstanding: outstandingDelta / 100 } });
+    }
+    this.crmEngine.refreshUser(dto.customerId).catch(() => {});
+    // fire and forget: a WhatsApp problem must never fail or delay the bill
+    if (dto.sendWhatsApp !== false && docType !== 'SALE_ORDER') this.billingWhatsapp.queue(String(bill._id)).catch(() => {});
+    return bill;
+  }
+
+  /** Customer snapshot, GST rates from the rule master, line maths, totals and GSTR-1 section for a bill payload.
+   *  One place, so a new bill and an edited bill are priced identically. */
+  private async priceBill(dto: Parameters<BillingService['createBillV1']>[0]) {
     // 2. Customer snapshot
     const customer = await this.userModel.findById(dto.customerId).lean() as any;
     if (!customer) throw new NotFoundException('Customer not found');
@@ -1071,24 +1189,6 @@ export class BillingService {
     const igstTotalPaise = calc.igstTotal + chargesPaise.reduce((s, c) => s + (c.igst ?? 0), 0);
     const taxableTotalPaise = calc.taxableTotal + chargesPaise.reduce((s, c) => s + (c.taxablePaise ?? 0), 0);
     const { roundOffPaise, grandTotalPaise } = calc;
-    if (docType === 'CREDIT_NOTE' && dto.refInvoiceNo) await this.assertReturnFits(dto.refInvoiceNo, dto.customerId, grandTotalPaise);
-
-    const billedAt = new Date();
-    // split tender (e.g. 500 cash + 600 UPI) comes as dto.payments; amountPaidRupees + paymentMode stays for older callers
-    const splits = dto.payments ?? [];
-    for (const p of splits) {
-      if (!['cash', 'upi'].includes(p.mode) || !(p.amountRupees >= 0)) throw new BadRequestException('Payments must be cash or upi with a valid amount');
-    }
-    const payments = splits.length
-      ? splits.filter(p => p.amountRupees > 0).map(p => ({ mode: p.mode, amountPaise: Math.round(p.amountRupees * 100), at: billedAt, kind: 'INITIAL' as const }))
-      : (dto.amountPaidRupees ?? 0) > 0
-        ? [{ mode: dto.paymentMode ?? 'cash', amountPaise: Math.round(dto.amountPaidRupees! * 100), at: billedAt, kind: 'INITIAL' as const }]
-        : [];
-    const amountPaidPaise = payments.reduce((s, p) => s + p.amountPaise, 0);
-    if (splits.length && amountPaidPaise > grandTotalPaise) throw new BadRequestException('Payments exceed the bill total');
-    const amountDuePaise = Math.max(0, grandTotalPaise - amountPaidPaise);
-    const paymentStatus: PaymentStatus = amountDuePaise <= 0 ? 'paid' : amountPaidPaise > 0 ? 'partial' : 'unpaid';
-    const billPaymentMode = splits.length ? ([...new Set(payments.map(p => p.mode))].join(', ') || 'credit') : (dto.paymentMode ?? 'credit');
 
     // 8. GSTR-1 section
     const gstin = customer.gstNo ?? '';
@@ -1109,94 +1209,7 @@ export class BillingService {
     const billingAddrs: any[] = customer.billingAddresses ?? [];
     const defaultBillingLine =
       (billingAddrs.find((a: any) => a.isDefault) ?? billingAddrs[0])?.line ?? '';
-
-    // take the stock first (atomic per line); if the bill cannot be saved it goes straight back
-    const taken = docType === 'SALE' ? await this.takeImsStock(String(store._id), imsTake) : [];
-    let bill: any;
-    try {
-    bill = await this.billModel.create({
-      invoiceNo,
-      invoiceDate: dto.invoiceDate ? new Date(dto.invoiceDate) : billedAt,
-      docType,
-      refInvoiceNo: dto.refInvoiceNo,
-      convertedFromOrderNo: dto.convertedFromOrderNo,
-      payments,
-      customerId: new Types.ObjectId(dto.customerId),
-      customerName: customer.name ?? '',
-      customerPhone,
-      customerGstNo: customer.gstNo,
-      billingAddress: dto.billingAddress ?? defaultBillingLine,
-      shippingAddress: (dto.sameAsBilling !== false) ? (dto.billingAddress ?? defaultBillingLine) : (dto.shippingAddress ?? ''),
-      sameAsBilling: dto.sameAsBilling !== false,
-      customerTags: customer.tags ?? [],
-      orderTag: dto.orderTag,
-      deliveryUserId: dto.deliveryUserId,
-      deliveryUserName: dto.deliveryUserName,
-      godownId: dto.godownId,
-      storeId: store ? new Types.ObjectId(String(store._id)) : undefined,
-      storeName: store?.name,
-      stockOverride,
-      placeOfSupply: pos,
-      isInterState,
-      paymentTerm: dto.paymentTerm ?? 'credit',
-      paymentMode: billPaymentMode,
-      items: lines,
-      billDiscountPct,
-      billDiscountAmtPaise: billDiscAmtPaise,
-      charges: chargesPaise,
-      roundOffPaise,
-      cgstTotalPaise,
-      sgstTotalPaise,
-      igstTotalPaise,
-      grandTotalPaise,
-      amountPaidPaise,
-      amountDuePaise,
-      gstr1Section,
-      formulaVersion,
-      // backward compat float fields:
-      subtotal: +(taxableTotalPaise / 100).toFixed(2),
-      totalGst: +((cgstTotalPaise + sgstTotalPaise + igstTotalPaise) / 100).toFixed(2),
-      grandTotal: +(grandTotalPaise / 100).toFixed(2),
-      amountPaid: +(amountPaidPaise / 100).toFixed(2),
-      amountDue: +(amountDuePaise / 100).toFixed(2),
-      paymentStatus,
-      terms: dto.terms,
-      notes: dto.notes,
-      status: 'active',
-      clientRequestId: requestId,
-    });
-    } catch (e: any) {
-      await this.returnImsStock(String(store?._id), taken);
-      // two identical saves raced past the check above: the other one made the bill, return it
-      if (requestId && e?.code === 11000 && e?.keyPattern?.clientRequestId) {
-        const done = await this.billModel.findOne({ clientRequestId: requestId }).setOptions({ allDocTypes: true }).lean();
-        if (done) return done;
-      }
-      throw e;
-    }
-    // a credit note brings the goods back into the same store
-    if (docType === 'CREDIT_NOTE') await this.returnImsStock(String(store._id), dto.items.map(i => ({ productId: i.productId, variantSku: i.variantSku, qty: i.qty })));
-
-    await this.auditLogModel.create({
-      targetCollection: 'BillingBill',
-      docId: bill._id,
-      action: 'create',
-      before: null,
-      after: { invoiceNo, grandTotalPaise, paymentStatus },
-      userId,
-      ip,
-      at: new Date(),
-    });
-
-    // Sale orders never touch the party balance; credit notes reduce it
-    const outstandingDelta = docType === 'SALE' ? amountDuePaise : docType === 'CREDIT_NOTE' ? -amountDuePaise : 0;
-    if (outstandingDelta !== 0) {
-      await this.userModel.findByIdAndUpdate(dto.customerId, { $inc: { outstanding: outstandingDelta / 100 } });
-    }
-    this.crmEngine.refreshUser(dto.customerId).catch(() => {});
-    // fire and forget: a WhatsApp problem must never fail or delay the bill
-    if (dto.sendWhatsApp !== false && docType !== 'SALE_ORDER') this.billingWhatsapp.queue(String(bill._id)).catch(() => {});
-    return bill;
+    return { customer, pos, isInterState, lines, billDiscountPct, billDiscAmtPaise, chargesPaise, roundOffPaise, cgstTotalPaise, sgstTotalPaise, igstTotalPaise, grandTotalPaise, formulaVersion, taxableTotalPaise, gstr1Section, customerPhone, defaultBillingLine };
   }
 
   /** A return must be against an active sale of the same customer, and all its returns together can't exceed that sale,
@@ -1277,6 +1290,187 @@ export class BillingService {
     }
     await this.billModel.updateOne({ _id: id }, { $set: { cancelReason: `Edited - replaced by ${created.invoiceNo}` } });
     return created;
+  }
+
+  /**
+   * Edit a sale invoice or sale order IN PLACE: same _id, same invoice number. Priced exactly like a new bill (priceBill);
+   * only the stock difference moves, the customer's outstanding moves by the change in balance due, payments recorded
+   * later are kept. The edit is recorded in the history (billing_audit_logs, action 'update') only after it is saved.
+   */
+  async updateBill(id: string, dto: any, userId = 'system', ip = '', canOverrideStock = false, userName = '') {
+    if (!Types.ObjectId.isValid(id)) throw new BadRequestException('Invalid bill id');
+    const old = await this.billModel.findById(id).setOptions({ allDocTypes: true }).lean() as any;
+    if (!old) throw new NotFoundException('Bill not found');
+    if (old.status !== 'active') throw new BadRequestException(`This ${old.docType === 'SALE_ORDER' ? 'sale order' : 'invoice'} is ${old.status} and can no longer be edited`);
+    const docType = old.docType ?? 'SALE';
+    if (docType !== 'SALE' && docType !== 'SALE_ORDER') throw new BadRequestException('Only sale invoices and sale orders can be edited');
+    if (!dto?.items?.length) throw new BadRequestException('Bill must have at least one item');
+    if (!dto.customerId) throw new BadRequestException('Select a customer first');
+    const noId = dto.items.find((i: any) => !i.productId);
+    if (noId) throw new BadRequestException(`Item "${noId.name}" has no product id: remove it and add it again`);
+    if (!isChannel(dto.orderTag)) throw new BadRequestException('Sales channel is required: Transport Order, B2B Order, Home Delivery Order or Store Order');
+    if (dto.invoiceNo?.trim() && dto.invoiceNo.trim() !== old.invoiceNo) throw new BadRequestException('The invoice number cannot be changed when editing');
+
+    // same IST day as before = keep the original timestamp (the form only sends a date)
+    const oldDate = new Date(old.invoiceDate ?? old.createdAt);
+    const dayIST = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const invoiceDate = dto.invoiceDate && dto.invoiceDate !== dayIST(oldDate) ? new Date(dto.invoiceDate) : oldDate;
+    if (Number.isNaN(+invoiceDate)) throw new BadRequestException('Invalid invoice date');
+    await this.taxSettings.assertPeriodOpen(oldDate);
+    await this.taxSettings.assertPeriodOpen(invoiceDate);
+
+    const p = await this.priceBill({ ...dto, invoiceDate: invoiceDate.toISOString() });
+
+    // payments: the form shows every cash/UPI payment; ones recorded later on the bill stay as they are
+    const splits: Array<{ mode: string; amountRupees: number }> = dto.payments ?? [];
+    for (const s of splits) if (!['cash', 'upi'].includes(s.mode) || !(s.amountRupees >= 0)) throw new BadRequestException('Payments must be cash or upi with a valid amount');
+    const later = (old.payments ?? []).filter((x: any) => x.kind === 'LATER');
+    const initial: any[] = [];
+    for (const mode of ['cash', 'upi']) {
+      const want = Math.round(splits.filter(s => s.mode === mode).reduce((t, s) => t + s.amountRupees, 0) * 100);
+      const laterPaise = later.filter((x: any) => x.mode === mode).reduce((t: number, x: any) => t + x.amountPaise, 0);
+      if (want < laterPaise) throw new BadRequestException(`₹${(laterPaise / 100).toFixed(2)} was received by ${mode} after billing; the ${mode} amount can't go below that`);
+      if (want > laterPaise) initial.push({ mode, amountPaise: want - laterPaise, at: old.createdAt ?? new Date(), kind: 'INITIAL' });
+    }
+    const payments = [...initial, ...later];
+    const amountPaidPaise = payments.reduce((t, x) => t + x.amountPaise, 0);
+    if (amountPaidPaise > p.grandTotalPaise) throw new BadRequestException(`Payments (₹${(amountPaidPaise / 100).toFixed(2)}) are more than the new bill total (₹${(p.grandTotalPaise / 100).toFixed(2)})`);
+    const amountDuePaise = p.grandTotalPaise - amountPaidPaise;
+    const paymentStatus: PaymentStatus = amountDuePaise <= 0 ? 'paid' : amountPaidPaise > 0 ? 'partial' : 'unpaid';
+
+    // stock: only the difference moves (or everything, if the store changed); bills from before IMS have no store and stay untouched
+    let store: any = null;
+    let taken: Array<{ productId: string; variantSku?: string; qty: number }> = [];
+    let giveBack: Array<{ productId: string; variantSku?: string; qty: number }> = [];
+    let stockOverride = old.stockOverride;
+    const oldStoreId = old.storeId ? String(old.storeId) : null;
+    if (docType === 'SALE' && oldStoreId) {
+      store = await this.imsStore(dto.storeId || oldStoreId);
+      const sameStore = String(store._id) === oldStoreId;
+      const qty = (lines: any[]) => {
+        const m = new Map<string, { productId: string; variantSku?: string; name: string; qty: number }>();
+        for (const l of lines) {
+          const k = stockKey(String(l.productId), l.variantSku || undefined);
+          m.set(k, { productId: String(l.productId), variantSku: l.variantSku || undefined, name: l.name, qty: (m.get(k)?.qty ?? 0) + (Number(l.qty) || 0) });
+        }
+        return m;
+      };
+      const before = qty(old.items ?? []);
+      const after = qty(dto.items);
+      const need: Array<{ productId: string; variantSku?: string; name: string; qty: number }> = [];
+      if (sameStore) {
+        for (const [k, a] of after) { const d = a.qty - (before.get(k)?.qty ?? 0); if (d > 0) need.push({ ...a, qty: d }); }
+        for (const [k, b] of before) { const d = b.qty - (after.get(k)?.qty ?? 0); if (d > 0) giveBack.push({ productId: b.productId, variantSku: b.variantSku, qty: d }); }
+      } else {
+        need.push(...after.values());
+        giveBack = [...before.values()].map(b => ({ productId: b.productId, variantSku: b.variantSku, qty: b.qty }));
+      }
+      if (need.length) {
+        const chk = await this.checkImsStock(String(store._id), store.name, need, { reason: dto.stockOverrideReason, allowed: canOverrideStock });
+        if (chk.overridden) stockOverride = { reason: dto.stockOverrideReason.trim(), by: userId, short: chk.short };
+        taken = await this.takeImsStock(String(store._id), chk.take);
+      }
+    }
+
+    const fields: Record<string, unknown> = {
+      invoiceDate,
+      payments,
+      customerId: new Types.ObjectId(dto.customerId),
+      customerName: p.customer.name ?? '',
+      customerPhone: p.customerPhone,
+      customerGstNo: p.customer.gstNo,
+      billingAddress: dto.billingAddress ?? p.defaultBillingLine,
+      shippingAddress: dto.sameAsBilling !== false ? (dto.billingAddress ?? p.defaultBillingLine) : (dto.shippingAddress ?? ''),
+      sameAsBilling: dto.sameAsBilling !== false,
+      customerTags: p.customer.tags ?? [],
+      orderTag: dto.orderTag,
+      deliveryUserId: dto.deliveryUserId,
+      deliveryUserName: dto.deliveryUserName,
+      godownId: dto.godownId,
+      ...(store ? { storeId: new Types.ObjectId(String(store._id)), storeName: store.name } : {}),
+      stockOverride,
+      placeOfSupply: p.pos,
+      isInterState: p.isInterState,
+      paymentTerm: dto.paymentTerm ?? old.paymentTerm ?? 'credit',
+      paymentMode: [...new Set(payments.map(x => x.mode))].join(', ') || 'credit',
+      items: p.lines,
+      billDiscountPct: p.billDiscountPct,
+      billDiscountAmtPaise: p.billDiscAmtPaise,
+      charges: p.chargesPaise,
+      roundOffPaise: p.roundOffPaise,
+      cgstTotalPaise: p.cgstTotalPaise,
+      sgstTotalPaise: p.sgstTotalPaise,
+      igstTotalPaise: p.igstTotalPaise,
+      grandTotalPaise: p.grandTotalPaise,
+      amountPaidPaise,
+      amountDuePaise,
+      gstr1Section: p.gstr1Section,
+      formulaVersion: p.formulaVersion,
+      subtotal: +(p.taxableTotalPaise / 100).toFixed(2),
+      totalGst: +((p.cgstTotalPaise + p.sgstTotalPaise + p.igstTotalPaise) / 100).toFixed(2),
+      grandTotal: +(p.grandTotalPaise / 100).toFixed(2),
+      amountPaid: +(amountPaidPaise / 100).toFixed(2),
+      amountDue: +(amountDuePaise / 100).toFixed(2),
+      paymentStatus,
+      terms: dto.terms,
+      notes: dto.notes,
+    };
+
+    // conditional on the version we read: a payment, cancel or another edit in between wins and this save is refused
+    let res;
+    try {
+      res = await this.billModel.updateOne({ _id: old._id, status: 'active', updatedAt: old.updatedAt }, { $set: fields }).setOptions({ allDocTypes: true });
+    } catch (e) {
+      if (store) await this.returnImsStock(String(store._id), taken);
+      throw e;
+    }
+    if (!res.matchedCount) {
+      if (store) await this.returnImsStock(String(store._id), taken);
+      throw new ConflictException('This bill was changed by someone else (payment, cancel or another edit). Reload it and try again.');
+    }
+    if (oldStoreId && giveBack.length) await this.returnImsStock(oldStoreId, giveBack);
+
+    if (docType === 'SALE') {
+      const oldDue = Number(old.amountDue) || 0;
+      const newDue = amountDuePaise / 100;
+      if (String(old.customerId) === String(dto.customerId)) {
+        if (newDue !== oldDue) await this.userModel.findByIdAndUpdate(dto.customerId, { $inc: { outstanding: +(newDue - oldDue).toFixed(2) } });
+      } else {
+        if (oldDue) await this.userModel.findByIdAndUpdate(old.customerId, { $inc: { outstanding: -oldDue } });
+        if (newDue) await this.userModel.findByIdAndUpdate(dto.customerId, { $inc: { outstanding: newDue } });
+      }
+    }
+
+    const changes = diffBill(old, fields);
+    if (changes.length) {
+      await this.auditLogModel.create({
+        targetCollection: 'BillingBill', docId: old._id, action: 'update',
+        before: { invoiceNo: old.invoiceNo }, after: { invoiceNo: old.invoiceNo, changes },
+        userId, userName, ip, at: new Date(),
+      }).catch(() => undefined); // the bill is saved; a history write problem must not report the save as failed
+    }
+    this.crmEngine.refreshUser(dto.customerId).catch(() => {});
+    if (String(old.customerId) !== String(dto.customerId)) this.crmEngine.refreshUser(old.customerId).catch(() => {});
+    return this.billModel.findById(old._id).setOptions({ allDocTypes: true }).lean();
+  }
+
+  /** Bill Edit History: every saved edit, newest first; for one bill or all bills. */
+  async getEditHistory(billId?: string, limit = 100) {
+    const filter: any = { targetCollection: 'BillingBill', action: 'update' };
+    if (billId) {
+      if (!Types.ObjectId.isValid(billId)) throw new BadRequestException('Invalid bill id');
+      filter.docId = new Types.ObjectId(billId);
+    }
+    const rows = await this.auditLogModel.find(filter).sort({ at: -1 }).limit(Math.min(500, Math.max(1, limit))).lean() as any[];
+    const missing = [...new Set(rows.filter(r => !r.userName && Types.ObjectId.isValid(r.userId)).map(r => r.userId))];
+    // names for entries saved without one; a lookup problem only costs the name, never the history
+    const admins = missing.length ? await (this.userModel.db.model('AdminUser').find({ _id: { $in: missing } }).select('name email').lean() as Promise<any[]>).catch(() => [] as any[]) : [];
+    const nameOf = new Map(admins.map(a => [String(a._id), a.name || a.email]));
+    return rows.map(r => ({
+      _id: r._id, billId: r.docId, invoiceNo: r.after?.invoiceNo ?? r.before?.invoiceNo ?? '',
+      at: r.at, userId: r.userId, userName: r.userName || nameOf.get(String(r.userId)) || (r.userId === 'system' ? 'System' : 'Unknown user'),
+      changes: r.after?.changes ?? [],
+    }));
   }
 
   /** Confirm a sale order: issue the real invoice (stock and balance apply now), then close the order. */

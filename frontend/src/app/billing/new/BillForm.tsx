@@ -25,8 +25,10 @@ const CHARGE_SAC = '996511';
 const CHARGE_GST_RATE = 18;
 
 /** mode 'order' = sale order: the same form, but no stock/balance/WhatsApp effect until the order is confirmed into a bill */
-export function BillForm({ mode = 'bill', presetCustomerId, onExit, onSaved }: {
+export function BillForm({ mode = 'bill', presetCustomerId, editBillId, onExit, onSaved }: {
   mode?: 'bill' | 'order';
+  /** edit this existing bill in place (same bill, same number): /billing/bills/[id]/edit or the CRM profile */
+  editBillId?: string;
   /** bill for this customer only (opened from their CRM profile): preselected and not changeable */
   presetCustomerId?: string;
   /** Back / Cancel / Esc; default goes to Billing customers */
@@ -114,17 +116,40 @@ export function BillForm({ mode = 'bill', presetCustomerId, onExit, onSaved }: {
   const [editId, setEditId] = useState('');
   const [editInvoiceNo, setEditInvoiceNo] = useState('');
   const [convertId, setConvertId] = useState(''); // /billing/new?convert=<orderId>: confirming a sale order into a real bill
+  // the bill being edited: same cache entry as the edit page, so it is fetched once
+  const { data: editBill, isError: editLoadFailed } = useQuery({
+    queryKey: ['billing-bill', editBillId],
+    queryFn: () => api.getBillingBill(editBillId!),
+    enabled: !!editBillId,
+    staleTime: 0,
+  });
   useEffect(() => {
-    if (presetCustomerId) return; // embedded in a CRM profile: that page's URL params are not ours
+    if (editLoadFailed) toast({ title: 'Could not load the bill to edit', variant: 'destructive' });
+  }, [editLoadFailed]); // eslint-disable-line react-hooks/exhaustive-deps
+  const loadedEdit = useRef('');
+  useEffect(() => {
+    if (!editBill || !editBillId || loadedEdit.current === editBillId) return;
+    loadedEdit.current = editBillId;
+    loadBill(editBillId, { convert: null, dup: null, b: editBill });
+  }, [editBill]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (presetCustomerId || editBillId) return; // CRM profile / edit page: the URL params are not ours
     const qs = new URLSearchParams(window.location.search);
     const convert = qs.get('convert');
+    // old edit links (/billing/new?edit=…) go to the real edit page
+    const legacyEdit = qs.get('edit');
+    if (legacyEdit && !convert) { router.replace(`/billing/bills/${legacyEdit}/edit`); return; }
     // ?duplicate=<billId>: a brand-new bill prefilled from an old one (new number, today's date, no payments copied)
     const dup = convert ? null : qs.get('duplicate');
-    const id = convert || qs.get('edit') || dup;
+    const id = convert || dup;
     if (!id) return;
-    (async () => {
+    loadBill(id, { convert, dup });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function loadBill(id: string, { convert, dup, b: given }: { convert: string | null; dup: string | null; b?: any }) {
       try {
-        const b = await api.getBillingBill(id);
+        const b = given ?? await api.getBillingBill(id);
         const want = convert || isOrder ? 'SALE_ORDER' : 'SALE';
         if ((b.docType ?? 'SALE') !== want || (!dup && b.status !== 'active')) { toast({ title: dup ? 'This document cannot be duplicated as a bill' : 'This document cannot be edited or confirmed', variant: 'destructive' }); return; }
         setCustomer(await api.getBillingCustomer(String(b.customerId)));
@@ -133,6 +158,13 @@ export function BillForm({ mode = 'bill', presetCustomerId, onExit, onSaved }: {
         setOrderTag(b.orderTag); setPriceMode(CHANNEL_TIER[b.orderTag as SalesChannel] ?? 'Store/Retail');
         setPlaceOfSupply(b.placeOfSupply ?? '22');
         if (!dup) setInvoiceDate(new Date(b.invoiceDate ?? b.createdAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }));
+        if (!dup && !convert) {
+          // editing: the bill's own number, time, payment term and round-off, not a fresh bill's defaults
+          setInvoiceNo(b.invoiceNo);
+          setInvoiceTime(new Date(b.invoiceDate ?? b.createdAt).toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }));
+          if (b.paymentTerm === 'cash' || b.paymentTerm === 'credit') setPaymentTerm(b.paymentTerm);
+          setRoundOffEnabled((b.roundOffPaise ?? 0) !== 0 || (b.grandTotalPaise ?? 0) % 100 === 0);
+        }
         if (b.godownId) setGodownId(b.godownId);
         if (b.storeId) setStoreId(String(b.storeId));
         setBillingAddress(b.billingAddress ?? ''); setShippingAddress(b.shippingAddress ?? ''); setSameAsBilling(b.sameAsBilling !== false);
@@ -152,13 +184,14 @@ export function BillForm({ mode = 'bill', presetCustomerId, onExit, onSaved }: {
           return;
         }
         const sum = (m: string) => (b.payments ?? []).filter((p: any) => p.mode === m).reduce((s: number, p: any) => s + p.amountPaise, 0) / 100;
-        setPaid({ cash: sum('cash'), upi: sum('upi') });
+        // bills from before split payments have only amountPaid: show it, or saving would wipe it
+        if (!(b.payments ?? []).length && (b.amountPaid ?? 0) > 0) setPaid(String(b.paymentMode).includes('upi') ? { cash: 0, upi: b.amountPaid } : { cash: b.amountPaid, upi: 0 });
+        else setPaid({ cash: sum('cash'), upi: sum('upi') });
         if (!convert) setSendWhatsApp(false); // the customer already got the original (a confirmed order sends its first invoice)
       } catch {
-        toast({ title: dup ? 'Could not load the bill to duplicate' : 'Could not load the bill to edit', variant: 'destructive' });
+        toast({ title: dup ? 'Could not load the bill to duplicate' : convert ? 'Could not load the sale order' : 'Could not load the bill to edit', variant: 'destructive' });
       }
-    })();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }
 
   // ─── Effects ──────────────────────────────────────────────────────────────
   // start on the main IMS store; the cashier can switch
@@ -309,7 +342,8 @@ export function BillForm({ mode = 'bill', presetCustomerId, onExit, onSaved }: {
         docType: isOrder ? ('SALE_ORDER' as const) : undefined,
         paymentTerm,
         invoiceDate,
-        invoiceNo: invoiceNo.length > 3 && invoiceNo !== nextNo ? invoiceNo : undefined, // bare "NLF" = nothing typed
+        // bare "NLF" = nothing typed; an edit keeps its number (the server refuses a change)
+        invoiceNo: editId ? undefined : invoiceNo.length > 3 && invoiceNo !== nextNo ? invoiceNo : undefined,
         placeOfSupply,
         godownId: godownId || undefined,
         customerId: customer._id,
@@ -347,7 +381,7 @@ export function BillForm({ mode = 'bill', presetCustomerId, onExit, onSaved }: {
         clientRequestId: convertId || editId ? undefined : requestIdRef.current,
       };
       const bill = convertId ? await api.convertBillingOrder(convertId, payload)
-        : editId ? await api.reissueBillingBill(editId, payload)
+        : editId ? await api.updateBillingBill(editId, payload)
         : await api.createBillingBillV1(payload);
       return { bill, ...opts };
     },
@@ -355,7 +389,13 @@ export function BillForm({ mode = 'bill', presetCustomerId, onExit, onSaved }: {
       // lists are cached for 5 min: without this the Bills page keeps showing the old (now cancelled) bill without the new notes
       invalidateBilling(qc);
       qc.invalidateQueries({ queryKey: ['billing-next-number'] });
-      toast(isOrder
+      if (editId) {
+        qc.invalidateQueries({ queryKey: ['billing-bill', editId] });
+        qc.invalidateQueries({ queryKey: ['billing-edit-history'] });
+      }
+      toast(editId
+        ? { title: `${isOrder ? 'Sale order' : 'Invoice'} ${bill.invoiceNo} updated`, description: 'The change is in the bill’s edit history' }
+        : isOrder
         ? { title: `Sale order ${bill.invoiceNo} saved`, description: 'No stock or balance changes until you confirm it' }
         : { title: `Invoice ${bill.invoiceNo} saved`, description: bill.whatsapp?.status === 'skipped_no_phone' ? 'No WhatsApp number' : sendWhatsApp ? 'WhatsApp queued' : undefined });
       requestIdRef.current = crypto.randomUUID(); // the next save is a new bill
@@ -366,7 +406,7 @@ export function BillForm({ mode = 'bill', presetCustomerId, onExit, onSaved }: {
         onSaved(bill, { print });
       } else if (print) {
         router.push(`/billing/invoice/${bill._id}?print=1`);
-      } else if (isOrder) {
+      } else if (isOrder && !editId) {
         router.push('/billing/orders');
       } else {
         router.push(`/billing/invoice/${bill._id}`);
@@ -390,9 +430,12 @@ export function BillForm({ mode = 'bill', presetCustomerId, onExit, onSaved }: {
   const savingRef = useRef(false);
   const save = (opts: { print: boolean; saveNew: boolean }) => {
     if (savingRef.current) return;
+    if (editIdRef.current) opts = { ...opts, saveNew: false }; // an edit never "saves and starts a new bill"
     savingRef.current = true;
     saveMutation.mutate(opts, { onSettled: () => { savingRef.current = false; } });
   };
+  const editIdRef = useRef('');
+  editIdRef.current = editId;
   const saveRef = useRef(save);
   saveRef.current = save;
   const dirtyRef = useRef(false);
@@ -402,7 +445,8 @@ export function BillForm({ mode = 'bill', presetCustomerId, onExit, onSaved }: {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const discard = (msg: string) => !dirtyRef.current || window.confirm(msg);
-      if (e.key === 'F2') { e.preventDefault(); if (discard('Clear this bill and start a new one?')) resetForm(); }
+      // F2 would empty the form while still pointing at the bill being edited
+      if (e.key === 'F2') { e.preventDefault(); if (!editIdRef.current && discard('Clear this bill and start a new one?')) resetForm(); }
       if (e.key === 'F3') { e.preventDefault(); document.getElementById('customer-search')?.focus(); }
       if (e.key === 'F4') { e.preventDefault(); document.getElementById('product-search')?.focus(); }
       // Esc that closed a dropdown/dialog or left a field must not throw the whole bill away
@@ -435,7 +479,7 @@ export function BillForm({ mode = 'bill', presetCustomerId, onExit, onSaved }: {
         <span className="font-semibold text-gray-800 text-sm">
           {convertId ? `Confirm ${editInvoiceNo}` : editId ? `Edit ${editInvoiceNo}` : isOrder ? 'New Sale Order' : 'New Bill'}
         </span>
-        {editId && <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded">Saving cancels {editInvoiceNo}{isOrder ? '' : ' (stock returned)'} and issues a new {isOrder ? 'sale order' : 'invoice'}</span>}
+        {editId && <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded">Saving updates {editInvoiceNo} itself (same number){isOrder ? '' : '; only the stock and balance difference is applied'}</span>}
         {convertId && <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded">Saving issues the invoice, deducts stock and closes {editInvoiceNo}</span>}
         {isOrder && !editId && <span className="text-[11px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded">Sale order: no stock or balance effect until confirmed</span>}
         <span className="hidden lg:flex items-center gap-1 text-[11px] text-gray-400 ml-1">
@@ -460,7 +504,7 @@ export function BillForm({ mode = 'bill', presetCustomerId, onExit, onSaved }: {
           <div className="p-4 bg-white border-b border-gray-200">
             <BillHeader
               priceMode={priceMode} onPriceModeChange={changePriceMode}
-              invoiceNo={invoiceNo} onInvoiceNoChange={v => setInvoiceNo(v.toUpperCase().startsWith('NLF') ? v.toUpperCase() : 'NLF' + v.toUpperCase())}
+              invoiceNo={invoiceNo} invoiceNoLocked={!!editId} onInvoiceNoChange={v => setInvoiceNo(v.toUpperCase().startsWith('NLF') ? v.toUpperCase() : 'NLF' + v.toUpperCase())}
               invoiceDate={invoiceDate} onInvoiceDateChange={setInvoiceDate}
               invoiceTime={invoiceTime} onInvoiceTimeChange={setInvoiceTime}
               godownId={godownId} onGodownChange={setGodownId} godowns={godowns}
@@ -555,7 +599,7 @@ export function BillForm({ mode = 'bill', presetCustomerId, onExit, onSaved }: {
             lines={lines}
             onSave={() => save({ print: false, saveNew: false })}
             onSaveAndPrint={() => save({ print: true, saveNew: false })}
-            onSaveAndNew={() => save({ print: false, saveNew: true })}
+            onSaveAndNew={editId ? undefined : () => save({ print: false, saveNew: true })}
             isSaving={saveMutation.isPending}
           />
         </div>
