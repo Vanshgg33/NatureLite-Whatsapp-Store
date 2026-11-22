@@ -1,6 +1,7 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { useAdminAuthStore } from './admin-store';
 import { useCustomerStore } from './customer-store';
+import type { CashBlock, CashDrawer, DrawerDenom } from './billing/cash/drawer';
 import {
   ApiResponse,
   AuthResponse,
@@ -2143,8 +2144,44 @@ class ApiClient {
     return res.data.data;
   }
 
-  async recordBillingPayment(id: string, amount: number, mode: 'cash' | 'upi' | 'card' | 'bank' = 'cash'): Promise<any> {
-    const res = await this.client.post<ApiResponse<any>>(`/billing/bills/${id}/payment`, { amount, mode });
+  async recordBillingPayment(id: string, amount: number, mode: 'cash' | 'upi' | 'card' | 'bank' = 'cash', cash?: CashBlock): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>(`/billing/bills/${id}/payment`, { amount, mode, cash });
+    return res.data.data;
+  }
+
+  // ─── Cash drawer (one per store) ───────────────────────────────────────────
+  async getCashDrawer(storeId: string): Promise<{ drawer: CashDrawer | null; defaultDenoms?: DrawerDenom[] }> {
+    const res = await this.client.get<ApiResponse<{ drawer: CashDrawer | null; defaultDenoms?: DrawerDenom[] }>>('/billing/cash-drawer', { params: { storeId } });
+    return res.data.data;
+  }
+
+  async cashDrawerTxns(params: { storeId: string; type?: string; from?: string; to?: string; cursor?: number; limit?: number; format?: 'csv' }): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>('/billing/cash-drawer/txns', { params });
+    return res.data.data;
+  }
+
+  async verifyCashDrawer(storeId: string): Promise<any> {
+    const res = await this.client.get<ApiResponse<any>>('/billing/cash-drawer/verify', { params: { storeId } });
+    return res.data.data;
+  }
+
+  async cashDrawerOpeningCount(data: { storeId: string; counts: Record<string, number>; clientRequestId: string }): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>('/billing/cash-drawer/opening-count', data);
+    return res.data.data;
+  }
+
+  async adjustCashDrawer(data: { storeId: string; type: string; received?: Record<string, number>; returned?: Record<string, number>; reason: string; clientRequestId: string }): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>('/billing/cash-drawer/adjust', data);
+    return res.data.data;
+  }
+
+  async reconcileCashDrawer(data: { storeId: string; counted: Record<string, number>; note?: string; clientRequestId: string }): Promise<any> {
+    const res = await this.client.post<ApiResponse<any>>('/billing/cash-drawer/reconcile', data);
+    return res.data.data;
+  }
+
+  async updateCashDrawerSettings(data: { storeId: string; mode?: string; denoms?: Array<{ id: string; active?: boolean; par?: number; minLevel?: number }> }): Promise<any> {
+    const res = await this.client.patch<ApiResponse<any>>('/billing/cash-drawer/settings', data);
     return res.data.data;
   }
 
@@ -2306,8 +2343,8 @@ class ApiClient {
     return res.data.data;
   }
 
-  async cancelBillingBill(id: string, reason: string): Promise<void> {
-    await this.client.patch(`/billing/bills/${id}/cancel`, { reason });
+  async cancelBillingBill(id: string, reason: string, cash?: CashBlock): Promise<void> {
+    await this.client.patch(`/billing/bills/${id}/cancel`, { reason, cash });
   }
 
   // ─── CRM ─────────────────────────────────────────────────────────────────

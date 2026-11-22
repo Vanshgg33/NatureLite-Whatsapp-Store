@@ -16,9 +16,13 @@ export interface SummaryPanelProps {
   /** omitted while editing a bill */
   onSaveAndNew?: () => void;
   isSaving: boolean;
+  /** the cash counter, between the totals and the Save buttons */
+  cashPanel?: React.ReactNode;
+  /** why Save is not allowed right now (cash counter not settled); empty = allowed */
+  saveBlockedReason?: string;
 }
 
-export function SummaryPanel({ totals, isInterState, lines, onSave, onSaveAndPrint, onSaveAndNew, isSaving }: SummaryPanelProps) {
+export function SummaryPanel({ totals, isInterState, lines, onSave, onSaveAndPrint, onSaveAndNew, isSaving, cashPanel, saveBlockedReason }: SummaryPanelProps) {
   // Group tax by gstRate
   const gstByRate: Record<number, { taxable: number; cgst: number; sgst: number; igst: number }> = {};
   for (const l of lines) {
@@ -107,14 +111,16 @@ export function SummaryPanel({ totals, isInterState, lines, onSave, onSaveAndPri
             {amountInWords(totals.grandTotalPaise)}
           </p>
         )}
+        {cashPanel}
       </div>
 
       {/* Action buttons */}
       <div className="p-4 border-t border-gray-100 space-y-2">
+        {saveBlockedReason && <p role="status" className="text-[11px] text-red-700">{saveBlockedReason}</p>}
         <Button
           className="w-full bg-[#2d7a4f] hover:bg-[#245f3e] text-white h-9 relative overflow-hidden"
           onClick={onSaveAndPrint}
-          disabled={isSaving}
+          disabled={isSaving || !!saveBlockedReason}
         >
           {isSaving ? (
             <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Saving…</span>
@@ -126,12 +132,12 @@ export function SummaryPanel({ totals, isInterState, lines, onSave, onSaveAndPri
           )}
         </Button>
         <div className="flex gap-2">
-          <Button variant="outline" className="flex-1 h-8 text-xs" onClick={onSave} disabled={isSaving}>
+          <Button variant="outline" className="flex-1 h-8 text-xs" onClick={onSave} disabled={isSaving || !!saveBlockedReason}>
             <Save className="h-3.5 w-3.5 mr-1" /> Save
             <kbd className="ml-auto text-[10px] bg-gray-100 px-1 py-0.5 rounded font-mono text-gray-400">F8</kbd>
           </Button>
           {onSaveAndNew && (
-            <Button variant="outline" className="flex-1 h-8 text-xs" onClick={onSaveAndNew} disabled={isSaving}>
+            <Button variant="outline" className="flex-1 h-8 text-xs" onClick={onSaveAndNew} disabled={isSaving || !!saveBlockedReason}>
               <Plus className="h-3.5 w-3.5 mr-1" /> Save & New
             </Button>
           )}

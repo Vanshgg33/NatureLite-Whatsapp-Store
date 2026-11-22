@@ -18,6 +18,10 @@ import { useBillCalc } from './useBillCalc';
 import type { Formulas } from '@/lib/billing/formula-engine';
 import { channelForCustomer, CHANNEL_TIER, type PriceTier, type SalesChannel } from '@/lib/billing/channel';
 import type { LineItem, BillCharge, PaidSplit, GodownDto } from './types';
+import { CashCounter, type CashTender } from '@/components/billing/CashCounter';
+import { useCashDrawer, cashDrawerKey } from '@/lib/billing/cash/useCashDrawer';
+import { activeDrawer, apiErrorCode } from '@/lib/billing/cash/drawer';
+import type { Counts } from '@/lib/billing/cash/cashChange';
 
 const DELIVERY_TAGS = ['Home Delivery Order', 'Transport Order'];
 
@@ -79,6 +83,10 @@ export function BillForm({ mode = 'bill', presetCustomerId, editBillId, onExit, 
   const [notes, setNotes] = useState('');
   const [sendWhatsApp, setSendWhatsApp] = useState(true);
   const [storeId, setStoreId] = useState(''); // IMS store the stock is checked and deducted from
+  // cash counter (only when the store's cash drawer is on): notes received, the worked-out tender, or a SOFT-mode skip reason
+  const [cashReceived, setCashReceived] = useState<Counts>({});
+  const [tender, setTender] = useState<CashTender | null>(null);
+  const [cashSkip, setCashSkip] = useState('');
 
   // ─── Derived ──────────────────────────────────────────────────────────────
   const isInterState = placeOfSupply !== '22';
@@ -215,6 +223,29 @@ export function BillForm({ mode = 'bill', presetCustomerId, editBillId, onExit, 
   const { data: activeFormulas } = useQuery({ queryKey: ['billing-formulas', invoiceDate], queryFn: () => api.getActiveFormulas(invoiceDate), staleTime: 60_000 });
   const { lines, totals } = useBillCalc(rawItems, billDiscountPct, charges, roundOffEnabled, isInterState, amountPaidRupees, discountMode, activeFormulas?.formulas as Formulas | undefined);
 
+  // ─── Cash drawer ──────────────────────────────────────────────────────────
+  // a sale order moves no cash; an edit can't change counted cash (the server refuses), so both keep the plain Cash box
+  const drawerQ = useCashDrawer(storeId, !isOrder && !editBillId);
+  const drawer = !isOrder && !editId ? activeDrawer(drawerQ.drawer) : null;
+  const counting = !!drawer && !cashSkip;
+  const upiPaise = Math.round(paid.upi * 100);
+  const cashDueRupees = Math.max(0, Math.floor((totals.grandTotalPaise - upiPaise) / 100));
+  const strayPaise = Math.max(0, totals.grandTotalPaise - upiPaise) % 100; // no paise coins: they stay due
+  // the counter is the one source of truth for the cash amount
+  useEffect(() => {
+    if (counting && tender && paid.cash !== tender.appliedRupees) setPaid(p => ({ ...p, cash: tender.appliedRupees }));
+  }, [counting, tender?.appliedRupees]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cashBlock = isOrder || editId ? ''
+    : drawerQ.isLoading ? 'Connecting to the cash drawer…'
+    : !drawer ? ''
+    : upiPaise > totals.grandTotalPaise ? 'UPI is more than the bill total (UPI cannot give change)'
+    : counting && tender && !tender.valid ? (tender.status === 'CANNOT_CHANGE' ? 'The change cannot be made from the drawer' : 'The change does not add up')
+    : '';
+  const skipCounting = () => {
+    const r = window.prompt('Why is the cash not being counted? (recorded on the drawer for the end-of-day check)')?.trim();
+    if (r) setCashSkip(r.slice(0, 300));
+  };
+
   // flipping ₹ <-> % keeps the discount the same: re-express the typed value in the new mode
   const changeDiscountMode = (m: 'percent' | 'amount') => {
     if (m === discountMode) return;
@@ -309,6 +340,7 @@ export function BillForm({ mode = 'bill', presetCustomerId, editBillId, onExit, 
     setDiscountMode('percent');
     setCharges([]);
     setPaid({ cash: 0, upi: 0 });
+    setCashReceived({}); setCashSkip('');
     setNotes('');
     setTerms('');
     setInvoiceDate(istDateKey());
@@ -322,6 +354,7 @@ export function BillForm({ mode = 'bill', presetCustomerId, editBillId, onExit, 
   // ─── Save mutation ────────────────────────────────────────────────────────
   const saveMutation = useMutation({
     mutationFn: async (opts: { print: boolean; saveNew: boolean }) => {
+      if (cashBlock) throw new Error(cashBlock);
       if (!customer) throw new Error('Select a customer first');
       if (!rawItems.length) throw new Error('Add at least one item');
       if (!orderTag) throw new Error('Select a sales channel');
@@ -379,13 +412,19 @@ export function BillForm({ mode = 'bill', presetCustomerId, editBillId, onExit, 
         deliveryUserName: deliveryUserName || undefined,
         // only a brand-new bill carries it; edits and order confirmations have their own guards
         clientRequestId: convertId || editId ? undefined : requestIdRef.current,
+        // the counted notes; the server checks them against the drawer and the Cash amount
+        cash: !drawer ? undefined
+          : cashSkip ? (paid.cash > 0 ? { skip: { reason: cashSkip } } : undefined)
+          : tender && Object.values(tender.received).some(Boolean) ? { received: tender.received, returned: tender.returned } : undefined,
       };
+      const change = drawer && !cashSkip ? tender?.changeRupees ?? 0 : 0;
       const bill = convertId ? await api.convertBillingOrder(convertId, payload)
         : editId ? await api.updateBillingBill(editId, payload)
         : await api.createBillingBillV1(payload);
-      return { bill, ...opts };
+      return { bill, change, ...opts };
     },
-    onSuccess: ({ bill, print, saveNew }) => {
+    onSuccess: ({ bill, change, print, saveNew }) => {
+      if (storeId) qc.invalidateQueries({ queryKey: cashDrawerKey(storeId) });
       // lists are cached for 5 min: without this the Bills page keeps showing the old (now cancelled) bill without the new notes
       invalidateBilling(qc);
       qc.invalidateQueries({ queryKey: ['billing-next-number'] });
@@ -397,7 +436,7 @@ export function BillForm({ mode = 'bill', presetCustomerId, editBillId, onExit, 
         ? { title: `${isOrder ? 'Sale order' : 'Invoice'} ${bill.invoiceNo} updated`, description: 'The change is in the bill’s edit history' }
         : isOrder
         ? { title: `Sale order ${bill.invoiceNo} saved`, description: 'No stock or balance changes until you confirm it' }
-        : { title: `Invoice ${bill.invoiceNo} saved`, description: bill.whatsapp?.status === 'skipped_no_phone' ? 'No WhatsApp number' : sendWhatsApp ? 'WhatsApp queued' : undefined });
+        : { title: `Invoice ${bill.invoiceNo} saved${change ? ` · give ₹${change.toLocaleString('en-IN')} change` : ''}`, description: bill.whatsapp?.status === 'skipped_no_phone' ? 'No WhatsApp number' : sendWhatsApp ? 'WhatsApp queued' : undefined });
       requestIdRef.current = crypto.randomUUID(); // the next save is a new bill
       if (saveNew) {
         setEditId(''); setConvertId('');
@@ -413,6 +452,14 @@ export function BillForm({ mode = 'bill', presetCustomerId, editBillId, onExit, 
       }
     },
     onError: (e: any) => {
+      const { code, details } = apiErrorCode(e);
+      if (code === 'DRAWER_STOCK_INSUFFICIENT' && details?.counts) {
+        // another till took those notes: show the real counts, the change is worked out again
+        drawerQ.setCounts(details.counts);
+        toast({ title: 'Drawer changed: check the change', description: 'Someone else used those notes. The suggested change was updated.', variant: 'destructive' });
+        return;
+      }
+      if (code === 'CASH_BLOCK_REQUIRED' || code === 'DRAWER_NOT_INITIALISED' || code === 'COUNTING_REQUIRED') drawerQ.refresh();
       // the server's message first (axios' own message is only "Request failed with status code 400"); validation errors come as an array
       const raw = e?.response?.data?.message ?? e?.message ?? 'Failed to save bill';
       const msg = Array.isArray(raw) ? raw.join(', ') : String(raw);
@@ -583,7 +630,7 @@ export function BillForm({ mode = 'bill', presetCustomerId, editBillId, onExit, 
               billDiscAmtPaise={totals.billDiscAmtPaise}
               charges={charges} onChargesChange={setCharges}
               roundOffEnabled={roundOffEnabled} onRoundOffEnabledChange={setRoundOffEnabled}
-              paid={paid} onPaidChange={setPaid}
+              paid={paid} onPaidChange={setPaid} cashLocked={counting}
               sendWhatsApp={sendWhatsApp} onSendWhatsAppChange={setSendWhatsApp}
               terms={terms} onTermsChange={setTerms}
               notes={notes} onNotesChange={setNotes}
@@ -601,6 +648,31 @@ export function BillForm({ mode = 'bill', presetCustomerId, editBillId, onExit, 
             onSaveAndPrint={() => save({ print: true, saveNew: false })}
             onSaveAndNew={editId ? undefined : () => save({ print: false, saveNew: true })}
             isSaving={saveMutation.isPending}
+            saveBlockedReason={cashBlock}
+            cashPanel={isOrder || editId || !storeId ? null : drawer ? (
+              <div className="space-y-1.5">
+                {upiPaise > totals.grandTotalPaise && <p role="alert" className="text-[11px] text-red-700 bg-red-50 rounded px-2 py-1">UPI is more than the bill total. UPI cannot give change.</p>}
+                {strayPaise > 0 && (
+                  <p className="text-[11px] text-amber-800 bg-amber-50 rounded px-2 py-1">
+                    ₹{(strayPaise / 100).toFixed(2)} will stay due (no paise coins).{' '}
+                    {!roundOffEnabled && <button type="button" className="underline font-medium" onClick={() => setRoundOffEnabled(true)}>Turn on Round-off</button>}
+                  </p>
+                )}
+                {cashSkip ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-900">
+                    Cash not counted: &ldquo;{cashSkip}&rdquo;. Type the Cash amount in Payment Received.{' '}
+                    <button type="button" className="underline font-medium" onClick={() => setCashSkip('')}>Count instead</button>
+                  </div>
+                ) : (
+                  <CashCounter amountRupees={cashDueRupees} drawer={drawer} received={cashReceived} onReceivedChange={setCashReceived}
+                    onTender={setTender} disabled={saveMutation.isPending} onSkip={drawer.mode === 'SOFT' ? skipCounting : undefined} />
+                )}
+              </div>
+            ) : drawerQ.isError ? (
+              <p className="text-[11px] text-gray-400">Cash counter unavailable. <button type="button" className="underline" onClick={() => drawerQ.refresh()}>Retry</button></p>
+            ) : drawerQ.isLoading ? (
+              <div className="h-24 rounded-lg bg-gray-100 animate-pulse" aria-label="Loading cash counter" />
+            ) : <p className="text-[11px] text-gray-400">Cash counter off for this store</p>}
           />
         </div>
       </div>

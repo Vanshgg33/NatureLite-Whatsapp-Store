@@ -20,6 +20,8 @@ export interface BillFooterProps {
   onRoundOffEnabledChange: (v: boolean) => void;
   paid: PaidSplit;
   onPaidChange: (v: PaidSplit) => void;
+  /** the cash counter sets the Cash amount (notes received minus change) */
+  cashLocked?: boolean;
   sendWhatsApp: boolean;
   onSendWhatsAppChange: (v: boolean) => void;
   terms: string;
@@ -33,7 +35,7 @@ export function BillFooter({
   discountMode, onDiscountModeChange, billDiscAmtPaise,
   charges, onChargesChange,
   roundOffEnabled, onRoundOffEnabledChange,
-  paid, onPaidChange,
+  paid, onPaidChange, cashLocked,
   sendWhatsApp, onSendWhatsAppChange,
   terms, onTermsChange,
   notes, onNotesChange,
@@ -110,8 +112,9 @@ export function BillFooter({
           <div key={m.key} className="flex items-center gap-2">
             <label className="text-xs text-gray-500 w-36 shrink-0">{m.label} (₹)</label>
             <input type="number" min="0" step="1" value={paid[m.key] || ''}
+              readOnly={cashLocked && m.key === 'cash'} title={cashLocked && m.key === 'cash' ? 'Set by the cash counter' : undefined}
               onChange={e => onPaidChange({ ...paid, [m.key]: Math.max(0, parseFloat(e.target.value) || 0) })}
-              className="w-28 text-right border border-gray-200 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-[#2d7a4f]/30 focus:outline-none tabular-nums"
+              className={`w-28 text-right border border-gray-200 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-[#2d7a4f]/30 focus:outline-none tabular-nums${cashLocked && m.key === 'cash' ? ' bg-gray-50 text-gray-600' : ''}`}
               placeholder="0"
             />
           </div>

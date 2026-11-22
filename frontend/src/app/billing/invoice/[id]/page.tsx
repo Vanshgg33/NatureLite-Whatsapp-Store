@@ -15,6 +15,7 @@ import { amountInWords } from '@/lib/billing/utils/amountInWords';
 import { INVOICE_BANK } from '@/components/InvoiceLayout';
 import { getApiError } from '@/lib/api-error';
 import { RecordPaymentDialog } from '@/components/billing/record-payment-dialog';
+import { useCashRefund } from '@/components/billing/CashRefund';
 
 // ─── Seller constants ─────────────────────────────────────────────────────────
 const SELLER = {
@@ -72,16 +73,18 @@ const WA_LABEL: Record<string, string> = {
 };
 
 // ─── Cancel dialog ────────────────────────────────────────────────────────────
-function CancelDialog({ billId, onClose }: { billId: string; onClose: () => void }) {
+function CancelDialog({ billId, storeId, onClose }: { billId: string; storeId?: string; onClose: () => void }) {
   const [reason, setReason] = useState('');
   const qc = useQueryClient();
+  const refund = useCashRefund(storeId);
   const cancel = useMutation({
-    mutationFn: () => api.cancelBillingBill(billId, reason.trim()),
+    mutationFn: () => api.cancelBillingBill(billId, reason.trim(), refund.cash),
     onSuccess: () => { invalidateBilling(qc); onClose(); },
+    onError: e => { refund.handleError(e); },
   });
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center print:hidden">
-      <div className="bg-white rounded-xl shadow-xl w-[400px] p-6">
+      <div className="bg-white rounded-xl shadow-xl w-[400px] max-w-[92vw] max-h-[92vh] overflow-y-auto p-6">
         <h3 className="font-semibold text-gray-800 mb-1">Cancel Invoice</h3>
         <p className="text-sm text-gray-500 mb-4">This cannot be undone. Please state the reason.</p>
         <textarea
@@ -91,10 +94,11 @@ function CancelDialog({ billId, onClose }: { billId: string; onClose: () => void
           placeholder="Reason for cancellation…"
           className="w-full border border-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 resize-none"
         />
+        {refund.panel}
         <div className="flex gap-2 mt-4 justify-end">
           <Button variant="outline" size="sm" onClick={onClose}>Dismiss</Button>
           <Button size="sm" variant="destructive"
-            disabled={!reason.trim() || cancel.isPending}
+            disabled={!reason.trim() || cancel.isPending || refund.blocked}
             onClick={() => cancel.mutate()}>
             {cancel.isPending ? 'Cancelling…' : 'Confirm Cancel'}
           </Button>
@@ -511,7 +515,7 @@ export default function InvoicePage() {
         <BillEditHistory billId={id} />
       </section>
 
-      {showCancel && <CancelDialog billId={id} onClose={() => setShowCancel(false)} />}
+      {showCancel && <CancelDialog billId={id} storeId={bill.storeId ? String(bill.storeId) : undefined} onClose={() => setShowCancel(false)} />}
       {showPay && <RecordPaymentDialog bill={bill} onClose={() => setShowPay(false)} />}
 
       <style>{`

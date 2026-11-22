@@ -28,6 +28,7 @@ export const ADMIN_PAGE_HREFS: { page: string; href: string }[] = [
   { page: 'billing_dues', href: '/billing/dues' },
   { page: 'billing_reports', href: '/billing/reports' },
   { page: 'billing_books', href: '/billing/books' },
+  { page: 'billing_cash_drawer', href: '/billing/cash-drawer' },
   { page: 'billing_insights', href: '/billing/insights' },
   { page: 'billing_gstr1', href: '/billing/gstr1' },
   { page: 'billing_tax', href: '/billing/settings/tax' },

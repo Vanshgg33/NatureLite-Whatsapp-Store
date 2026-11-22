@@ -15,6 +15,7 @@ import { cn, useDebouncedValue } from '@/lib/utils';
 import { istDateKey, istDaysAgoKey, istWeekStartKey, istMonthKey, startOfDayIST, endOfDayIST } from '@/lib/time';
 import { CHANNELS, CHANNEL_COLORS } from '@/lib/billing/channel';
 import { invalidateBilling } from '@/lib/billing/invalidate';
+import { useCashRefund } from '@/components/billing/CashRefund';
 import { PartyReport } from './PartyReport';
 import { ProductReport } from './ProductReport';
 import { billDate, billTime } from '@/lib/billing/datetime';
@@ -52,27 +53,29 @@ function CancelModal({ bill, orders, onClose }: { bill: any; orders: boolean; on
   const [reason, setReason] = useState('');
   const qc = useQueryClient();
   const { toast } = useToast();
+  const refund = useCashRefund(bill.storeId ? String(bill.storeId) : undefined);
   const cancel = useMutation({
-    mutationFn: () => api.cancelBillingBill(bill._id, reason.trim()),
+    mutationFn: () => api.cancelBillingBill(bill._id, reason.trim(), refund.cash),
     onSuccess: () => {
       toast({ title: `${bill.invoiceNo} cancelled`, description: orders ? undefined : 'Stock returned to the store' });
       invalidateBilling(qc);
       onClose();
     },
-    onError: (e: any) => toast({ title: e?.response?.data?.message ?? 'Failed to cancel bill', variant: 'destructive' }),
+    onError: (e: any) => toast({ title: e?.response?.data?.message ?? 'Failed to cancel bill', variant: refund.handleError(e) ? undefined : 'destructive' }),
   });
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
-      <div className="bg-white rounded-xl shadow-xl w-[400px] max-w-[92vw] p-5">
+      <div className="bg-white rounded-xl shadow-xl w-[400px] max-w-[92vw] max-h-[92vh] overflow-y-auto p-5">
         <h3 className="font-semibold text-gray-800 mb-1">Cancel {bill.invoiceNo}</h3>
         <p className="text-sm text-gray-500 mb-3">
           {orders ? 'Nothing was deducted for this order, so no stock or balance changes. ' : <>Stock goes back to the store and the unpaid amount is removed from {bill.customerName}&apos;s balance. </>}This cannot be undone.
         </p>
         <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} placeholder="Reason (required)"
           className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
+        {refund.panel}
         <div className="flex gap-2 mt-3">
           <Button variant="outline" className="flex-1" onClick={onClose} disabled={cancel.isPending}>Keep bill</Button>
-          <Button className="flex-1 bg-red-600 hover:bg-red-700 text-white" disabled={!reason.trim() || cancel.isPending} onClick={() => cancel.mutate()}>
+          <Button className="flex-1 bg-red-600 hover:bg-red-700 text-white" disabled={!reason.trim() || cancel.isPending || refund.blocked} onClick={() => cancel.mutate()}>
             {cancel.isPending ? 'Cancelling…' : 'Cancel bill'}
           </Button>
         </div>
