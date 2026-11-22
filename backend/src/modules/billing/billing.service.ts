@@ -35,6 +35,23 @@ const SALE_LINE = {
   qty: '$items.qty', rate: '$items.unitPrice', amount: ITEM_VALUE,
 };
 
+/** A bill's date = its invoice date; legacy bills without one fall back to createdAt (lists, reports and the dashboard agree). */
+export const billDateMatch = (range: Record<string, Date>) => ({ $or: [{ invoiceDate: range }, { invoiceDate: null, createdAt: range }, { invoiceDate: { $exists: false }, createdAt: range }] });
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+/** Totals and simple insights for a filtered bill list (all matching bills, not one page). */
+export function billsSummary(count: number, g: any, byChannel: any[]) {
+  const total = g?.total ?? 0;
+  return {
+    count,
+    total: round2(total), collected: round2(g?.collected ?? 0), due: round2(g?.due ?? 0),
+    customers: g?.customers?.length ?? 0,
+    avgBill: count ? round2(total / count) : 0,
+    collectionRate: total > 0 ? Math.round(((g?.collected ?? 0) / total) * 100) : null,
+    byChannel: (byChannel ?? []).map((c: any) => ({ channel: c._id || 'No channel', total: round2(c.total), count: c.count })),
+  };
+}
+
 @Injectable()
 export class BillingService {
   constructor(
@@ -460,6 +477,9 @@ export class BillingService {
     hasNotes?: string;
     productName?: string;
     minQty?: string;
+    minAmount?: string;
+    maxAmount?: string;
+    summary?: string; // "false": skip the totals (reports that page through every bill)
     page?: number;
     limit?: number;
   }) {
@@ -481,25 +501,39 @@ export class BillingService {
       const re = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       q.$or = [{ invoiceNo: re }, { customerName: re }, { customerPhone: re }];
     }
-    if (filters.paymentStatus) q.paymentStatus = filters.paymentStatus;
+    // 'due' = anything with money still owed (the dashboard's Outstanding Dues)
+    if (filters.paymentStatus === 'due') q.paymentStatus = { $in: ['unpaid', 'partial'] };
+    else if (filters.paymentStatus) q.paymentStatus = filters.paymentStatus;
+    const amt = (v?: string) => (v !== undefined && v !== '' && Number.isFinite(Number(v)) ? Number(v) : undefined);
+    const minAmt = amt(filters.minAmount);
+    const maxAmt = amt(filters.maxAmount);
+    if (minAmt !== undefined || maxAmt !== undefined) {
+      q.grandTotal = { ...(minAmt !== undefined ? { $gte: minAmt } : {}), ...(maxAmt !== undefined ? { $lte: maxAmt } : {}) };
+    }
     if (filters.orderTag) q.orderTag = filters.orderTag;
     if (filters.startDate || filters.endDate) {
       // by invoice date (what the list shows and Reports use); legacy bills without one fall back to createdAt
       const r: any = {};
       if (filters.startDate) r.$gte = new Date(filters.startDate);
       if (filters.endDate) r.$lte = new Date(filters.endDate);
-      q.$and = [{ $or: [{ invoiceDate: r }, { invoiceDate: null, createdAt: r }, { invoiceDate: { $exists: false }, createdAt: r }] }];
+      q.$and = [billDateMatch(r)];
     }
 
     const limit = Math.min(filters.limit ?? 50, 200);
     const skip = ((filters.page ?? 1) - 1) * limit;
 
-    const [items, total] = await Promise.all([
-      this.billModel.find(q).setOptions({ allDocTypes: filters.docType === 'SALE_ORDER' }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-      this.billModel.countDocuments(q).setOptions({ allDocTypes: filters.docType === 'SALE_ORDER' }),
+    const allDocTypes = filters.docType === 'SALE_ORDER';
+    const wantSummary = filters.summary !== 'false';
+    const [items, total, sums, byChannel] = await Promise.all([
+      this.billModel.find(q).setOptions({ allDocTypes }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      this.billModel.countDocuments(q).setOptions({ allDocTypes }),
+      // totals of EVERY matching bill (not just this page), for the summary strip
+      !wantSummary ? [] : this.billModel.aggregate([{ $match: q }, { $group: {
+        _id: null, total: { $sum: '$grandTotal' }, collected: { $sum: '$amountPaid' }, due: { $sum: '$amountDue' }, customers: { $addToSet: '$customerId' },
+      } }]).option({ allDocTypes }),
+      !wantSummary ? [] : this.billModel.aggregate([{ $match: q }, { $group: { _id: '$orderTag', total: { $sum: '$grandTotal' }, count: { $sum: 1 } } }, { $sort: { total: -1 } }]).option({ allDocTypes }),
     ]);
-
-    return { items, total, page: filters.page ?? 1, limit };
+    return { items, total, page: filters.page ?? 1, limit, summary: wantSummary ? billsSummary(total, sums[0], byChannel) : undefined };
   }
 
   async getBill(id: string) {
@@ -720,11 +754,11 @@ export class BillingService {
 
     const [todayStats, monthStats, allTimeStats, outstandingAgg, customerCount, recentBills, thisMonthTags, prevMonthTags] = await Promise.all([
       this.billModel.aggregate([
-        { $match: { status: 'active', createdAt: { $gte: startOfToday } } },
+        { $match: { status: 'active', ...billDateMatch({ $gte: startOfToday }) } },
         { $group: { _id: null, total: { $sum: '$grandTotal' }, count: { $sum: 1 }, collected: { $sum: '$amountPaid' } } },
       ]),
       this.billModel.aggregate([
-        { $match: { status: 'active', createdAt: { $gte: startOfMonth } } },
+        { $match: { status: 'active', ...billDateMatch({ $gte: startOfMonth }) } },
         { $group: { _id: null, total: { $sum: '$grandTotal' }, count: { $sum: 1 }, collected: { $sum: '$amountPaid' }, due: { $sum: '$amountDue' } } },
       ]),
       this.billModel.aggregate([
@@ -738,11 +772,11 @@ export class BillingService {
       this.userModel.countDocuments({}),
       this.billModel.find({ status: 'active' }).sort({ createdAt: -1 }).limit(10).lean(),
       this.billModel.aggregate([
-        { $match: { status: 'active', createdAt: { $gte: startOfMonth } } },
+        { $match: { status: 'active', ...billDateMatch({ $gte: startOfMonth }) } },
         { $group: { _id: '$orderTag', total: { $sum: '$grandTotal' }, count: { $sum: 1 } } },
       ]),
       this.billModel.aggregate([
-        { $match: { status: 'active', createdAt: { $gte: prevStartOfMonth, $lt: startOfMonth } } },
+        { $match: { status: 'active', ...billDateMatch({ $gte: prevStartOfMonth, $lt: startOfMonth }) } },
         { $group: { _id: '$orderTag', total: { $sum: '$grandTotal' }, count: { $sum: 1 } } },
       ]),
     ]);

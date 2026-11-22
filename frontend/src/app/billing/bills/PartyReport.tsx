@@ -13,7 +13,7 @@ const addressOf = (b: any) => b.shippingAddress || b.billingAddress || '';
 export async function fetchAllBills(filters: Record<string, any>) {
   const all: any[] = [];
   for (let page = 1; ; page++) {
-    const r = await api.getBillingBills({ ...filters, page, limit: 200 });
+    const r = await api.getBillingBills({ ...filters, page, limit: 200, summary: 'false' });
     all.push(...r.items);
     if (all.length >= r.total || !r.items.length) return all;
   }

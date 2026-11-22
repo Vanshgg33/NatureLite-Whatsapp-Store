@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { LayoutDashboard, Users, FileText, AlertCircle, TrendingUp, TrendingDown, IndianRupee, Globe } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, AlertCircle, TrendingUp, TrendingDown, IndianRupee, Globe, ChevronRight, AlertTriangle } from 'lucide-react';
+import { billsViewHref } from '@/lib/billing/bill-views';
 import { api } from '@/lib/api';
 import { Header } from '@/components/layout/header';
 import { WaSendButton } from '@/components/billing/wa-send-button';
@@ -32,25 +33,31 @@ const TAG_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
   'Store Order':  { bg: 'bg-purple-50', text: 'text-purple-700', dot: 'bg-purple-400' },
 };
 
-function StatCard({ label, value, sub, icon: Icon, color }: { label: string; value: string; sub?: string; icon: any; color: string }) {
+// every card opens the full list behind its number (same filters, so the totals match)
+const CARD = 'group block bg-white border border-gray-200 rounded-lg p-4 transition-all duration-150 hover:border-[#2d7a4f]/40 hover:shadow-sm hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d7a4f]/50';
+
+function StatCard({ label, value, sub, icon: Icon, color, href }: { label: string; value: string; sub?: string; icon: any; color: string; href: string }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4">
+    <Link href={href} className={CARD} aria-label={`${label}: ${value}. Open details`}>
       <div className="flex items-start justify-between">
         <div>
           <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold mb-1">{label}</p>
           <p className={`text-xl font-bold tabular-nums ${color}`}>{value}</p>
           {sub && <p className="text-[11px] text-gray-400 mt-0.5">{sub}</p>}
+          <p className="text-[11px] text-[#2d7a4f] mt-1.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity">
+            View details <ChevronRight className="h-3 w-3" />
+          </p>
         </div>
         <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${ICON_BG[color] ?? 'bg-gray-100'}`}>
           <Icon className={`h-4 w-4 ${color}`} />
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 
 export default function DashboardPage() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['billing-dashboard'],
     queryFn: () => api.getBillingDashboard(),
     refetchInterval: 60000,
@@ -69,16 +76,20 @@ export default function DashboardPage() {
           <div className="flex items-center justify-center py-16">
             <div className="h-8 w-8 border-2 border-[#2d7a4f] border-t-transparent rounded-full animate-spin" />
           </div>
+        ) : isError ? (
+          <div className="bg-white border border-red-200 rounded-lg p-6 text-center text-sm text-red-600">
+            <AlertTriangle className="inline h-4 w-4 mr-1" /> Could not load the dashboard. <button onClick={() => refetch()} className="underline">Try again</button>
+          </div>
         ) : (
-          <>
+          <div className="space-y-4 animate-in fade-in-0 duration-200 motion-reduce:animate-none">
             {/* All time */}
             <div>
               <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-2">All Time</p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <StatCard label="Total Revenue" value={fmt(data?.allTime?.total ?? 0)} sub={`${data?.allTime?.count ?? 0} bills`} icon={Globe} color="text-violet-600" />
-                <StatCard label="Total Collected" value={fmt(data?.allTime?.collected ?? 0)} icon={TrendingUp} color="text-green-600" />
-                <StatCard label="Outstanding Dues" value={fmt(data?.outstanding ?? 0)} icon={AlertCircle} color="text-red-500" />
-                <StatCard label="Total Customers" value={String(data?.customerCount ?? 0)} icon={Users} color="text-blue-600" />
+                <StatCard href={billsViewHref('revenue')} label="Total Revenue" value={fmt(data?.allTime?.total ?? 0)} sub={`${data?.allTime?.count ?? 0} bills`} icon={Globe} color="text-violet-600" />
+                <StatCard href={billsViewHref('collected')} label="Total Collected" value={fmt(data?.allTime?.collected ?? 0)} icon={TrendingUp} color="text-green-600" />
+                <StatCard href={billsViewHref('outstanding')} label="Outstanding Dues" value={fmt(data?.outstanding ?? 0)} icon={AlertCircle} color="text-red-500" />
+                <StatCard href="/billing/customers" label="Total Customers" value={String(data?.customerCount ?? 0)} icon={Users} color="text-blue-600" />
               </div>
             </div>
 
@@ -86,9 +97,9 @@ export default function DashboardPage() {
             <div>
               <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-2">Today</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <StatCard label="Today's Sales" value={fmt(data?.today?.total ?? 0)} sub={`${data?.today?.count ?? 0} bills`} icon={IndianRupee} color="text-[#2d7a4f]" />
-                <StatCard label="Collected Today" value={fmt(data?.today?.collected ?? 0)} icon={TrendingUp} color="text-green-600" />
-                <StatCard label="Pending Today" value={fmt((data?.today?.total ?? 0) - (data?.today?.collected ?? 0))} icon={AlertCircle} color="text-red-500" />
+                <StatCard href={billsViewHref('today')} label="Today's Sales" value={fmt(data?.today?.total ?? 0)} sub={`${data?.today?.count ?? 0} bills`} icon={IndianRupee} color="text-[#2d7a4f]" />
+                <StatCard href={billsViewHref('today-collected')} label="Collected Today" value={fmt(data?.today?.collected ?? 0)} icon={TrendingUp} color="text-green-600" />
+                <StatCard href={billsViewHref('today-pending')} label="Pending Today" value={fmt((data?.today?.total ?? 0) - (data?.today?.collected ?? 0))} icon={AlertCircle} color="text-red-500" />
               </div>
             </div>
 
@@ -96,9 +107,9 @@ export default function DashboardPage() {
             <div>
               <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-2">This Month</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <StatCard label="Month Sales" value={fmt(data?.month?.total ?? 0)} sub={`${data?.month?.count ?? 0} bills`} icon={FileText} color="text-[#2d7a4f]" />
-                <StatCard label="Month Collected" value={fmt(data?.month?.collected ?? 0)} icon={TrendingUp} color="text-green-600" />
-                <StatCard label="Month Due" value={fmt(data?.month?.due ?? 0)} icon={AlertCircle} color="text-red-500" />
+                <StatCard href={billsViewHref('month')} label="Month Sales" value={fmt(data?.month?.total ?? 0)} sub={`${data?.month?.count ?? 0} bills`} icon={FileText} color="text-[#2d7a4f]" />
+                <StatCard href={billsViewHref('month-collected')} label="Month Collected" value={fmt(data?.month?.collected ?? 0)} icon={TrendingUp} color="text-green-600" />
+                <StatCard href={billsViewHref('month-due')} label="Month Due" value={fmt(data?.month?.due ?? 0)} icon={AlertCircle} color="text-red-500" />
               </div>
             </div>
 
@@ -110,7 +121,9 @@ export default function DashboardPage() {
                   {(data.tagStats as any[]).map((t: any) => {
                     const colors = TAG_COLORS[t.tag] ?? { bg: 'bg-gray-50', text: 'text-gray-700', dot: 'bg-gray-400' };
                     return (
-                      <div key={t.tag} className={`${colors.bg} border border-white rounded-lg p-3`}>
+                      <Link key={t.tag ?? 'none'} href={t.tag ? billsViewHref('channel', { channel: t.tag }) : billsViewHref('month')}
+                        aria-label={`${t.tag ?? 'No channel'}: ${fmt(t.total)} this month. Open bills`}
+                        className={`${colors.bg} block border border-white rounded-lg p-3 transition-all duration-150 hover:shadow-sm hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d7a4f]/50`}>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <span className={`h-2 w-2 rounded-full ${colors.dot} shrink-0`} />
                           <span className={`text-[10px] font-semibold truncate ${colors.text}`}>{t.tag}</span>
@@ -123,7 +136,7 @@ export default function DashboardPage() {
                             {t.trend >= 0 ? '+' : ''}{t.trend}% vs last month
                           </div>
                         )}
-                      </div>
+                      </Link>
                     );
                   })}
                 </div>
@@ -138,7 +151,7 @@ export default function DashboardPage() {
                 { label: 'Unpaid Dues', href: '/billing/dues', icon: AlertCircle, color: 'bg-red-50 text-red-600 border border-red-200' },
                 { label: 'Sales Reports', href: '/billing/reports', icon: TrendingUp, color: 'bg-amber-50 text-amber-700 border border-amber-200' },
               ].map(q => (
-                <Link key={q.href} href={q.href} className={`${q.color} rounded-lg p-3.5 flex items-center gap-2.5 hover:opacity-90 transition-opacity`}>
+                <Link key={q.href} href={q.href} className={`${q.color} rounded-lg p-3.5 flex items-center gap-2.5 hover:opacity-90 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#2d7a4f]/50`}>
                   <q.icon className="h-4 w-4 shrink-0" />
                   <span className="font-medium text-sm">{q.label}</span>
                 </Link>
@@ -148,14 +161,18 @@ export default function DashboardPage() {
             {/* Recent bills */}
             {(data?.recentBills ?? []).length > 0 && (
               <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                <div className="px-4 py-2.5 border-b border-gray-200 bg-gray-50 text-[10px] text-gray-500 uppercase tracking-wide font-semibold">
+                <div className="px-4 py-2.5 border-b border-gray-200 bg-gray-50 text-[10px] text-gray-500 uppercase tracking-wide font-semibold flex items-center">
                   Recent Bills
+                  <Link href="/billing/bills" className="ml-auto normal-case tracking-normal text-[11px] text-[#2d7a4f] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d7a4f]/50 rounded">All bills →</Link>
                 </div>
                 <div className="divide-y divide-gray-100">
                   {data.recentBills.map((b: any) => (
                     <div key={b._id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors">
+                      {/* the row opens the bill; WhatsApp stays a separate button (no button inside a link) */}
+                      <Link href={`/billing/invoice/${b._id}`} aria-label={`Open ${b.invoiceNo} for ${b.customerName}`}
+                        className="flex flex-1 min-w-0 items-center gap-3 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d7a4f]/50">
                       <div className="h-8 w-8 rounded-full bg-[#e8f5ee] flex items-center justify-center text-[#2d7a4f] font-bold text-xs shrink-0">
-                        {b.customerName?.[0]?.toUpperCase()}
+                        {(b.customerName || '?')[0].toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-gray-800 text-sm">{b.customerName}</div>
@@ -167,13 +184,14 @@ export default function DashboardPage() {
                           {b.paymentStatus}
                         </div>
                       </div>
+                      </Link>
                       <WaSendButton billId={b._id} />
                     </div>
                   ))}
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
       </div>
     </div>

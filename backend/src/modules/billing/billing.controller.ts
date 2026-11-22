@@ -196,6 +196,9 @@ export class BillingController {
     hasNotes?: string;
     productName?: string;
     minQty?: string;
+    minAmount?: string;
+    maxAmount?: string;
+    summary?: string;
     page?: string;
     limit?: string;
   }) {

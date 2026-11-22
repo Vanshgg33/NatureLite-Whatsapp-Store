@@ -8,7 +8,8 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tansta
 import { canEditBill, isEditableBill } from '@/components/billing/BillEditHistory';
 import { useAdminAccess } from '@/lib/admin-access';
 import { useToast } from '@/components/ui/use-toast';
-import { Receipt, Search, StickyNote } from 'lucide-react';
+import { Receipt, Search, StickyNote, X, RotateCcw, AlertTriangle } from 'lucide-react';
+import { readBillsQuery, writeBillsQuery, activeFilters, DEFAULT_FILTERS, type BillFilterState, type BillView, type DatePreset } from '@/lib/billing/bill-views';
 import { api } from '@/lib/api';
 import { cn, useDebouncedValue } from '@/lib/utils';
 import { istDateKey, istDaysAgoKey, istWeekStartKey, istMonthKey, startOfDayIST, endOfDayIST } from '@/lib/time';
@@ -23,13 +24,12 @@ import { Button } from '@/components/ui/button';
 const PAGE_SIZE = 50;
 const fmt = (n: number) => '₹' + (n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-type DatePreset = 'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom';
 const PRESETS: { key: DatePreset; label: string }[] = [
   { key: 'all', label: 'All time' }, { key: 'today', label: 'Today' }, { key: 'yesterday', label: 'Yesterday' },
   { key: 'week', label: 'This Week' }, { key: 'month', label: 'This Month' }, { key: 'custom', label: 'Custom' },
 ];
 const STATUSES = [
-  { key: '', label: 'All' }, { key: 'paid', label: 'Paid' }, { key: 'partial', label: 'Partial' }, { key: 'unpaid', label: 'Unpaid' },
+  { key: '', label: 'All' }, { key: 'paid', label: 'Paid' }, { key: 'partial', label: 'Partial' }, { key: 'unpaid', label: 'Unpaid' }, { key: 'due', label: 'Unpaid + partial' },
 ];
 const STATUS_STYLE: Record<string, string> = {
   paid: 'bg-green-100 text-green-700', partial: 'bg-amber-100 text-amber-700', unpaid: 'bg-red-100 text-red-700',
@@ -96,17 +96,58 @@ export function BillsList({ orders = false }: { orders?: boolean }) {
   const [page, setPage] = usePageState('BillsList.page', 1);
   const [hasNotes, setHasNotes] = usePageState('BillsList.hasNotes', false);
   const [report, setReport] = usePageState<'' | 'party' | 'product'>('BillsList.report', '');
+  const [minAmount, setMinAmount] = usePageState('BillsList.minAmount', '');
+  const [maxAmount, setMaxAmount] = usePageState('BillsList.maxAmount', '');
+  const [customerId, setCustomerId] = usePageState('BillsList.customerId', '');
+  const [view, setView] = useState<BillView | null>(null);
+  const [ready, setReady] = useState(false);
 
   const range = useMemo(() => getRange(preset, customStart, customEnd), [preset, customStart, customEnd]);
   const [product, setProduct] = usePageState('BillsList.product', '');
   const dProduct = useDebouncedValue(product, 300);
   const [minQty, setMinQty] = usePageState('BillsList.minQty', '');
   const dMinQty = useDebouncedValue(minQty, 300);
+  const dMinAmount = useDebouncedValue(minAmount, 300);
+  const dMaxAmount = useDebouncedValue(maxAmount, 300);
+
+  const state: BillFilterState = { search, status, channel, preset, customStart, customEnd, hasNotes, product, minQty, minAmount, maxAmount, customerId };
+  const applyFilters = (f: Partial<BillFilterState>) => {
+    if (f.search !== undefined) setSearch(f.search);
+    if (f.status !== undefined) setStatus(f.status);
+    if (f.channel !== undefined) setChannel(f.channel);
+    if (f.preset !== undefined) setPreset(f.preset);
+    if (f.customStart !== undefined) setCustomStart(f.customStart);
+    if (f.customEnd !== undefined) setCustomEnd(f.customEnd);
+    if (f.hasNotes !== undefined) setHasNotes(f.hasNotes);
+    if (f.product !== undefined) setProduct(f.product);
+    if (f.minQty !== undefined) setMinQty(f.minQty);
+    if (f.minAmount !== undefined) setMinAmount(f.minAmount);
+    if (f.maxAmount !== undefined) setMaxAmount(f.maxAmount);
+    if (f.customerId !== undefined) setCustomerId(f.customerId);
+  };
+  // a dashboard card (or a shared link) decides the starting filters and title; otherwise the last filters are kept
+  useEffect(() => {
+    const r = readBillsQuery(new URLSearchParams(window.location.search));
+    if (r.fromUrl) { applyFilters(r.filters); setView(r.view); setPage(1); }
+    setReady(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // keep the URL in step, so refresh / Back / sharing reopen the same list
+  const urlQuery = writeBillsQuery(view, state);
+  useEffect(() => {
+    if (!ready) return;
+    const next = urlQuery ? `?${urlQuery}` : '';
+    if (next !== window.location.search) window.history.replaceState(null, '', window.location.pathname + next);
+  }, [ready, urlQuery]);
+  const resetAll = () => { applyFilters(DEFAULT_FILTERS); setView(null); setReport(''); };
   // the same filters feed the list and the party report
   const filters = useMemo(() => ({
-    search: dSearch || undefined, paymentStatus: status || undefined, orderTag: channel || undefined, hasNotes: hasNotes || undefined,
+    // sale orders have no payment status filter (the shared saved status must not hide orders)
+    search: dSearch || undefined, paymentStatus: (!orders && status) || undefined, orderTag: channel || undefined, hasNotes: hasNotes || undefined,
     productName: dProduct.trim() || undefined, minQty: Number(dMinQty) > 0 ? Number(dMinQty) : undefined, ...range,
-  }), [dSearch, status, channel, hasNotes, dProduct, dMinQty, range]);
+    minAmount: dMinAmount || undefined, maxAmount: dMaxAmount || undefined, customerId: customerId || undefined,
+  }), [dSearch, status, channel, hasNotes, dProduct, dMinQty, range, dMinAmount, dMaxAmount, customerId, orders]);
+  // wait for typed filters to settle: no request with a stale value, no request per keystroke
+  const settled = dSearch === search && dProduct === product && dMinQty === minQty && dMinAmount === minAmount && dMaxAmount === maxAmount;
   // reset to page 1 only when filters really change, not on mount (Back keeps the saved page)
   const filtersKey = JSON.stringify(filters);
   const prevFiltersKey = useRef(filtersKey);
@@ -114,7 +155,8 @@ export function BillsList({ orders = false }: { orders?: boolean }) {
     if (prevFiltersKey.current !== filtersKey) { prevFiltersKey.current = filtersKey; setPage(1); }
   }, [filtersKey]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending: isLoading, isError, isFetching, refetch } = useQuery({
+    enabled: ready && settled,
     queryKey: ['billing-bills', orders, filters, page],
     queryFn: () => api.getBillingBills({ docType: orders ? 'SALE_ORDER' : undefined, ...filters, page, limit: PAGE_SIZE }),
     placeholderData: keepPreviousData,
@@ -123,10 +165,17 @@ export function BillsList({ orders = false }: { orders?: boolean }) {
   const bills: any[] = data?.items ?? [];
   const total: number = data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const summary = data?.summary;
+  const chips = activeFilters(orders ? { ...state, status: '' } : state, bills[0]?.customerName);
+  const badAmount = !!minAmount && !!maxAmount && Number(minAmount) > Number(maxAmount);
 
   return (
     <div className="min-h-full bg-[#faf9f6]">
-      <Header title={orders ? 'Sale Orders' : 'Bills'} description={orders ? 'Open orders: no stock or balance effect until confirmed' : 'Every bill with search and filters'} icon={<Receipt className="h-5 w-5 text-[#2d7a4f]" />} />
+      <Header
+        title={orders ? 'Sale Orders' : view ? (view.key === 'channel' && channel ? `${channel} · this month` : view.title) : 'Bills'}
+        description={orders ? 'Open orders: no stock or balance effect until confirmed' : view ? `${view.description} · from the dashboard` : 'Every bill with search and filters'}
+        icon={<Receipt className="h-5 w-5 text-[#2d7a4f]" />}
+      />
 
       <div className="p-4 md:p-5 space-y-3">
         {orders && (
@@ -151,8 +200,12 @@ export function BillsList({ orders = false }: { orders?: boolean }) {
             <button onClick={() => setHasNotes(v => !v)} className={chip(hasNotes)}>Internal notes</button>
             <input value={product} onChange={e => setProduct(e.target.value)} placeholder="Product name…"
               className="border border-gray-200 rounded-md px-2 py-1.5 text-xs w-40" />
-            <input type="number" min="0" value={minQty} onChange={e => setMinQty(e.target.value)} placeholder="Min qty"
+            <input type="number" min="0" value={minQty} onChange={e => setMinQty(e.target.value)} placeholder="Min qty" aria-label="Minimum quantity of the product"
               className="border border-gray-200 rounded-md px-2 py-1.5 text-xs w-20" />
+            <input type="number" min="0" value={minAmount} onChange={e => setMinAmount(e.target.value)} placeholder="Min ₹" aria-label="Minimum bill total"
+              className={cn('border rounded-md px-2 py-1.5 text-xs w-24', badAmount ? 'border-red-400' : 'border-gray-200')} />
+            <input type="number" min="0" value={maxAmount} onChange={e => setMaxAmount(e.target.value)} placeholder="Max ₹" aria-label="Maximum bill total"
+              className={cn('border rounded-md px-2 py-1.5 text-xs w-24', badAmount ? 'border-red-400' : 'border-gray-200')} />
             {!orders && (
               <div className="ml-auto flex gap-1.5">
                 {([['party', 'Party report'], ['product', 'Product report']] as const).map(([k, label]) => (
@@ -176,10 +229,58 @@ export function BillsList({ orders = false }: { orders?: boolean }) {
           </div>
         </div>
 
+        {(chips.length > 0 || view) && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs" aria-label="Active filters">
+            <span className="text-gray-400">Showing:</span>
+            {chips.map(c => (
+              <button key={c.key} onClick={() => applyFilters(c.clear)} aria-label={`Remove filter ${c.label}`}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-[#e8f5ee] text-[#2d7a4f] hover:bg-[#d6eedf] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d7a4f]/40 transition-colors">
+                {c.label} <X className="h-3 w-3" />
+              </button>
+            ))}
+            {!chips.length && <span className="text-gray-500">all bills</span>}
+            <button onClick={resetAll} className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-gray-500 hover:text-gray-800 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d7a4f]/40">
+              <RotateCcw className="h-3 w-3" /> Reset filters
+            </button>
+            {badAmount && <span className="text-red-600">Min ₹ is above max ₹, so nothing can match.</span>}
+          </div>
+        )}
+
+        {!orders && summary && (
+          <div className={cn('grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 transition-opacity duration-200 motion-reduce:transition-none', isFetching && 'opacity-60')} aria-live="polite" aria-busy={isFetching}>
+            {([
+              ['total', 'Billed', fmt(summary.total)],
+              ['collected', 'Collected', fmt(summary.collected)],
+              ['due', 'Due', fmt(summary.due)],
+              ['', 'Bills', String(summary.count)],
+              ['', 'Customers', String(summary.customers)],
+              ['', 'Average bill', fmt(summary.avgBill)],
+              ['', 'Collected %', summary.collectionRate === null ? '—' : `${summary.collectionRate}%`],
+            ] as const).map(([focus, label, value]) => (
+              <div key={label} className={cn('bg-white border rounded-lg px-3 py-2', focus && view?.focus === focus ? 'border-[#2d7a4f] ring-1 ring-[#2d7a4f]/30' : 'border-gray-200')}>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">{label}</p>
+                <p className={cn('text-sm font-bold tabular-nums', focus === 'due' && summary.due > 0 ? 'text-red-600' : focus === 'collected' ? 'text-green-700' : 'text-gray-800')}>{value}</p>
+              </div>
+            ))}
+            {summary.byChannel.length > 1 && (
+              <div className="col-span-full flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500">
+                By channel:
+                {summary.byChannel.map((c: any) => (
+                  <button key={c.channel} disabled={c.channel === 'No channel'} onClick={() => setChannel(c.channel)}
+                    className="px-2 py-0.5 rounded border border-gray-200 bg-white hover:bg-gray-50 disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d7a4f]/40"
+                    title={`Show only ${c.channel}`}>
+                    {c.channel}: {fmt(c.total)} · {c.count}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {!orders && report === 'party' && <PartyReport filters={filters} onClose={() => setReport('')} />}
         {!orders && report === 'product' && <ProductReport filters={filters} onClose={() => setReport('')} />}
 
-        <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
+        <div className={cn('bg-white border border-gray-200 rounded-xl overflow-x-auto transition-opacity duration-200 motion-reduce:transition-none', isFetching && !isLoading && 'opacity-60')}>
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-[10px] uppercase tracking-wide text-gray-400">
               <tr>
@@ -227,10 +328,19 @@ export function BillsList({ orders = false }: { orders?: boolean }) {
                   </td>
                 </tr>
               ))}
-              {!isLoading && bills.length === 0 && (
-                <tr><td colSpan={9} className="px-3 py-10 text-center text-sm text-gray-400">No bills match these filters</td></tr>
+              {!isLoading && !isError && bills.length === 0 && (
+                <tr><td colSpan={9} className="px-3 py-10 text-center text-sm text-gray-400">
+                  No bills match these filters.{chips.length > 0 && <> <button onClick={resetAll} className="underline text-[#2d7a4f]">Reset filters</button></>}
+                </td></tr>
               )}
-              {isLoading && <tr><td colSpan={9} className="px-3 py-10 text-center text-sm text-gray-400">Loading…</td></tr>}
+              {isError && (
+                <tr><td colSpan={9} className="px-3 py-10 text-center text-sm text-red-600">
+                  <AlertTriangle className="inline h-4 w-4 mr-1" />Could not load bills. <button onClick={() => refetch()} className="underline">Try again</button>
+                </td></tr>
+              )}
+              {(isLoading || !ready) && !isError && Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i} className="border-t border-gray-100"><td colSpan={9} className="px-3 py-3"><div className="h-4 rounded bg-gray-100 animate-pulse motion-reduce:animate-none" /></td></tr>
+              ))}
             </tbody>
           </table>
         </div>
