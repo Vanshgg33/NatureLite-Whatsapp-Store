@@ -17,6 +17,7 @@ import { parseExtraFilters } from './crm-filters';
 import { CallOutcome } from './schemas/crm-call-log.schema';
 import { RequireAccess } from '../../common/decorators/require-access.decorator';
 import { parseObjectId } from '../../common/utils/objectid.util';
+import { parseIncompleteLead } from '../../common/utils/incomplete-lead.util';
 
 @Controller('crm')
 @UseGuards(RolesGuard)
@@ -53,6 +54,7 @@ export class CrmController {
       limit: limit ? parseInt(limit) : 50,
       agentId,
       isEscalated: isEscalated === 'true',
+      missing: parseIncompleteLead(allQuery.missing),
     });
   }
 

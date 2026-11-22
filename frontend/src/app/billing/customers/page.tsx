@@ -4,7 +4,8 @@ import { usePageState } from '@/hooks/usePageState';
 import { useAdminAccess } from '@/lib/admin-access';
 
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { INCOMPLETE_FILTERS, type IncompleteFilter } from '@/lib/incomplete-leads';
 import { Search, Plus, Pencil, X, MapPin } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useDebouncedValue, cn } from '@/lib/utils';
@@ -183,14 +184,16 @@ export default function BillingCustomersPage() {
   const { can } = useAdminAccess();
   const [search, setSearch] = usePageState('search', '');
   const [tagFilter, setTagFilter] = usePageState<CTag | null>('tagFilter', null);
+  const [missing, setMissing] = usePageState<IncompleteFilter>('missing', '');
   const debouncedSearch = useDebouncedValue(search, 300);
   const [editing, setEditing] = useState<any | null>(null);
   const qc = useQueryClient();
   const { toast } = useToast();
 
   const { data: customers = [], isLoading } = useQuery({
-    queryKey: ['billing-customers', debouncedSearch],
-    queryFn: () => api.searchBillingCustomers(debouncedSearch),
+    queryKey: ['billing-customers', debouncedSearch, missing],
+    queryFn: () => api.searchBillingCustomers(debouncedSearch, missing || undefined),
+    placeholderData: keepPreviousData, // keep the list on screen while a filter loads
   });
 
   const createMutation = useMutation({
@@ -287,9 +290,24 @@ export default function BillingCustomersPage() {
               {t}
             </button>
           ))}
-          {tagFilter && (
+          <span className="w-px h-5 bg-gray-200 shrink-0" aria-hidden />
+          {INCOMPLETE_FILTERS.map(f => (
             <button
-              onClick={() => setTagFilter(null)}
+              key={f.key}
+              title={f.hint}
+              aria-pressed={missing === f.key}
+              onClick={() => setMissing(missing === f.key ? '' : f.key)}
+              className={cn(
+                'px-2.5 py-1 rounded text-[11px] font-medium border whitespace-nowrap transition-colors shrink-0',
+                missing === f.key ? 'bg-amber-50 text-amber-800 border-amber-300' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+          {(tagFilter || missing) && (
+            <button
+              onClick={() => { setTagFilter(null); setMissing(''); }}
               className="px-2.5 py-1 rounded text-[11px] font-medium border bg-white text-gray-400 border-gray-200 hover:bg-gray-50 whitespace-nowrap shrink-0 flex items-center gap-1"
             >
               <X className="h-3 w-3" /> Clear
@@ -298,7 +316,7 @@ export default function BillingCustomersPage() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs text-gray-400 font-mono">{filtered.length} customers</span>
+          <span className="text-xs text-gray-400 font-mono">{missing && customers.length >= 200 ? 'first 200' : filtered.length} customers</span>
           {can('billing_customers.create') && (
           <Button
             onClick={() => setEditing({})}
@@ -334,7 +352,7 @@ export default function BillingCustomersPage() {
             {filtered.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-4 py-16 text-center text-gray-400 text-sm">
-                  {search || tagFilter ? 'No customers match your filters.' : 'No customers yet — create one.'}
+                  {search || tagFilter || missing ? 'No customers match your filters.' : 'No customers yet — create one.'}
                 </td>
               </tr>
             ) : filtered.map((c: any) => (

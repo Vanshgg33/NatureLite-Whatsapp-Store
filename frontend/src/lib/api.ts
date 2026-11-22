@@ -2087,8 +2087,8 @@ class ApiClient {
 
   // ─── Billing ─────────────────────────────────────────────────────────────
 
-  async searchBillingCustomers(q = ''): Promise<any[]> {
-    const res = await this.client.get<ApiResponse<any[]>>(`/billing/customers?q=${encodeURIComponent(q)}`);
+  async searchBillingCustomers(q = '', missing?: string): Promise<any[]> {
+    const res = await this.client.get<ApiResponse<any[]>>(`/billing/customers?q=${encodeURIComponent(q)}${missing ? `&missing=${missing}` : ''}`);
     return res.data.data;
   }
 
@@ -2301,9 +2301,9 @@ class ApiClient {
 
   // ─── CRM ─────────────────────────────────────────────────────────────────
 
-  async getCrmCustomers(params: { segment?: string; search?: string; page?: number; isEscalated?: boolean; minLtv?: string; maxLtv?: string; minDaysLate?: string; tag?: string; hasComplaint?: boolean; aovSegment?: string } = {}): Promise<any> {
+  async getCrmCustomers(params: { segment?: string; search?: string; page?: number; isEscalated?: boolean; minLtv?: string; maxLtv?: string; minDaysLate?: string; tag?: string; hasComplaint?: boolean; aovSegment?: string; missing?: string } = {}): Promise<any> {
     const qs = new URLSearchParams();
-    for (const k of ['minLtv', 'maxLtv', 'minDaysLate', 'tag', 'aovSegment'] as const) if (params[k]) qs.set(k, params[k]!);
+    for (const k of ['minLtv', 'maxLtv', 'minDaysLate', 'tag', 'aovSegment', 'missing'] as const) if (params[k]) qs.set(k, params[k]!);
     if (params.hasComplaint) qs.set('hasComplaint', 'true');
     if (params.segment) qs.set('segment', params.segment);
     if (params.search) qs.set('search', params.search);

@@ -6,6 +6,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { BillingStockService } from './billing-stock.service';
 import { CustomerTag } from './schemas/billing-customer.schema';
+import { parseIncompleteLead } from '../../common/utils/incomplete-lead.util';
 import { RequireAccess } from '../../common/decorators/require-access.decorator';
 
 @Controller('billing')
@@ -18,8 +19,8 @@ export class BillingController {
 
   @Get('customers')
   @RequireAccess('billing_customers.view', 'billing_new.view', 'billing_reports.view')
-  searchCustomers(@Query('q') q: string) {
-    return this.billingService.searchCustomers(q);
+  searchCustomers(@Query('q') q: string, @Query('missing') missing: string) {
+    return this.billingService.searchCustomers(q, parseIncompleteLead(missing));
   }
 
   @Get('customers/:id')

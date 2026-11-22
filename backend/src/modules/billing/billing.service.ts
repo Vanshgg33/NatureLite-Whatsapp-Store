@@ -17,6 +17,7 @@ import { TaxSettingsService } from './tax-settings/tax-settings.service';
 import { LogicsService } from './logics/logics.service';
 import { calcBill, CalcResult } from './logics/formula-engine';
 import { escapeRegex } from '../../common/utils/query.util';
+import { incompleteLeadFilter, type IncompleteLead } from '../../common/utils/incomplete-lead.util';
 import { isValidGstin } from './gst-utils';
 
 export const LATER_PAYMENT_MODES = ['cash', 'upi', 'card', 'bank'];
@@ -142,16 +143,18 @@ export class BillingService {
 
   // ─── Customers ───────────────────────────────────────────────────────────
 
-  async searchCustomers(q: string) {
+  async searchCustomers(q: string, missing?: IncompleteLead) {
+    // incomplete-lead filters: newest first, a bigger page since this is a to-do list
+    const gap = missing ? incompleteLeadFilter(missing) : {};
     if (!q?.trim()) {
-      const users = await this.userModel.find({}).sort({ name: 1 }).limit(50).lean();
+      const users = await this.userModel.find(gap).sort(missing ? { createdAt: -1 } : { name: 1 }).limit(missing ? 200 : 50).lean();
       return users.map(u => this.mapUser(u));
     }
     const digits = q.replace(/[^\d]/g, '');
     const orConds: any[] = [{ name: { $regex: escapeRegex(q.trim()), $options: 'i' } }];
     // 098…, +91 98… and 98… all find 9198…: a full number is matched on its last 10 digits
     if (digits) orConds.push({ phone: { $regex: digits.length > 10 ? digits.slice(-10) : digits } });
-    const users = await this.userModel.find({ $or: orConds }).limit(20).lean();
+    const users = await this.userModel.find({ $or: orConds, ...gap }).limit(missing ? 200 : 20).lean();
     return users.map(u => this.mapUser(u));
   }
 

@@ -18,6 +18,8 @@ import { Product, ProductDocument } from '../products/schemas/product.schema';
 import { Complaint, ComplaintDocument } from '../complaints/schemas/complaint.schema';
 import { ExtraFilters, extraStatsFilter, needsStats } from './crm-filters';
 import { PURCHASE_ORDER_MATCH, withNetTotals } from './crm-purchases';
+import { incompleteLeadFilter, type IncompleteLead } from '../../common/utils/incomplete-lead.util';
+import { escapeRegex } from '../../common/utils/query.util';
 
 @Injectable()
 export class CrmService {
@@ -64,6 +66,7 @@ export class CrmService {
     agentId?: string;
     isEscalated?: boolean;
     extra?: ExtraFilters;
+    missing?: IncompleteLead;
   }) {
     const { segment, search, agentId, isEscalated } = opts;
     const extra = opts.extra ?? {};
@@ -79,11 +82,11 @@ export class CrmService {
       Object.assign(statsFilter, extraStatsFilter(extra));
       let stats = await this.statsModel.find(statsFilter).sort({ priorityScore: -1 }).lean();
       if (extra.hasComplaint) stats = stats.filter((s: any) => complaining.has(s.userId.toString()));
-      const userFilter: any = { _id: { $in: stats.map((s: any) => s.userId) } };
+      const userFilter: any = { _id: { $in: stats.map((s: any) => s.userId) }, ...(opts.missing ? incompleteLeadFilter(opts.missing) : {}) };
       if (search?.trim()) {
         const d = search.replace(/\D/g, '');
         userFilter.$or = [
-          { name: { $regex: search.trim(), $options: 'i' } },
+          { name: { $regex: escapeRegex(search.trim()), $options: 'i' } },
           ...(d ? [{ phone: { $regex: d } }] : []),
         ];
       }
@@ -98,11 +101,11 @@ export class CrmService {
     }
 
     // Default: users are the source of truth — left-join stats
-    const userFilter: any = {};
+    const userFilter: any = opts.missing ? incompleteLeadFilter(opts.missing) : {};
     if (search?.trim()) {
       const d = search.replace(/\D/g, '');
       userFilter.$or = [
-        { name: { $regex: search.trim(), $options: 'i' } },
+        { name: { $regex: escapeRegex(search.trim()), $options: 'i' } },
         ...(d ? [{ phone: { $regex: d } }] : []),
       ];
     }

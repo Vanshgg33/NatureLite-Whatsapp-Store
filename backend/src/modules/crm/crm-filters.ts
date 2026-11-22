@@ -1,9 +1,10 @@
 // Combinable customer filters and saved views (blueprint M04). Pure functions so every rule is unit tested.
 
 import { AOV_SEGMENT_KEYS, type AovSegmentKey } from './engine/aov-segments';
+import { parseIncompleteLead, type IncompleteLead } from '../../common/utils/incomplete-lead.util';
 
 export interface ExtraFilters { minLtv?: number; maxLtv?: number; minDaysLate?: number; tag?: string; hasComplaint?: boolean; aovSegment?: AovSegmentKey }
-export interface ViewFilters extends ExtraFilters { segment?: string; search?: string; isEscalated?: boolean }
+export interface ViewFilters extends ExtraFilters { segment?: string; search?: string; isEscalated?: boolean; missing?: IncompleteLead }
 
 const num = (v: unknown): number | undefined => {
   if (v === '' || v == null) return undefined;
@@ -44,5 +45,7 @@ export function sanitizeView(raw: Record<string, unknown> = {}): ViewFilters {
   if (typeof raw.segment === 'string' && /^[a-z_]{1,30}$/.test(raw.segment)) out.segment = raw.segment;
   if (typeof raw.search === 'string' && raw.search.trim()) out.search = raw.search.trim().slice(0, 100);
   if (raw.isEscalated === true) out.isEscalated = true;
+  const missing = parseIncompleteLead(raw.missing);
+  if (missing) out.missing = missing;
   return out;
 }
