@@ -87,3 +87,25 @@ describe('CrmFoundationService store bills (read live from BillingBill)', () => 
     expect(q.select.mock.calls[0][0]).toEqual(expect.stringContaining('customerId'));
   });
 });
+
+describe('CrmFoundationService.firstPurchaseAt (profile "Since")', () => {
+  const uid = '64b000000000000000000001';
+  const make = (orderAt: Date | null, billAt: Date | null) => {
+    const orderModel = { aggregate: jest.fn().mockResolvedValue(orderAt ? [{ at: orderAt }] : []) };
+    const billModel = { aggregate: jest.fn().mockResolvedValue(billAt ? [{ at: billAt }] : []) };
+    return { orderModel, billModel, svc: new CrmFoundationService(orderModel as any, {} as any, billModel as any, {} as any) };
+  };
+  it('takes the earlier of the first purchase order and the first store bill (imported bills by invoice date)', async () => {
+    const { svc, orderModel, billModel } = make(new Date('2025-11-23T10:00:00Z'), new Date('2025-10-19T00:00:00Z'));
+    expect((await svc.firstPurchaseAt(uid))?.toISOString()).toBe('2025-10-19T00:00:00.000Z');
+    const orderMatch = orderModel.aggregate.mock.calls[0][0][0].$match;
+    expect(String(orderMatch.user)).toBe(uid);
+    expect(orderMatch.orderType).toEqual({ $ne: 'replacement' }); // the CRM's purchase rule, not every order
+    const billStage = billModel.aggregate.mock.calls[0][0];
+    expect(billStage[0].$match.status).toBe('active'); // cancelled bills never count
+    expect(billStage[1].$group.at.$min).toEqual({ $ifNull: ['$invoiceDate', '$createdAt'] });
+  });
+  it('no purchases -> null (no invented date)', async () => {
+    expect(await make(null, null).svc.firstPurchaseAt(uid)).toBeNull();
+  });
+});

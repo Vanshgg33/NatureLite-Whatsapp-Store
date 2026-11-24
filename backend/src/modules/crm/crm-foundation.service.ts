@@ -3,6 +3,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { PURCHASE_ORDER_MATCH } from './crm-purchases';
 
 const BILL_FIELDS = 'invoiceNo invoiceDate createdAt docType status customerName grandTotal amountPaid amountDue paymentStatus';
 
@@ -72,6 +73,22 @@ export class CrmFoundationService {
   }
 
   /** A customer's store bills (sales + credit notes, cancelled ones kept and flagged), newest first. Sale orders are not purchases. */
+  /**
+   * The customer's first purchase ("Since" on the profile): the earliest delivered online order (the CRM's purchase
+   * rule) or active store sale bill, by customer id. A bill counts from its invoice date, so imported Vyapar bills keep
+   * their real date rather than the import day. null = no purchases yet.
+   */
+  async firstPurchaseAt(userId: string): Promise<Date | null> {
+    const uid = new Types.ObjectId(userId);
+    const [order, bill] = await Promise.all([
+      this.orderModel.aggregate([{ $match: { user: uid, ...PURCHASE_ORDER_MATCH } }, { $group: { _id: null, at: { $min: '$createdAt' } } }]),
+      // the bill model's own hook leaves out credit notes and sale orders
+      this.billModel.aggregate([{ $match: { customerId: uid, status: 'active' } }, { $group: { _id: null, at: { $min: { $ifNull: ['$invoiceDate', '$createdAt'] } } } }]),
+    ]);
+    const dates = [order[0]?.at, bill[0]?.at].filter((d): d is Date => d instanceof Date && !isNaN(+d));
+    return dates.length ? new Date(Math.min(...dates.map(Number))) : null;
+  }
+
   async customerBills(userId: string) {
     const bills: any[] = await this.billModel.find({ customerId: new Types.ObjectId(userId), docType: { $in: ['SALE', 'CREDIT_NOTE', null] } })
       .setOptions({ allDocTypes: true })

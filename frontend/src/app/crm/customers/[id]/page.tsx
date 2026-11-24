@@ -418,7 +418,8 @@ export default function Customer360Page() {
               <div className="flex items-center gap-4 text-[13px] flex-wrap" style={{ color: 'var(--crm-muted)' }}>
                 <span className="font-mono">{formatPhone(user?.phone) || '—'}</span>
                 {user?.email && <span>{user.email}</span>}
-                <span>Since {fmtDate(user?.createdAt)}</span>
+                {/* first purchase (online order or store bill), not the account's creation/import date */}
+                <span title="First purchase">{data?.firstPurchaseAt ? `Since ${fmtDate(data.firstPurchaseAt)}` : 'No purchases yet'}</span>
               </div>
             </div>
 

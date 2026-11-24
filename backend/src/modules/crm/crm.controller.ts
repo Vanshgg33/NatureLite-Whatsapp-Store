@@ -62,8 +62,8 @@ export class CrmController {
   @RequireAccess('crm_customers.view', 'crm_caller.view')
   async getCustomer360(@Param('id') id: string) {
     parseObjectId(id, 'customer id'); // 400 for a bad link instead of a 500
-    const [c360, bills] = await Promise.all([this.crm.getCustomer360(id), this.foundation.customerBills(id)]);
-    return { ...c360, bills };
+    const [c360, bills, firstPurchaseAt] = await Promise.all([this.crm.getCustomer360(id), this.foundation.customerBills(id), this.foundation.firstPurchaseAt(id)]);
+    return { ...c360, bills, firstPurchaseAt };
   }
 
   // ─── Queue ───────────────────────────────────────────────────────────────
