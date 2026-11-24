@@ -1547,6 +1547,47 @@ export class OrdersService implements OnModuleInit {
     return order.save();
   }
 
+  /**
+   * Moves main-store stock for an item edit: delta > 0 takes more, < 0 returns some. Same rules as order creation: products
+   * that do not track stock, or have no stock row, are skipped (no phantom rows), and taking more than is in stock fails.
+   * Every move is pushed on `undo` so the caller can reverse them if the edit does not complete.
+   */
+  private async applyEditStock(
+    lines: { productId: string; variantSku?: string; name: string; delta: number }[],
+    undo: Array<() => Promise<unknown>>,
+    loadProduct: (productId: string) => Promise<{ trackStock?: boolean } | null>,
+  ): Promise<void> {
+    let storeId: string;
+    try {
+      storeId = (await this.storesService.findMainStore())._id.toString();
+    } catch {
+      return; // no main store configured: creation skips stock too
+    }
+    for (const l of lines) {
+      if (l.delta === 0) continue;
+      if ((await loadProduct(l.productId))?.trackStock === false) continue;
+      if (!(await this.storeStockService.getStockForStoreProduct(storeId, l.productId))) continue;
+      if (l.delta > 0) {
+        try {
+          await this.storeStockService.decrementStock(storeId, l.productId, l.delta, l.variantSku);
+        } catch (err) {
+          if (err instanceof BadRequestException) throw new BadRequestException(`Not enough stock for "${l.name}" to add ${l.delta} more.`);
+          throw err;
+        }
+        undo.push(() => this.storeStockService.incrementStock(storeId, l.productId, l.delta, l.variantSku));
+      } else {
+        await this.storeStockService.incrementStock(storeId, l.productId, -l.delta, l.variantSku);
+        undo.push(() => this.storeStockService.decrementStock(storeId, l.productId, -l.delta, l.variantSku));
+      }
+    }
+  }
+
+  private async undoStock(undo: Array<() => Promise<unknown>>, orderId: string): Promise<void> {
+    for (const step of undo.splice(0).reverse()) {
+      await step().catch((e: Error) => this.logger.error(`updateOrder stock rollback failed for ${orderId}: ${e.message}`));
+    }
+  }
+
   async updateOrder(id: string, dto: UpdateOrderDto): Promise<Order> {
     const idObj = parseObjectId(id, 'id');
     const order = await this.orderRepository.findById(idObj);
@@ -1600,75 +1641,100 @@ export class OrdersService implements OnModuleInit {
       order.markModified('shippingAddress');
     }
 
-    if (dto.items && dto.items.length > 0) {
-      // Snapshot old items for diff before overwriting
-      const oldItems = (order.items as any[]).map((i: any) => ({
-        productId: i.product.toString(),
-        variantSku: i.variantSku || '',
-        name: i.name,
-        variantName: i.variantName,
-        quantity: i.quantity,
-        price: i.price,
-      }));
-      const oldMap = new Map(oldItems.map((i) => [`${i.productId}|${i.variantSku}`, i]));
+    // Item edits. Lines are merged by product+variant (the UI merges them, the API used to keep duplicates, which skewed the
+    // stock diff), and an unchanged item list is skipped entirely: the edit dialog resends every line on each save, and
+    // re-reading every product then made saving a note slow and made it fail on an order holding a since-deleted product.
+    const lineKey = (productId: string, variantSku?: string) => `${productId}|${variantSku || ''}`;
+    const oldLines = new Map<string, { raw: any; quantity: number }>();
+    for (const raw of order.items as any[]) {
+      const k = lineKey(raw.product.toString(), raw.variantSku);
+      const seen = oldLines.get(k);
+      if (seen) seen.quantity += raw.quantity;
+      else oldLines.set(k, { raw: raw.toObject?.() ?? raw, quantity: raw.quantity });
+    }
+    const wantedLines = new Map<string, { productId: string; variantSku?: string; quantity: number }>();
+    for (const it of dto.items ?? []) {
+      const k = lineKey(it.productId, it.variantSku);
+      const seen = wantedLines.get(k);
+      if (seen) seen.quantity += it.quantity;
+      else wantedLines.set(k, { productId: it.productId, variantSku: it.variantSku || undefined, quantity: it.quantity });
+    }
+    const itemsChanged =
+      wantedLines.size > 0 &&
+      (wantedLines.size !== oldLines.size || [...wantedLines].some(([k, w]) => oldLines.get(k)?.quantity !== w.quantity));
+    if (itemsChanged && (order.status === 'cancelled' || order.status === 'refunded')) {
+      throw new BadRequestException('Items of a cancelled or refunded order cannot be changed.');
+    }
+    // Stock moves made for this edit, undone if a later step (or the order save) fails, as reopenOrder does.
+    const stockUndo: Array<() => Promise<unknown>> = [];
 
-      const products = await Promise.all(
-        dto.items.map((item) => this.productsService.findById(item.productId)),
-      );
-      const productMap = new Map(products.map((p) => [p._id.toString(), p]));
+    if (itemsChanged) {
+      const products = new Map<string, any>();
+      const loadProduct = async (productId: string) => {
+        if (!products.has(productId)) products.set(productId, await this.productsService.findById(productId).catch(() => null));
+        return products.get(productId);
+      };
 
       let newSubtotal = 0;
       const newItems: OrderItem[] = [];
+      const stockLines: { productId: string; variantSku?: string; name: string; delta: number }[] = [];
 
-      for (const item of dto.items) {
-        const productIdObj = parseObjectId(item.productId, 'items[].productId');
-        const product = productMap.get(item.productId)!;
+      for (const [k, w] of wantedLines) {
+        const old = oldLines.get(k);
+        const productIdObj = parseObjectId(w.productId, 'items[].productId');
 
-        const existingItem = oldMap.get(`${item.productId}|${item.variantSku || ''}`);
-        let price: number;
-        if (existingItem != null) {
-          price = existingItem.price;
-        } else {
-          price = product.price;
-          if (item.variantSku) {
-            const variant = product.variants.find((v) => v.sku === item.variantSku);
-            if (!variant) {
-              throw new BadRequestException(
-                `A variant of "${product.name}" is no longer available. Please remove it and try again.`,
-              );
-            }
-            price = variant.price;
-          }
+        if (old && old.quantity === w.quantity) {
+          newItems.push(old.raw); // untouched line: keep exactly what was saved
+          newSubtotal += old.raw.total ?? old.raw.price * old.raw.quantity;
+          continue;
         }
 
-        const lineTotal = price * item.quantity;
-        const gstPct = (product.category as any)?.gstPercentage ?? 0;
-        newItems.push({
-          product: productIdObj,
-          name: existingItem?.name ?? product.name,
-          variantSku: item.variantSku,
-          variantName: item.variantSku
-            ? (existingItem?.variantName ?? product.variants.find((v) => v.sku === item.variantSku)?.name)
-            : undefined,
-          quantity: item.quantity,
-          price,
-          compareAtPrice: (item.variantSku ? product.variants.find((v) => v.sku === item.variantSku)?.compareAtPrice : undefined) ?? product.compareAtPrice,
-          total: lineTotal,
-          image: (item.variantSku ? product.variants.find((v) => v.sku === item.variantSku)?.images?.[0] : undefined) ?? product.images?.[0],
-          hsnCode: product.hsnCode,
-          gstRate: gstPct,
-          gstAmount: (lineTotal * gstPct) / 100,
-        });
-        newSubtotal += lineTotal;
+        const product = await loadProduct(w.productId);
+        let line: OrderItem;
+        if (old) {
+          // Existing line, new quantity: price and tax rate stay as sold.
+          const price = old.raw.price;
+          const gstRate = old.raw.gstRate ?? (product?.category as any)?.gstPercentage ?? 0;
+          const total = price * w.quantity;
+          line = { ...old.raw, quantity: w.quantity, total, gstRate, gstAmount: (total * gstRate) / 100 };
+        } else {
+          if (!product) {
+            throw new BadRequestException('One or more items are no longer available. Please refresh the page and try again.');
+          }
+          if (!product.isActive) {
+            throw new BadRequestException(`"${product.name}" is no longer available. Please remove it and try again.`);
+          }
+          let price = product.price;
+          const variant = w.variantSku ? product.variants.find((v: any) => v.sku === w.variantSku) : undefined;
+          if (w.variantSku && !variant) {
+            throw new BadRequestException(`A variant of "${product.name}" is no longer available. Please remove it and try again.`);
+          }
+          if (variant && Number.isFinite(variant.price) && variant.price > 0) price = variant.price;
+          if (!Number.isFinite(price) || price <= 0) {
+            throw new BadRequestException(`Price unavailable for ${product.name}. Please remove this item or contact support.`);
+          }
+          const gstRate = (product.category as any)?.gstPercentage ?? 0;
+          const total = price * w.quantity;
+          line = {
+            product: productIdObj,
+            name: product.name,
+            variantSku: w.variantSku,
+            variantName: variant?.name,
+            quantity: w.quantity,
+            price,
+            compareAtPrice: variant?.compareAtPrice ?? product.compareAtPrice,
+            total,
+            image: variant?.images?.[0] ?? product.images?.[0],
+            hsnCode: product.hsnCode,
+            gstRate,
+            gstAmount: (total * gstRate) / 100,
+          };
+        }
+        newItems.push(line);
+        newSubtotal += line.total;
+        stockLines.push({ productId: w.productId, variantSku: w.variantSku, name: line.name, delta: w.quantity - (old?.quantity ?? 0) });
       }
 
-      // Compute diff: detect qty changes, additions, removals
-      const newMap = new Map(
-        newItems.map((i) => [
-          `${i.product.toString()}|${i.variantSku || ''}`,
-          i,
-        ]),
-      );
       const editChanges: {
         type: string;
         productId: string;
@@ -1678,90 +1744,40 @@ export class OrdersService implements OnModuleInit {
         oldQty?: number;
         newQty?: number;
       }[] = [];
-
-      for (const [key, old] of oldMap) {
-        const curr = newMap.get(key);
+      for (const [k, old] of oldLines) {
+        const curr = wantedLines.get(k);
+        const base = { productId: old.raw.product.toString(), name: old.raw.name, variantSku: old.raw.variantSku || undefined, variantName: old.raw.variantName };
         if (!curr) {
-          editChanges.push({ type: 'item_removed', productId: old.productId, name: old.name, variantSku: old.variantSku || undefined, variantName: old.variantName, oldQty: old.quantity });
+          editChanges.push({ type: 'item_removed', ...base, oldQty: old.quantity });
+          stockLines.push({ productId: base.productId, variantSku: base.variantSku, name: base.name, delta: -old.quantity });
         } else if (curr.quantity !== old.quantity) {
-          editChanges.push({ type: 'qty_changed', productId: old.productId, name: old.name, variantSku: old.variantSku || undefined, variantName: old.variantName, oldQty: old.quantity, newQty: curr.quantity });
+          editChanges.push({ type: 'qty_changed', ...base, oldQty: old.quantity, newQty: curr.quantity });
         }
       }
-      for (const [key, curr] of newMap) {
-        if (!oldMap.has(key)) {
-          editChanges.push({ type: 'item_added', productId: curr.product.toString(), name: curr.name, variantSku: curr.variantSku || undefined, variantName: curr.variantName, newQty: curr.quantity });
+      for (const [k, w] of wantedLines) {
+        if (!oldLines.has(k)) {
+          const added = newItems.find((i) => lineKey(i.product.toString(), i.variantSku) === k)!;
+          editChanges.push({ type: 'item_added', productId: w.productId, name: added.name, variantSku: w.variantSku, variantName: added.variantName, newQty: w.quantity });
         }
       }
 
-      if (editChanges.length > 0) {
-        order.editChanges = editChanges as any;
-        order.repackRequired = true;
-        // Reset packing so the order re-surfaces in the packing queue
-        order.packedAt = undefined;
-        order.packedBy = undefined;
-        order.packedByName = undefined;
-        this.pushTimelineEntry(order, {
-          status: order.status,
-          message: `Order items edited by admin — repack required (${editChanges.length} change${editChanges.length > 1 ? 's' : ''})`,
-        });
-
-        // BUG 12 fix: sync inventory for the changed items so store stock stays accurate
-        // after admin edits. Runs best-effort after the order is saved; failures are logged
-        // but do not block the response.
-        let stockSyncStore: Awaited<ReturnType<typeof this.storesService.findMainStore>> | null = null;
-        try {
-          stockSyncStore = await this.storesService.findMainStore();
-        } catch {
-          // Main store not configured — skip stock sync
-        }
-        if (stockSyncStore) {
-          const stockSyncStoreId = stockSyncStore._id.toString();
-          for (const change of editChanges) {
-            try {
-              if (change.type === 'item_removed') {
-                // Item no longer in order — return full old quantity to stock
-                await this.storeStockService.incrementStock(
-                  stockSyncStoreId,
-                  change.productId,
-                  change.oldQty!,
-                  change.variantSku,
-                );
-              } else if (change.type === 'item_added') {
-                // New item added to order — decrement stock by new quantity
-                await this.storeStockService.decrementStock(
-                  stockSyncStoreId,
-                  change.productId,
-                  change.newQty!,
-                  change.variantSku,
-                );
-              } else if (change.type === 'qty_changed') {
-                const delta = change.newQty! - change.oldQty!;
-                if (delta > 0) {
-                  // More ordered — decrement stock by the additional quantity
-                  await this.storeStockService.decrementStock(
-                    stockSyncStoreId,
-                    change.productId,
-                    delta,
-                    change.variantSku,
-                  );
-                } else if (delta < 0) {
-                  // Fewer ordered — return the released quantity to stock
-                  await this.storeStockService.incrementStock(
-                    stockSyncStoreId,
-                    change.productId,
-                    Math.abs(delta),
-                    change.variantSku,
-                  );
-                }
-              }
-            } catch (stockErr) {
-              this.logger.warn(
-                `updateOrder: stock sync failed for product ${change.productId} (${change.type}): ${stockErr.message}`,
-              );
-            }
-          }
-        }
+      try {
+        await this.applyEditStock(stockLines, stockUndo, loadProduct);
+      } catch (err) {
+        await this.undoStock(stockUndo, id);
+        throw err;
       }
+
+      order.editChanges = editChanges as any;
+      order.repackRequired = true;
+      // Reset packing so the order re-surfaces in the packing queue
+      order.packedAt = undefined;
+      order.packedBy = undefined;
+      order.packedByName = undefined;
+      this.pushTimelineEntry(order, {
+        status: order.status,
+        message: `Order items edited by admin — repack required (${editChanges.length} change${editChanges.length > 1 ? 's' : ''})`,
+      });
 
       order.items = newItems as any;
       order.subtotal = newSubtotal;
@@ -1773,18 +1789,28 @@ export class OrdersService implements OnModuleInit {
     }
 
     // Standalone discount update (no item changes)
-    if ((dto.discount != null) && !(dto.items && dto.items.length > 0)) {
+    if ((dto.discount != null) && !itemsChanged) {
       const cappedDiscount = Math.min(dto.discount, order.subtotal || 0);
       order.discount = cappedDiscount;
       order.total = Math.max(0, (order.subtotal || 0) - cappedDiscount + (order.shippingCharge || 0));
     }
 
     // Standalone shippingCharge update (no item or discount changes) — recalculate total
-    if (dto.shippingCharge != null && !(dto.items && dto.items.length > 0) && dto.discount == null) {
+    if (dto.shippingCharge != null && !itemsChanged && dto.discount == null) {
       order.total = Math.max(0, (order.subtotal || 0) - (order.discount || 0) + order.shippingCharge);
     }
 
-    const saved = await order.save();
+    let saved: OrderDocument;
+    try {
+      if (itemsChanged) order.increment(); // version-checked save: a concurrent edit of the same order fails instead of both applying their stock moves
+      saved = await order.save();
+    } catch (err) {
+      await this.undoStock(stockUndo, id);
+      if (err instanceof Error && (err.name === 'VersionError' || err.name === 'DocumentNotFoundError')) {
+        throw new ConflictException('Order was changed by someone else. Refresh and try again.');
+      }
+      throw err;
+    }
     if (dto.status === 'delivered') {
       this.crmEngine.refreshUser(saved.user).catch(err =>
         this.logger.warn(`CRM refresh failed for user ${saved.user}: ${err.message}`)

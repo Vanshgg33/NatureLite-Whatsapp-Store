@@ -121,15 +121,21 @@ export class ProductRepository extends BaseRepository<ProductDocument> {
   }
 
   async findByIdWithCategory(id: Types.ObjectId): Promise<ProductDocument | null> {
-    return this.model.findById(id).populate('category', 'gstPercentage').exec();
+    return this.withCategory(await this.model.findById(id).exec());
   }
 
   async findOneBySlugWithCategory(slug: string): Promise<ProductDocument | null> {
-    return this.model.findOne({ slug }).populate('category', 'gstPercentage').exec();
+    return this.withCategory(await this.model.findOne({ slug }).exec());
   }
 
   async findOneBySkuWithCategory(sku: string): Promise<ProductDocument | null> {
-    return this.model.findOne({ sku }).populate('category', 'gstPercentage').exec();
+    return this.withCategory(await this.model.findOne({ sku }).exec());
+  }
+
+  /** Populates the category only when it is a real id: a query-level populate throws a CastError on a stored "" category (imported products). */
+  private async withCategory(doc: ProductDocument | null): Promise<ProductDocument | null> {
+    if (doc && isValidObjectIdString(doc.category?.toString())) await doc.populate('category', 'gstPercentage');
+    return doc;
   }
 
   async findByCategoryId(categoryId: Types.ObjectId, limit = 100): Promise<ProductDocument[]> {
@@ -237,18 +243,25 @@ export class ProductRepository extends BaseRepository<ProductDocument> {
 
   async searchByText(searchTerm: string, limit: number = 20): Promise<ProductDocument[]> {
     const textResults = await this.model
-      .find({ isActive: true, $text: { $search: searchTerm } })
+      .find({ isActive: true, $text: { $search: searchTerm } }, { score: { $meta: 'textScore' } })
+      .sort({ score: { $meta: 'textScore' } }) // best matches first, so the limit cuts the weakest, not an arbitrary few
       .limit(limit)
       .exec();
 
-    if (textResults.length > 0) return textResults;
+    if (textResults.length >= limit) return textResults;
 
-    // Fallback: regex on name handles partial words (e.g. "bilon" → "Bilona Ghee A2")
+    // Top up with a name/SKU regex: text search only matches whole words, so "bilon" → "Bilona Ghee A2" and a typed SKU
+    // were invisible whenever the text search found anything else.
     const escaped = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return this.model
-      .find({ isActive: true, name: { $regex: escaped, $options: 'i' } })
-      .limit(limit)
+    const more = await this.model
+      .find({
+        isActive: true,
+        _id: { $nin: textResults.map((p) => p._id) },
+        $or: [{ name: { $regex: escaped, $options: 'i' } }, { sku: { $regex: escaped, $options: 'i' } }, { 'variants.sku': { $regex: escaped, $options: 'i' } }],
+      })
+      .limit(limit - textResults.length)
       .exec();
+    return [...textResults, ...more];
   }
 
   async deleteById(id: Types.ObjectId): Promise<number> {

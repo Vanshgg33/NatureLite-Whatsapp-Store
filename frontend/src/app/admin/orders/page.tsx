@@ -1,7 +1,7 @@
 'use client';
 
 import { usePageState } from '@/hooks/usePageState';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useAdminAccess } from '@/lib/admin-access';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Eye, Plus, Trash2, ShoppingCart, MessageCircle, Globe, Download, Send, Loader2, Edit, Phone, Receipt, Building2, Truck, Bell, RotateCcw, Printer } from 'lucide-react';
@@ -65,6 +65,12 @@ type ProductRow = {
   stock: number;
   trackStock: boolean;
 };
+
+const roundMoney = (n: number) => Math.round(n * 100) / 100; // a % discount like 33.33% of ₹1,400 must not save as 466.6666…
+
+function newIdempotencyKey(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 function flattenProductRows(products: Product[]): ProductRow[] {
   const rows: ProductRow[] = [];
@@ -215,9 +221,14 @@ export default function OrdersPage() {
   const editProductRows = flattenProductRows(editProductSearchResults as Product[]);
   const editProductSearchLoading = editProductSearchFetching || (!!editProductSearch && editProductSearch !== debouncedEditProductSearch);
 
+  // One key per order being entered: a retry after a timeout or lost response re-sends the same key, so the server
+  // returns the order it already made instead of creating a second one. Cleared once the order is created or the form reset.
+  const createKey = useRef<string | null>(null);
+
   const createOrderMutation = useMutation({
     mutationFn: () =>
       api.adminCreateOrder({
+        idempotencyKey: (createKey.current ??= newIdempotencyKey()),
         items: cart.map((i) => ({ productId: i.productId, variantSku: i.variantSku, quantity: i.quantity })),
         shippingAddress: {
           name: custName.trim(),
@@ -264,6 +275,7 @@ export default function OrdersPage() {
   });
 
   function resetCreateForm() {
+    createKey.current = null;
     setSource('whatsapp');
     setOrderType('');
     setCustName('');
@@ -384,7 +396,7 @@ export default function OrdersPage() {
 
   const cartSubtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
   const discountAmount = discountIsPercent
-    ? cartSubtotal * (Math.min(parseFloat(discount) || 0, 100) / 100)
+    ? roundMoney(cartSubtotal * (Math.min(parseFloat(discount) || 0, 100) / 100))
     : (parseFloat(discount) || 0);
   const cartTotal = Math.max(0, cartSubtotal - discountAmount);
 
@@ -400,9 +412,12 @@ export default function OrdersPage() {
     onMutate: async (data) => {
       await queryClient.cancelQueries({ queryKey: ['orders'] });
       const prev = queryClient.getQueryData(['orders', page, debouncedSearch, status, cityFilter, startDate, endDate, paymentFilter]);
+      // `items` is left out: the payload's lines are {productId, quantity} only, and merging them over the row's real
+      // lines (name, price, ...) would blank the row until the refetch lands.
+      const { items: _items, ...rowPatch } = data.payload;
       queryClient.setQueryData(['orders', page, debouncedSearch, status, cityFilter, startDate, endDate, paymentFilter], (old: any) => {
         if (!old?.items) return old;
-        return { ...old, items: old.items.map((o: any) => o._id === data.id ? { ...o, ...data.payload } : o) };
+        return { ...old, items: old.items.map((o: any) => o._id === data.id ? { ...o, ...rowPatch } : o) };
       });
       return { prev };
     },
@@ -545,7 +560,7 @@ export default function OrdersPage() {
         },
         items: editCart.map((i) => ({ productId: i.productId, variantSku: i.variantSku || undefined, quantity: i.quantity })),
         discount: editDiscountIsPercent
-          ? editCart.reduce((s, i) => s + i.price * i.quantity, 0) * (Math.min(parseFloat(editDiscount) || 0, 100) / 100)
+          ? roundMoney(editCart.reduce((s, i) => s + i.price * i.quantity, 0) * (Math.min(parseFloat(editDiscount) || 0, 100) / 100))
           : (parseFloat(editDiscount) || 0),
         shippingCharge: parseFloat(editShippingCharge) || 0,
       },
