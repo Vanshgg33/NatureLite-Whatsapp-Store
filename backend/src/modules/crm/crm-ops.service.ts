@@ -8,7 +8,7 @@ import { sanitizeView } from './crm-filters';
 import { Feedback } from '../feedback/schemas/feedback.schema';
 import { AuditLog } from '../audit/schemas/audit-log.schema';
 import { MessageLog } from '../whatsapp/schemas/message-log.schema';
-import { goalStatus, medianMinutes, monthRange, needsReply } from './crm-ops.logic';
+import { buildAlerts, digestWindows, goalStatus, medianMinutes, monthRange, needsReply, type DigestPeriod } from './crm-ops.logic';
 import { monthKey, REVENUE_ORDERS } from './crm-insights.logic';
 import { normalisePhone } from './crm-foundation.service';
 
@@ -198,6 +198,52 @@ export class CrmOpsService {
       const ratio = r.personalCycle > 0 ? r.daysLate / r.personalCycle : 0;
       return { customerId: String(r.userId?._id ?? ''), name: r.userId?.name ?? '', phone: r.userId?.phone ?? '', segment: r.segment, daysLate: r.daysLate, ltv: r.ltv, topCategory: r.topCategory, churnRisk: ratio >= 2 ? 'high' : ratio >= 1 ? 'medium' : 'low' };
     }).sort((a, b) => b.ltv * b.daysLate - a.ltv * a.daysLate).slice(0, 50);
+  }
+
+  // ─── Digest & Alerts (M02): headline numbers vs the previous period + what needs action ──
+  async digest(period: DigestPeriod = 'day') {
+    const now = new Date();
+    const w = digestWindows(period, now);
+    const both = <T>(fn: (from: Date, to: Date) => Promise<T>) => Promise.all([fn(w.from, w.to), fn(w.prevFrom, w.prevTo)]).then(([current, previous]) => ({ current, previous }));
+    const range = (from: Date, to: Date) => ({ createdAt: { $gte: from, $lt: to } });
+    const sum = (m: Model<any>, match: any, field: string) => m.aggregate([{ $match: match }, { $group: { _id: null, v: { $sum: `$${field}` } } }]).then((r) => Math.round((r[0]?.v ?? 0) * 100) / 100);
+    const bills = { status: 'active' }; // the bill model's own hook already leaves out credit notes and sale orders
+
+    const [onlineRevenue, storeRevenue, orders, storeBills, newCustomers, calls, leads, walkins] = await Promise.all([
+      both((f, t) => sum(this.orderModel, { ...VALID, ...range(f, t) }, 'total')),
+      both((f, t) => sum(this.billModel, { ...bills, ...range(f, t) }, 'grandTotal')),
+      both((f, t) => this.orderModel.countDocuments({ ...VALID, ...range(f, t) })),
+      both((f, t) => this.billModel.countDocuments({ ...bills, ...range(f, t) })),
+      both((f, t) => this.userModel.countDocuments(range(f, t))),
+      both((f, t) => this.callModel.countDocuments({ type: { $ne: 'whatsapp' }, ...range(f, t) })),
+      both((f, t) => this.leadModel.countDocuments(range(f, t))),
+      both((f, t) => this.walkinModel.countDocuments(range(f, t))),
+    ]);
+    const revenue = { current: onlineRevenue.current + storeRevenue.current, previous: onlineRevenue.previous + storeRevenue.previous };
+
+    const hourAgo = +now - 3_600_000;
+    const [callbacks, goals, inbox, risk, lowRatedFeedback, uncontactedLeads, feeds] = await Promise.all([
+      this.callbacks(), this.goals(), this.inbox(), this.intelligence(),
+      this.feedbackModel.countDocuments({ rating: { $gte: 1, $lte: 2 }, createdAt: { $gte: new Date(+now - 7 * 86_400_000) } }),
+      this.leadModel.countDocuments({ stage: 'new', createdAt: { $lt: new Date(+now - 86_400_000) } }),
+      this.integrations(),
+    ]);
+    const alerts = buildAlerts({
+      overdueCallbacks: callbacks.filter((c) => c.overdue).length,
+      goalsBehind: goals.goals.filter((g) => g.target > 0 && g.status === 'behind'),
+      unrepliedChats: inbox.filter((c) => c.needsReply && +new Date(c.lastAt) < hourAgo).length,
+      highRiskCustomers: risk.filter((r) => r.churnRisk === 'high').length,
+      lowRatedFeedback, uncontactedLeads,
+      staleFeeds: feeds.filter((f) => f.name === 'Online orders' || f.name === 'Billing (POS)')
+        .map((f) => ({ name: f.name, hours: f.lastAt ? (+now - +new Date(f.lastAt)) / 3_600_000 : null }))
+        .filter((f) => f.hours == null || f.hours >= 48),
+      revenue,
+    });
+    return {
+      period, from: w.from, to: w.to, prevFrom: w.prevFrom, prevTo: w.prevTo, generatedAt: now,
+      metrics: { revenue, onlineRevenue, storeRevenue, orders, storeBills, newCustomers, calls, leads, walkins },
+      alerts,
+    };
   }
 
   // ─── Integrations (M33): when each feed last produced data ────────────────

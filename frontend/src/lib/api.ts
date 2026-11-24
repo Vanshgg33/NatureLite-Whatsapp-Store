@@ -2596,6 +2596,7 @@ class ApiClient {
   async getCrmAudit(action?: string): Promise<any[]> { return (await this.client.get<ApiResponse<any[]>>('/crm/audit', { params: { action } })).data.data ?? []; }
   async getCrmInbox(): Promise<any[]> { return (await this.client.get<ApiResponse<any[]>>('/crm/inbox')).data.data ?? []; }
   async getCrmThread(phone: string): Promise<any[]> { return (await this.client.get<ApiResponse<any[]>>('/crm/inbox/' + encodeURIComponent(phone))).data.data ?? []; }
+  async getCrmDigest(period: 'day' | 'week'): Promise<any> { return (await this.client.get<ApiResponse<any>>('/crm/digest', { params: { period } })).data.data; }
   async getCrmIntelligence(): Promise<any[]> { return (await this.client.get<ApiResponse<any[]>>('/crm/intelligence')).data.data ?? []; }
   async getCrmIntegrations(): Promise<any[]> { return (await this.client.get<ApiResponse<any[]>>('/crm/integrations')).data.data ?? []; }
 

@@ -521,6 +521,13 @@ export class CrmController {
   @RequireAccess('crm_intelligence.view')
   intelligence(@CurrentUser() user: JwtPayload) { this.managersOnly(user); return this.ops.intelligence(); }
 
+  @Get('digest')
+  @RequireAccess('crm_digest.view')
+  digest(@Query('period') period: string, @CurrentUser() user: JwtPayload) {
+    this.managersOnly(user);
+    return this.ops.digest(period === 'week' ? 'week' : 'day');
+  }
+
   @Get('integrations')
   @RequireAccess('crm_integrations.view')
   integrations(@CurrentUser() user: JwtPayload) { this.managersOnly(user); return this.ops.integrations(); }

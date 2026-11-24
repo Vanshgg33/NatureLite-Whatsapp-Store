@@ -121,6 +121,7 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   def('crm_attribution', 'CRM Attribution', 'CRM', '/crm/attribution', true, [a('view', 'View')]),
   def('crm_investor', 'CRM Investor Snapshot', 'CRM', '/crm/reports/investor', true, [a('view', 'View')]),
   def('crm_acquisition', 'CRM Acquisition & CAC', 'CRM', '/crm/acquisition', true, [a('view', 'View'), a('edit', 'Enter spend')]),
+  def('crm_digest', 'CRM Digest & Alerts', 'CRM', '/crm/digest', true, [a('view', 'View')]),
   def('crm_goals', 'CRM Goals', 'CRM', '/crm/goals', true, [a('view', 'View'), a('edit', 'Set targets')]),
   def('crm_callbacks', 'CRM Callbacks', 'CRM', '/crm/callbacks', true, [a('view', 'View')]),
   def('crm_leads', 'CRM Leads', 'CRM', '/crm/leads', true, [a('view', 'View'), a('edit', 'Add / move leads')]),

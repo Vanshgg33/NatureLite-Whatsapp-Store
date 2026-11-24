@@ -18,7 +18,7 @@ export type NavGroup = { label: string; items: NavItem[] };
 export const NAV_GROUPS: NavGroup[] = [
   { label: 'Overview', items: [
     { label: 'Today', href: '/crm', icon: LayoutDashboard, module: 'M01', priority: 'P1', page: 'crm_today' },
-    { label: 'Digest & Alerts', href: '/crm/digest', icon: Bell, module: 'M02', priority: 'P2' },
+    { label: 'Digest & Alerts', href: '/crm/digest', icon: Bell, module: 'M02', priority: 'P2', page: 'crm_digest', adminOnly: true },
     { label: 'Goals', href: '/crm/goals', icon: Target, module: 'M03', priority: 'P2', page: 'crm_goals', adminOnly: true },
   ] },
   { label: 'Customers', items: [
