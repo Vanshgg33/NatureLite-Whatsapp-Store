@@ -53,6 +53,6 @@ export function buildSearchOrFilter(
 ): Array<Record<string, { $regex: string; $options: string }>> {
   if (!search?.trim()) return [];
   return fields.map((field) => ({
-    [field]: { $regex: search.trim(), $options: 'i' },
+    [field]: { $regex: escapeRegex(search.trim()), $options: 'i' }, // literal text: "(" or "+" typed in a search box must not 500
   }));
 }

@@ -94,7 +94,9 @@ function CustomerCombobox({ value, onSelect, onClear }: {
 
   useEffect(() => {
     if (!dq) { setResults([]); return; }
-    api.searchBillingCustomers(dq).then(setResults).catch(() => {});
+    let live = true; // a slow older response must not overwrite a newer one
+    api.searchBillingCustomers(dq).then(r => { if (live) setResults(r); }).catch(() => {});
+    return () => { live = false; };
   }, [dq]);
 
   useEffect(() => {

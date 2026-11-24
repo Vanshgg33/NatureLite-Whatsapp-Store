@@ -36,7 +36,7 @@ export default function CommandPalette() {
   const { data: customers } = useQuery({
     queryKey: ['crm-palette-customers', dq],
     queryFn: () => api.getCrmCustomers({ search: dq, page: 1 }),
-    enabled: open && canSearchCustomers && dq.length >= 3,
+    enabled: open && canSearchCustomers && dq.length >= 1,
   });
 
   const hits: Hit[] = useMemo(() => {

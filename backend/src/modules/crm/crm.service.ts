@@ -19,7 +19,7 @@ import { Complaint, ComplaintDocument } from '../complaints/schemas/complaint.sc
 import { ExtraFilters, extraStatsFilter, needsStats } from './crm-filters';
 import { PURCHASE_ORDER_MATCH, withNetTotals } from './crm-purchases';
 import { incompleteLeadFilter, type IncompleteLead } from '../../common/utils/incomplete-lead.util';
-import { escapeRegex } from '../../common/utils/query.util';
+import { andFilters, customerSearchFilter, parseCustomerQuery, rankCustomers } from '../../common/utils/customer-search';
 
 @Injectable()
 export class CrmService {
@@ -82,17 +82,11 @@ export class CrmService {
       Object.assign(statsFilter, extraStatsFilter(extra));
       let stats = await this.statsModel.find(statsFilter).sort({ priorityScore: -1 }).lean();
       if (extra.hasComplaint) stats = stats.filter((s: any) => complaining.has(s.userId.toString()));
-      const userFilter: any = { _id: { $in: stats.map((s: any) => s.userId) }, ...(opts.missing ? incompleteLeadFilter(opts.missing) : {}) };
-      if (search?.trim()) {
-        const d = search.replace(/\D/g, '');
-        userFilter.$or = [
-          { name: { $regex: escapeRegex(search.trim()), $options: 'i' } },
-          ...(d ? [{ phone: { $regex: d } }] : []),
-        ];
-      }
+      const userFilter: any = andFilters({ _id: { $in: stats.map((s: any) => s.userId) } }, opts.missing ? incompleteLeadFilter(opts.missing) : null, customerSearchFilter(parseCustomerQuery(search)));
       const users = await this.userModel.find(userFilter).select('_id name phone tags').lean();
       const userMap = new Map(users.map((u: any) => [u._id.toString(), u]));
       stats = stats.filter((s: any) => userMap.has(s.userId.toString()));
+      stats = rankCustomers(stats, search, (s: any) => userMap.get(s.userId.toString()) ?? {}); // best match first; priority order breaks ties
       const total = stats.length;
       return {
         data: stats.slice((page - 1) * limit, page * limit).map((s: any) => ({ ...s, user: userMap.get(s.userId.toString()), hasOpenComplaint: complaining.has(s.userId.toString()) })),
@@ -101,14 +95,7 @@ export class CrmService {
     }
 
     // Default: users are the source of truth — left-join stats
-    const userFilter: any = opts.missing ? incompleteLeadFilter(opts.missing) : {};
-    if (search?.trim()) {
-      const d = search.replace(/\D/g, '');
-      userFilter.$or = [
-        { name: { $regex: escapeRegex(search.trim()), $options: 'i' } },
-        ...(d ? [{ phone: { $regex: d } }] : []),
-      ];
-    }
+    const userFilter: any = andFilters(opts.missing ? incompleteLeadFilter(opts.missing) : null, customerSearchFilter(parseCustomerQuery(search)));
     const users = await this.userModel.find(userFilter).select('_id name phone tags').lean();
 
     const statsFilter: any = { userId: { $in: users.map((u: any) => u._id) } };
@@ -131,6 +118,8 @@ export class CrmService {
       if (sb) return 1;
       return 0;
     });
+    // a typed search ranks by how well the name / phone matches (exact, starts with, word starts with, contains); the priority order above breaks ties
+    filtered = rankCustomers(filtered, search, (u: any) => u);
 
     const total = filtered.length;
     return {

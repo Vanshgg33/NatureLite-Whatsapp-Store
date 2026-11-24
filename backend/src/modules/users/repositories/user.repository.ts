@@ -5,7 +5,7 @@ import { User, UserDocument } from '../schemas/user.schema';
 import { BaseRepository } from '../../../common/repository/base.repository';
 import { UserQueryDto } from '../dto/user.dto';
 import { PaginatedResult, paginate } from '../../../common/types/pagination.types';
-import { buildSearchOrFilter } from '../../../common/utils/query.util';
+import { CustomerSearchField, customerSearchFilter, parseCustomerQuery, rankCustomers } from '../../../common/utils/customer-search';
 
 @Injectable()
 export class UserRepository extends BaseRepository<UserDocument> {
@@ -45,8 +45,10 @@ export class UserRepository extends BaseRepository<UserDocument> {
   async findAllPaginated(query: UserQueryDto): Promise<PaginatedResult<User>> {
     const { page = 1, limit = 20, search, isActive, isBlocked, sortBy = 'createdAt', sortOrder = 'desc', deliveryUserId } = query;
     const filter: Record<string, unknown> = {};
-    const searchOr = buildSearchOrFilter(search, ['phone', 'name', 'email']);
-    if (searchOr.length) filter.$or = searchOr;
+    const fields: CustomerSearchField[] = ['name', 'phone', 'email'];
+    const parsed = parseCustomerQuery(search);
+    const searchFilter = customerSearchFilter(parsed, 'any', fields); // escaped, whitespace-normalised, phone only for phone-like text
+    if (parsed && !searchFilter) return paginate([], 0, { page, limit });
     // Use $ne so documents without the field set still match the "positive" case.
     // { isActive: true } would miss docs where isActive is null/undefined.
     if (isActive !== undefined) filter.isActive = isActive ? { $ne: false } : false;
@@ -54,6 +56,19 @@ export class UserRepository extends BaseRepository<UserDocument> {
     if (deliveryUserId !== undefined) filter.assignedDeliveryUserId = deliveryUserId;
     const skip = (page - 1) * limit;
     const sort: Record<string, 1 | -1> = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
+
+    if (searchFilter) {
+      // Ranked search: best match first, the requested sort breaks ties. Only the matches' name/phone/email are loaded to
+      // rank them (a search narrows the list), then just the requested page of full documents is fetched.
+      const rows = await this.model.find({ ...filter, ...searchFilter }).sort(sort).select('name phone email').lean().exec();
+      const ranked = rankCustomers(rows, search, (r) => r, fields);
+      const ids = ranked.slice(skip, skip + limit).map((r) => r._id);
+      const docs = await this.model.find({ _id: { $in: ids } }).exec();
+      const byId = new Map(docs.map((d) => [String(d._id), d]));
+      const pageDocs = ids.map((id) => byId.get(String(id))).filter(Boolean) as typeof docs;
+      return paginate(pageDocs, ranked.length, { page, limit });
+    }
+
     const [users, total] = await Promise.all([
       this.model.find(filter).sort(sort).skip(skip).limit(limit).exec(),
       this.model.countDocuments(filter),

@@ -18,6 +18,7 @@ import { TaxSettingsService } from './tax-settings/tax-settings.service';
 import { LogicsService } from './logics/logics.service';
 import { calcBill, CalcResult } from './logics/formula-engine';
 import { escapeRegex } from '../../common/utils/query.util';
+import { searchCustomersRanked } from '../../common/utils/customer-search';
 import { incompleteLeadFilter, type IncompleteLead } from '../../common/utils/incomplete-lead.util';
 import { isValidGstin } from './gst-utils';
 import { CashDrawerService, DrawerError, type CashBlock } from './cash-drawer/cash-drawer.service';
@@ -170,11 +171,9 @@ export class BillingService {
       const users = await this.userModel.find(gap).sort(missing ? { createdAt: -1 } : { name: 1 }).limit(missing ? 200 : 50).lean();
       return users.map(u => this.mapUser(u));
     }
-    const digits = q.replace(/[^\d]/g, '');
-    const orConds: any[] = [{ name: { $regex: escapeRegex(q.trim()), $options: 'i' } }];
-    // 098…, +91 98… and 98… all find 9198…: a full number is matched on its last 10 digits
-    if (digits) orConds.push({ phone: { $regex: digits.length > 10 ? digits.slice(-10) : digits } });
-    const users = await this.userModel.find({ $or: orConds, ...gap }).limit(missing ? 200 : 20).lean();
+    // best matches first (exact, name starts with, a word starts with, contains; phone prefix before contains): see customer-search
+    // 098…, +91 98… and 98… all find 9198…
+    const users = await searchCustomersRanked(this.userModel, q, { limit: missing ? 200 : 20, extra: gap });
     return users.map(u => this.mapUser(u));
   }
 

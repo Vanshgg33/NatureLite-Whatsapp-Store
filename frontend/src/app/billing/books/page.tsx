@@ -37,7 +37,12 @@ function PartyPicker({ value, onChange, allowFree = true }: { value: { id: strin
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { setQ(value.name); }, [value.name]);
-  useEffect(() => { if (dq && open) api.searchBillingCustomers(dq).then(setResults).catch(() => {}); }, [dq, open]);
+  useEffect(() => {
+    if (!dq || !open) return;
+    let live = true; // a slow older response must not overwrite a newer one
+    api.searchBillingCustomers(dq).then(r => { if (live) setResults(r); }).catch(() => {});
+    return () => { live = false; };
+  }, [dq, open]);
   useEffect(() => {
     const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
     document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h);

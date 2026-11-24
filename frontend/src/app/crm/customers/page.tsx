@@ -193,7 +193,7 @@ export default function CustomersPage() {
   const deleteView = useMutation({ mutationFn: (id: string) => api.deleteCrmView(id), onSuccess: () => { setViewId(''); qc.invalidateQueries({ queryKey: ['crm-views'] }); } });
   const setX = (k: keyof typeof extra, v: string | boolean) => { setExtra(e => ({ ...e, [k]: v })); setPage(1); setViewId(''); };
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     enabled: ready,
     queryKey: ['crm-customers', segment, dSearch, issues, page, extra],
     queryFn: () => api.getCrmCustomers({
@@ -345,7 +345,8 @@ export default function CustomersPage() {
       </div>
 
       {/* List */}
-      <div className="px-7 pb-4 space-y-1.5">
+      {/* dimmed while a typed search is still waiting to run, so rows from the previous query never look like results */}
+      <div className={`px-7 pb-4 space-y-1.5 transition-opacity ${search !== dSearch ? 'opacity-50' : ''}`}>
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
             <div
@@ -353,10 +354,12 @@ export default function CustomersPage() {
               style={{ borderColor: 'var(--crm-gold)', borderTopColor: 'transparent' }}
             />
           </div>
+        ) : isError ? (
+          <EmptyState title="Could not load customers" body="Check your connection, then change the search or filters to try again." />
         ) : !items.length ? (
           <EmptyState
             title="No customers found"
-            body={issues ? 'No escalated customers' : segment ? `No customers in ${segmentLabel(segment)}` : 'Try adjusting your filters'}
+            body={search.trim() ? `No customer name or phone matches "${search.trim()}"` : issues ? 'No escalated customers' : segment ? `No customers in ${segmentLabel(segment)}` : 'Try adjusting your filters'}
           />
         ) : (
           items.map((item: any) => {

@@ -88,10 +88,10 @@ describe('BillingService.updateCustomer GSTIN', () => {
 
 describe('BillingService search escaping', () => {
   it('treats regex characters in a customer search literally', async () => {
-    const find = jest.fn().mockReturnValue({ limit: () => ({ lean: () => Promise.resolve([]) }) });
+    const find = jest.fn().mockReturnValue({ sort: () => ({ limit: () => ({ lean: () => Promise.resolve([]) }) }) });
     const svc = new (BillingService as any)({ find }) as BillingService;
     await svc.searchCustomers('Om (Herbal+');
-    const rx = find.mock.calls[0][0].$or[0].name.$regex;
+    const rx = find.mock.calls[0][0].$or[0].name.$regex.replace(/^\^|\$$/g, ''); // the exact tier anchors it
     expect(() => new RegExp(rx)).not.toThrow();
     expect(new RegExp(rx, 'i').test('om (herbal+ store')).toBe(true);
   });

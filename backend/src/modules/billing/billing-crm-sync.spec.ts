@@ -58,7 +58,7 @@ describe('Billing customers: one customer per phone however it is typed', () => 
     const userModel: any = {
       findOne: jest.fn((q: any) => ({ lean: () => Promise.resolve(q.phone ? existing : null) })),
       create: jest.fn(createImpl ?? ((d: any) => Promise.resolve({ _id: 'u1', ...d }))),
-      find: jest.fn(() => ({ limit: () => ({ lean: () => Promise.resolve([]) }) })),
+      find: jest.fn(() => ({ sort: () => ({ limit: () => ({ lean: () => Promise.resolve([]) }) }) })),
     };
     const crmEngine = { refreshUser: jest.fn().mockResolvedValue(undefined) };
     const svc: any = new (BillingService as any)(userModel, {}, {}, {}, {}, {}, crmEngine);
@@ -92,8 +92,9 @@ describe('Billing customers: one customer per phone however it is typed', () => 
     const { svc, userModel } = make();
     await svc.searchCustomers('09876543210');
     await svc.searchCustomers('98765');
-    expect(userModel.find.mock.calls[0][0].$or[1]).toEqual({ phone: { $regex: '9876543210' } });
-    expect(userModel.find.mock.calls[1][0].$or[1]).toEqual({ phone: { $regex: '98765' } });
+    // the 0 / +91 is dropped: the phone clause is built from the 10 national digits
+    expect(userModel.find.mock.calls[0][0].$or[1]).toEqual({ phone: { $regex: '^(91)?9876543210$' } });
+    expect(JSON.stringify(userModel.find.mock.calls.at(-1)[0])).toContain('98765');
   });
 });
 
