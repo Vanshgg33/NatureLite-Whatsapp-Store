@@ -67,7 +67,7 @@ function Face({ d, small }: { d: DrawerDenom; small?: boolean }) {
  * The cash counter. mode 'collect': the cashier counts the notes the customer handed over; the change is worked out
  * from what the drawer really holds plus those notes. mode 'refund': the notes to hand back, for `amountRupees`.
  */
-export function CashCounter({ mode = 'collect', amountRupees, drawer, received, onReceivedChange, onTender, disabled, onSkip }: {
+export function CashCounter({ mode = 'collect', amountRupees, drawer, received, onReceivedChange, onTender, disabled, onSkip, countOnly }: {
   mode?: 'collect' | 'refund';
   /** collect: cash due (whole rupees); refund: cash to hand back */
   amountRupees: number;
@@ -79,6 +79,8 @@ export function CashCounter({ mode = 'collect', amountRupees, drawer, received, 
   disabled?: boolean;
   /** SOFT mode: lets the cashier skip counting (the page asks for the reason) */
   onSkip?: () => void;
+  /** the store's drawer is off: count and show change, but there is no drawer stock to show */
+  countOnly?: boolean;
 }) {
   const refund = mode === 'refund';
   const defs = useMemo(() => drawer.denoms.filter(d => d.active).sort((a, b) => (a.kind === b.kind ? b.value - a.value : a.kind === 'note' ? -1 : 1)), [drawer.denoms]);
@@ -137,6 +139,7 @@ export function CashCounter({ mode = 'collect', amountRupees, drawer, received, 
   };
 
   const inDrawer = (d: DrawerDenom) => {
+    if (countOnly) return null;
     const n = stock[d.id] || 0;
     const cls = n === 0 ? 'text-red-600' : n <= (d.minLevel || 0) ? 'text-amber-700' : 'text-gray-400';
     return <span className={`text-[10px] tabular-nums ${cls}`} title="In the drawer now">{n} in drawer</span>;
@@ -189,7 +192,7 @@ export function CashCounter({ mode = 'collect', amountRupees, drawer, received, 
         <header className="flex items-center justify-between gap-2 px-3 pt-3 pb-2 border-b border-gray-100">
           <div>
             <h3 className="text-[15px] font-bold text-[#182e22]">{refund ? 'Cash refund' : 'Cash denomination'}</h3>
-            <p className="text-[11px] text-gray-500">{refund ? 'Pick the notes and coins handed back' : 'Count cash received from customer'}</p>
+            <p className="text-[11px] text-gray-500">{refund ? 'Pick the notes and coins handed back' : countOnly ? 'Count cash received from customer (cash drawer is off for this store)' : 'Count cash received from customer'}</p>
           </div>
           <span className="text-[10px] font-semibold tracking-wider text-[#287344] bg-[#f0f7f1] rounded px-1.5 py-0.5">{refund ? 'REFUND' : 'REQUIRED'}</span>
         </header>
@@ -221,7 +224,7 @@ export function CashCounter({ mode = 'collect', amountRupees, drawer, received, 
                       <Face d={d} />
                       <span className="flex-1 min-w-0 leading-tight">
                         <span className="block text-[15px] font-bold text-[#26372d]">₹{d.value}</span>
-                        <span className="text-[10px] text-gray-400">NOTE · </span>{inDrawer(d)}
+                        <span className="text-[10px] text-gray-400">NOTE{countOnly ? '' : ' · '}</span>{inDrawer(d)}
                       </span>
                       {stepper(i, denomLabel(d), v, n => setQty(d, n))}
                     </li>

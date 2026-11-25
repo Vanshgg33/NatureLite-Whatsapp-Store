@@ -1,7 +1,7 @@
 'use client';
 import { istDateKey } from '@/lib/time';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, X, Pin } from 'lucide-react';
@@ -20,7 +20,7 @@ import { channelForCustomer, CHANNEL_TIER, type PriceTier, type SalesChannel } f
 import type { LineItem, BillCharge, PaidSplit, GodownDto } from './types';
 import { CashCounter, type CashTender } from '@/components/billing/CashCounter';
 import { useCashDrawer, cashDrawerKey } from '@/lib/billing/cash/useCashDrawer';
-import { activeDrawer, apiErrorCode } from '@/lib/billing/cash/drawer';
+import { activeDrawer, apiErrorCode, countOnlyDrawer } from '@/lib/billing/cash/drawer';
 import type { Counts } from '@/lib/billing/cash/cashChange';
 
 const DELIVERY_TAGS = ['Home Delivery Order', 'Transport Order'];
@@ -227,7 +227,12 @@ export function BillForm({ mode = 'bill', presetCustomerId, editBillId, onExit, 
   // a sale order moves no cash; an edit can't change counted cash (the server refuses), so both keep the plain Cash box
   const drawerQ = useCashDrawer(storeId, !isOrder && !editBillId);
   const drawer = !isOrder && !editId ? activeDrawer(drawerQ.drawer) : null;
-  const counting = !!drawer && !cashSkip;
+  // no drawer running (off, not set up, or unreachable): still count the cash and show the change on a new sale bill;
+  // nothing goes to a drawer, the count only fills the Cash payment
+  const countOnly = useMemo(() => (!isOrder && !editId && !drawer && !drawerQ.isLoading ? countOnlyDrawer(drawerQ.drawer?.denoms) : null),
+    [isOrder, editId, drawer, drawerQ.isLoading, drawerQ.drawer?.denoms]);
+  const counterDrawer = drawer ?? countOnly;
+  const counting = !!counterDrawer && !cashSkip;
   const upiPaise = Math.round(paid.upi * 100);
   const cashDueRupees = Math.max(0, Math.floor((totals.grandTotalPaise - upiPaise) / 100));
   const strayPaise = Math.max(0, totals.grandTotalPaise - upiPaise) % 100; // no paise coins: they stay due
@@ -237,7 +242,7 @@ export function BillForm({ mode = 'bill', presetCustomerId, editBillId, onExit, 
   }, [counting, tender?.appliedRupees]); // eslint-disable-line react-hooks/exhaustive-deps
   const cashBlock = isOrder || editId ? ''
     : drawerQ.isLoading ? 'Connecting to the cash drawer…'
-    : !drawer ? ''
+    : !counterDrawer ? ''
     : upiPaise > totals.grandTotalPaise ? 'UPI is more than the bill total (UPI cannot give change)'
     : counting && tender && !tender.valid ? (tender.status === 'CANNOT_CHANGE' ? 'The change cannot be made from the drawer' : 'The change does not add up')
     : '';
@@ -417,7 +422,7 @@ export function BillForm({ mode = 'bill', presetCustomerId, editBillId, onExit, 
           : cashSkip ? (paid.cash > 0 ? { skip: { reason: cashSkip } } : undefined)
           : tender && Object.values(tender.received).some(Boolean) ? { received: tender.received, returned: tender.returned } : undefined,
       };
-      const change = drawer && !cashSkip ? tender?.changeRupees ?? 0 : 0;
+      const change = counterDrawer && !cashSkip ? tender?.changeRupees ?? 0 : 0;
       const bill = convertId ? await api.convertBillingOrder(convertId, payload)
         : editId ? await api.updateBillingBill(editId, payload)
         : await api.createBillingBillV1(payload);
@@ -649,7 +654,7 @@ export function BillForm({ mode = 'bill', presetCustomerId, editBillId, onExit, 
             onSaveAndNew={editId ? undefined : () => save({ print: false, saveNew: true })}
             isSaving={saveMutation.isPending}
             saveBlockedReason={cashBlock}
-            cashPanel={isOrder || editId || !storeId ? null : drawer ? (
+            cashPanel={isOrder || editId ? null : counterDrawer ? (
               <div className="space-y-1.5">
                 {upiPaise > totals.grandTotalPaise && <p role="alert" className="text-[11px] text-red-700 bg-red-50 rounded px-2 py-1">UPI is more than the bill total. UPI cannot give change.</p>}
                 {strayPaise > 0 && (
@@ -664,8 +669,8 @@ export function BillForm({ mode = 'bill', presetCustomerId, editBillId, onExit, 
                     <button type="button" className="underline font-medium" onClick={() => setCashSkip('')}>Count instead</button>
                   </div>
                 ) : (
-                  <CashCounter amountRupees={cashDueRupees} drawer={drawer} received={cashReceived} onReceivedChange={setCashReceived}
-                    onTender={setTender} disabled={saveMutation.isPending} onSkip={drawer.mode === 'SOFT' ? skipCounting : undefined} />
+                  <CashCounter amountRupees={cashDueRupees} drawer={counterDrawer} received={cashReceived} onReceivedChange={setCashReceived}
+                    onTender={setTender} disabled={saveMutation.isPending} onSkip={counterDrawer.mode === 'SOFT' ? skipCounting : undefined} countOnly={!drawer} />
                 )}
               </div>
             ) : drawerQ.isError ? (
