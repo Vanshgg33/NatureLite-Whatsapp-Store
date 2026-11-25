@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { MotionConfig, motion } from 'framer-motion';
 import { makeChange, sumCounts, type Counts } from '@/lib/billing/cash/cashChange';
 import { denomLabel, toQty, type CashDrawer, type DrawerDenom } from '@/lib/billing/cash/drawer';
 
@@ -100,13 +101,13 @@ export function CashCounter({ mode = 'collect', amountRupees, drawer, received, 
   const qtyInput = (i: number, label: string, v: number, set: (n: number) => void, editable = true) => (
     <div className="flex items-center gap-0.5">
       <button type="button" tabIndex={-1} aria-label={`One less ${label}`} disabled={disabled || !editable || v === 0}
-        className="h-9 w-8 rounded border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-30" onClick={() => set(v - 1)}>−</button>
+        className="h-9 w-8 rounded border border-gray-200 text-gray-500 hover:bg-gray-50 active:scale-95 transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2d7a4f]/50 disabled:opacity-30" onClick={() => set(v - 1)}>−</button>
       <input data-cash-row={`${mode}-${i}`} inputMode="numeric" pattern="[0-9]*" aria-label={`${label} count`} disabled={disabled || !editable}
         className="h-9 w-12 rounded border border-gray-200 text-center text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-[#2d7a4f]/40 disabled:bg-gray-50"
         value={v || ''} placeholder="0" onFocus={e => e.currentTarget.select()}
         onChange={e => set(toQty(e.target.value))} onKeyDown={keys(i, () => v, set)} />
       <button type="button" tabIndex={-1} aria-label={`One more ${label}`} disabled={disabled || !editable}
-        className="h-9 w-8 rounded border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-30" onClick={() => set(v + 1)}>+</button>
+        className="h-9 w-8 rounded border border-gray-200 text-gray-500 hover:bg-gray-50 active:scale-95 transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2d7a4f]/50 disabled:opacity-30" onClick={() => set(v + 1)}>+</button>
     </div>
   );
 
@@ -123,7 +124,9 @@ export function CashCounter({ mode = 'collect', amountRupees, drawer, received, 
   let row = 0;
 
   return (
-    <section aria-label={refund ? 'Cash refund' : 'Cash counter'} className="rounded-lg border border-[#2d7a4f]/30 bg-[#f4faf6] p-2.5">
+    <MotionConfig reducedMotion="user">
+    <motion.section aria-label={refund ? 'Cash refund' : 'Cash counter'} className="rounded-lg border border-[#2d7a4f]/30 bg-[#f4faf6] p-2.5"
+      initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.15 }}>
       <div className="flex items-baseline justify-between gap-2 mb-1">
         <span className="text-[11px] font-bold uppercase tracking-wide text-[#1e5436]">{refund ? 'Cash refund' : 'Cash counter'}</span>
         <span className="text-xs text-gray-600">{refund ? 'to hand back' : 'to collect'} <b className="tabular-nums text-gray-900">{inr(amountRupees)}</b></span>
@@ -163,11 +166,12 @@ export function CashCounter({ mode = 'collect', amountRupees, drawer, received, 
       <div className="mt-2 border-t border-[#2d7a4f]/20 pt-1.5 space-y-1">
         {!refund && (
           <div className="flex justify-between text-xs tabular-nums">
-            <span>Received <b>{inr(recTotal)}</b></span>
+            <span>Received <motion.b key={recTotal} className="inline-block" initial={{ scale: 1.12 }} animate={{ scale: 1 }} transition={{ duration: 0.12 }}>{inr(recTotal)}</motion.b></span>
             <span>Change <b>{inr(target)}</b></span>
           </div>
         )}
-        <div role="status" className={`text-[11px] font-semibold rounded px-1.5 py-1 ${pill[status][1]}`}>{pill[status][0]}</div>
+        <motion.div key={status} role="status" initial={{ opacity: 0.4 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }}
+          className={`text-[11px] font-semibold rounded px-1.5 py-1 transition-colors ${pill[status][1]}`}>{pill[status][0]}</motion.div>
         {status === 'CANNOT_CHANGE' && !plan.tooLarge && (
           <p className="text-[10px] text-red-700 leading-snug">
             Can give {inr(plan.paid)} of {inr(target)}, short {inr(plan.shortfall)}. {refund ? 'Add change to the drawer first, or edit the notes.' : 'Ask the customer for smaller notes, take part by UPI, or edit the change.'}
@@ -183,6 +187,7 @@ export function CashCounter({ mode = 'collect', amountRupees, drawer, received, 
           {onSkip && <button type="button" className="text-gray-500 hover:underline disabled:opacity-40" disabled={disabled} onClick={onSkip}>Skip counting</button>}
         </div>
       </div>
-    </section>
+    </motion.section>
+    </MotionConfig>
   );
 }
