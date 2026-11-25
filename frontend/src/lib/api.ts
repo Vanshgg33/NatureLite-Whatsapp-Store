@@ -2155,7 +2155,7 @@ class ApiClient {
     return res.data.data;
   }
 
-  async cashDrawerTxns(params: { storeId: string; type?: string; from?: string; to?: string; cursor?: number; limit?: number; format?: 'csv' }): Promise<any> {
+  async cashDrawerTxns(params: { storeId: string; type?: string; from?: string; to?: string; user?: string; ref?: string; low?: '1'; cursor?: number; limit?: number; format?: 'csv' }): Promise<any> {
     const res = await this.client.get<ApiResponse<any>>('/billing/cash-drawer/txns', { params });
     return res.data.data;
   }

@@ -54,6 +54,8 @@ export const CashDrawerTxnSchema = new Schema(
     returned: { type: Object, default: {} }, // pieces that went OUT
     delta: { type: Object, default: {} }, // received - returned, per denomination
     netRupees: { type: Number, required: true },
+    billTotalRupees: Number, // sale rows: the invoice total
+    cashDueRupees: Number, // bill/payment rows: what the cash had to cover (received - change = this)
     balanceAfter: { type: Object, required: true },
     clientRequestId: String,
     reason: String,

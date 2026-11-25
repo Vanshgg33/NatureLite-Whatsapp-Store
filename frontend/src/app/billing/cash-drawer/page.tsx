@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
-import { Wallet, ShieldCheck, Download, Loader2 } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Wallet, ShieldCheck, Download, Loader2, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getApiError } from '@/lib/api-error';
 import { useAdminAuthStore } from '@/lib/admin-store';
@@ -13,10 +14,14 @@ import { useToast } from '@/components/ui/use-toast';
 import { useCashDrawer, cashDrawerKey } from '@/lib/billing/cash/useCashDrawer';
 import { denomLabel, fmtCounts, toQty, type DrawerDenom } from '@/lib/billing/cash/drawer';
 import { sumCounts, type Counts } from '@/lib/billing/cash/cashChange';
-import { cn } from '@/lib/utils';
+import { cn, useDebouncedValue } from '@/lib/utils';
 
 const inr = (n: number) => '₹' + n.toLocaleString('en-IN');
 const when = (d?: string) => (d ? new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' }) : '—');
+// ledger: seconds, so two sales a moment apart are told apart
+const whenExact = (d?: string) => (d ? new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'medium' }) : '—');
+const NO_FILTER = { type: '', from: '', to: '', user: '', ref: '', low: false };
+const panelMotion = { initial: { opacity: 0, y: -6 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -6 }, transition: { duration: 0.15 } };
 const TXN_LABEL: Record<string, string> = {
   OPENING_COUNT: 'Opening count', BILL_SALE: 'Bill', BILL_PAYMENT: 'Payment on dues', BILL_REFUND: 'Refund (cancel)',
   UNCOUNTED_SALE: 'Uncounted cash', DEPOSIT: 'Deposit to bank', WITHDRAWAL: 'Withdrawal', REPLENISH: 'Change from bank',
@@ -70,7 +75,7 @@ export default function CashDrawerPage() {
   const [reason, setReason] = useState('');
   const [counted, setCounted] = useState<Counts>({});
   const [verify, setVerify] = useState<any>(null);
-  useEffect(() => { setPanel(''); setVerify(null); setOpening({}); }, [storeId]);
+  useEffect(() => { setPanel(''); setVerify(null); setOpening({}); setFlt(NO_FILTER); }, [storeId]);
 
   const openM = useMutation({
     mutationFn: () => api.cashDrawerOpeningCount({ storeId, counts: opening, clientRequestId: reqId.current }),
@@ -94,10 +99,19 @@ export default function CashDrawerPage() {
   const verifyM = useMutation({ mutationFn: () => api.verifyCashDrawer(storeId), onSuccess: setVerify, onError: fail });
 
   // ── ledger ──
-  const [txType, setTxType] = useState('');
+  const [flt, setFlt] = useState(NO_FILTER);
+  const filtered = JSON.stringify(flt) !== JSON.stringify(NO_FILTER);
+  const user = useDebouncedValue(flt.user.trim(), 300);
+  const ref = useDebouncedValue(flt.ref.trim(), 300);
+  // datetime-local is the cashier's local time: send it as an instant; "to" includes the whole chosen minute
+  const iso = (v: string, plus = 0) => (v && !isNaN(+new Date(v)) ? new Date(+new Date(v) + plus).toISOString() : undefined);
+  const params = {
+    storeId, type: flt.type || undefined, from: iso(flt.from), to: iso(flt.to, 60_000),
+    user: user || undefined, ref: ref || undefined, low: flt.low ? '1' as const : undefined,
+  };
   const txq = useInfiniteQuery({
-    queryKey: ['cash-drawer-txns', storeId, txType],
-    queryFn: ({ pageParam }) => api.cashDrawerTxns({ storeId, type: txType || undefined, cursor: pageParam ?? undefined, limit: 50 }),
+    queryKey: ['cash-drawer-txns', storeId, params],
+    queryFn: ({ pageParam }) => api.cashDrawerTxns({ ...params, cursor: pageParam ?? undefined, limit: 50 }),
     initialPageParam: null as number | null,
     getNextPageParam: (p: any) => p.nextCursor,
     enabled: !!drawer?.initialised,
@@ -105,7 +119,7 @@ export default function CashDrawerPage() {
   const rows = txq.data?.pages.flatMap((p: any) => p.rows) ?? [];
   const exportCsv = async () => {
     try {
-      const csv: string = await api.cashDrawerTxns({ storeId, type: txType || undefined, format: 'csv' });
+      const csv: string = await api.cashDrawerTxns({ ...params, format: 'csv' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
       a.download = `cash-drawer-${new Date().toISOString().slice(0, 10)}.csv`;
@@ -212,8 +226,9 @@ export default function CashDrawerPage() {
               </div>
             </section>
 
+            <AnimatePresence initial={false} mode="wait">
             {panel === 'adjust' && (
-              <section className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+              <motion.section key="adjust" {...panelMotion} className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
                 <h2 className="font-semibold text-gray-800">Add / remove cash</h2>
                 <div className="flex flex-wrap gap-2">
                   <select value={adjType} onChange={e => setAdjType(e.target.value)} className={field} aria-label="Type">
@@ -235,11 +250,11 @@ export default function CashDrawerPage() {
                   <span className="text-sm">{out ? 'Removing' : 'Adding'} <b className="tabular-nums">{inr(sumCounts(adjCounts, denoms))}</b></span>
                   <Button className="bg-[#2d7a4f] hover:bg-[#245f3e] text-white" disabled={adjM.isPending || !reason.trim() || !sumCounts(adjCounts, denoms)} onClick={() => adjM.mutate()}>Save</Button>
                 </div>
-              </section>
+              </motion.section>
             )}
 
             {panel === 'reconcile' && (
-              <section className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+              <motion.section key="reconcile" {...panelMotion} className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
                 <h2 className="font-semibold text-gray-800">End-of-day count</h2>
                 <p className="text-sm text-gray-500">Count what is physically in the drawer. Any difference is recorded as a variance and the drawer is set to what you counted.</p>
                 <CountGrid denoms={allDenoms.filter(d => d.active || drawer.counts[d.id])} value={counted} onChange={setCounted}
@@ -250,11 +265,11 @@ export default function CashDrawerPage() {
                   <Button className="bg-[#2d7a4f] hover:bg-[#245f3e] text-white" disabled={recM.isPending}
                     onClick={() => window.confirm(`Set the drawer to the counted ${inr(sumCounts(counted, drawer.denoms))}? Anything not typed counts as 0.`) && recM.mutate()}>Confirm count</Button>
                 </div>
-              </section>
+              </motion.section>
             )}
 
             {panel === 'settings' && (
-              <section className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+              <motion.section key="settings" {...panelMotion} className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
                 <h2 className="font-semibold text-gray-800">Notes and coins</h2>
                 <p className="text-sm text-gray-500">Par = how many you like to keep (the change suggestion spares notes below par). Min = warn when at or below. A note still in the drawer can&apos;t be switched off.</p>
                 <table className="text-sm">
@@ -265,7 +280,7 @@ export default function CashDrawerPage() {
                         <td className="pr-4 py-1">{denomLabel(d)}</td>
                         <td className="px-2 text-center"><input type="checkbox" checked={draft[d.id].active} onChange={e => setDraft({ ...draft, [d.id]: { ...draft[d.id], active: e.target.checked } })} className="accent-[#2d7a4f]" /></td>
                         {(['par', 'minLevel'] as const).map(k => (
-                          <td key={k} className="px-2"><input inputMode="numeric" value={draft[d.id][k]} onChange={e => setDraft({ ...draft, [d.id]: { ...draft[d.id], [k]: toQty(e.target.value) } })}
+                          <td key={k} className="px-2"><input inputMode="numeric" aria-label={`${k === 'par' ? 'Par' : 'Min'} for ${denomLabel(d)}`} value={draft[d.id][k]} onChange={e => setDraft({ ...draft, [d.id]: { ...draft[d.id], [k]: toQty(e.target.value) } })}
                             className="w-16 h-8 border border-gray-200 rounded text-center tabular-nums" /></td>
                         ))}
                       </tr>
@@ -274,40 +289,97 @@ export default function CashDrawerPage() {
                 </table>
                 <Button className="bg-[#2d7a4f] hover:bg-[#245f3e] text-white" disabled={setM.isPending}
                   onClick={() => setM.mutate({ denoms: Object.entries(draft).map(([id, v]) => ({ id, ...v })) }, { onSuccess: () => setPanel('') })}>Save settings</Button>
-              </section>
+              </motion.section>
             )}
+
+            </AnimatePresence>
 
             <section className="bg-white border border-gray-200 rounded-xl overflow-hidden">
               <div className="flex flex-wrap items-center gap-2 p-4 border-b border-gray-100">
                 <h2 className="font-semibold text-gray-800 mr-auto">Ledger</h2>
-                <select value={txType} onChange={e => setTxType(e.target.value)} className={field} aria-label="Filter by type">
+                <select value={flt.type} onChange={e => setFlt({ ...flt, type: e.target.value })} className={field} aria-label="Filter by movement type">
                   <option value="">All movements</option>
                   {Object.entries(TXN_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
                 <Button size="sm" variant="outline" onClick={exportCsv}><Download className="h-4 w-4 mr-1" />CSV</Button>
               </div>
+              <div className="flex flex-wrap items-end gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50/60 text-xs">
+                <label className="flex flex-col gap-1 text-gray-500">From
+                  <input type="datetime-local" value={flt.from} onChange={e => setFlt({ ...flt, from: e.target.value })} className={cn(field, 'py-1.5')} />
+                </label>
+                <label className="flex flex-col gap-1 text-gray-500">To
+                  <input type="datetime-local" value={flt.to} onChange={e => setFlt({ ...flt, to: e.target.value })} className={cn(field, 'py-1.5')} />
+                </label>
+                <label className="flex flex-col gap-1 text-gray-500">User
+                  <input value={flt.user} onChange={e => setFlt({ ...flt, user: e.target.value })} placeholder="Name or email" className={cn(field, 'py-1.5 w-36')} />
+                </label>
+                <label className="flex flex-col gap-1 text-gray-500">Bill / reference
+                  <input value={flt.ref} onChange={e => setFlt({ ...flt, ref: e.target.value })} placeholder="Invoice no." className={cn(field, 'py-1.5 w-36')} />
+                </label>
+                <label className="flex items-center gap-2 h-9 px-2 text-gray-700 cursor-pointer">
+                  <input type="checkbox" checked={flt.low} onChange={e => setFlt({ ...flt, low: e.target.checked })} className="accent-[#2d7a4f] h-4 w-4" />
+                  Left a note/coin at or below Min
+                </label>
+                {filtered && (
+                  <button type="button" onClick={() => setFlt(NO_FILTER)} className="h-9 inline-flex items-center gap-1 px-2 rounded-md text-[#2d7a4f] hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2d7a4f]/40">
+                    <X className="h-3.5 w-3.5" />Reset filters
+                  </button>
+                )}
+              </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className={cn('w-full text-sm min-w-[860px] transition-opacity', txq.isFetching && !txq.isFetchingNextPage && 'opacity-60')}>
                   <thead className="bg-gray-50 text-xs text-gray-500"><tr>
                     <th className="text-left px-4 py-2">#</th><th className="text-left px-3">When</th><th className="text-left px-3">What</th>
-                    <th className="text-right px-3">Net</th><th className="text-left px-3">In</th><th className="text-left px-3">Out</th><th className="text-left px-3">By / reason</th>
+                    <th className="text-left px-3">In (received)</th><th className="text-left px-3">Out (change / removed)</th>
+                    <th className="text-right px-3">Net</th><th className="text-left px-3">Left low</th><th className="text-left px-3">By / reason</th>
                   </tr></thead>
                   <tbody>
-                    {rows.map((r: any) => (
-                      <tr key={r._id} className={cn('border-t border-gray-100 align-top', r.type === 'UNCOUNTED_SALE' && 'bg-amber-50')}>
-                        <td className="px-4 py-1.5 text-gray-400 tabular-nums">{r.seq}</td>
-                        <td className="px-3 whitespace-nowrap text-xs">{when(r.createdAt)}</td>
-                        <td className="px-3">{TXN_LABEL[r.type] ?? r.type}{r.billId && <> · <Link href={`/billing/invoice/${r.billId}`} className="text-[#2d7a4f] hover:underline">{r.invoiceNo ?? 'bill'}</Link></>}</td>
-                        <td className={cn('text-right px-3 tabular-nums', r.netRupees < 0 ? 'text-red-600' : 'text-green-700')}>{r.netRupees > 0 ? '+' : ''}{inr(r.netRupees)}</td>
-                        <td className="px-3 text-xs text-gray-600">{Object.values(r.received ?? {}).some(Boolean) ? fmtCounts(r.received, drawer.denoms) : ''}</td>
-                        <td className="px-3 text-xs text-gray-600">{Object.values(r.returned ?? {}).some(Boolean) ? fmtCounts(r.returned, drawer.denoms) : ''}</td>
-                        <td className="px-3 text-xs text-gray-500">{r.createdBy?.name || ''}{r.reason ? ` · ${r.reason}` : ''}</td>
-                      </tr>
-                    ))}
-                    {!rows.length && !txq.isLoading && <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-400">No movements yet</td></tr>}
+                    {rows.map((r: any) => {
+                      const hasIn = Object.values(r.received ?? {}).some(Boolean), hasOut = Object.values(r.returned ?? {}).some(Boolean);
+                      return (
+                        <tr key={r._id} className={cn('border-t border-gray-100 align-top', r.type === 'UNCOUNTED_SALE' && 'bg-amber-50')}>
+                          <td className="px-4 py-2 text-gray-400 tabular-nums">{r.seq}</td>
+                          <td className="px-3 py-2 whitespace-nowrap text-xs tabular-nums">{whenExact(r.createdAt)}</td>
+                          <td className="px-3 py-2">
+                            {TXN_LABEL[r.type] ?? r.type}{r.billId && <> · <Link href={`/billing/invoice/${r.billId}`} className="text-[#2d7a4f] hover:underline">{r.invoiceNo ?? 'bill'}</Link></>}
+                            {(r.billTotalRupees != null || r.cashDueRupees != null) && (
+                              <p className="text-[11px] text-gray-500 tabular-nums">
+                                {r.billTotalRupees != null && <>Bill {inr(r.billTotalRupees)}</>}
+                                {r.billTotalRupees != null && r.cashDueRupees != null && ' · '}
+                                {r.cashDueRupees != null && <>cash due {inr(r.cashDueRupees)}</>}
+                              </p>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-gray-600">
+                            {hasIn && <><b className="block text-green-700 tabular-nums">{inr(r.receivedRupees)}</b>{fmtCounts(r.received, drawer.denoms)}</>}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-gray-600">
+                            {hasOut && <><b className="block text-red-600 tabular-nums">{inr(r.returnedRupees)}{r.type.startsWith('BILL_') && r.type !== 'BILL_REFUND' ? ' change' : ''}</b>{fmtCounts(r.returned, drawer.denoms)}</>}
+                          </td>
+                          <td className={cn('text-right px-3 py-2 tabular-nums', r.netRupees < 0 ? 'text-red-600' : 'text-green-700')}>{r.netRupees > 0 ? '+' : ''}{inr(r.netRupees)}</td>
+                          <td className="px-3 py-2">
+                            <div className="flex flex-wrap gap-1 max-w-[180px]">
+                              {(r.lowAfter ?? []).map((id: string) => {
+                                const d = drawer.denoms.find(x => x.id === id);
+                                return <span key={id} className="text-[10px] rounded bg-amber-100 text-amber-800 px-1.5 py-0.5" title={`${r.balanceAfter?.[id] || 0} left, Min ${d?.minLevel ?? 0}`}>{d ? denomLabel(d) : id} · {r.balanceAfter?.[id] || 0}</span>;
+                              })}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-gray-500">{r.operator || r.createdBy?.name || ''}{r.reason ? ` · ${r.reason}` : ''}</td>
+                        </tr>
+                      );
+                    })}
+                    {!rows.length && !txq.isLoading && (
+                      <tr><td colSpan={8} className="px-4 py-6 text-center text-gray-400">
+                        {txq.isError ? <span className="text-red-600">{getApiError(txq.error)}</span>
+                          : filtered ? <>No movements match these filters. <button type="button" className="text-[#2d7a4f] underline" onClick={() => setFlt(NO_FILTER)}>Reset filters</button></>
+                          : 'No movements yet'}
+                      </td></tr>
+                    )}
                   </tbody>
                 </table>
               </div>
+              <p className="px-4 py-2 text-[11px] text-gray-400 border-t border-gray-100">Times are store time (IST). &ldquo;Left low&rdquo; is judged against today&apos;s Min, showing how many were left after that movement.</p>
               {txq.hasNextPage && (
                 <div className="p-3 text-center"><Button size="sm" variant="outline" disabled={txq.isFetchingNextPage} onClick={() => txq.fetchNextPage()}>Load more</Button></div>
               )}

@@ -4,6 +4,7 @@ import { ClientSession, Connection, Model, Types } from 'mongoose';
 import { checkTender, isValidCounts, sumCounts, type Counts, type DenomDef } from './cashChange';
 import { DEFAULT_DENOMS, TXN_TYPES, type TxnType } from './cash-drawer.schema';
 import { escapeCsvField } from '../../../common/utils/csv.util';
+import { escapeRegex } from '../../../common/utils/query.util';
 
 const MESSAGES: Record<string, string> = {
   DRAWER_NOT_INITIALISED: 'The cash drawer for this store has not been counted yet. Record the opening count first.',
@@ -45,12 +46,17 @@ export interface TxnInput {
   invoiceNo?: string;
   clientRequestId?: string;
   reason?: string;
+  billTotalRupees?: number;
+  cashDueRupees?: number;
   user: DrawerUser;
 }
 
 /** what a bill / payment / refund sends: counted cash, or (SOFT mode) a skip with a reason */
 export type CashBlock = { received?: Counts; returned?: Counts; skip?: { reason?: string } } | undefined;
-type CashPlan = { type: TxnType; received?: Counts; returned?: Counts; reason?: string };
+type CashPlan = { type: TxnType; received?: Counts; returned?: Counts; reason?: string; billTotalRupees?: number; cashDueRupees?: number };
+
+/** active denominations at or below their Min in a balance (same rule as the drawer's Low status) */
+export const lowIn = (counts: Counts, denoms: any[]) => denoms.filter(d => d.active && (counts?.[d.id] || 0) <= (d.minLevel || 0)).map(d => d.id as string);
 
 const DAY = 86_400_000;
 
@@ -84,7 +90,7 @@ export class CashDrawerService {
         id: String(d._id), storeId: String(d.storeId), name: d.name, mode: d.mode, denoms: d.denoms, counts,
         totalRupees: sumCounts(counts, d.denoms), version: d.version, initialised: !!d.initialisedAt,
         initialisedAt: d.initialisedAt, lastReconciledAt: d.lastReconciledAt,
-        lowStock: d.denoms.filter((x: any) => x.active && (counts[x.id] || 0) <= (x.minLevel || 0)).map((x: any) => x.id),
+        lowStock: lowIn(counts, d.denoms),
         uncountedSales: await this.txns.countDocuments({ drawerId: d._id, type: 'UNCOUNTED_SALE', createdAt: { $gt: d.lastReconciledAt ?? new Date(0) } }),
       },
     };
@@ -122,6 +128,7 @@ export class CashDrawerService {
       drawerId: updated._id, storeId: updated.storeId, seq: updated.version, type: p.type,
       billId: p.billId, invoiceNo: p.invoiceNo, received, returned, delta,
       netRupees: sumCounts(delta, updated.denoms), balanceAfter: updated.counts,
+      billTotalRupees: p.billTotalRupees, cashDueRupees: p.cashDueRupees,
       clientRequestId: p.clientRequestId, reason: p.reason, createdBy: p.user,
     }], { session });
     return { txn, replayed: false as const, counts: updated.counts as Counts };
@@ -196,23 +203,57 @@ export class CashDrawerService {
     return { drawer, txnId: String(res.txn._id), variance, varianceRupees: sumCounts(variance, drawer.denoms) };
   }
 
-  async listTxns(storeId: string, q: { type?: string; from?: string; to?: string; cursor?: string; limit?: string; format?: string }) {
-    const filter: Record<string, any> = { storeId: this.oid(storeId) };
+  /** billing rows store only the user id: look the names up (admin users) for display and the user filter */
+  private adminUsers() {
+    return this.conn.models?.AdminUser as Model<any> | undefined;
+  }
+
+  async listTxns(storeId: string, q: { type?: string; from?: string; to?: string; cursor?: string; limit?: string; format?: string; user?: string; ref?: string; low?: string }) {
+    const sid = this.oid(storeId);
+    const filter: Record<string, any> = { storeId: sid };
+    const and: Record<string, any>[] = [];
     if (q.type && (TXN_TYPES as readonly string[]).includes(q.type)) filter.type = q.type;
     const from = q.from ? new Date(q.from) : null;
     const to = q.to ? new Date(+new Date(q.to) + (q.to.length <= 10 ? DAY : 0)) : null; // a bare date includes that whole day
     if ((from && !isNaN(+from)) || (to && !isNaN(+to))) filter.createdAt = { ...(from && !isNaN(+from) ? { $gte: from } : {}), ...(to && !isNaN(+to) ? { $lt: to } : {}) };
     if (q.cursor && Number.isSafeInteger(Number(q.cursor))) filter.seq = { $lt: Number(q.cursor) };
+    const ref = typeof q.ref === 'string' ? q.ref.trim().slice(0, 60) : '';
+    if (ref) filter.invoiceNo = { $regex: escapeRegex(ref), $options: 'i' };
+    const user = typeof q.user === 'string' ? q.user.trim().slice(0, 60) : '';
+    if (user) {
+      const rx = { $regex: escapeRegex(user), $options: 'i' };
+      const ids = ((await this.adminUsers()?.find({ $or: [{ name: rx }, { email: rx }] }).select('_id').limit(50).lean()) ?? []) as any[];
+      and.push({ $or: [{ 'createdBy.name': rx }, { 'createdBy.userId': { $in: [user, ...ids.map(u => String(u._id))] } }] });
+    }
+    const drawer = await this.drawers.findOne({ storeId: sid }).select('denoms').lean() as any;
+    const denoms: any[] = drawer?.denoms ?? [];
+    if (q.low === '1' || q.low === 'true') {
+      // a missing count is 0, and `$not: { $gt }` matches a missing field too
+      const any = denoms.filter(d => d.active).map(d => ({ [`balanceAfter.${d.id}`]: { $not: { $gt: d.minLevel || 0 } } }));
+      and.push(any.length ? { $or: any } : { _id: null });
+    }
+    if (and.length) filter.$and = and;
     const csv = q.format === 'csv';
     const limit = csv ? 10_000 : Math.min(200, Math.max(1, Number(q.limit) || 50));
-    const rows = await this.txns.find(filter).sort({ seq: -1 }).limit(limit).lean() as any[];
+    const found = await this.txns.find(filter).sort({ seq: -1 }).limit(limit).lean() as any[];
+    const uids = [...new Set(found.filter(r => !r.createdBy?.name && Types.ObjectId.isValid(r.createdBy?.userId ?? '')).map(r => r.createdBy.userId))];
+    const names = new Map<string, string>();
+    if (uids.length) for (const u of ((await this.adminUsers()?.find({ _id: { $in: uids } }).select('name email').lean()) ?? []) as any[]) names.set(String(u._id), u.name || u.email);
+    const rows = found.map(r => ({
+      ...r,
+      operator: r.createdBy?.name || names.get(r.createdBy?.userId) || r.createdBy?.userId || '',
+      receivedRupees: sumCounts(r.received ?? {}, denoms),
+      returnedRupees: sumCounts(r.returned ?? {}, denoms),
+      lowAfter: lowIn(r.balanceAfter ?? {}, denoms), // judged against today's Min (Min is not versioned)
+    }));
     if (csv) {
       const fmt = (c: Counts) => Object.entries(c ?? {}).filter(([, n]) => n).map(([k, n]) => `${k}x${n}`).join(' ');
-      const head = 'seq,time,type,invoice,net_rupees,received,returned,balance_after,reason,by';
-      return [head, ...rows.map(r => [r.seq, new Date(r.createdAt).toISOString(), r.type, r.invoiceNo ?? '', r.netRupees, fmt(r.received), fmt(r.returned), fmt(r.balanceAfter), r.reason ?? '', r.createdBy?.name ?? r.createdBy?.userId ?? '']
+      const head = 'seq,time,type,invoice,bill_total,cash_due,cash_received,change_returned,net_rupees,received,returned,balance_after,low_after,reason,by';
+      return [head, ...rows.map(r => [r.seq, new Date(r.createdAt).toISOString(), r.type, r.invoiceNo ?? '', r.billTotalRupees ?? '', r.cashDueRupees ?? '', r.receivedRupees, r.returnedRupees, r.netRupees,
+        fmt(r.received), fmt(r.returned), fmt(r.balanceAfter), r.lowAfter.join(' '), r.reason ?? '', r.operator]
         .map(v => escapeCsvField(String(v))).join(','))].join('\n');
     }
-    return { rows, nextCursor: rows.length === limit ? rows[rows.length - 1].seq : null };
+    return { rows, nextCursor: found.length === limit ? found[found.length - 1].seq : null };
   }
 
   /** rebuild the balance from the ledger and compare with the cached counts; also checks seq has no gaps */
@@ -277,7 +318,8 @@ export class CashDrawerService {
     }
     if (p.cashPaise === 0 && !p.cash) return null; // UPI-only / credit bill: no cash moves
     if (p.upiPaise > p.grandTotalPaise) throw new DrawerError(422, 'UPI_EXCEEDS_TOTAL');
-    return this.planCash(drawer, Math.floor((p.grandTotalPaise - p.upiPaise) / 100), p.cashPaise, p.cash, 'BILL_SALE');
+    const plan = this.planCash(drawer, Math.floor((p.grandTotalPaise - p.upiPaise) / 100), p.cashPaise, p.cash, 'BILL_SALE');
+    return { ...plan, billTotalRupees: p.grandTotalPaise / 100 };
   }
 
   /** shared by sale and later payment: cashDue in whole rupees, cashPaise = what the payment line says */
@@ -299,7 +341,7 @@ export class CashDrawerService {
       throw new DrawerError(422, res.code!, { changeDue: res.changeDue });
     }
     if (res.applied * 100 !== cashPaise) throw new DrawerError(422, 'CASH_PAYMENT_MISMATCH', { applied: res.applied });
-    return { type, received, returned };
+    return { type, received, returned, cashDueRupees: res.applied };
   }
 
   async planPayment(p: { storeId?: string; amountPaise: number; mode: string; cash: CashBlock }): Promise<CashPlan | null> {

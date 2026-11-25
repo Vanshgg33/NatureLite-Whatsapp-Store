@@ -41,7 +41,8 @@ describe('CashDrawerService.planSale (server authority)', () => {
   it('Om scenario: 5x500 + 10x100 for 3180, change 200+100+20 -> BILL_SALE', async () => {
     const { svc } = make();
     const plan = await svc.planSale({ ...base, cashPaise: 318000, cash: { received: { N500: 5, N100: 10 }, returned: { N200: 1, N100: 1, N20: 1 } } });
-    expect(plan).toEqual({ type: 'BILL_SALE', received: { N500: 5, N100: 10 }, returned: { N200: 1, N100: 1, N20: 1 } });
+    // 3500 in, 320 back = 3180 due; bill total and cash due go on the ledger row
+    expect(plan).toEqual({ type: 'BILL_SALE', received: { N500: 5, N100: 10 }, returned: { N200: 1, N100: 1, N20: 1 }, billTotalRupees: 3180, cashDueRupees: 3180 });
   });
 
   it('drawer off / missing / sale order / pure UPI: no drawer step', async () => {
@@ -71,7 +72,7 @@ describe('CashDrawerService.planSale (server authority)', () => {
   });
 
   it('SOFT skip with reason -> UNCOUNTED_SALE; HARD refuses the skip', async () => {
-    expect(await make().svc.planSale({ ...base, cashPaise: 318000, cash: { skip: { reason: 'rush' } } })).toEqual({ type: 'UNCOUNTED_SALE', reason: 'rush' });
+    expect(await make().svc.planSale({ ...base, cashPaise: 318000, cash: { skip: { reason: 'rush' } } })).toEqual({ type: 'UNCOUNTED_SALE', reason: 'rush', billTotalRupees: 3180 });
     expect(await code(make(drawerDoc({ mode: 'HARD' })).svc.planSale({ ...base, cashPaise: 318000, cash: { skip: { reason: 'rush' } } }))).toBe('COUNTING_REQUIRED');
   });
 
@@ -154,6 +155,74 @@ describe('CashDrawerService.planRefund / planPayment', () => {
     expect(await svc.planPayment({ storeId: STORE, amountPaise: 12000, mode: 'cash', cash: { received: { N500: 1 }, returned: { N200: 1, N100: 1, N50: 1, N20: 1, N10: 1 } } }))
       .toMatchObject({ type: 'BILL_PAYMENT' });
     expect(await svc.planPayment({ storeId: STORE, amountPaise: 12000, mode: 'upi', cash: undefined })).toBeNull();
+  });
+});
+
+describe('Cash received / change returned record', () => {
+  it('split payment: only the cash part must be covered; the row keeps bill total, cash due and both sides', async () => {
+    // 3180 bill, 1180 by UPI -> 2000 cash due; customer gives 5x500, gets one 500 back
+    const plan = await make().svc.planSale({ storeId: STORE, docType: 'SALE', grandTotalPaise: 318000, upiPaise: 118000, cashPaise: 200000, cash: { received: { N500: 5 }, returned: { N500: 1 } } });
+    expect(plan).toEqual({ type: 'BILL_SALE', received: { N500: 5 }, returned: { N500: 1 }, billTotalRupees: 3180, cashDueRupees: 2000 });
+    const { svc, txns } = make();
+    await svc.applyCashTxn('S' as any, { ...plan!, storeId: STORE, invoiceNo: 'NLF-1', user: { userId: 'u1' } });
+    const row = txns.create.mock.calls[0][0][0];
+    expect([row.received, row.returned, row.netRupees, row.billTotalRupees, row.cashDueRupees, row.invoiceNo]).toEqual([{ N500: 5 }, { N500: 1 }, 2000, 3180, 2000, 'NLF-1']);
+  });
+
+  it('change that does not add up to what is due back is refused before anything is written', async () => {
+    const { svc, txns } = make();
+    expect(await code(svc.planSale({ storeId: STORE, docType: 'SALE', grandTotalPaise: 318000, upiPaise: 0, cashPaise: 318000, cash: { received: { N500: 7 }, returned: { N100: 1 } } }))).toBe('CHANGE_MISMATCH');
+    expect(txns.create).not.toHaveBeenCalled();
+  });
+
+  it('ledger rows are timestamped by the server (createdAt, never updated)', () => {
+    const { CashDrawerTxnSchema } = jest.requireActual('./cash-drawer.schema');
+    expect(CashDrawerTxnSchema.get('timestamps')).toEqual({ createdAt: true, updatedAt: false });
+  });
+});
+
+describe('CashDrawerService.listTxns filters', () => {
+  const userId = new Types.ObjectId().toString();
+  const rows = [
+    { seq: 2, type: 'BILL_SALE', invoiceNo: 'NLF-26-27/5', received: { N500: 1 }, returned: { N100: 1 }, balanceAfter: { N500: 9, N100: 3, N200: 20 }, createdBy: { userId }, createdAt: new Date() },
+  ];
+  function mk() {
+    const m = make(drawerDoc(), { txnRows: rows });
+    const adminFind = jest.fn(() => q([{ _id: userId, name: 'Asha' }]));
+    m.conn.models = { AdminUser: { find: adminFind } };
+    return { ...m, adminFind };
+  }
+
+  it('low filter: any active denomination at or below its Min in the balance after (missing count = 0)', async () => {
+    const { svc, txns } = mk();
+    const res: any = await svc.listTxns(STORE, { low: '1' });
+    const f = txns.find.mock.calls[0][0];
+    expect(f.$and[0].$or).toContainEqual({ 'balanceAfter.N100': { $not: { $gt: 10 } } });
+    expect(f.$and[0].$or).not.toContainEqual(expect.objectContaining({ 'balanceAfter.N2000': expect.anything() })); // inactive
+    // which ones exactly: N100 (3 <= 10) and every active one not in the drawer at all; N500 9 > 2 and N200 20 > 2 are fine
+    expect(res.rows[0].lowAfter).toEqual(expect.arrayContaining(['N100', 'N50', 'C1']));
+    expect(res.rows[0].lowAfter).not.toContain('N500');
+    expect(res.rows[0].lowAfter).not.toContain('N200');
+  });
+
+  it('shows cash received, change returned and the operator name', async () => {
+    const res: any = await mk().svc.listTxns(STORE, {});
+    expect(res.rows[0]).toMatchObject({ receivedRupees: 500, returnedRupees: 100, operator: 'Asha' });
+  });
+
+  it('bill reference and user filters are literal (regex characters escaped)', async () => {
+    const { svc, txns, adminFind } = mk();
+    await svc.listTxns(STORE, { ref: 'NLF-26-27/5 (', user: 'As.a' });
+    const f = txns.find.mock.calls[0][0];
+    expect(f.invoiceNo).toEqual({ $regex: 'NLF-26-27/5 \\(', $options: 'i' });
+    expect((adminFind.mock.calls[0] as any[])[0].$or[0].name.$regex).toBe('As\\.a');
+    expect(f.$and[0].$or[1]).toEqual({ 'createdBy.userId': { $in: ['As.a', userId] } });
+  });
+
+  it('CSV carries bill total, cash due, received, change and low denominations', async () => {
+    const csv: any = await mk().svc.listTxns(STORE, { format: 'csv' });
+    expect(csv.split('\n')[0]).toContain('bill_total,cash_due,cash_received,change_returned');
+    expect(csv.split('\n')[1]).toContain('Asha');
   });
 });
 
