@@ -10,7 +10,7 @@ import { api } from '@/lib/api';
 import { invalidateBilling } from '@/lib/billing/invalidate';
 import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
-import { BillHeader } from './components/BillHeader';
+import { BillHeader, isTenDigitPhone } from './components/BillHeader';
 import { ItemGrid } from './components/ItemGrid';
 import { BillFooter } from './components/BillFooter';
 import { SummaryPanel } from './components/SummaryPanel';
@@ -361,20 +361,14 @@ export function BillForm({ mode = 'bill', presetCustomerId, editBillId, onExit, 
     mutationFn: async (opts: { print: boolean; saveNew: boolean }) => {
       if (cashBlock) throw new Error(cashBlock);
       if (!customer) throw new Error('Select a customer first');
+      if (!isTenDigitPhone(customer.phone)) throw new Error(`${customer.name || 'This customer'} needs a valid 10-digit phone number. Correct it in Customers first.`);
       if (!rawItems.length) throw new Error('Add at least one item');
       if (!orderTag) throw new Error('Select a sales channel');
       if (!isOrder && !storeId) throw new Error('Select the store the stock comes from');
       const noRate = rawItems.find(i => i.missingTier);
       if (noRate) throw new Error(`No ${noRate.missingTier} rate set for ${noRate.name}`);
 
-      // save a newly typed address on the customer so it autofills next time (never blocks the bill)
-      const typed = billingAddress.trim();
-      const saved: any[] = customer.addresses ?? [];
-      if (typed && !saved.some(a => a.line === typed)) {
-        api.updateBillingCustomer(customer._id, {
-          addresses: [...saved.map(a => ({ ...a, isDefault: false })), { label: 'Billing', line: typed, isDefault: true }],
-        }).then(setCustomer).catch(() => {});
-      }
+      // addresses are added / edited explicitly in the header; saving a bill never rewrites the customer's list
 
       const payload = {
         docType: isOrder ? ('SALE_ORDER' as const) : undefined,

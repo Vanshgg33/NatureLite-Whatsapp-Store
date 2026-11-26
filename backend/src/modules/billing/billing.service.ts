@@ -249,20 +249,58 @@ export class BillingService {
     return this.mapUser(u);
   }
 
+  private cleanAddress(a: { label?: string; line?: string } | undefined) {
+    const line = String(a?.line ?? '').trim().replace(/\s+/g, ' ').slice(0, 300);
+    if (!line) throw new BadRequestException('Address is required');
+    return { line, label: String(a?.label ?? '').trim().slice(0, 40) || 'Address' };
+  }
+
+  /**
+   * Writes the customer's address list only if nobody changed it since we read it, so a second counter's add/edit is
+   * never silently lost. The first billing address keeps the delivery addresses the bill picker was showing.
+   */
+  private async saveAddresses(u: any, next: Array<{ label: string; line: string; isDefault: boolean }>) {
+    const stored: any[] = u.billingAddresses ?? [];
+    if (next.length && !next.some(a => a.isDefault)) next[0].isDefault = true; // always exactly one default
+    const filter = stored.length
+      ? { _id: u._id, billingAddresses: stored }
+      : { _id: u._id, $or: [{ billingAddresses: { $exists: false } }, { billingAddresses: { $size: 0 } }] };
+    const updated = await this.userModel.findOneAndUpdate(filter, { $set: { billingAddresses: next } }, { new: true }).lean() as any;
+    if (!updated) throw new ConflictException('This customer\'s addresses were just changed elsewhere. Reload the customer and try again.');
+    return this.mapUser(updated);
+  }
+
   async addAddress(id: string, address: { label: string; line: string; isDefault?: boolean }) {
     const u = await this.userModel.findById(id).lean() as any;
     if (!u) throw new NotFoundException('Customer not found');
+    const a = this.cleanAddress(address);
+    const current: any[] = this.mapUser(u).addresses ?? [];
+    // the same address again: keep one copy (and make it the default if asked)
+    const same = current.findIndex(x => String(x.line).trim().toLowerCase() === a.line.toLowerCase());
+    const makeDefault = !!address.isDefault || !current.length;
+    const next = current.map((x, i) => ({ label: x.label, line: x.line, isDefault: makeDefault ? i === same : !!x.isDefault }));
+    if (same < 0) next.push({ ...a, isDefault: makeDefault });
+    return this.saveAddresses(u, next);
+  }
 
-    const makeDefault = address.isDefault ?? false;
-    const existing = (u.billingAddresses ?? []).map((a: any) => ({
-      ...a, isDefault: makeDefault ? false : a.isDefault,
+  /** edit one saved address; `was` is the line the cashier edited, so a list that moved underneath is refused, not overwritten */
+  async updateAddress(id: string, index: number, address: { label?: string; line: string; isDefault?: boolean; was: string }) {
+    const u = await this.userModel.findById(id).lean() as any;
+    if (!u) throw new NotFoundException('Customer not found');
+    const current: any[] = this.mapUser(u).addresses ?? [];
+    if (!Number.isInteger(index) || !current[index] || current[index].line !== address?.was) {
+      throw new ConflictException('This address was changed or removed elsewhere. Reload the customer and try again.');
+    }
+    const a = this.cleanAddress(address);
+    if (current.some((x, i) => i !== index && String(x.line).trim().toLowerCase() === a.line.toLowerCase())) {
+      throw new BadRequestException('This customer already has that address saved');
+    }
+    const next = current.map((x, i) => ({
+      label: i === index ? a.label : x.label,
+      line: i === index ? a.line : x.line,
+      isDefault: address.isDefault ? i === index : !!x.isDefault,
     }));
-    existing.push({ label: address.label, line: address.line, isDefault: makeDefault });
-
-    const updated = await this.userModel.findByIdAndUpdate(
-      id, { $set: { billingAddresses: existing } }, { new: true },
-    ).lean() as any;
-    return this.mapUser(updated);
+    return this.saveAddresses(u, next);
   }
 
   // ─── Products (for billing search) ───────────────────────────────────────

@@ -2113,6 +2113,12 @@ class ApiClient {
     return res.data.data;
   }
 
+  /** `was` = the line being edited; the server refuses if it changed meanwhile */
+  async updateBillingCustomerAddress(id: string, index: number, address: { label?: string; line: string; isDefault?: boolean; was: string }): Promise<any> {
+    const res = await this.client.patch<ApiResponse<any>>(`/billing/customers/${id}/addresses/${index}`, address);
+    return res.data.data;
+  }
+
   async setDefaultDeliveryForBillingCustomer(id: string, deliveryUserId: string | null): Promise<any> {
     const res = await this.client.patch<ApiResponse<any>>(`/billing/customers/${id}/default-delivery`, { deliveryUserId });
     return res.data.data;

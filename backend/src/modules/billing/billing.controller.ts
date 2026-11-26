@@ -65,6 +65,16 @@ export class BillingController {
     return this.billingService.addAddress(id, body);
   }
 
+  @Patch('customers/:id/addresses/:index')
+  @RequireAccess('billing_customers.edit', 'billing_new.create')
+  updateAddress(
+    @Param('id') id: string,
+    @Param('index') index: string,
+    @Body() body: { label?: string; line: string; isDefault?: boolean; was: string },
+  ) {
+    return this.billingService.updateAddress(id, Number(index), body);
+  }
+
   // ─── Products (billing-enriched search) ───────────────────────────────────
 
   @Get('products/search')
