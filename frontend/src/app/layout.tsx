@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import type { CSSProperties } from 'react';
 import './globals.css';
+import './forest-night.css';
+import { FN_BOOT_SCRIPT } from '@/components/crm/forest-night-boot';
 import { Providers } from '@/components/providers';
 
 const fontVariables = {
@@ -47,6 +49,7 @@ export default function RootLayout({
       style={fontVariables}
       suppressHydrationWarning
     >
+      <head><script dangerouslySetInnerHTML={{ __html: FN_BOOT_SCRIPT }} /></head>
       <body className="font-body">
         <Providers>{children}</Providers>
       </body>

@@ -39,6 +39,11 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [mounted, setMounted] = useState(false);
   const [prefs, setPrefs] = useState<Prefs>({ collapsed: false, closed: [] });
   useEffect(() => { setMounted(true); setPrefs(readPrefs()); }, []);
+  // Forest Night is CRM-only: set on entry (client navigation too), clear on leaving so the store stays light.
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', 'forest-night');
+    return () => document.documentElement.removeAttribute('data-theme');
+  }, []);
   const savePrefs = (next: Prefs) => {
     setPrefs(next);
     try { localStorage.setItem(LS_KEY, JSON.stringify(next)); } catch { /* storage blocked: choice not remembered */ }

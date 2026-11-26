@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { DM_Sans, Fraunces } from 'next/font/google';
 import CrmShell from '@/components/crm/CrmShell';
 import { AdminChatFab } from '@/components/admin/admin-chat-fab';
+import { FnRouteProgress } from '@/components/crm/forest-night-motion';
 
 const dmSans = DM_Sans({
   subsets: ['latin'],
@@ -27,6 +28,7 @@ export const metadata: Metadata = {
 export default function CrmLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className={`${dmSans.variable} ${fraunces.variable}`}>
+      <FnRouteProgress />
       <CrmShell>{children}</CrmShell>
       <AdminChatFab />
     </div>
