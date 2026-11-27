@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { CrmModule } from '../crm/crm.module';
+import { RedisModule } from '../redis/redis.module';
 import { BillingBill, BillingBillSchema } from './schemas/billing-bill.schema';
 import { BillingCounter, BillingCounterSchema } from './schemas/billing-counter.schema';
 import { Product, ProductSchema } from '../products/schemas/product.schema';
@@ -53,6 +54,7 @@ import { CashDrawerController } from './cash-drawer/cash-drawer.controller';
     WhatsAppModule,
     MediaModule,
     SettingsModule,
+    RedisModule,
   ],
   controllers: [BillingController, ReportsController, BooksController, CashDrawerController],
   providers: [BillingService, ReportsService, BooksService, BillingWhatsappService, BillingStockService, CashDrawerService],

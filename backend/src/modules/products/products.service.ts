@@ -196,9 +196,14 @@ export class ProductsService implements OnModuleInit {
   }
 
   async findAll(query: ProductQueryDto): Promise<PaginatedResult<Product>> {
-    const result = await this.productRepository.findAllPaginated(query) as PaginatedResult<Product>;
-    await this.overlayStoreStock(result.items as Array<Product & { _id: Types.ObjectId }>);
-    return result;
+    const compute = async () => {
+      const result = await this.productRepository.findAllPaginated(query) as PaginatedResult<Product>;
+      await this.overlayStoreStock(result.items as Array<Product & { _id: Types.ObjectId }>);
+      return result;
+    };
+    if (!this.redisService) return compute();
+    const k = `admin:products:list:${JSON.stringify(query)}`;
+    return this.redisService.cached(k, 30, compute);
   }
 
   async findById(id: string): Promise<Product> {
@@ -711,8 +716,14 @@ export class ProductsService implements OnModuleInit {
   }
 
   private clearChatbotCache(): void {
+    if (!this.redisService) return;
     this.redisService.delPattern('chatbot:tool:*').catch((err) => {
       this.logger.warn(`Failed to clear chatbot cache: ${err.message}`);
     });
+    this.clearProductCache();
+  }
+
+  private clearProductCache(): void {
+    void this.redisService.delPattern('admin:products:*');
   }
 }

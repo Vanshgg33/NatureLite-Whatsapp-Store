@@ -9,6 +9,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { SettingsService } from '../settings/settings.service';
+import { RedisService } from '../redis/redis.service';
 import { PurchaseMaterial, PurchaseMaterialDocument } from './schemas/purchase-material.schema';
 import { PurchaseRequest, PurchaseRequestDocument } from './schemas/purchase-request.schema';
 import { PurchaseVendor, PurchaseVendorDocument } from './schemas/purchase-vendor.schema';
@@ -96,6 +97,7 @@ export class PurchaseService {
     private emailService: EmailService,
     private whatsapp: WhatsAppService,
     private settings: SettingsService,
+    private readonly redis?: RedisService,
   ) {}
 
   // ─── Stage caching ────────────────────────────────────────────────────────
@@ -164,21 +166,30 @@ export class PurchaseService {
   }
 
   async getMaterials(activeOnly = true) {
+    if (this.redis) {
+      return this.redis.cached(`admin:purchase:materials:${activeOnly}`, 120, () => {
+        const filter = activeOnly ? { isActive: true } : {};
+        return this.materialModel.find(filter).sort({ name: 1 }).lean();
+      });
+    }
     const filter = activeOnly ? { isActive: true } : {};
     return this.materialModel.find(filter).sort({ name: 1 }).lean();
   }
 
   async createMaterial(data: { name: string; category?: string; uom?: string }) {
-    return this.materialModel.create({
+    const result = await this.materialModel.create({
       name: data.name.trim(),
       category: data.category || 'OTHER',
       uom: data.uom || 'kg',
     });
+    this.clearPurchaseCache();
+    return result;
   }
 
   async updateMaterial(id: string, data: { name?: string; category?: string; isActive?: boolean; uom?: string; defaultTagId?: string }) {
     const mat = await this.materialModel.findByIdAndUpdate(id, { $set: data }, { new: true });
     if (!mat) throw new NotFoundException('Material not found');
+    this.clearPurchaseCache();
     return mat;
   }
 
@@ -196,6 +207,7 @@ export class PurchaseService {
         toCreate.map(name => ({ name, uom: uom || 'kg', defaultTagId, isActive: true })),
       );
     }
+    if (toCreate.length) this.clearPurchaseCache();
     return { created: toCreate.length, skipped };
   }
 
@@ -225,16 +237,26 @@ export class PurchaseService {
   // ─── Tags ─────────────────────────────────────────────────────────────────
 
   async getTags(activeOnly = true) {
+    if (this.redis) {
+      return this.redis.cached(`admin:purchase:tags:${activeOnly}`, 120, () => {
+        const q = activeOnly ? { isActive: true } : {};
+        return this.tagModel.find(q).sort({ sortOrder: 1, name: 1 }).lean();
+      });
+    }
     const q = activeOnly ? { isActive: true } : {};
     return this.tagModel.find(q).sort({ sortOrder: 1, name: 1 }).lean();
   }
 
   async createTag(body: { name: string; color: string; icon?: string; description?: string }, actor?: any) {
-    return this.tagModel.create({ ...body, createdBy: actor });
+    const result = await this.tagModel.create({ ...body, createdBy: actor });
+    this.clearPurchaseCache();
+    return result;
   }
 
   async updateTag(id: string, body: Partial<{ name: string; color: string; description: string; isActive: boolean }>) {
-    return this.tagModel.findByIdAndUpdate(id, { $set: body }, { new: true });
+    const result = await this.tagModel.findByIdAndUpdate(id, { $set: body }, { new: true });
+    this.clearPurchaseCache();
+    return result;
   }
 
   async seedDefaultTags() {
@@ -254,6 +276,12 @@ export class PurchaseService {
   // ─── Vendors ──────────────────────────────────────────────────────────────
 
   async getVendors(activeOnly = true) {
+    if (this.redis) {
+      return this.redis.cached(`admin:purchase:vendors:${activeOnly}`, 120, () => {
+        const filter = activeOnly ? { isActive: true } : {};
+        return this.vendorModel.find(filter).sort({ name: 1 }).lean();
+      });
+    }
     const filter = activeOnly ? { isActive: true } : {};
     return this.vendorModel.find(filter).sort({ name: 1 }).lean();
   }
@@ -273,7 +301,9 @@ export class PurchaseService {
       );
     }
     try {
-      return await this.vendorModel.create(clean);
+      const v = await this.vendorModel.create(clean);
+      this.clearPurchaseCache();
+      return v;
     } catch (err: any) {
       if (err?.code === 11000) throw new ConflictException('A vendor with this name already exists');
       throw err;
@@ -298,18 +328,28 @@ export class PurchaseService {
       { new: true, runValidators: true },
     );
     if (!vendor) throw new NotFoundException('Vendor not found');
+    this.clearPurchaseCache();
     return vendor;
   }
 
   async deleteVendor(id: string) {
     const vendor = await this.vendorModel.findByIdAndUpdate(id, { $set: { isActive: false } }, { new: true });
     if (!vendor) throw new NotFoundException('Vendor not found');
+    this.clearPurchaseCache();
     return vendor;
   }
 
   // ─── Requests ─────────────────────────────────────────────────────────────
 
   async getRequests(filters: { status?: string; mine?: boolean; userId?: string }) {
+    if (this.redis) {
+      const k = `admin:purchase:requests:${JSON.stringify(filters)}`;
+      return this.redis.cached(k, 30, () => this._getRequests(filters));
+    }
+    return this._getRequests(filters);
+  }
+
+  private async _getRequests(filters: { status?: string; mine?: boolean; userId?: string }) {
     const query: Record<string, unknown> = {};
     if (filters.status) query.status = filters.status;
     if (filters.mine && filters.userId) query.requestedById = filters.userId;
@@ -521,6 +561,7 @@ export class PurchaseService {
     });
 
     this.sendStatusEmail(req.toObject(), 'REQUESTED').catch(() => null);
+    this.clearPurchaseCache();
     return req;
   }
 
@@ -573,6 +614,7 @@ export class PurchaseService {
     await req.save();
 
     this.sendStatusEmail(req.toObject(), 'PO_CREATED').catch(() => null);
+    this.clearPurchaseCache();
     return req;
   }
 
@@ -663,6 +705,7 @@ export class PurchaseService {
     await this.recomputeAndCacheStage(parent);
     await parent.save();
     this.sendStatusEmail(parent.toObject(), 'SPLIT').catch(() => null);
+    this.clearPurchaseCache();
     return { childPoIds: childIds, remainingCount: remaining.length };
   }
 
@@ -680,6 +723,7 @@ export class PurchaseService {
     parent.timeline.push({ action: `Dropped item ${line.materialName}: ${reason}`, status: parent.status, byName: actor.name, at: now, actor });
     await this.recomputeAndCacheStage(parent);
     await parent.save();
+    this.clearPurchaseCache();
     return { ok: true };
   }
 
@@ -715,6 +759,7 @@ export class PurchaseService {
     await this.propagateToParent(req);
 
     this.sendStatusEmail(req.toObject(), data.action).catch(() => null);
+    this.clearPurchaseCache();
     return req;
   }
 
@@ -748,6 +793,7 @@ export class PurchaseService {
     await this.recomputeAndCacheStage(req);
     await req.save();
     await this.propagateToParent(req);
+    this.clearPurchaseCache();
     return req;
   }
 
@@ -773,6 +819,7 @@ export class PurchaseService {
     await this.recomputeAndCacheStage(req);
     await req.save();
     await this.propagateToParent(req);
+    this.clearPurchaseCache();
     return req;
   }
 
@@ -815,6 +862,7 @@ export class PurchaseService {
     await this.propagateToParent(req);
 
     this.sendStatusEmail(req.toObject(), 'COMPLETED').catch(() => null);
+    this.clearPurchaseCache();
     return req;
   }
 
@@ -859,6 +907,7 @@ export class PurchaseService {
     await req.save();
 
     this.sendStatusEmail(req.toObject(), 'CANCELLED').catch(() => null);
+    this.clearPurchaseCache();
     return req;
   }
 
@@ -1000,6 +1049,10 @@ export class PurchaseService {
     if (!req) throw new NotFoundException('Request not found');
     if (!PurchaseService.WA_NEXT[req.status]) throw new BadRequestException('No WhatsApp message for this step');
     return { sent: await this.sendStatusWhatsapp(req, req.status, true) };
+  }
+
+  private clearPurchaseCache(): void {
+    if (this.redis) void this.redis.delPattern('admin:purchase:*');
   }
 
   private async sendStatusEmail(req: any, event: string) {

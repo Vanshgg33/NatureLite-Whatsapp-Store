@@ -2,6 +2,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { RedisService } from '../redis/redis.service';
 import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { CrmCustomerStats, CrmCustomerStatsDocument, CrmSegment } from './schemas/crm-customer-stats.schema';
@@ -41,6 +42,7 @@ export class CrmService {
     private readonly engine: CrmEngineService,
     private readonly whatsapp: WhatsAppService,
     private readonly media: MediaService,
+    private readonly redisService?: RedisService,
   ) {}
 
   logActivity(employeeId: string, employeeName: string, type: string, customerId?: string): void {
@@ -59,6 +61,23 @@ export class CrmService {
   // ─── Customers ──────────────────────────────────────────────────────────
 
   async getCustomers(opts: {
+    segment?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+    agentId?: string;
+    isEscalated?: boolean;
+    extra?: ExtraFilters;
+    missing?: IncompleteLead;
+  }) {
+    if (this.redisService) {
+      const k = `admin:crm:customers:${JSON.stringify(opts)}`;
+      return this.redisService.cached(k, 30, () => this._getCustomers(opts));
+    }
+    return this._getCustomers(opts);
+  }
+
+  private async _getCustomers(opts: {
     segment?: string;
     search?: string;
     page?: number;

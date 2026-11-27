@@ -19,6 +19,7 @@ import { SettingsModule } from '../settings/settings.module';
 import { RawMaterialModule } from '../raw-materials/raw-material.module';
 import { PublicExportController } from './public-export.controller';
 import { QUEUE_ANALYTICS } from '../queues/queues.constants';
+import { RedisModule } from '../redis/redis.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { QUEUE_ANALYTICS } from '../queues/queues.constants';
     forwardRef(() => StoresModule),
     SettingsModule,
     RawMaterialModule,
+    RedisModule,
   ],
   controllers: [AnalyticsController, PublicExportController],
   providers: [AnalyticsSnapshotRepository, AnalyticsService, AnalyticsProcessor],

@@ -709,7 +709,9 @@ export class OrdersService implements OnModuleInit {
   }
 
   async findAll(query: OrderQueryDto): Promise<PaginatedResult<Order>> {
-    return this.orderRepository.findAllPaginated(query);
+    if (!this.redisService) return this.orderRepository.findAllPaginated(query);
+    const k = `admin:orders:list:${JSON.stringify(query)}`;
+    return this.redisService.cached(k, 30, () => this.orderRepository.findAllPaginated(query));
   }
 
   async findById(id: string): Promise<Order> {
@@ -1137,7 +1139,9 @@ export class OrdersService implements OnModuleInit {
       message: `Payment status updated to ${dto.paymentStatus}`,
     });
 
-    return order.save();
+    const saved = await order.save();
+    this.clearChatbotCache();
+    return saved;
   }
 
   async updateDeliveryWorkflow(
@@ -1406,6 +1410,7 @@ export class OrdersService implements OnModuleInit {
       this.logger.warn(`Failed to send cancellation email: ${emailError.message}`);
     });
 
+    this.clearChatbotCache();
     return savedOrder;
   }
 
@@ -1519,6 +1524,7 @@ export class OrdersService implements OnModuleInit {
     }
 
     await this.orderRepository.deleteOne({ _id: idObj });
+    this.clearChatbotCache();
     return { deleted: true };
   }
 
@@ -1858,6 +1864,7 @@ export class OrdersService implements OnModuleInit {
         this.logger.warn(`CRM refresh failed for user ${saved.user}: ${err.message}`)
       );
     }
+    this.clearChatbotCache();
     return saved;
   }
 
@@ -1944,7 +1951,9 @@ export class OrdersService implements OnModuleInit {
       status: order.status,
       message: 'Return approved by admin',
     });
-    return order.save();
+    const saved = await order.save();
+    this.clearChatbotCache();
+    return saved;
   }
 
   async rejectReturn(id: string): Promise<Order> {
@@ -1959,7 +1968,9 @@ export class OrdersService implements OnModuleInit {
       status: order.status,
       message: 'Return request rejected by admin',
     });
-    return order.save();
+    const saved = await order.save();
+    this.clearChatbotCache();
+    return saved;
   }
 
   async completeReturn(id: string): Promise<Order> {
@@ -1975,7 +1986,9 @@ export class OrdersService implements OnModuleInit {
       status: 'returned',
       message: 'Return completed',
     });
-    return order.save();
+    const saved = await order.save();
+    this.clearChatbotCache();
+    return saved;
   }
 
   async reorder(userId: string, dto: ReorderDto): Promise<Order> {
@@ -2350,8 +2363,10 @@ export class OrdersService implements OnModuleInit {
   }
 
   private clearChatbotCache(): void {
+    if (!this.redisService) return;
     this.redisService.delPattern('chatbot:tool:*').catch((err) => {
       this.logger.warn(`Failed to clear chatbot cache: ${err.message}`);
     });
+    void this.redisService.delPattern('admin:orders:*');
   }
 }

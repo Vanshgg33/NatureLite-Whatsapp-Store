@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { RedisService } from '../redis/redis.service';
 import { AnalyticsSnapshotRepository } from './repositories/analytics-snapshot.repository';
 import { OrderRepository } from '../orders/repositories/order.repository';
 import { UserRepository } from '../users/repositories/user.repository';
@@ -34,6 +35,7 @@ export class AnalyticsService {
     private readonly storeRepository: StoreRepository,
     private readonly settingsService: SettingsService,
     @InjectQueue(QUEUE_ANALYTICS) private readonly analyticsQueue: Queue,
+    private readonly redisService: RedisService,
   ) {}
 
   private effectiveStart(nominal: Date, resetAt: Date | null): Date {
@@ -319,7 +321,11 @@ export class AnalyticsService {
     if (await this.settingsService.getMockDataEnabled()) {
       return this.buildMockDashboardStats();
     }
+    if (!this.redisService) return this._computeDashboardStats();
+    return this.redisService.cached('admin:analytics:dashboard', 60, () => this._computeDashboardStats());
+  }
 
+  private async _computeDashboardStats(): Promise<Record<string, unknown>> {
     const resetAt = await this.settingsService.getMetricsResetAt();
 
     const todayNominal = new Date();

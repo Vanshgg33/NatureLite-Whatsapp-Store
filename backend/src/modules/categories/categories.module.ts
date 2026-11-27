@@ -4,10 +4,12 @@ import { CategoriesService } from './categories.service';
 import { CategoriesController } from './categories.controller';
 import { Category, CategorySchema } from './schemas/category.schema';
 import { CategoryRepository } from './repositories/category.repository';
+import { RedisModule } from '../redis/redis.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Category.name, schema: CategorySchema }]),
+    RedisModule,
   ],
   controllers: [CategoriesController],
   providers: [CategoryRepository, CategoriesService],

@@ -5,10 +5,14 @@ import { CategoryRepository } from './repositories/category.repository';
 import { CreateCategoryDto, UpdateCategoryDto, CategoryQueryDto } from './dto/category.dto';
 import { PaginatedResult } from '../../common/types/pagination.types';
 import { parseObjectId, parseObjectIdOptional, isValidObjectIdString } from '../../common/utils/objectid.util';
+import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class CategoriesService {
-  constructor(private readonly categoryRepository: CategoryRepository) {}
+  constructor(
+    private readonly categoryRepository: CategoryRepository,
+    private readonly redisService: RedisService,
+  ) {}
 
   async create(dto: CreateCategoryDto): Promise<Category> {
     const slug = dto.slug || this.generateSlug(dto.name);
@@ -17,11 +21,15 @@ export class CategoriesService {
       throw new BadRequestException('Category with this slug already exists');
     }
     const parentId = parseObjectIdOptional(dto.parent, 'parent');
-    return this.categoryRepository.createOne(dto, slug, parentId);
+    const result = await this.categoryRepository.createOne(dto, slug, parentId);
+    this.clearCategoryCache();
+    return result;
   }
 
   async findAll(query: CategoryQueryDto): Promise<PaginatedResult<Category>> {
-    return this.categoryRepository.findAllPaginated(query);
+    if (!this.redisService) return this.categoryRepository.findAllPaginated(query);
+    const k = `admin:categories:list:${JSON.stringify(query)}`;
+    return this.redisService.cached(k, 30, () => this.categoryRepository.findAllPaginated(query));
   }
 
   async findById(id: string): Promise<Category> {
@@ -41,7 +49,10 @@ export class CategoriesService {
   }
 
   async findActiveCategories(): Promise<Category[]> {
-    return this.categoryRepository.findActiveSorted();
+    if (!this.redisService) return this.categoryRepository.findActiveSorted();
+    return this.redisService.cached('admin:categories:active', 300, () =>
+      this.categoryRepository.findActiveSorted(),
+    );
   }
 
   async findSubcategories(parentId: string): Promise<Category[]> {
@@ -50,6 +61,11 @@ export class CategoriesService {
   }
 
   async getCategoryTree(): Promise<Category[]> {
+    if (!this.redisService) return this._buildCategoryTree();
+    return this.redisService.cached('admin:categories:tree', 300, () => this._buildCategoryTree());
+  }
+
+  private async _buildCategoryTree(): Promise<Category[]> {
     const allCategories = await this.categoryRepository.findActiveLean();
     const categoryMap = new Map<string, Category & { children?: Category[] }>();
     const rootCategories: (Category & { children?: Category[] })[] = [];
@@ -93,6 +109,8 @@ export class CategoriesService {
       throw new NotFoundException('Category not found');
     }
 
+    this.clearCategoryCache();
+
     if (sortOrder !== undefined) {
       await this.reorderAtLevel(idObj, sortOrder, category.parent ?? undefined);
       return (await this.categoryRepository.findByIdString(id))!;
@@ -119,6 +137,12 @@ export class CategoriesService {
     if (result.deletedCount === 0) {
       throw new NotFoundException('Category not found');
     }
+    this.clearCategoryCache();
+  }
+
+  private clearCategoryCache(): void {
+    if (!this.redisService) return;
+    void this.redisService.delPattern('admin:categories:*');
   }
 
   private generateSlug(name: string): string {

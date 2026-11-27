@@ -19,6 +19,7 @@ import { MessageLog, MessageLogSchema } from '../whatsapp/schemas/message-log.sc
 import { Complaint, ComplaintSchema } from '../complaints/schemas/complaint.schema';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { MediaModule } from '../media/media.module';
+import { RedisModule } from '../redis/redis.module';
 import { CrmEngineService } from './crm-engine.service';
 import { CrmService } from './crm.service';
 import { CrmFoundationService } from './crm-foundation.service';
@@ -74,6 +75,7 @@ import { CrmCallerController } from './crm-caller.controller';
     ]),
     WhatsAppModule,
     MediaModule,
+    RedisModule,
   ],
   controllers: [CrmCallerController, CrmController, CrmLogicsController],
   providers: [CrmEngineService, CrmService, CrmCallerService, CrmFoundationService, CrmInsightsService, CrmOpsService, CrmLogicsService],

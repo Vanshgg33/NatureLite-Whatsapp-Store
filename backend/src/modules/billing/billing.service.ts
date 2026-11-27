@@ -2,6 +2,7 @@ import { Injectable, ConflictException, NotFoundException, BadRequestException }
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { CrmEngineService } from '../crm/crm-engine.service';
+import { RedisService } from '../redis/redis.service';
 import { BillingBill, BillingBillDocument, BillLineItem, PaymentStatus } from './schemas/billing-bill.schema';
 import { BillingCounter, BillingCounterDocument } from './schemas/billing-counter.schema';
 import { Godown } from './schemas/godown.schema';
@@ -71,6 +72,7 @@ export class BillingService {
     private readonly storeStock: StoreStockService,
     private readonly stores: StoresService,
     private readonly cashDrawer: CashDrawerService,
+    private readonly redis: RedisService,
   ) {}
 
   // ─── IMS stock (the stores' real stock) ───────────────────────────────────
@@ -502,6 +504,7 @@ export class BillingService {
     });
 
     this.crmEngine.refreshUser(data.customerId).catch(() => {});
+    this.clearBillingCache();
     return bill;
   }
 
@@ -519,6 +522,28 @@ export class BillingService {
     minAmount?: string;
     maxAmount?: string;
     summary?: string; // "false": skip the totals (reports that page through every bill)
+    page?: number;
+    limit?: number;
+  }) {
+    if (!this.redis) return this._getBills(filters);
+    const k = `admin:billing:bills:${JSON.stringify(filters)}`;
+    return this.redis.cached(k, 30, () => this._getBills(filters));
+  }
+
+  private async _getBills(filters: {
+    customerId?: string;
+    paymentStatus?: string;
+    orderTag?: string;
+    startDate?: string;
+    endDate?: string;
+    search?: string;
+    docType?: 'SALE_ORDER';
+    hasNotes?: string;
+    productName?: string;
+    minQty?: string;
+    minAmount?: string;
+    maxAmount?: string;
+    summary?: string;
     page?: number;
     limit?: number;
   }) {
@@ -784,6 +809,11 @@ export class BillingService {
   // ─── Dashboard ────────────────────────────────────────────────────────────
 
   async getDashboard() {
+    if (!this.redis) return this._getDashboard();
+    return this.redis.cached('admin:billing:dashboard', 60, () => this._getDashboard());
+  }
+
+  private async _getDashboard() {
     const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
     const nowIST = new Date(Date.now() + IST_OFFSET_MS);
     const startOfToday = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate()) - IST_OFFSET_MS);
@@ -1162,6 +1192,7 @@ export class BillingService {
     this.crmEngine.refreshUser(dto.customerId).catch(() => {});
     // fire and forget: a WhatsApp problem must never fail or delay the bill
     if (dto.sendWhatsApp !== false && docType !== 'SALE_ORDER') this.billingWhatsapp.queue(String(bill._id)).catch(() => {});
+    this.clearBillingCache();
     return bill;
   }
 
@@ -1353,6 +1384,7 @@ export class BillingService {
     });
     // a cancelled bill no longer counts toward the customer's CRM segment / LTV
     if (bill.customerId) this.crmEngine.refreshUser(bill.customerId).catch(() => {});
+    this.clearBillingCache();
     return { ok: true };
   }
 
@@ -1552,6 +1584,7 @@ export class BillingService {
     }
     this.crmEngine.refreshUser(dto.customerId).catch(() => {});
     if (String(old.customerId) !== String(dto.customerId)) this.crmEngine.refreshUser(old.customerId).catch(() => {});
+    this.clearBillingCache();
     return this.billModel.findById(old._id).setOptions({ allDocTypes: true }).lean();
   }
 
@@ -1634,6 +1667,11 @@ export class BillingService {
     });
 
     await this.userModel.findByIdAndUpdate(bill.customerId, { $inc: { outstanding: -amountPaise / 100 } });
+    this.clearBillingCache();
     return updated;
+  }
+
+  private clearBillingCache(): void {
+    if (this.redis) void this.redis.delPattern('admin:billing:*');
   }
 }
