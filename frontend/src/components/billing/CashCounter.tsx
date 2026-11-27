@@ -47,8 +47,24 @@ function Rupees({ value, className }: { value: number; className?: string }) {
   return <span className={`tabular-nums ${className ?? ''}`}>{inr(shown)}</span>;
 }
 
-/** the little note / coin picture */
-function Face({ d, small }: { d: DrawerDenom; small?: boolean }) {
+/** official RBI / SPMCIL reference thumbnail, kept as supplied (SPECIMEN marks intact), served locally */
+const photoSrc = (d: DrawerDenom) => `/images/currency/${d.kind}-${d.value}.png`;
+/** "₹20 coin", "₹100 note": always says which, for screen readers */
+const pieceName = (d: DrawerDenom) => `₹${d.value} ${d.kind}`;
+
+/** the note / coin picture: the reference photo, or a drawn stand-in if the image file is missing */
+function Face({ d, small, tile, onPhoto }: { d: DrawerDenom; small?: boolean; tile?: boolean; onPhoto?: () => void }) {
+  const [broken, setBroken] = useState(false);
+  if (!broken) {
+    const size = d.kind === 'coin'
+      ? (small ? 'h-6 w-6' : 'h-8 w-8') + ' rounded-full'
+      : small ? 'h-5 w-10' : tile ? 'h-12 w-full max-w-[132px]' : 'h-8 w-14';
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- tiny static thumbnail; next/image adds nothing here
+      <img src={photoSrc(d)} alt="" aria-hidden draggable={false} loading="lazy" decoding="async"
+        className={`${size} shrink-0 object-contain select-none`} onLoad={onPhoto} onError={() => setBroken(true)} />
+    );
+  }
   const [fill, edge] = swatch(d);
   if (d.kind === 'coin') {
     return (
@@ -57,7 +73,7 @@ function Face({ d, small }: { d: DrawerDenom; small?: boolean }) {
     );
   }
   return (
-    <span aria-hidden className={`${small ? 'h-5 w-9' : 'h-8 w-14'} shrink-0 rounded-[4px] border grid place-items-center`} style={{ background: fill, borderColor: edge }}>
+    <span aria-hidden className={`${small ? 'h-5 w-9' : tile ? 'h-12 w-full max-w-[132px]' : 'h-8 w-14'} shrink-0 rounded-[4px] border grid place-items-center`} style={{ background: fill, borderColor: edge }}>
       <span className={`${small ? 'h-2.5 w-2.5' : 'h-4 w-4'} rounded-full border`} style={{ borderColor: edge }} />
     </span>
   );
@@ -148,8 +164,8 @@ export function CashCounter({ mode = 'collect', amountRupees, drawer, received, 
   const btn = 'grid place-items-center rounded-md leading-none transition active:scale-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2d7a4f]/60 disabled:opacity-30 disabled:active:scale-100';
   /** − count + ; the count box also takes + / − / arrows / Enter, so the buttons stay out of the Tab order */
   const stepper = (i: number, label: string, v: number, set: (n: number) => void, small = false) => (
-    <div className="flex items-center gap-1">
-      <button type="button" tabIndex={-1} aria-label={`One less ${label}`} disabled={disabled || v === 0}
+    <div className="flex items-center justify-center gap-1">
+      <button type="button" tabIndex={-1} aria-label={`Remove one ${label}`} disabled={disabled || v === 0}
         className={`${btn} ${small ? 'h-7 w-7 text-sm' : 'h-8 w-8 text-lg'} border border-gray-200 bg-gray-50 text-[#497b57] hover:bg-gray-100`} onClick={() => set(v - 1)}>−</button>
       <span className="relative">
         <input data-cash-row={`${mode}-${i}`} inputMode="numeric" pattern="[0-9]*" aria-label={`${label} count`} disabled={disabled}
@@ -162,14 +178,18 @@ export function CashCounter({ mode = 'collect', amountRupees, drawer, received, 
             initial={{ opacity: 0.7, scale: 1 }} animate={{ opacity: 0, scale: 1.3 }} transition={{ duration: 0.35, ease: 'easeOut' }} />
         )}
       </span>
-      <button type="button" tabIndex={-1} aria-label={`One more ${label}`} disabled={disabled}
+      <button type="button" tabIndex={-1} aria-label={`Add one ${label}`} disabled={disabled}
         className={`${btn} ${small ? 'h-7 w-7 text-sm' : 'h-8 w-8 text-lg'} bg-[#477a54] text-white hover:bg-[#3d6a49]`} onClick={() => set(v + 1)}>+</button>
     </div>
   );
 
   // shown small to large, as on the counter tray (the change maker keeps its own order)
-  const notes = defs.filter(d => d.kind === 'note').reverse();
-  const coins = defs.filter(d => d.kind === 'coin').reverse();
+  // ₹2,000 sits apart (withdrawn, still legal tender); the 50 paise coin is not counted here
+  const notes = defs.filter(d => d.kind === 'note' && d.value !== 2000).reverse();
+  const otherNotes = defs.filter(d => d.kind === 'note' && d.value === 2000);
+  const coins = defs.filter(d => d.kind === 'coin' && d.value >= 1).reverse();
+  const [photos, setPhotos] = useState(false); // credit the image source only when a photo actually shows
+  const onPhoto = () => setPhotos(true);
   const qtyOf = (d: DrawerDenom) => (refund ? returned[d.id] : received[d.id]) || 0;
   const setQty = (d: DrawerDenom, n: number) => (refund ? setRet(d.id, n) : setRec(d.id, n));
   let row = 0;
@@ -212,40 +232,41 @@ export function CashCounter({ mode = 'collect', amountRupees, drawer, received, 
             <p className="text-[10px] text-amber-800 bg-amber-50 rounded px-2 py-1">Low in drawer: {defs.filter(d => drawer.lowStock.includes(d.id)).map(denomLabel).join(', ')}</p>
           )}
 
-          {notes.length > 0 && (
-            <div>
-              <div className="text-[11px] font-bold tracking-wide text-[#34443a] mb-1.5">NOTES</div>
-              <ul className="space-y-1.5">
-                {notes.map(d => {
+          {[['BANKNOTES', notes], ['OTHER VALID NOTES', otherNotes]].map(([title, list]) => (list as DrawerDenom[]).length > 0 && (
+            <div key={title as string}>
+              <div className="text-[11px] font-bold tracking-wide text-[#34443a] mb-1.5">{title as string}</div>
+              <ul className="grid grid-cols-2 gap-1.5">
+                {(list as DrawerDenom[]).map(d => {
                   const i = row++;
                   const v = qtyOf(d);
                   return (
-                    <li key={d.id} className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 transition-colors duration-150 ${v ? 'border-[#a8c7ad] bg-[#f6fbf7]' : 'border-gray-200 bg-white'}`}>
-                      <Face d={d} />
-                      <span className="flex-1 min-w-0 leading-tight">
-                        <span className="block text-[15px] font-bold text-[#26372d]">₹{d.value}</span>
-                        <span className="text-[10px] text-gray-400">NOTE{countOnly ? '' : ' · '}</span>{inDrawer(d)}
-                      </span>
-                      {stepper(i, denomLabel(d), v, n => setQty(d, n))}
+                    <li key={d.id} className={`min-w-0 flex flex-col items-center gap-1 rounded-lg border px-1.5 pt-2 pb-1.5 transition-colors duration-150 ${v ? 'border-[#a8c7ad] bg-[#f6fbf7]' : 'border-gray-200 bg-white'}`}>
+                      <Face d={d} tile onPhoto={onPhoto} />
+                      <span className="text-[15px] font-bold leading-none text-[#26372d]">₹{d.value.toLocaleString('en-IN')}</span>
+                      {d.value === 2000 && <span className="text-[9px] leading-tight text-center text-gray-500">Withdrawn from circulation; still legal tender</span>}
+                      {stepper(i, pieceName(d), v, n => setQty(d, n), true)}
+                      {inDrawer(d)}
                     </li>
                   );
                 })}
               </ul>
             </div>
-          )}
+          ))}
 
           {coins.length > 0 && (
             <div>
               <div className="text-[11px] font-bold tracking-wide text-[#34443a] mb-1.5">COINS</div>
-              <ul className="grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-1.5">
+              <ul className="grid grid-cols-2 gap-1.5">
                 {coins.map(d => {
                   const i = row++;
                   const v = qtyOf(d);
                   return (
-                    <li key={d.id} className={`flex flex-col items-center gap-1 rounded-lg border px-1 py-2 transition-colors duration-150 ${v ? 'border-[#a8c7ad] bg-[#f6fbf7]' : 'border-gray-200 bg-white'}`}>
-                      <Face d={d} />
-                      <span className="text-[11px] font-bold text-[#26372d]">{d.value >= 10 ? `₹${d.value} coin` : `₹${d.value}`}</span>
-                      {stepper(i, denomLabel(d), v, n => setQty(d, n), true)}
+                    <li key={d.id} className={`min-w-0 flex flex-col items-center gap-1 rounded-2xl border px-1.5 py-1.5 transition-colors duration-150 ${v ? 'border-[#a8c7ad] bg-[#f6fbf7]' : 'border-gray-200 bg-white'}`}>
+                      <span className="flex items-center gap-1.5">
+                        <Face d={d} small onPhoto={onPhoto} />
+                        <span className="text-[12px] font-bold text-[#26372d]">₹{d.value}</span>
+                      </span>
+                      {stepper(i, pieceName(d), v, n => setQty(d, n), true)}
                       {inDrawer(d)}
                     </li>
                   );
@@ -320,6 +341,7 @@ export function CashCounter({ mode = 'collect', amountRupees, drawer, received, 
             ) : <span />}
             {onSkip && <button type="button" className="text-gray-500 hover:underline disabled:opacity-40" disabled={disabled} onClick={onSkip}>Skip counting</button>}
           </div>
+          {photos && <p className="text-[9px] leading-snug text-gray-400">Note and coin pictures: RBI / SPMCIL reference images, “SPECIMEN” marks as published.</p>}
         </div>
       </motion.section>
     </MotionConfig>
