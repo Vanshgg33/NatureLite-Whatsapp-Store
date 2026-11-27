@@ -356,8 +356,8 @@ html[data-theme="forest-night"] .crm-root .divide-gray-100>:not([hidden])~:not([
 html[data-theme="forest-night"] .crm-root .divide-gray-200>:not([hidden])~:not([hidden]){border-color:var(--fn-line)}
 
 html[data-theme="forest-night"] .crm-root .border-black\/10,
-html[data-theme="forest-night"] .crm-root .border-black\/[0.07],
-html[data-theme="forest-night"] .crm-root .border-black\/[0.08]{border-color:rgba(255,255,255,.08)}
+html[data-theme="forest-night"] .crm-root .border-black\/\[0\.07\],
+html[data-theme="forest-night"] .crm-root .border-black\/\[0\.08\]{border-color:rgba(255,255,255,.08)}
 
 html[data-theme="forest-night"] .crm-root .bg-red-50,
 html[data-theme="forest-night"] .crm-root .bg-red-100,

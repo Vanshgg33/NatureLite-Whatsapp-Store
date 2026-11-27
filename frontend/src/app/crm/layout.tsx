@@ -3,6 +3,7 @@ import { DM_Sans, Fraunces } from 'next/font/google';
 import CrmShell from '@/components/crm/CrmShell';
 import { AdminChatFab } from '@/components/admin/admin-chat-fab';
 import { FnRouteProgress } from '@/components/crm/forest-night-motion';
+import { FxProvider } from '@/components/crm/forest-night-pack';
 
 const dmSans = DM_Sans({
   subsets: ['latin'],
@@ -31,6 +32,7 @@ export default function CrmLayout({ children }: { children: React.ReactNode }) {
       <FnRouteProgress />
       <CrmShell>{children}</CrmShell>
       <AdminChatFab />
+      <FxProvider />
     </div>
   );
 }

@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatIST } from '@/lib/time';
-import { Settings, RefreshCw, Clock, Save, AlertTriangle, Star, Target, Globe, FileText } from 'lucide-react';
+import { Settings, RefreshCw, Clock, Save, AlertTriangle, Star, Target, Globe, FileText, Sparkles } from 'lucide-react';
+import { getFnMotion, setFnMotion, type FnMotionMode } from '@/components/crm/forest-night-motion';
+import { fxToast } from '@/components/crm/forest-night-pack';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -67,6 +69,8 @@ export default function CrmSettingsPage() {
   const [vip, setVip]               = useState({ minOrders: 5, minLifetimeValue: 5000 });
   const [callTarget, setCallTarget] = useState(20);
   const [scripts, setScripts]       = useState<Record<string, string>>({});
+  const [motion, setMotion]         = useState<FnMotionMode>('full');
+  useEffect(() => setMotion(getFnMotion()), []); // read after mount: the boot script set it on <html>
 
   const { data, isLoading } = useQuery({ queryKey: ['crm-settings'], queryFn: () => api.getCrmSettings() });
 
@@ -89,7 +93,7 @@ export default function CrmSettingsPage() {
       dailyCallTarget: callTarget,
       scripts,
     }),
-    onSuccess: () => { toast({ title: 'Settings saved' }); qc.invalidateQueries({ queryKey: ['crm-settings'] }); },
+    onSuccess: () => { fxToast({ title: 'Settings saved', tone: 'success' }); qc.invalidateQueries({ queryKey: ['crm-settings'] }); },
     onError: () => toast({ title: 'Save failed', variant: 'destructive' }),
   });
 
@@ -221,6 +225,23 @@ export default function CrmSettingsPage() {
               ))}
             </div>
           )}
+        </Section>
+
+        {/* Animation level: this browser only (localStorage fn-motion) */}
+        <Section icon={Sparkles} iconColor="var(--crm-gold)" title="Animations" delay={190}
+          sub="How much movement the CRM uses on this device. Lite stops looping effects; Reduced turns motion off (loaders still turn)."
+        >
+          <select
+            aria-label="Animation level"
+            value={motion}
+            onChange={e => { const m = e.target.value as FnMotionMode; setFnMotion(m); setMotion(m); fxToast({ title: `Animations: ${m}`, tone: 'success' }); }}
+            className="w-full px-3 py-2.5 rounded-xl text-[13px] focus:outline-none"
+            style={{ border: '1px solid var(--crm-line)', color: 'var(--crm-ink)', background: 'var(--crm-paper)' }}
+          >
+            <option value="full">Full</option>
+            <option value="lite">Lite (low-power devices)</option>
+            <option value="reduced">Reduced</option>
+          </select>
         </Section>
 
         {/* Timezone — locked, read-only */}

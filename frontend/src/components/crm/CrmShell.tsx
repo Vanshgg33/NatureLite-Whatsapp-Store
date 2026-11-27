@@ -15,6 +15,7 @@ import { NAV_GROUPS } from './nav.config';
 import { useNavVisibility } from './useNavVisibility';
 import CommandPalette from './CommandPalette';
 import { ReminderBell } from './ReminderBell';
+import { FxClock } from './forest-night-pack';
 
 const ROLE_LABEL: Record<string, string> = {
   crm_head:    'CRM Head',
@@ -311,7 +312,10 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
           <span className="md:hidden font-semibold text-sm" style={{ color: 'var(--crm-ink)', fontFamily: 'var(--font-sans)' }}>
             NatureLite CRM
           </span>
-          <div className="ml-auto"><ReminderBell /></div>
+          <div className="ml-auto flex items-center gap-3">
+            <span className="hidden sm:inline-flex"><FxClock tz="Asia/Kolkata" hour12 seconds date={false} size={15} variant="drop" /></span>
+            <ReminderBell />
+          </div>
         </div>
 
         <main className="flex-1 overflow-auto">

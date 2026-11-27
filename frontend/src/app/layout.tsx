@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import type { CSSProperties } from 'react';
 import './globals.css';
 import './forest-night.css';
+import './forest-night-pack.css';
 import { FN_BOOT_SCRIPT } from '@/components/crm/forest-night-boot';
 import { Providers } from '@/components/providers';
 
