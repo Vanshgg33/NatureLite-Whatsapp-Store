@@ -24,6 +24,8 @@ export function istWeekStartKey(sunday = false): string {
 export const istDateTimeLocal = (d: Date | number = new Date()) =>
   new Intl.DateTimeFormat('sv-SE', { timeZone: APP_TZ, dateStyle: 'short', timeStyle: 'short' })
     .format(d).replace(' ', 'T');
+/** IST "HH:mm" (24h) for time inputs */
+export const istTimeHM = (d: Date | number = new Date()) => istDateTimeLocal(d).slice(11, 16);
 
 /** Make every Date#toLocale*String default to IST so no screen shows browser-local time. Idempotent. */
 export function installISTDefaults() {

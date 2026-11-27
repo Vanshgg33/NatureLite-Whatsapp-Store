@@ -389,8 +389,8 @@ export interface BillHeaderProps {
   invoiceNoLocked?: boolean;
   invoiceDate: string;
   onInvoiceDateChange: (v: string) => void;
+  /** IST "HH:mm", shown read-only */
   invoiceTime: string;
-  onInvoiceTimeChange: (v: string) => void;
   godownId: string;
   onGodownChange: (id: string) => void;
   godowns: GodownDto[];
@@ -421,7 +421,7 @@ export function BillHeader({
   priceMode, onPriceModeChange,
   invoiceNo, onInvoiceNoChange, invoiceNoLocked,
   invoiceDate, onInvoiceDateChange,
-  invoiceTime, onInvoiceTimeChange,
+  invoiceTime,
   godownId, onGodownChange, godowns,
   customer, onCustomerSelect, onCustomerClear, onCustomerUpdate,
   billingAddress, onBillingAddressChange,
@@ -461,9 +461,11 @@ export function BillHeader({
           <input type="date" value={invoiceDate} onChange={e => onInvoiceDateChange(e.target.value)}
             className="border border-gray-200 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-[#2d7a4f]/30 focus:outline-none"
           />
-          <input type="time" value={invoiceTime} onChange={e => onInvoiceTimeChange(e.target.value)}
-            className="border border-gray-200 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-[#2d7a4f]/30 focus:outline-none w-24"
+          {/* locked: always Indian Standard Time, set by the system */}
+          <input type="time" value={invoiceTime} readOnly tabIndex={-1} aria-label="Time (IST, set automatically)" title="Indian Standard Time, set automatically"
+            className="border border-gray-200 rounded px-2 py-1 text-xs w-24 bg-gray-50 text-gray-600 cursor-not-allowed pointer-events-none focus:outline-none"
           />
+          <span className="text-[10px] text-gray-400 font-semibold">IST</span>
         </div>
 
         {godowns.length > 0 && (

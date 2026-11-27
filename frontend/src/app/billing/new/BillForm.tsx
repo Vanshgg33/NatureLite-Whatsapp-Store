@@ -1,5 +1,5 @@
 'use client';
-import { istDateKey } from '@/lib/time';
+import { istDateKey, istTimeHM } from '@/lib/time';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -59,7 +59,18 @@ export function BillForm({ mode = 'bill', presetCustomerId, editBillId, onExit, 
   const [paymentTerm, setPaymentTerm] = useState<'cash' | 'credit'>('credit');
   const [invoiceNo, setInvoiceNo] = useState('NLF'); // always starts with NLF
   const [invoiceDate, setInvoiceDate] = useState(() => istDateKey());
-  const [invoiceTime, setInvoiceTime] = useState(() => new Date().toTimeString().slice(0, 5));
+  const [invoiceTime, setInvoiceTime] = useState(() => istTimeHM());
+  // the time is locked to the live IST clock (an edited bill shows its own saved time);
+  // the date follows too until the cashier picks one or a saved bill/order is loaded
+  const followClock = useRef(true);
+  const liveTime = useRef(true);
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (liveTime.current) setInvoiceTime(istTimeHM());
+      if (followClock.current) setInvoiceDate(istDateKey()); // also rolls over at IST midnight
+    }, 10_000);
+    return () => clearInterval(id);
+  }, []);
   const [godownId, setGodownId] = useState('');
   const [placeOfSupply, setPlaceOfSupply] = useState('22');
   const [orderTag, setOrderTag] = useState<SalesChannel | ''>('');
@@ -165,10 +176,12 @@ export function BillForm({ mode = 'bill', presetCustomerId, editBillId, onExit, 
         if (!dup) setEditInvoiceNo(b.invoiceNo);
         setOrderTag(b.orderTag); setPriceMode(CHANNEL_TIER[b.orderTag as SalesChannel] ?? 'Store/Retail');
         setPlaceOfSupply(b.placeOfSupply ?? '22');
+        if (!dup) followClock.current = false; // keep the loaded bill's own date/time
         if (!dup) setInvoiceDate(new Date(b.invoiceDate ?? b.createdAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }));
         if (!dup && !convert) {
           // editing: the bill's own number, time, payment term and round-off, not a fresh bill's defaults
           setInvoiceNo(b.invoiceNo);
+          liveTime.current = false;
           setInvoiceTime(new Date(b.invoiceDate ?? b.createdAt).toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }));
           if (b.paymentTerm === 'cash' || b.paymentTerm === 'credit') setPaymentTerm(b.paymentTerm);
           setRoundOffEnabled((b.roundOffPaise ?? 0) !== 0 || (b.grandTotalPaise ?? 0) % 100 === 0);
@@ -349,6 +362,9 @@ export function BillForm({ mode = 'bill', presetCustomerId, editBillId, onExit, 
     setNotes('');
     setTerms('');
     setInvoiceDate(istDateKey());
+    setInvoiceTime(istTimeHM());
+    followClock.current = true;
+    liveTime.current = true;
     setBillingAddress('');
     setDeliveryUserId('');
     setDeliveryUserName('');
@@ -551,8 +567,8 @@ export function BillForm({ mode = 'bill', presetCustomerId, editBillId, onExit, 
             <BillHeader
               priceMode={priceMode} onPriceModeChange={changePriceMode}
               invoiceNo={invoiceNo} invoiceNoLocked={!!editId} onInvoiceNoChange={v => setInvoiceNo(v.toUpperCase().startsWith('NLF') ? v.toUpperCase() : 'NLF' + v.toUpperCase())}
-              invoiceDate={invoiceDate} onInvoiceDateChange={setInvoiceDate}
-              invoiceTime={invoiceTime} onInvoiceTimeChange={setInvoiceTime}
+              invoiceDate={invoiceDate} onInvoiceDateChange={v => { followClock.current = false; setInvoiceDate(v); }}
+              invoiceTime={invoiceTime}
               godownId={godownId} onGodownChange={setGodownId} godowns={godowns}
               customer={customer} onCustomerSelect={handleCustomerSelect} onCustomerClear={presetCustomerId ? undefined : handleCustomerClear}
               onCustomerUpdate={c => {
