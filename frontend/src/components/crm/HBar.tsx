@@ -19,11 +19,11 @@ export function HBar({ label, value, max, displayValue, color, labelWidth = 128 
         {label}
       </p>
       <div
-        className="flex-1 h-3.5 rounded-full overflow-hidden"
+        className="flex-1 h-3.5 rounded-full overflow-hidden fn-meter"
         style={{ background: 'var(--crm-sand-2)' }}
       >
         <div
-          className="h-full rounded-full transition-all duration-700"
+          className="h-full rounded-full transition-[width] duration-500"
           style={{ width: `${pct}%`, background: color ?? 'var(--crm-gold)' }}
         />
       </div>

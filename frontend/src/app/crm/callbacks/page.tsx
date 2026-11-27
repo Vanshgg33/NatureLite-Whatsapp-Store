@@ -12,7 +12,20 @@ import { getApiError } from '@/lib/api-error';
 import { useAdminAccess } from '@/lib/admin-access';
 import { useAdminAuthStore } from '@/lib/admin-store';
 import { ReportPage, DataTable, Stat } from '@/components/crm/ReportPage';
-import { istDateTime, istTime } from '@/lib/crm/caller';
+import { istDateTime, istTime, fmtClock, useNow } from '@/lib/crm/caller';
+import { FxDigits } from '@/components/crm/forest-night-pack';
+
+/** Live countdown for a callback due within the hour (amber under 10 min); "late" once it is past. */
+function DueIn({ at }: { at: string }) {
+  const sec = (+new Date(at) - useNow(1000)) / 1000;
+  if (sec < 0) return <span className="text-[11px] font-semibold" style={{ color: 'var(--crm-danger)' }}>late</span>;
+  if (sec > 3600) return null;
+  return (
+    <span className="text-[12px] font-semibold" style={{ color: sec < 600 ? 'var(--crm-amber)' : 'var(--crm-success)' }}>
+      in <FxDigits text={fmtClock(sec)} dir="down" running />
+    </span>
+  );
+}
 
 const HOURS = Array.from({ length: 13 }, (_, i) => i + 8); // 8:00–20:00
 const dayKey = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
@@ -55,7 +68,7 @@ export default function CrmCallbacksPage() {
   );
   const table = (rows: any[], empty: string) => (
     <DataTable head={['Customer', 'Phone', 'Due (IST)', 'What', ...(manager ? ['Caller'] : []), '']} empty={empty}
-      rows={rows.map((r) => [who(r), formatPhone(r.customerId?.phone), istDateTime(r.dueAt), r.text || r.type, ...(manager ? [r.callerId?.name ?? 'Managers'] : []), actions(r)])} />
+      rows={rows.map((r) => [who(r), formatPhone(r.customerId?.phone), <span key="due" className="inline-flex items-center gap-2">{istDateTime(r.dueAt)}<DueIn at={r.dueAt} /></span>, r.text || r.type, ...(manager ? [r.callerId?.name ?? 'Managers'] : []), actions(r)])} />
   );
 
   const drop = (hour: number) => {

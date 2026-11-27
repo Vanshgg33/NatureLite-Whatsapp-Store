@@ -3,7 +3,7 @@ import { FxLoader } from '@/components/crm/forest-night-pack';
 
 // Caller Cockpit (Caller Command Center): one lead at a time, measured call timer, one-tap dispositions,
 // WhatsApp quick-send, auto-next. The server picks the lead (atomic claim) and the next action (attempt ladder).
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
@@ -97,13 +97,20 @@ function Stat({ label, value, tone }: { label: string; value: React.ReactNode; t
   );
 }
 
+/** Re-renders only its own children every second (the page itself refreshes every 15 s). */
+function Tick({ children }: { children: (now: number) => ReactNode }) {
+  const t = useNow(1000);
+  return <>{children(t)}</>;
+}
+
 // ─── page ────────────────────────────────────────────────────────────────────
 export default function CallerCockpitPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const agent = useAdminAuthStore((s) => s.user?.name ?? '');
   const canBill = useCanBillFromCrm();
-  const now = useNow(1000);
+  // page-level clock for slow checks (idle, overdue, lead age); per-second clocks tick inside <Tick> only
+  const now = useNow(15_000);
   const fail = useCallback((title: string) => (e: unknown) => toast({ title, description: getApiError(e), variant: 'destructive' }), [toast]);
 
   const shiftQ = useQuery({ queryKey: ['caller-shift'], queryFn: () => api.callerShift(), refetchInterval: 30_000 });
@@ -254,11 +261,12 @@ export default function CallerCockpitPage() {
   }, [lead, onCall, canSave, billOpen, startCall, hangup, save]);
 
   // ─── timers ───────────────────────────────────────────────────────────────
-  const shiftSec = shift ? (+(shift.endedAt ? new Date(shift.endedAt) : now) - +new Date(shift.startedAt)
-    - (shift.breaks ?? []).reduce((s: number, b: any) => s + (+(b.end ? new Date(b.end) : now) - +new Date(b.start)), 0)) / 1000 : 0;
-  const callSec = onCall ? (+(onCall.endedAt ? new Date(onCall.endedAt) : now) - +new Date(onCall.startedAt)) / 1000 : 0;
-  const wrapSec = onCall?.endedAt ? (now - +new Date(onCall.endedAt)) / 1000 : 0;
-  const modeLeft = mode?.timer && shift?.modeStartedAt ? mode.timer.minutes * 60 - (now - +new Date(shift.modeStartedAt)) / 1000 : null;
+  const shiftSecAt = (t: number) => shift ? (+(shift.endedAt ? new Date(shift.endedAt) : t) - +new Date(shift.startedAt)
+    - (shift.breaks ?? []).reduce((s: number, b: any) => s + (+(b.end ? new Date(b.end) : t) - +new Date(b.start)), 0)) / 1000 : 0;
+  const callSecAt = (t: number) => onCall ? (+(onCall.endedAt ? new Date(onCall.endedAt) : t) - +new Date(onCall.startedAt)) / 1000 : 0;
+  const wrapSecAt = (t: number) => onCall?.endedAt ? (t - +new Date(onCall.endedAt)) / 1000 : 0;
+  const modeLeftAt = (t: number) => mode?.timer && shift?.modeStartedAt ? mode.timer.minutes * 60 - (t - +new Date(shift.modeStartedAt)) / 1000 : null;
+  const modeLeft = modeLeftAt(now);
   const speedMin = lead?.assignment?.arrivedAt ? (now - +new Date(lead.assignment.arrivedAt)) / 60_000 : null;
 
   const name = displayName(lead?.user?.name, lead?.user?.phone);
@@ -283,7 +291,7 @@ export default function CallerCockpitPage() {
             <h1 className="text-[15px] font-semibold leading-none" style={{ color: 'var(--crm-ink)' }}>Caller Cockpit</h1>
             <p className="text-[11px] mt-1 flex items-center gap-1.5" style={{ color: 'var(--crm-muted)' }}>
               <span className={`h-2 w-2 rounded-full ${presence.pulse ? 'animate-pulse' : ''}`} style={{ background: presence.color }} />
-              {presence.label}{active && <> · shift {fmtClock(shiftSec)}</>}
+              {presence.label}{active && <> · shift <Tick>{(t) => fmtClock(shiftSecAt(t))}</Tick></>}
             </p>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -351,7 +359,7 @@ export default function CallerCockpitPage() {
           <div className="mx-4 sm:mx-6 mt-3 px-4 py-2 rounded-xl flex items-center gap-3 text-[13px]" style={{ background: 'var(--crm-paper)', border: '1px solid var(--crm-line)' }}>
             <Zap className="h-4 w-4" style={{ color: 'var(--crm-gold)' }} />
             {modeLeft > 0 ? (
-              <span style={{ color: 'var(--crm-ink)' }}>{mode.label}: <b className="tabular-nums">{fmtClock(modeLeft)}</b> left</span>
+              <span style={{ color: 'var(--crm-ink)' }}>{mode.label}: <b className="tabular-nums"><Tick>{(t) => fmtClock(Math.max(0, modeLeftAt(t) ?? 0))}</Tick></b> left</span>
             ) : (
               <span style={{ color: 'var(--crm-ink)' }}>{mode.label} done! {mode.timer?.breakAfter ? `Take your ${mode.timer.breakAfter}-minute break.` : ''}</span>
             )}
@@ -456,11 +464,16 @@ export default function CallerCockpitPage() {
               {/* Centre: timer + disposition */}
               <section className="rounded-2xl p-5 space-y-4" style={{ background: 'var(--crm-paper)', border: '1px solid var(--crm-line)' }}>
                 <div className="text-center">
-                  <div className="text-[44px] font-semibold tabular-nums leading-none" style={{ color: onCall ? (onCall.endedAt ? (wrapSec > 45 ? 'var(--crm-amber)' : 'var(--crm-blue)') : 'var(--crm-success)') : 'var(--crm-muted)' }}>
-                    <FxDigits text={onCall ? fmtClock(onCall.endedAt ? wrapSec : callSec) : '00:00'} running={!!onCall && !onCall.endedAt} />
-                  </div>
+                  <Tick>{(t) => {
+                    const wrapSec = wrapSecAt(t), callSec = callSecAt(t);
+                    return (
+                      <div className="text-[44px] font-semibold tabular-nums leading-none" style={{ color: onCall ? (onCall.endedAt ? (wrapSec > 45 ? 'var(--crm-amber)' : 'var(--crm-blue)') : 'var(--crm-success)') : 'var(--crm-muted)' }}>
+                        <FxDigits text={onCall ? fmtClock(onCall.endedAt ? wrapSec : callSec) : '00:00'} running={!!onCall && !onCall.endedAt} />
+                      </div>
+                    );
+                  }}</Tick>
                   <p className="text-[11px] mt-1" style={{ color: 'var(--crm-muted)' }}>
-                    {!onCall ? 'Tap Call to start the timer' : onCall.endedAt ? `Wrap-up (target 45 s) · talk ${fmtClock(callSec)}` : 'On call'}
+                    {!onCall ? 'Tap Call to start the timer' : onCall.endedAt ? `Wrap-up (target 45 s) · talk ${fmtClock(callSecAt(now))}` : 'On call'}
                   </p>
                   <div className="mt-3 flex justify-center gap-2">
                     {!onCall ? (

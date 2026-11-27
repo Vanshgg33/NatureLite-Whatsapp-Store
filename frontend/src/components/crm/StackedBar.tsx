@@ -23,8 +23,8 @@ export function StackedBar({ segments, total }: StackedBarProps) {
 
   return (
     <div
-      className="flex h-7 rounded-lg overflow-hidden"
-      style={{ background: '#fff', gap: 2 }}
+      className="flex h-7 rounded-lg overflow-hidden fn-meter"
+      style={{ background: 'var(--crm-paper)', gap: 2 }}
       role="img"
       aria-label={`Segment distribution, total ${total}`}
     >

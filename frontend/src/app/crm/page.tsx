@@ -1,5 +1,5 @@
 'use client';
-import { FxLoader } from '@/components/crm/forest-night-pack';
+import { FxClock, FxLoader } from '@/components/crm/forest-night-pack';
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -212,6 +212,7 @@ export default function CrmDashboardPage() {
             {istFullDate()}
           </p>
         </div>
+        <span className="hidden md:inline-flex ml-auto mr-5"><FxClock tz="Asia/Kolkata" hour12 seconds date={false} size={22} variant="fade" /></span>
         <Link
           href="/crm/caller"
           className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-opacity hover:opacity-80"

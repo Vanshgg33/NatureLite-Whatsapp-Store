@@ -1,5 +1,5 @@
 'use client';
-import { FxLoader } from '@/components/crm/forest-night-pack';
+import { FxLoader, useFxFlip } from '@/components/crm/forest-night-pack';
 import { usePageState } from '@/hooks/usePageState';
 import { istDaysAgoKey } from '@/lib/time';
 
@@ -349,6 +349,9 @@ export default function QueuePage() {
 
   const totalPages = Math.max(Math.ceil(filtered.length / PAGE_SIZE), 1);
   const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  // rows glide to their new place when the queue re-orders (only the visible page: PAGE_SIZE rows)
+  const listRef = useRef<HTMLDivElement>(null);
+  useFxFlip(listRef, pageItems.map((i: any) => i._id ?? i.userId).join(','));
 
   return (
     <div className="min-h-full" style={{ background: 'var(--crm-sand)' }}>
@@ -430,7 +433,7 @@ export default function QueuePage() {
       </div>
 
       {/* List */}
-      <div className="p-7 space-y-2.5">
+      <div ref={listRef} className="p-7 space-y-2.5">
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
             <FxLoader />

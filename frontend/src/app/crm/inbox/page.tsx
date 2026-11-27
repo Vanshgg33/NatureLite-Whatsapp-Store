@@ -6,6 +6,7 @@ import { MessageCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatPhone } from '@/lib/crm/format';
 import { ReportPage, Card } from '@/components/crm/ReportPage';
+import { FxLoader } from '@/components/crm/forest-night-pack';
 
 const when = (d: string) => new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' });
 
@@ -32,11 +33,12 @@ export default function CrmInboxPage() {
           ))}
         </div>
         <Card>
-          {!phone ? <p>Select a conversation.</p> : thread.isLoading ? <p>Loading…</p> : (
+          {!phone ? <p>Select a conversation.</p> : thread.isLoading ? <div className="flex justify-center py-6"><FxLoader variant="dots" /></div> : (
             <div className="space-y-2">
-              {thread.data?.map((m: any) => (
+              {thread.data?.map((m: any, i: number, all: any[]) => (
                 <div key={m._id} className={m.direction === 'outbound' ? 'text-right' : ''}>
-                  <span className="inline-block rounded-xl px-3 py-1.5 text-[13px] max-w-[80%] text-left"
+                  {/* only the latest few bubbles pop in; long threads would stagger forever */}
+                  <span className={`inline-block rounded-xl px-3 py-1.5 text-[13px] max-w-[80%] text-left ${i >= all.length - 8 ? `fn-bubble${m.direction === 'outbound' ? ' is-out' : ''}` : ''}`}
                     style={{ background: m.direction === 'outbound' ? 'var(--crm-forest)' : 'var(--crm-sand)', color: m.direction === 'outbound' ? '#fff' : 'var(--crm-ink)' }}>
                     {m.content?.text || `[${m.messageType}]`}
                   </span>
