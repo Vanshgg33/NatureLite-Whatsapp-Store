@@ -513,12 +513,18 @@ export class OrdersService implements OnModuleInit {
         ],
       };
 
+      const fulfilmentStore = await this.pickStockStore(
+        dto.shippingAddress?.city,
+        orderItems.filter((i) => tracksStockByProductId.get(i.product.toString()) !== false),
+      );
+      const stockStoreId = fulfilmentStore?._id;
+
       let savedOrder: OrderDocument | null = null;
       for (let attempt = 0; attempt < OrdersService.MAX_ORDER_NUMBER_RETRIES; attempt += 1) {
         const orderNumber = await this.generateOrderNumber();
         try {
           savedOrder = await this.orderRepository.createWithSession(
-            { ...baseOrderData, orderNumber },
+            { ...baseOrderData, orderNumber, ...(stockStoreId ? { stockStoreId } : {}) },
             session,
           );
           break;
@@ -542,12 +548,9 @@ export class OrdersService implements OnModuleInit {
         throw new BadRequestException('Failed to generate a unique order number. Please try again.');
       }
 
-      // Decrement stock from the fulfilment store (city-matched or main store fallback).
+      // Decrement stock from the store picked above (city store, else one that has it all).
       //   - Products with trackStock=false opt out of inventory entirely — skip.
       //   - Products with no StoreStock row yet also skip the decrement.
-      const fulfilmentStore = await this.inventoryService.resolveFulfilmentStore(
-        dto.shippingAddress?.city,
-      );
       const mainStoreId = fulfilmentStore?._id.toString();
 
       await Promise.all(
@@ -1339,14 +1342,9 @@ export class OrdersService implements OnModuleInit {
     }
 
     // BUG 1 fix: restore stock for all items on cancellation
-    let cancelMainStore: Awaited<ReturnType<typeof this.storesService.findMainStore>> | null = null;
-    try {
-      cancelMainStore = await this.storesService.findMainStore();
-    } catch {
-      // Main store not configured — skip stock restore
-    }
-    if (cancelMainStore) {
-      const cancelStoreId = cancelMainStore._id.toString();
+    // Back to the store the stock was taken from (older orders: main store; none configured: skip)
+    const cancelStoreId = await this.orderStockStoreId(order);
+    if (cancelStoreId) {
       await Promise.all(
         order.items.map(async (item) => {
           try {
@@ -1430,12 +1428,8 @@ export class OrdersService implements OnModuleInit {
     };
 
     try {
-      let mainStoreId: string | undefined;
-      try {
-        mainStoreId = (await this.storesService.findMainStore())._id.toString();
-      } catch {
-        // No main store: cancelOrder restored no stock either, so there is nothing to re-take.
-      }
+      // Re-take from the store cancelOrder returned it to (none: nothing was restored, nothing to re-take).
+      const mainStoreId = await this.orderStockStoreId(order);
       if (mainStoreId) {
         for (const item of order.items) {
           const productId = item.product.toString();
@@ -1548,7 +1542,58 @@ export class OrdersService implements OnModuleInit {
   }
 
   /**
-   * Moves main-store stock for an item edit: delta > 0 takes more, < 0 returns some. Same rules as order creation: products
+   * The store an order takes its stock from: the delivery city's store if it has every item, else the first
+   * store (main store first) that has every item. None does → a message showing each store's count.
+   * Items with no stock row at a store are not counted against it (same rule as the decrement).
+   */
+  private async pickStockStore(
+    city: string | undefined,
+    items: Array<Pick<OrderItem, 'product' | 'variantSku' | 'quantity' | 'name' | 'variantName'>>,
+  ): Promise<{ _id: Types.ObjectId; name?: string } | null> {
+    const stores = await this.inventoryService.storesByPreference(city);
+    if (!stores.length || !items.length) return stores[0] ?? null;
+    const need = new Map<string, { productId: string; variantSku?: string; qty: number; label: string }>();
+    for (const i of items) {
+      const k = `${i.product}:${i.variantSku ?? ''}`;
+      const label = i.variantName ? `${i.name} · ${i.variantName}` : i.name;
+      need.set(k, { productId: i.product.toString(), variantSku: i.variantSku, qty: (need.get(k)?.qty ?? 0) + i.quantity, label });
+    }
+    // have[storeIndex][lineKey] = available, or undefined when the store has no row for that product
+    const have = await Promise.all(stores.map(async (s) => {
+      const out = new Map<string, number | undefined>();
+      for (const [k, n] of need) {
+        const row = await this.storeStockService.getStockForStoreProduct(s._id.toString(), n.productId);
+        out.set(k, !row ? undefined : n.variantSku
+          ? (row.variantStocks?.find((v) => v.variantSku === n.variantSku)?.stock ?? 0) // fullest entry first
+          : (row.stock ?? 0));
+      }
+      return out;
+    }));
+    const ok = stores.findIndex((_, si) => [...need].every(([k, n]) => {
+      const h = have[si].get(k);
+      return h === undefined || h >= n.qty;
+    }));
+    if (ok >= 0) return stores[ok];
+    const [k, n] = [...need].find(([key, line]) => {
+      const h = have[0].get(key);
+      return h !== undefined && h < line.qty;
+    }) ?? [...need][0];
+    const counts = stores.map((s, si) => `${s.name} ${have[si].get(k) ?? 0}`).join(', ');
+    throw new BadRequestException(`Not enough stock for "${n.label}": need ${n.qty} (${counts}). Add stock in IMS for the store that will ship it.`);
+  }
+
+  /** Store an existing order's stock moves go to: where it was taken from, else the main store (older orders). */
+  private async orderStockStoreId(order: { stockStoreId?: Types.ObjectId }): Promise<string | undefined> {
+    if (order.stockStoreId) return order.stockStoreId.toString();
+    try {
+      return (await this.storesService.findMainStore())._id.toString();
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Moves the order's store stock for an item edit: delta > 0 takes more, < 0 returns some. Same rules as order creation: products
    * that do not track stock, or have no stock row, are skipped (no phantom rows), and taking more than is in stock fails.
    * Every move is pushed on `undo` so the caller can reverse them if the edit does not complete.
    */
@@ -1556,13 +1601,10 @@ export class OrdersService implements OnModuleInit {
     lines: { productId: string; variantSku?: string; name: string; delta: number }[],
     undo: Array<() => Promise<unknown>>,
     loadProduct: (productId: string) => Promise<{ trackStock?: boolean } | null>,
+    order: { stockStoreId?: Types.ObjectId } = {},
   ): Promise<void> {
-    let storeId: string;
-    try {
-      storeId = (await this.storesService.findMainStore())._id.toString();
-    } catch {
-      return; // no main store configured: creation skips stock too
-    }
+    const storeId = await this.orderStockStoreId(order);
+    if (!storeId) return; // no main store configured: creation skips stock too
     for (const l of lines) {
       if (l.delta === 0) continue;
       if ((await loadProduct(l.productId))?.trackStock === false) continue;
@@ -1762,7 +1804,7 @@ export class OrdersService implements OnModuleInit {
       }
 
       try {
-        await this.applyEditStock(stockLines, stockUndo, loadProduct);
+        await this.applyEditStock(stockLines, stockUndo, loadProduct, order);
       } catch (err) {
         await this.undoStock(stockUndo, id);
         throw err;
@@ -1949,24 +1991,7 @@ export class OrdersService implements OnModuleInit {
       throw new ForbiddenException('You can only reorder your own orders');
     }
 
-    const mainStore = await this.storesService.findMainStore();
-    const mainStoreId = mainStore._id.toString();
-
-    for (const item of originalOrder.items) {
-      const storeStock = await this.storeStockService.getStockForStoreProduct(
-        mainStoreId,
-        item.product.toString(),
-      );
-      const available = item.variantSku
-        ? (storeStock?.variantStocks?.find((v) => v.variantSku === item.variantSku)?.stock ?? 0)
-        : (storeStock?.stock ?? 0);
-      if (item.quantity > available) {
-        throw new BadRequestException(
-          `Insufficient stock for "${item.name}"${item.variantSku ? ` (${item.variantSku})` : ''}. Available: ${available}. Reduce quantity or remove from reorder.`,
-        );
-      }
-    }
-
+    // Stock is checked by create(), across the city store and the others (not the main store only).
     const items = originalOrder.items.map((item) => ({
       productId: item.product.toString(),
       variantSku: item.variantSku,
@@ -2261,7 +2286,7 @@ export class OrdersService implements OnModuleInit {
         for (const item of order.items) {
           try {
             await this.storeStockService.incrementStock(
-              mainStoreId,
+              order.stockStoreId?.toString() ?? mainStoreId,
               item.product.toString(),
               item.quantity,
               item.variantSku,

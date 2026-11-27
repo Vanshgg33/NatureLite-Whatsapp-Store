@@ -284,6 +284,10 @@ export class Order {
   @Prop()
   cancelReason?: string;
 
+  /** Store the order's stock was taken from; cancel/reopen/edit move stock there. Older orders: main store. */
+  @Prop({ type: Types.ObjectId, ref: 'Store' })
+  stockStoreId?: Types.ObjectId;
+
   @Prop()
   returnRequestedAt?: Date;
 

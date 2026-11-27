@@ -286,6 +286,15 @@ export class InventoryService {
     return out;
   }
 
+  /** Active stores in fulfilment preference: the city's store, then the main store, then the rest. */
+  async storesByPreference(city?: string): Promise<StoreDocument[]> {
+    const c = (city ?? '').trim().toLowerCase();
+    const stores = await this.stores.find({ isActive: true });
+    const rank = (s: StoreDocument) =>
+      (s.cities ?? []).some((x: string) => x.toLowerCase() === c) ? 0 : s.isMainStore ? 1 : 2;
+    return stores.sort((a, b) => rank(a) - rank(b));
+  }
+
   /** Resolve which store should fulfil an order based on city. Fallback = main store. */
   async resolveFulfilmentStore(city?: string): Promise<StoreDocument | null> {
     const c = (city ?? '').trim().toLowerCase();
