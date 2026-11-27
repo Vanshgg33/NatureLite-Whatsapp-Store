@@ -9,6 +9,10 @@ import { buildSearchOrFilter } from '../../../common/utils/query.util';
 import { parseObjectId, isValidObjectIdString } from '../../../common/utils/objectid.util';
 import { PipelineStage } from 'mongoose';
 
+/** A variant's stock entry: by its current SKU, or by its id when the stored SKU is stale. */
+export const variantMatch = (variantSku: string, variantId?: Types.ObjectId): Record<string, unknown> =>
+  variantId ? { $or: [{ variantId }, { variantSku }] } : { variantSku };
+
 @Injectable()
 export class StoreStockRepository extends BaseRepository<StoreStockDocument> {
   constructor(
@@ -286,18 +290,30 @@ export class StoreStockRepository extends BaseRepository<StoreStockDocument> {
     variantSku: string,
     quantity: number,
     session?: ClientSession,
+    variantId?: Types.ObjectId,
   ): Promise<{ modifiedCount: number }> {
+    // $elemMatch so the SKU and the stock check apply to the SAME entry (two separate
+    // dotted conditions can match different entries). Match by variantId too: IMS writes
+    // by variantId and the stored SKU goes stale when a variant's SKU is renamed.
     const result = await this.model.updateOne(
       {
         store: storeId,
         product: productId,
-        'variantStocks.variantSku': variantSku,
-        'variantStocks.stock': { $gte: quantity },
+        variantStocks: { $elemMatch: { ...variantMatch(variantSku, variantId), stock: { $gte: quantity } } },
       },
-      { $inc: { 'variantStocks.$.stock': -quantity } },
+      { $inc: { 'variantStocks.$.stock': -quantity }, $set: { 'variantStocks.$.variantSku': variantSku } },
       { session },
     ).exec();
     return { modifiedCount: result.modifiedCount };
+  }
+
+  /** Stock of the variant's entry at this store (largest one if duplicated), for error messages. */
+  async variantAvailable(storeId: Types.ObjectId, productId: Types.ObjectId, variantSku: string, variantId?: Types.ObjectId): Promise<number> {
+    const row = await this.model.findOne({ store: storeId, product: productId }, { variantStocks: 1 }).lean();
+    const hits = ((row as any)?.variantStocks ?? []).filter(
+      (v: any) => v.variantSku === variantSku || (variantId && String(v.variantId) === String(variantId)),
+    );
+    return hits.reduce((m: number, v: any) => Math.max(m, v.stock ?? 0), 0);
   }
 
   async decrementMain(
@@ -319,11 +335,20 @@ export class StoreStockRepository extends BaseRepository<StoreStockDocument> {
     productId: Types.ObjectId,
     variantSku: string,
     quantity: number,
+    variantId?: Types.ObjectId,
   ): Promise<void> {
-    await this.model.updateOne(
-      { store: storeId, product: productId, 'variantStocks.variantSku': variantSku },
-      { $inc: { 'variantStocks.$.stock': quantity } },
+    const r = await this.model.updateOne(
+      { store: storeId, product: productId, variantStocks: { $elemMatch: variantMatch(variantSku, variantId) } },
+      { $inc: { 'variantStocks.$.stock': quantity }, $set: { 'variantStocks.$.variantSku': variantSku } },
     ).exec();
+    // No entry for this variant yet: create it rather than silently losing returned stock.
+    if (r.matchedCount === 0) {
+      await this.model.updateOne(
+        { store: storeId, product: productId },
+        { $push: { variantStocks: { ...(variantId ? { variantId } : {}), variantSku, stock: quantity } }, $setOnInsert: { stock: 0 } },
+        { upsert: true },
+      ).exec();
+    }
   }
 
   async incrementMain(

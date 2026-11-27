@@ -334,7 +334,20 @@ export class ProductsService implements OnModuleInit {
     // findByIdAndUpdate needs plain objects to correctly cast subdocument arrays.
     this.logger.log(`[DEBUG] dto.variants type=${Array.isArray(dto.variants) ? 'array' : typeof dto.variants} count=${Array.isArray(dto.variants) ? dto.variants.length : 'N/A'}`);
     if (Array.isArray(updateData.variants)) {
+      // Keep each variant's _id (matched by SKU, else by name for a SKU rename): IMS keys store
+      // stock by variant _id, so a fresh _id on every save orphaned the stock and caused
+      // "Insufficient store stock" while the panels still showed it.
+      const existing = ((await this.productRepository.findById(idObj))?.variants ?? []) as any[];
+      const taken = new Set<string>();
+      const keepId = (v: any) => {
+        const old = existing.find((e) => e.sku === v.sku && !taken.has(String(e._id)))
+          ?? existing.find((e) => e.name === v.name && !taken.has(String(e._id)));
+        if (!old) return {};
+        taken.add(String(old._id));
+        return { _id: old._id };
+      };
       updateData.variants = (updateData.variants as any[]).map((v) => ({
+        ...keepId(v),
         name: v.name,
         sku: v.sku,
         price: v.price,

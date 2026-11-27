@@ -52,7 +52,26 @@ export class StoreStockService {
   async getStockForStoreProduct(storeId: string, productId: string): Promise<StoreStock | null> {
     const storeObjId = parseObjectId(storeId, 'storeId');
     const productObjId = parseObjectId(productId, 'productId');
-    return this.storeStockRepository.findOneByStoreAndProduct(storeObjId, productObjId);
+    const row = await this.storeStockRepository.findOneByStoreAndProduct(storeObjId, productObjId);
+    if (row) await this.withCurrentSkus([row]);
+    return row;
+  }
+
+  /**
+   * IMS keys variant stock by variantId; the SKU stored beside it goes stale when a variant's SKU is
+   * renamed, and every reader looks stock up by SKU. Show each entry under its variant's current SKU.
+   */
+  private async withCurrentSkus(rows: StoreStock[]): Promise<void> {
+    const skus = await this.inventoryService.currentVariantSkus([...new Set(rows.map((r) => String(r.product)))]);
+    for (const r of rows) {
+      for (const v of r.variantStocks ?? []) {
+        const now = v.variantId && skus.get(String(v.variantId));
+        if (now) v.variantSku = now;
+      }
+      // Past product edits left duplicate entries per SKU; readers take the first, decrement takes one
+      // with enough stock — so put the fullest first and both agree.
+      r.variantStocks?.sort((a, b) => (b.stock ?? 0) - (a.stock ?? 0));
+    }
   }
 
   /** Batch lookup for a list of productIds at one store. Returns a Map keyed by productId string. */
@@ -64,6 +83,7 @@ export class StoreStockService {
     if (!productIds.length) return new Map();
     const productObjIds = productIds.map((id) => parseObjectId(id, 'productId'));
     const docs = await this.storeStockRepository.findByStoreAndProducts(storeObjId, productObjIds);
+    await this.withCurrentSkus(docs);
     const out = new Map<string, StoreStock>();
     for (const doc of docs) {
       out.set(doc.product.toString(), doc);
@@ -206,15 +226,20 @@ export class StoreStockService {
     const productObjId = parseObjectId(productId, 'productId');
 
     if (variantSku) {
+      const { variantId, storeName } = await this.inventoryService.variantContext(storeId, productId, variantSku);
       const result = await this.storeStockRepository.decrementVariant(
         storeObjId,
         productObjId,
         variantSku,
         quantity,
         session,
+        variantId,
       );
       if (result.modifiedCount === 0) {
-        throw new BadRequestException(`Insufficient store stock for variant ${variantSku}`);
+        const have = await this.storeStockRepository.variantAvailable(storeObjId, productObjId, variantSku, variantId);
+        throw new BadRequestException(
+          `Insufficient store stock for variant ${variantSku}: ${have} at ${storeName ?? 'this store'}, ${quantity} needed`,
+        );
       }
     } else {
       const result = await this.storeStockRepository.decrementMain(
@@ -239,11 +264,13 @@ export class StoreStockService {
     const storeObjId = parseObjectId(storeId, 'storeId');
     const productObjId = parseObjectId(productId, 'productId');
     if (variantSku) {
+      const { variantId } = await this.inventoryService.variantContext(storeId, productId, variantSku);
       await this.storeStockRepository.incrementVariant(
         storeObjId,
         productObjId,
         variantSku,
         quantity,
+        variantId,
       );
     } else {
       await this.storeStockRepository.incrementMain(storeObjId, productObjId, quantity);

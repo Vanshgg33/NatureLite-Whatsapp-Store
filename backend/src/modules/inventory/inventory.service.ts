@@ -267,6 +267,25 @@ export class InventoryService {
     return map;
   }
 
+  /** Current variant _id for a SKU (IMS keys stock by variantId; SKUs can be renamed) and the store's name for messages. */
+  async variantContext(storeId: string, productId: string, variantSku: string): Promise<{ variantId?: Types.ObjectId; storeName?: string }> {
+    const [p, s] = await Promise.all([
+      this.products.findById(productId, { variants: 1 }).lean(),
+      this.stores.findById(storeId, { name: 1 }).lean(),
+    ]);
+    const v = ((p as any)?.variants ?? []).find((x: any) => x.sku === variantSku);
+    return { variantId: v?._id, storeName: (s as any)?.name };
+  }
+
+  /** variantId → the variant's current SKU, for the given products. */
+  async currentVariantSkus(productIds: string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    if (!productIds.length) return out;
+    const ps = await this.products.find({ _id: { $in: productIds } }, { variants: 1 }).lean();
+    for (const p of ps as any[]) for (const v of p.variants ?? []) if (v.sku) out.set(String(v._id), v.sku);
+    return out;
+  }
+
   /** Resolve which store should fulfil an order based on city. Fallback = main store. */
   async resolveFulfilmentStore(city?: string): Promise<StoreDocument | null> {
     const c = (city ?? '').trim().toLowerCase();
