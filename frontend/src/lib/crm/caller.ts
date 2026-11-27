@@ -60,7 +60,13 @@ export const toLocalInput = (d: Date) => new Date(+d - d.getTimezoneOffset() * 6
 /** re-renders every `ms` so live timers tick */
 export function useNow(ms = 1000) {
   const [now, setNow] = useState(() => Date.now());
-  useEffect(() => { const id = setInterval(() => setNow(Date.now()), ms); return () => clearInterval(id); }, [ms]);
+  useEffect(() => {
+    // no re-renders while the tab is hidden; catch up the moment it is shown again
+    const tick = () => { if (!document.hidden) setNow(Date.now()); };
+    const id = setInterval(tick, ms);
+    document.addEventListener('visibilitychange', tick);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', tick); };
+  }, [ms]);
   return now;
 }
 

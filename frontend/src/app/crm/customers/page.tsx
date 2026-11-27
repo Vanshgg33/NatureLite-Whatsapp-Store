@@ -1,4 +1,5 @@
 'use client';
+import { FxLoader } from '@/components/crm/forest-night-pack';
 
 import { usePageState } from '@/hooks/usePageState';
 import { useEffect, useState } from 'react';
@@ -349,10 +350,7 @@ export default function CustomersPage() {
       <div className={`px-7 pb-4 space-y-1.5 transition-opacity ${search !== dSearch ? 'opacity-50' : ''}`}>
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
-            <div
-              className="h-7 w-7 border-2 rounded-full animate-spin"
-              style={{ borderColor: 'var(--crm-gold)', borderTopColor: 'transparent' }}
-            />
+            <FxLoader />
           </div>
         ) : isError ? (
           <EmptyState title="Could not load customers" body="Check your connection, then change the search or filters to try again." />

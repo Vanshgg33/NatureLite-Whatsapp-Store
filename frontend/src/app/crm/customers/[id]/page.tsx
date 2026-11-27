@@ -1,4 +1,5 @@
 'use client';
+import { FxLoader } from '@/components/crm/forest-night-pack';
 
 import { usePageState } from '@/hooks/usePageState';
 import { useState } from 'react';
@@ -258,7 +259,7 @@ export default function Customer360Page() {
 
   if (isLoading) return (
     <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="h-8 w-8 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--crm-gold)', borderTopColor: 'transparent' }} />
+      <FxLoader />
     </div>
   );
   if (isError) return (

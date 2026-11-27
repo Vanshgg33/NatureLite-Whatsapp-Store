@@ -1,4 +1,5 @@
 'use client';
+import { FxLoader } from '@/components/crm/forest-night-pack';
 
 // Caller Cockpit (Caller Command Center): one lead at a time, measured call timer, one-tap dispositions,
 // WhatsApp quick-send, auto-next. The server picks the lead (atomic claim) and the next action (attempt ladder).
@@ -18,6 +19,7 @@ import {
   callbackChips, fmtClock, istTime, istDateTime, outcomeLabel, toLocalInput, useNow, chime,
 } from '@/lib/crm/caller';
 import { CustomerAvatar } from '@/components/crm/CustomerAvatar';
+import { FxDigits } from '@/components/crm/forest-night-pack';
 import { Pill } from '@/components/crm/Pill';
 import { CustomerReminders } from '@/components/crm/CustomerReminders';
 import { CrmBillSheet, useCanBillFromCrm } from '@/components/crm/CrmBillSheet';
@@ -363,7 +365,7 @@ export default function CallerCockpitPage() {
         {/* ── Body ── */}
         <div className="flex-1 p-4 sm:p-6">
           {shiftQ.isLoading ? (
-            <div className="flex justify-center py-20"><div className="h-8 w-8 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--crm-gold)', borderTopColor: 'transparent' }} /></div>
+            <div className="flex justify-center py-20"><FxLoader /></div>
           ) : !active ? (
             <Empty title={shift?.status === 'ended' ? 'Shift ended' : 'Start your shift'} body={shift?.status === 'ended' ? 'Good work today. Your summary is in Performance → day-close report.' : 'Starting your shift checks you in and deals you an even share of today’s leads.'} />
           ) : onBreak ? (
@@ -455,7 +457,7 @@ export default function CallerCockpitPage() {
               <section className="rounded-2xl p-5 space-y-4" style={{ background: 'var(--crm-paper)', border: '1px solid var(--crm-line)' }}>
                 <div className="text-center">
                   <div className="text-[44px] font-semibold tabular-nums leading-none" style={{ color: onCall ? (onCall.endedAt ? (wrapSec > 45 ? 'var(--crm-amber)' : 'var(--crm-blue)') : 'var(--crm-success)') : 'var(--crm-muted)' }}>
-                    {onCall ? fmtClock(onCall.endedAt ? wrapSec : callSec) : '00:00'}
+                    <FxDigits text={onCall ? fmtClock(onCall.endedAt ? wrapSec : callSec) : '00:00'} running={!!onCall && !onCall.endedAt} />
                   </div>
                   <p className="text-[11px] mt-1" style={{ color: 'var(--crm-muted)' }}>
                     {!onCall ? 'Tap Call to start the timer' : onCall.endedAt ? `Wrap-up (target 45 s) · talk ${fmtClock(callSec)}` : 'On call'}

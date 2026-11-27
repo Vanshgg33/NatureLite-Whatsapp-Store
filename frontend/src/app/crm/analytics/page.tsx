@@ -1,4 +1,5 @@
 'use client';
+import { FxLoader } from '@/components/crm/forest-night-pack';
 
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
@@ -33,7 +34,7 @@ const RANK_STYLES = [
 function Spinner() {
   return (
     <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="h-7 w-7 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--crm-gold)', borderTopColor: 'transparent' }} />
+      <FxLoader />
     </div>
   );
 }

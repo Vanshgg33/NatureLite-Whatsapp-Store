@@ -1,4 +1,5 @@
 'use client';
+import { FxLoader } from '@/components/crm/forest-night-pack';
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -319,7 +320,7 @@ export default function CampaignsPage() {
       <div className="p-7 space-y-3">
         {isLoading ? (
           <div className="flex justify-center py-20">
-            <div className="h-7 w-7 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--crm-gold)', borderTopColor: 'transparent' }} />
+            <FxLoader />
           </div>
         ) : !(campaigns as any[]).length ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">

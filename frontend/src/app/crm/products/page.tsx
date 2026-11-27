@@ -1,4 +1,5 @@
 'use client';
+import { FxLoader } from '@/components/crm/forest-night-pack';
 
 import { usePageState } from '@/hooks/usePageState';
 import { useMemo } from 'react';
@@ -92,7 +93,7 @@ export default function CrmProductsPage() {
       <div className="p-7">
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
-            <div className="h-7 w-7 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--crm-gold)', borderTopColor: 'transparent' }} />
+            <FxLoader />
           </div>
         ) : !filtered.length ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">

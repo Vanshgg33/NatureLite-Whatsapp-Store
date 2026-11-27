@@ -1,4 +1,5 @@
 'use client';
+import { FxLoader } from '@/components/crm/forest-night-pack';
 
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -104,7 +105,7 @@ export default function CrmSettingsPage() {
 
   const spinner = (
     <div className="flex justify-center py-8">
-      <div className="h-6 w-6 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--crm-gold)', borderTopColor: 'transparent' }} />
+      <FxLoader />
     </div>
   );
 

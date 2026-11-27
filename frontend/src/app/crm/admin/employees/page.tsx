@@ -1,4 +1,5 @@
 'use client';
+import { FxLoader } from '@/components/crm/forest-night-pack';
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -266,7 +267,7 @@ export default function CrmEmployeesPage() {
       <div className="p-7 max-w-2xl">
         {isLoading ? (
           <div className="flex justify-center py-8">
-            <div className="h-6 w-6 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--crm-gold)', borderTopColor: 'transparent' }} />
+            <FxLoader />
           </div>
         ) : (
           <div className="crm-card-v2 overflow-hidden">

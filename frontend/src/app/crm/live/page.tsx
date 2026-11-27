@@ -11,6 +11,8 @@ import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
 import { getApiError } from '@/lib/api-error';
 import { BADGES, PRESENCE, fmtClock, istTime, useNow } from '@/lib/crm/caller';
+import { FnCountUp } from '@/components/crm/forest-night-motion';
+import { FxDigits, FxLoader, FxPresence, useFxFlip } from '@/components/crm/forest-night-pack';
 
 const BUCKETS = [
   { key: 'untouched', label: 'Untouched', color: '#9ca3af' },
@@ -21,40 +23,31 @@ const BUCKETS = [
 ];
 const CALLER_COLORS = ['#C9A04A', '#2A4434', '#2563eb', '#C05621', '#7c3aed', '#0d9488'];
 
-function useCountUp(value: number, ms = 600) {
-  const [v, setV] = useState(value);
-  const from = useRef(value);
-  useEffect(() => {
-    const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    if (reduce) { setV(value); from.current = value; return; }
-    const start = performance.now(); const a = from.current; let raf = 0;
-    const step = (t: number) => {
-      const p = Math.min(1, (t - start) / ms);
-      setV(Math.round(a + (value - a) * (1 - Math.pow(1 - p, 3))));
-      if (p < 1) raf = requestAnimationFrame(step); else from.current = value;
-    };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, [value, ms]);
-  return v;
-}
-
 function Kpi({ label, value, suffix = '', sub, tone, tv }: { label: string; value: number; suffix?: string; sub?: string; tone?: string; tv: boolean }) {
-  const v = useCountUp(value);
+  // FnCountUp writes the digits straight to the DOM: no React re-render per animation frame
   return (
     <div className="rounded-2xl px-4 py-3" style={{ background: 'var(--crm-paper)', border: '1px solid var(--crm-line)' }}>
       <p className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: tone ?? 'var(--crm-muted)' }}>{label}</p>
-      <p className={`${tv ? 'text-[40px]' : 'text-[26px]'} font-semibold tabular-nums leading-tight`} style={{ color: 'var(--crm-ink)', fontFamily: 'var(--font-serif, Fraunces, Georgia, serif)' }}>{v}{suffix}</p>
+      <p className={`${tv ? 'text-[40px]' : 'text-[26px]'} font-semibold tabular-nums leading-tight`} style={{ color: 'var(--crm-ink)', fontFamily: 'var(--font-serif, Fraunces, Georgia, serif)' }}><FnCountUp value={value} suffix={suffix} /></p>
       {sub && <p className="text-[11px]" style={{ color: 'var(--crm-muted)' }}>{sub}</p>}
     </div>
   );
 }
 
-function CallerCard({ c, color, tv, modes, onAct }: { c: any; color: string; tv: boolean; modes: any[]; onAct: (a: string, c: any, extra?: any) => void }) {
+/** The live call duration. Ticks on its own so the card (and its chart) does not re-render every second. */
+function CallClock({ onCall, tv }: { onCall: { startedAt: string; endedAt?: string }; tv: boolean }) {
   const now = useNow(1000);
+  const sec = Math.max(0, (+(onCall.endedAt ? new Date(onCall.endedAt) : now) - +new Date(onCall.startedAt)) / 1000);
+  return (
+    <span className={`${tv ? 'text-[24px]' : 'text-[18px]'} font-semibold`} style={{ color: onCall.endedAt ? '#2563eb' : '#16a34a' }}>
+      <FxDigits text={fmtClock(sec)} running={!onCall.endedAt} />
+    </span>
+  );
+}
+
+function CallerCard({ c, color, tv, modes, onAct }: { c: any; color: string; tv: boolean; modes: any[]; onAct: (a: string, c: any, extra?: any) => void }) {
   const p = PRESENCE[c.presence] ?? PRESENCE.offline;
   const [menu, setMenu] = useState(false);
-  const callSec = c.onCall ? (+(c.onCall.endedAt ? new Date(c.onCall.endedAt) : now) - +new Date(c.onCall.startedAt)) / 1000 : 0;
   const d = c.day;
   const pct = d.assigned ? Math.round((d.done / d.assigned) * 100) : 0;
   const mode = modes.find((m) => m.key === c.mode);
@@ -71,8 +64,7 @@ function CallerCard({ c, color, tv, modes, onAct }: { c: any; color: string; tv:
           </p>
         </div>
         <button type="button" onClick={() => setMenu((v) => !v)} aria-label={`Controls for ${c.name}`} className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ color: 'var(--crm-muted)' }}><MoreVertical className="h-4 w-4" /></button>
-        {menu && (
-          <div className="absolute right-3 top-14 z-20 w-56 rounded-xl shadow-xl overflow-hidden" style={{ background: 'var(--crm-paper)', border: '1px solid var(--crm-line)' }} onMouseLeave={() => setMenu(false)}>
+        <FxPresence show={menu} variant="drop" dur={220} origin="tr" className="absolute right-3 top-14 z-20 w-56 rounded-xl shadow-xl overflow-hidden" style={{ background: 'var(--crm-paper)', border: '1px solid var(--crm-line)' }} onMouseLeave={() => setMenu(false)}>
             <p className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--crm-muted)' }}>Force mode (60 min)</p>
             <div className="max-h-40 overflow-y-auto">
               {modes.map((m) => <button key={m.key} onClick={() => { setMenu(false); onAct('force', c, m.key); }} className="block w-full text-left px-3 py-1.5 text-[12px] hover:bg-black/5">{m.emoji} {m.label}</button>)}
@@ -83,13 +75,12 @@ function CallerCard({ c, color, tv, modes, onAct }: { c: any; color: string; tv:
                 <button key={k} onClick={() => { setMenu(false); onAct(k, c); }} className="block w-full text-left px-3 py-2 text-[12px] hover:bg-black/5" style={{ color: k === 'reassign' || k === 'pause' ? 'var(--crm-danger)' : 'var(--crm-ink)' }}>{l}</button>
               ))}
             </div>
-          </div>
-        )}
+        </FxPresence>
       </div>
 
       <div className="rounded-xl px-3 py-2 flex items-center justify-between" style={{ background: c.onCall ? 'rgba(22,163,74,0.08)' : 'var(--crm-sand)' }}>
         <span className="text-[12px] truncate" style={{ color: 'var(--crm-ink-2)' }}>{c.onCall ? `📞 ${c.onCall.name}` : c.presence === 'offline' ? 'Not on shift' : 'Between calls'}</span>
-        {c.onCall && <span className={`${tv ? 'text-[24px]' : 'text-[18px]'} font-semibold tabular-nums`} style={{ color: c.onCall.endedAt ? '#2563eb' : '#16a34a' }}>{fmtClock(callSec)}</span>}
+        {c.onCall && <CallClock onCall={c.onCall} tv={tv} />}
       </div>
 
       <div className="grid grid-cols-4 gap-1 text-center">
@@ -180,6 +171,10 @@ export default function LiveBoardPage() {
   useEffect(() => { const h = () => { if (!document.fullscreenElement) setTv(false); }; document.addEventListener('fullscreenchange', h); return () => document.removeEventListener('fullscreenchange', h); }, []);
 
   const callers: any[] = useMemo(() => data?.callers ?? [], [data]);
+  // computed before the early returns so the FLIP hook below runs on every render (hook order)
+  const leaderboard = useMemo(() => [...callers].sort((a, b) => b.day.points - a.day.points), [callers]);
+  const boardRef = useRef<HTMLDivElement>(null);
+  useFxFlip(boardRef, leaderboard.map((c) => c.callerId).join(','));
   const colorOf = (id: string) => CALLER_COLORS[Math.max(0, callers.findIndex((c) => c.callerId === id)) % CALLER_COLORS.length];
   const hours: number[] = callers[0]?.day.hourly.map((h: any) => h.hour) ?? [];
   const currentHour = new Date().getHours();
@@ -191,11 +186,10 @@ export default function LiveBoardPage() {
   }, { calls: 0, connected: 0 });
 
   if (isError) return <div className="p-8 text-[14px]" style={{ color: 'var(--crm-danger)' }}>{getApiError(error, 'Live Board is for managers.')}</div>;
-  if (isLoading || !data) return <div className="flex justify-center py-24"><div className="h-8 w-8 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--crm-gold)', borderTopColor: 'transparent' }} /></div>;
+  if (isLoading || !data) return <div className="flex justify-center py-24"><FxLoader /></div>;
   const k = data.kpis;
   const totals = data.distribution.totals;
   const totalLeads = BUCKETS.reduce((s, b) => s + (totals[b.key] ?? 0), 0);
-  const leaderboard = [...callers].sort((a, b) => b.day.points - a.day.points);
 
   const Distribution = (
     <section className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--crm-paper)', border: '1px solid var(--crm-line)' }}>
@@ -223,6 +217,7 @@ export default function LiveBoardPage() {
   const Leaderboard = (
     <section className="rounded-2xl p-4" style={{ background: 'var(--crm-paper)', border: '1px solid var(--crm-line)' }}>
       <h2 className="text-[13px] font-semibold flex items-center gap-2 mb-2" style={{ color: 'var(--crm-ink)' }}><Trophy className="h-4 w-4" style={{ color: 'var(--crm-gold)' }} /> Leaderboard</h2>
+      <div ref={boardRef}>
       {leaderboard.map((c, i) => (
         <div key={c.callerId} className="flex items-center gap-3 py-1.5">
           <span className="w-6 text-[14px] font-bold" style={{ color: i === 0 ? 'var(--crm-gold)' : 'var(--crm-muted)' }}>{i + 1}</span>
@@ -231,6 +226,7 @@ export default function LiveBoardPage() {
           <span className="w-16 text-right text-[14px] font-semibold tabular-nums" style={{ color: 'var(--crm-ink)' }}>{c.day.points} pts</span>
         </div>
       ))}
+      </div>
       {!leaderboard.length && <p className="text-[12px]" style={{ color: 'var(--crm-muted)' }}>No callers yet.</p>}
     </section>
   );
@@ -282,7 +278,7 @@ export default function LiveBoardPage() {
         <div className="flex flex-wrap items-center gap-2">
           <div className="mr-auto">
             <h1 className={`${tv ? 'text-[28px]' : 'text-[20px]'} font-semibold flex items-center gap-2`} style={{ color: 'var(--crm-ink)' }}>
-              <span className="h-2.5 w-2.5 rounded-full animate-pulse" style={{ background: '#16a34a' }} /> Live Board
+              <span className="fx-live" aria-hidden /> Live Board
             </h1>
             <p className="text-[12px]" style={{ color: 'var(--crm-muted)' }}>Updates every 5 s · {istTime(data.now)} IST · calling {data.config.callingHours.from}:00–{data.config.callingHours.to}:00</p>
           </div>
