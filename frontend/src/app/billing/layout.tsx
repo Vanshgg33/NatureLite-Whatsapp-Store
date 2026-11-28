@@ -17,6 +17,11 @@ import { AccessGate } from '@/components/access-gate';
 import { AdminChatFab } from '@/components/admin/admin-chat-fab';
 import { useAdminAccess, pageForPath } from '@/lib/admin-access';
 import { MotionConfig } from 'framer-motion';
+import { Sora } from 'next/font/google';
+import './verdant-glass.css';
+
+// Verdant Glass headings (upright); body text keeps the app's font
+const sora = Sora({ subsets: ['latin'], weight: ['400', '600', '700'], variable: '--nl-sora', display: 'swap' });
 
 type NavItem = { name: string; href: string; icon: LucideIcon; soon?: boolean };
 type NavGroup = { label: string; items: NavItem[] };
@@ -81,7 +86,7 @@ function BillingSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; on
   };
 
   const content = (
-    <div className="flex h-full w-[220px] flex-col bg-[#1A3625]">
+    <div className="nl-sidebar flex h-full w-[220px] flex-col">
       {/* Logo */}
       <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-white/10 flex-shrink-0">
         <Link href="/billing/customers" className="flex items-center gap-2.5 min-w-0" onClick={onMobileClose}>
@@ -106,7 +111,7 @@ function BillingSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; on
           }),
         })).filter((g) => g.items.length > 0).map((group, gi) => (
           <div key={gi} className="mt-2 first:mt-1">
-            <p className="px-4 pt-2 pb-1 text-[9px] font-semibold text-white/25 uppercase tracking-[0.15em] select-none">
+            <p className="px-4 pt-2 pb-1 text-[9px] font-semibold text-[color:var(--nl-side-muted)] uppercase tracking-[0.15em] select-none">
               {group.label}
             </p>
             {group.items.map((item) => {
@@ -124,11 +129,10 @@ function BillingSidebar({ mobileOpen, onMobileClose }: { mobileOpen: boolean; on
                       href={item.href}
                       onClick={onMobileClose}
                       className={cn(
-                        'flex items-center gap-2.5 text-[12.5px] py-[7px] mx-2 px-3 rounded-md transition-colors',
-                        isActive
-                          ? 'bg-[#2d7a4f] text-white font-medium'
-                          : 'text-white/55 hover:text-white/85 hover:bg-white/[0.07]'
+                        'nl-nav flex items-center gap-2.5 text-[12.5px] py-[7px] mx-2 px-3 rounded-md',
+                        isActive && 'nl-nav-active font-medium'
                       )}
+                      aria-current={isActive ? 'page' : undefined}
                     >
                       <item.icon className={cn('h-[13px] w-[13px] flex-shrink-0', isActive ? 'opacity-100' : 'opacity-60')} />
                       {item.name}
@@ -193,20 +197,39 @@ export default function BillingLayout({ children }: { children: React.ReactNode 
     if (!isAuthenticated) router.push('/admin-login');
   }, [hasHydrated, isAuthenticated, router]);
 
+  // Verdant Glass ripple on primary buttons: a span at the pointer, removed after 650 ms (purely visual)
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      const b = (e.target as Element | null)?.closest<HTMLElement>('.nl-billing button.bg-\\[\\#2d7a4f\\], .nl-billing .nl-btn, .nl-billing .nl-btn-primary');
+      if (!b || (b as HTMLButtonElement).disabled || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      const r = b.getBoundingClientRect(), s = Math.max(r.width, r.height) / 2;
+      const span = document.createElement('span');
+      span.className = 'nl-ripple';
+      span.setAttribute('aria-hidden', 'true');
+      span.style.cssText = `width:${s}px;height:${s}px;left:${e.clientX - r.left - s / 2}px;top:${e.clientY - r.top - s / 2}px`;
+      b.appendChild(span);
+      window.setTimeout(() => span.remove(), 650);
+    };
+    document.addEventListener('pointerdown', onDown, { passive: true });
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, []);
+
   if (!hasHydrated || !isAuthenticated) return null;
 
   return (
     <MotionConfig reducedMotion="user">
       {/* print: drop the screen-height lock, sidebar and bars so an invoice prints at full size on its own pages */}
-      <div className="flex h-screen bg-[#EDEEF2] print:block print:h-auto print:bg-white">
+      <div className={cn('nl-billing flex h-screen print:block print:h-auto print:bg-white', sora.variable)}>
+        {/* Verdant Glass aurora: decorative, fixed behind the content, never printed */}
+        <div className="nl-app-bg print:hidden" aria-hidden><i /><i /><i /></div>
         <BillingSidebar mobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)} />
         <div className="flex flex-1 flex-col min-w-0 print:block">
           {/* Mobile top bar */}
-          <div className="flex md:hidden h-12 items-center gap-3 border-b bg-white px-4 shrink-0 print:hidden">
-            <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} aria-label="Open menu" className="h-8 w-8">
+          <div className="nl-mobilebar flex md:hidden h-12 items-center gap-3 border-b px-4 shrink-0 print:hidden">
+            <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} aria-label="Open menu" className="h-8 w-8 hover:bg-white/10">
               <Menu className="h-4 w-4" />
             </Button>
-            <span className="font-semibold text-sm text-gray-800">Billing</span>
+            <span className="font-semibold text-sm">Billing</span>
           </div>
           <main className="flex-1 overflow-auto print:overflow-visible">
             <AccessGate>

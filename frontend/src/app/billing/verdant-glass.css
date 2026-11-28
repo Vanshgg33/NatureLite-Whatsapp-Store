@@ -1,0 +1,176 @@
+/* =====================================================================
+   NatureLite Billing | VERDANT GLASS theme (frosted cards, drifting aurora, mint glow)
+   Scope: only while a billing page is mounted (.nl-billing in app/billing/layout.tsx).
+   - Tokens sit on html:has(.nl-billing) so Radix dialogs/menus (portalled to <body>) get them too,
+     and nothing changes on the shop, CRM or department pages.
+   - Every rule is inside @media screen: printed invoices and the day-close report are untouched.
+   - Motion: transform/opacity only; backdrop blur only on top-level cards (blur is the expensive part);
+     aurora is paused below 768px, in lite/reduced motion, and in hidden tabs.
+   ===================================================================== */
+
+@media screen {
+
+/* ---------- 1. tokens ---------- */
+html:has(.nl-billing){
+  --nl-bg:#eaf4ee; --nl-surface:#ffffff; --nl-surface2:#f1f8f4;
+  --nl-ink:#12281d; --nl-muted:#58705f; --nl-line:#cfe3d7;
+  --nl-accent:#0f8b5f; --nl-accent2:#6ee7b0; --nl-accent-ink:#ffffff;
+  /* filled buttons: #0f8b5f with white text is 4.3:1, under the 4.5:1 rule; this shade is 5.4:1 */
+  --nl-accent-fill:#0c7a53; --nl-accent-fill-hover:#0a6a48;
+  --nl-side:#0a3424; --nl-side-ink:#e8f3ec; --nl-side-muted:#9fb8a8;
+  --nl-radius:1.25rem; --nl-shadow:0 18px 40px -20px rgba(15,100,70,.45);
+  --nl-font-display:var(--nl-sora,'Sora'),sans-serif; --nl-ease:cubic-bezier(.22,1,.36,1); --nl-lift:-6px;
+
+  /* shadcn/ui variables (HSL triples) */
+  --background:144 31% 94%; --foreground:150 38% 11%;
+  --card:0 0% 100%; --card-foreground:150 38% 11%;
+  --popover:0 0% 100%; --popover-foreground:150 38% 11%;
+  --primary:159 81% 30%; --primary-foreground:0 0% 100%;
+  --secondary:146 33% 96%; --secondary-foreground:150 38% 11%;
+  --muted:146 33% 96%; --muted-foreground:138 12% 39%;
+  --accent:146 33% 96%; --accent-foreground:150 38% 11%;
+  --border:144 26% 85%; --input:144 26% 85%; --ring:159 81% 30%;
+  --radius:1.25rem;
+  background:var(--nl-bg);
+}
+html:has(.nl-billing) body{background:var(--nl-bg)}
+
+/* ---------- 2. keyframes + shared classes (blueprint section 5) ---------- */
+@keyframes nl-rowin{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes nl-grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@keyframes nl-draw{to{stroke-dashoffset:0}}
+@keyframes nl-fade{to{opacity:1}}
+@keyframes nl-ripple{to{transform:scale(4);opacity:0}}
+@keyframes nl-pulse{0%{transform:scale(1)}40%{transform:scale(1.18)}100%{transform:scale(1)}}
+@keyframes nl-shim{to{background-position:-200% 0}}
+@keyframes nl-float{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(40px,-30px) scale(1.15)}}
+@keyframes nl-spin{to{transform:rotate(360deg)}}
+@keyframes nl-toast-in{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:none}}
+
+.nl-enter{animation:nl-rowin .7s var(--nl-ease) both;animation-delay:calc(var(--i,0)*80ms)}
+.nl-row{animation:nl-rowin .6s var(--nl-ease) both;animation-delay:calc(var(--i,0)*70ms)}
+.nl-card{transition:transform .4s var(--nl-ease),box-shadow .4s var(--nl-ease),border-color .3s}
+.nl-card--hover:hover{transform:translateY(var(--nl-lift));border-color:var(--nl-accent)}
+.nl-btn{position:relative;overflow:hidden;transition:transform .25s var(--nl-ease),filter .2s}
+.nl-btn:hover{transform:translateY(-2px);filter:brightness(1.07)}
+.nl-btn:active{transform:scale(.97)}
+.nl-ripple{position:absolute;border-radius:9999px;background:rgba(255,255,255,.45);transform:scale(0);animation:nl-ripple .6s ease-out forwards;pointer-events:none}
+.nl-nav{position:relative;transition:color .2s,background .25s,transform .3s var(--nl-ease)}
+.nl-nav:hover{transform:translateX(3px)}
+.nl-nav-active::before{content:"";position:absolute;left:-8px;top:20%;bottom:20%;width:3px;border-radius:3px;background:var(--nl-accent2);animation:nl-grow .35s var(--nl-ease)}
+.nl-spark path{fill:none;stroke:var(--nl-accent);stroke-width:2;stroke-dasharray:300;stroke-dashoffset:300;animation:nl-draw 1.4s var(--nl-ease) .3s forwards}
+.nl-spark path.nl-spark-fill{fill:var(--nl-accent);fill-opacity:0;stroke:none;animation:nl-fade-fill .6s ease 1.5s forwards}
+@keyframes nl-fade-fill{to{fill-opacity:.12}}
+.nl-skeleton{height:10px;border-radius:6px;background-size:200% 100%;animation:nl-shim 1.4s linear infinite;background-image:linear-gradient(90deg,var(--nl-surface2),color-mix(in srgb,var(--nl-accent) 12%,var(--nl-surface2)),var(--nl-surface2))}
+.nl-pulse{animation:nl-pulse .45s var(--nl-ease)}
+
+/* ---------- 3. aurora background (NlAppBackground) ---------- */
+.nl-app-bg{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;background:var(--nl-bg)}
+.nl-app-bg i{position:absolute;border-radius:9999px;filter:blur(60px);animation:nl-float 14s ease-in-out infinite;will-change:transform}
+.nl-app-bg i:nth-child(1){width:380px;height:380px;background:#6ee7b0;left:-60px;top:-80px;opacity:.7}
+.nl-app-bg i:nth-child(2){width:340px;height:340px;background:#ffe08a;right:-60px;top:30%;opacity:.55;animation-delay:-5s}
+.nl-app-bg i:nth-child(3){width:360px;height:360px;background:#7cc4ff;left:35%;bottom:-120px;opacity:.5;animation-delay:-9s}
+@media (max-width:767px){.nl-app-bg i{animation:none;will-change:auto}}  /* battery */
+html[data-motion="lite"] .nl-app-bg i,html[data-motion="reduced"] .nl-app-bg i,html[data-fx-hidden] .nl-app-bg i{animation:none!important;will-change:auto}
+
+/* ---------- 4. shell ---------- */
+.nl-billing{position:relative;isolation:isolate;background:transparent!important}
+.nl-billing h1,.nl-billing .nl-title{font-family:var(--nl-font-display);font-style:normal;letter-spacing:-.01em;color:var(--nl-ink)}
+.nl-sidebar{background:rgba(10,52,36,.82)!important;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);color:var(--nl-side-ink)}
+.nl-sidebar .nl-nav{color:var(--nl-side-muted)}
+.nl-sidebar .nl-nav:hover{color:var(--nl-side-ink);background:rgba(255,255,255,.07)}
+.nl-sidebar .nl-nav.nl-nav-active{color:#fff;background:var(--nl-accent-fill)}
+@media (max-width:767px){.nl-sidebar{background:var(--nl-side)!important;backdrop-filter:none;-webkit-backdrop-filter:none}} /* slide-in menu sits over content: keep it solid */
+.nl-mobilebar{background:var(--nl-side)!important;color:var(--nl-side-ink);border-color:rgba(255,255,255,.1)!important}
+.nl-mobilebar button{color:var(--nl-side-ink)}
+.nl-billing .nl-topbar,
+.nl-billing .sticky.top-0.bg-white{background:rgba(255,255,255,.7)!important;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-color:var(--nl-line)!important}
+
+/* ---------- 5. cards: glass. Blur only on top-level cards (nested ones just get the tint) ---------- */
+.nl-billing .bg-white.border:is(.rounded-lg,.rounded-xl,.rounded-2xl),
+.nl-billing .nl-card{
+  background:rgba(255,255,255,.62);border-radius:var(--nl-radius);box-shadow:var(--nl-shadow);
+  transition:transform .4s var(--nl-ease),box-shadow .4s var(--nl-ease),border-color .3s;
+}
+/* only neutral borders turn into the frosted white edge; red/amber/blue borders keep their meaning */
+.nl-billing .bg-white.border:is(.rounded-lg,.rounded-xl,.rounded-2xl):is(.border-gray-100,.border-gray-200,.border-gray-300,.border-black\/10),
+.nl-billing .nl-card{border-color:rgba(255,255,255,.85)}
+.nl-billing .bg-white.border:is(.rounded-lg,.rounded-xl,.rounded-2xl):not(.bg-white .bg-white),
+.nl-billing .nl-card:not(.nl-card .nl-card){backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%)}
+/* nested white boxes (table wrappers, tiles inside a card) stay nearly opaque so text keeps its contrast */
+.nl-billing .bg-white .bg-white.border:is(.rounded-lg,.rounded-xl,.rounded-2xl){background:rgba(255,255,255,.8);box-shadow:none}
+/* KPI / summary cards lift */
+.nl-billing .nl-card--hover:hover{transform:translateY(var(--nl-lift));border-color:var(--nl-accent)!important} /* beats the neutral-border rule above */
+
+/* the old warm/grey page fills become transparent so the aurora shows through */
+.nl-billing .bg-\[\#EDEEF2\],.nl-billing .bg-\[\#faf9f6\],.nl-billing .bg-\[\#F7F5F0\]{background:transparent!important}
+.nl-billing .bg-gray-50,.nl-billing .bg-\[\#f7faf8\]{background-color:var(--nl-surface2)}
+
+/* ---------- 6. buttons ---------- */
+.nl-billing :is(button,a).bg-\[\#2d7a4f\],.nl-billing .nl-btn-primary{
+  background-color:var(--nl-accent-fill)!important;color:var(--nl-accent-ink);
+  position:relative;overflow:hidden;transition:transform .25s var(--nl-ease),filter .2s,background-color .3s;
+}
+.nl-billing :is(button,a).bg-\[\#2d7a4f\]:not(:disabled):hover{transform:translateY(-2px);filter:brightness(1.07)}
+.nl-billing :is(button,a).bg-\[\#2d7a4f\]:not(:disabled):active{transform:scale(.97)}
+.nl-billing .hover\:bg-\[\#245f3e\]:hover,.nl-billing .hover\:bg-\[\#245f3d\]:hover{background-color:var(--nl-accent-fill-hover)!important}
+/* chips / segmented controls / toggles: smooth selection change */
+.nl-billing button{transition-property:color,background-color,border-color,box-shadow,transform,opacity;transition-duration:.3s;transition-timing-function:var(--nl-ease)}
+
+/* ---------- 7. inputs ---------- */
+.nl-billing :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),select,textarea){transition:border-color .25s,box-shadow .25s}
+.nl-billing :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),select,textarea):focus{
+  border-color:var(--nl-accent)!important;box-shadow:0 0 0 4px rgba(15,139,95,.18)!important;outline:none}
+
+/* ---------- 8. tables ---------- */
+.nl-billing thead th{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--nl-muted)}
+.nl-billing tbody > tr{animation:nl-rowin .6s var(--nl-ease) backwards}
+.nl-billing tbody > tr:nth-child(2){animation-delay:70ms}.nl-billing tbody > tr:nth-child(3){animation-delay:140ms}
+.nl-billing tbody > tr:nth-child(4){animation-delay:210ms}.nl-billing tbody > tr:nth-child(5){animation-delay:280ms}
+.nl-billing tbody > tr:nth-child(6){animation-delay:350ms}.nl-billing tbody > tr:nth-child(7){animation-delay:420ms}
+.nl-billing tbody > tr:nth-child(8){animation-delay:490ms}.nl-billing tbody > tr:nth-child(9){animation-delay:560ms}
+.nl-billing tbody > tr:nth-child(10){animation-delay:630ms}.nl-billing tbody > tr:nth-child(11){animation-delay:700ms}
+.nl-billing tbody > tr:nth-child(12){animation-delay:770ms}
+.nl-billing tbody > tr:nth-child(n+13){animation:none}  /* long lists do not wait */
+.nl-billing tbody > tr{transition:background-color .2s}
+.nl-billing tbody > tr:hover{background-color:rgba(15,139,95,.07)}
+.nl-billing td.text-right,.nl-billing th.text-right{font-variant-numeric:tabular-nums}
+
+/* ---------- 9. status pills (Paid / Part paid / Due), opt-in via data-status ---------- */
+.nl-pill{display:inline-flex;align-items:center;gap:6px;border-radius:9999px;padding:2px 9px;font-size:11px;font-weight:600;animation:nl-fade .4s ease forwards;opacity:0}
+.nl-pill::before{content:"";width:6px;height:6px;border-radius:9999px;background:currentColor}
+.nl-pill[data-status="paid"]{background:rgba(22,163,74,.18);color:#166534}
+.nl-pill[data-status="unpaid"],.nl-pill[data-status="due"]{background:rgba(217,119,6,.18);color:#92400e}
+.nl-pill[data-status="partial"]{background:rgba(37,99,235,.16);color:#1e40af}
+
+/* ---------- 10. New Bill ---------- */
+.nl-grand{display:inline-block}
+.nl-tile{transition:transform .25s var(--nl-ease),border-color .2s,background-color .2s}
+.nl-tile:hover{transform:translateY(-3px)}
+
+/* ---------- 11. states ---------- */
+.nl-billing .nl-error{background:rgba(254,226,226,.7)!important;border-color:rgba(239,68,68,.35)!important}
+
+/* ---------- 12. toasts (portalled, so keyed on the html) ---------- */
+html:has(.nl-billing) [data-radix-toast-viewport] > li,
+html:has(.nl-billing) ol > li[data-state="open"][role="status"]{
+  background:var(--nl-ink)!important;color:var(--nl-bg)!important;border-color:transparent!important;
+  animation:nl-toast-in .45s var(--nl-ease) both}
+
+/* ---------- 13. reduced motion ---------- */
+@media (prefers-reduced-motion:reduce){
+  .nl-billing *,.nl-billing *::before,.nl-billing *::after,.nl-app-bg i{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+html[data-motion="reduced"] .nl-billing *,html[data-motion="reduced"] .nl-billing *::before,html[data-motion="reduced"] .nl-billing *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+
+} /* @media screen */
+
+@media print{
+  .nl-app-bg,.nl-ripple{display:none!important}
+}
+
+/* cash counter: + steppers use the accent fill (screen only) */
+@media screen{
+  .nl-billing .bg-\[\#477a54\]{background-color:var(--nl-accent-fill)!important}
+  .nl-billing .hover\:bg-\[\#3d6a49\]:hover{background-color:var(--nl-accent-fill-hover)!important}
+}

@@ -49,7 +49,7 @@ function Block({ node, onChange, ctx }: { node: Node; onChange: (n: Node) => voi
     case 'var': {
       const known = ctx.names.some(n => n.name === node.n);
       body = (
-        <select aria-label="Value" style={fit(ctx.names.find(n => n.name === node.n)?.label ?? node.n)} disabled={ctx.disabled} value={node.n} onChange={e => onChange({ t: 'var', n: e.target.value })} className={cn(selectCls, 'bg-[#2d7a4f]/10 text-[#1A3625]')}>
+        <select aria-label="Value" style={fit(ctx.names.find(n => n.name === node.n)?.label ?? node.n)} disabled={ctx.disabled} value={node.n} onChange={e => onChange({ t: 'var', n: e.target.value })} className={cn(selectCls, 'bg-[#2d7a4f]/10 text-[color:var(--nl-ink)]')}>
           {!known && <option value={node.n}>{node.n}</option>}
           {ctx.names.map(n => <option key={n.name} value={n.name}>{n.label}</option>)}
         </select>

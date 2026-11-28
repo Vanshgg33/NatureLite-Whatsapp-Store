@@ -240,7 +240,7 @@ export function CashCounter({ mode = 'collect', amountRupees, drawer, received, 
                   const i = row++;
                   const v = qtyOf(d);
                   return (
-                    <li key={d.id} className={`min-w-0 flex flex-col items-center gap-1 rounded-lg border px-1.5 pt-2 pb-1.5 transition-colors duration-150 ${v ? 'border-[#a8c7ad] bg-[#f6fbf7]' : 'border-gray-200 bg-white'}`}>
+                    <li key={d.id} className={`nl-tile min-w-0 flex flex-col items-center gap-1 rounded-lg border px-1.5 pt-2 pb-1.5 transition-colors duration-150 ${v ? 'border-[#a8c7ad] bg-[#f6fbf7]' : 'border-gray-200 bg-white'}`}>
                       <Face d={d} tile onPhoto={onPhoto} />
                       <span className="text-[15px] font-bold leading-none text-[#26372d]">₹{d.value.toLocaleString('en-IN')}</span>
                       {d.value === 2000 && <span className="text-[9px] leading-tight text-center text-gray-500">Withdrawn from circulation; still legal tender</span>}
@@ -261,7 +261,7 @@ export function CashCounter({ mode = 'collect', amountRupees, drawer, received, 
                   const i = row++;
                   const v = qtyOf(d);
                   return (
-                    <li key={d.id} className={`min-w-0 flex flex-col items-center gap-1 rounded-2xl border px-1.5 py-1.5 transition-colors duration-150 ${v ? 'border-[#a8c7ad] bg-[#f6fbf7]' : 'border-gray-200 bg-white'}`}>
+                    <li key={d.id} className={`nl-tile min-w-0 flex flex-col items-center gap-1 rounded-2xl border px-1.5 py-1.5 transition-colors duration-150 ${v ? 'border-[#a8c7ad] bg-[#f6fbf7]' : 'border-gray-200 bg-white'}`}>
                       <span className="flex items-center gap-1.5">
                         <Face d={d} small onPhoto={onPhoto} />
                         <span className="text-[12px] font-bold text-[#26372d]">₹{d.value}</span>

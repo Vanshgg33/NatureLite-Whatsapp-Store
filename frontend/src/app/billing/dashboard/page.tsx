@@ -7,6 +7,7 @@ import { billsViewHref } from '@/lib/billing/bill-views';
 import { api } from '@/lib/api';
 import { Header } from '@/components/layout/header';
 import { WaSendButton } from '@/components/billing/wa-send-button';
+import { useCountUp } from '@/lib/useCountUp';
 
 function fmt(n: number) {
   return '₹' + (n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -36,13 +37,15 @@ const TAG_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
 // every card opens the full list behind its number (same filters, so the totals match)
 const CARD = 'group block bg-white border border-gray-200 rounded-lg p-4 transition-all duration-150 hover:border-[#2d7a4f]/40 hover:shadow-sm hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d7a4f]/50';
 
-function StatCard({ label, value, sub, icon: Icon, color, href }: { label: string; value: string; sub?: string; icon: any; color: string; href: string }) {
+function StatCard({ label, amount, show = fmt, sub, icon: Icon, color, href }: { label: string; amount: number; show?: (n: number) => string; sub?: string; icon: any; color: string; href: string }) {
+  const shown = useCountUp(amount);
+  const value = show(amount);
   return (
-    <Link href={href} className={CARD} aria-label={`${label}: ${value}. Open details`}>
+    <Link href={href} className={`${CARD} nl-card--hover`} aria-label={`${label}: ${value}. Open details`}>
       <div className="flex items-start justify-between">
         <div>
           <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold mb-1">{label}</p>
-          <p className={`text-xl font-bold tabular-nums ${color}`}>{value}</p>
+          <p className={`text-[28px] leading-tight font-bold tabular-nums nl-title ${color}`}>{show(shown)}</p>
           {sub && <p className="text-[11px] text-gray-400 mt-0.5">{sub}</p>}
           <p className="text-[11px] text-[#2d7a4f] mt-1.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity">
             View details <ChevronRight className="h-3 w-3" />
@@ -73,11 +76,11 @@ export default function DashboardPage() {
 
       <div className="p-4 md:p-5 space-y-4">
         {isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="h-8 w-8 border-2 border-[#2d7a4f] border-t-transparent rounded-full animate-spin" />
+          <div className="bg-white border border-gray-200 rounded-lg p-6 space-y-3" role="status" aria-label="Loading dashboard">
+            <div className="nl-skeleton w-1/3" /><div className="nl-skeleton w-2/3" /><div className="nl-skeleton w-1/2" />
           </div>
         ) : isError ? (
-          <div className="bg-white border border-red-200 rounded-lg p-6 text-center text-sm text-red-600">
+          <div role="alert" className="nl-error bg-white border border-red-200 rounded-lg p-6 text-center text-sm text-red-600">
             <AlertTriangle className="inline h-4 w-4 mr-1" /> Could not load the dashboard. <button onClick={() => refetch()} className="underline">Try again</button>
           </div>
         ) : (
@@ -86,10 +89,10 @@ export default function DashboardPage() {
             <div>
               <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-2">All Time</p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <StatCard href={billsViewHref('revenue')} label="Total Revenue" value={fmt(data?.allTime?.total ?? 0)} sub={`${data?.allTime?.count ?? 0} bills`} icon={Globe} color="text-violet-600" />
-                <StatCard href={billsViewHref('collected')} label="Total Collected" value={fmt(data?.allTime?.collected ?? 0)} icon={TrendingUp} color="text-green-600" />
-                <StatCard href={billsViewHref('outstanding')} label="Outstanding Dues" value={fmt(data?.outstanding ?? 0)} icon={AlertCircle} color="text-red-500" />
-                <StatCard href="/billing/customers" label="Total Customers" value={String(data?.customerCount ?? 0)} icon={Users} color="text-blue-600" />
+                <StatCard href={billsViewHref('revenue')} label="Total Revenue" amount={data?.allTime?.total ?? 0} sub={`${data?.allTime?.count ?? 0} bills`} icon={Globe} color="text-violet-600" />
+                <StatCard href={billsViewHref('collected')} label="Total Collected" amount={data?.allTime?.collected ?? 0} icon={TrendingUp} color="text-green-600" />
+                <StatCard href={billsViewHref('outstanding')} label="Outstanding Dues" amount={data?.outstanding ?? 0} icon={AlertCircle} color="text-red-500" />
+                <StatCard href="/billing/customers" label="Total Customers" amount={data?.customerCount ?? 0} show={(n) => Math.round(n).toLocaleString('en-IN')} icon={Users} color="text-blue-600" />
               </div>
             </div>
 
@@ -97,9 +100,9 @@ export default function DashboardPage() {
             <div>
               <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-2">Today</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <StatCard href={billsViewHref('today')} label="Today's Sales" value={fmt(data?.today?.total ?? 0)} sub={`${data?.today?.count ?? 0} bills`} icon={IndianRupee} color="text-[#2d7a4f]" />
-                <StatCard href={billsViewHref('today-collected')} label="Collected Today" value={fmt(data?.today?.collected ?? 0)} icon={TrendingUp} color="text-green-600" />
-                <StatCard href={billsViewHref('today-pending')} label="Pending Today" value={fmt((data?.today?.total ?? 0) - (data?.today?.collected ?? 0))} icon={AlertCircle} color="text-red-500" />
+                <StatCard href={billsViewHref('today')} label="Today's Sales" amount={data?.today?.total ?? 0} sub={`${data?.today?.count ?? 0} bills`} icon={IndianRupee} color="text-[#2d7a4f]" />
+                <StatCard href={billsViewHref('today-collected')} label="Collected Today" amount={data?.today?.collected ?? 0} icon={TrendingUp} color="text-green-600" />
+                <StatCard href={billsViewHref('today-pending')} label="Pending Today" amount={(data?.today?.total ?? 0) - (data?.today?.collected ?? 0)} icon={AlertCircle} color="text-red-500" />
               </div>
             </div>
 
@@ -107,9 +110,9 @@ export default function DashboardPage() {
             <div>
               <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-2">This Month</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <StatCard href={billsViewHref('month')} label="Month Sales" value={fmt(data?.month?.total ?? 0)} sub={`${data?.month?.count ?? 0} bills`} icon={FileText} color="text-[#2d7a4f]" />
-                <StatCard href={billsViewHref('month-collected')} label="Month Collected" value={fmt(data?.month?.collected ?? 0)} icon={TrendingUp} color="text-green-600" />
-                <StatCard href={billsViewHref('month-due')} label="Month Due" value={fmt(data?.month?.due ?? 0)} icon={AlertCircle} color="text-red-500" />
+                <StatCard href={billsViewHref('month')} label="Month Sales" amount={data?.month?.total ?? 0} sub={`${data?.month?.count ?? 0} bills`} icon={FileText} color="text-[#2d7a4f]" />
+                <StatCard href={billsViewHref('month-collected')} label="Month Collected" amount={data?.month?.collected ?? 0} icon={TrendingUp} color="text-green-600" />
+                <StatCard href={billsViewHref('month-due')} label="Month Due" amount={data?.month?.due ?? 0} icon={AlertCircle} color="text-red-500" />
               </div>
             </div>
 
@@ -180,9 +183,7 @@ export default function DashboardPage() {
                       </div>
                       <div className="text-right shrink-0">
                         <div className="font-semibold text-gray-800 text-sm">{fmt(b.grandTotal)}</div>
-                        <div className={`text-xs font-medium ${b.paymentStatus === 'paid' ? 'text-green-500' : b.paymentStatus === 'partial' ? 'text-yellow-500' : 'text-red-500'}`}>
-                          {b.paymentStatus}
-                        </div>
+                        <span className="nl-pill mt-0.5" data-status={b.paymentStatus}>{b.paymentStatus}</span>
                       </div>
                       </Link>
                       <WaSendButton billId={b._id} />

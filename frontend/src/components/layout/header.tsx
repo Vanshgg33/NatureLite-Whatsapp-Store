@@ -16,11 +16,11 @@ interface HeaderProps {
 
 export function Header({ title, description, icon, action, searchValue, onSearch, searchPlaceholder }: HeaderProps) {
   return (
-    <header className="flex h-14 md:h-16 flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-black/[0.07] bg-[#F7F5F0] px-4 sm:px-6 py-3 sm:py-0 flex-shrink-0">
+    <header className="nl-topbar flex h-14 md:h-16 flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-black/[0.07] bg-[#F7F5F0] px-4 sm:px-6 py-3 sm:py-0 flex-shrink-0">
       <div className="min-w-0 flex items-center gap-2">
         {icon}
         <div>
-          <h1 className="font-display italic text-lg sm:text-xl text-gray-900 truncate tracking-tight leading-tight">
+          <h1 className="nl-title font-display italic text-lg sm:text-xl text-gray-900 truncate tracking-tight leading-tight">
             {title}
           </h1>
           {description && (

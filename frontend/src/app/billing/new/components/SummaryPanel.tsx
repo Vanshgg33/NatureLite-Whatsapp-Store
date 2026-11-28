@@ -1,4 +1,5 @@
 'use client';
+import { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Printer, Save, Plus, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -36,6 +37,18 @@ export function SummaryPanel({ totals, isInterState, lines, onSave, onSaveAndPri
   const gstRates = Object.keys(gstByRate).map(Number).sort((a, b) => a - b);
 
   const totalTaxPaise = totals.cgstTotalPaise + totals.sgstTotalPaise + totals.igstTotalPaise;
+
+  // Verdant Glass: pulse the Grand Total each time it changes (not on first render)
+  const grandRef = useRef<HTMLSpanElement>(null);
+  const firstGrand = useRef(true);
+  useEffect(() => {
+    if (firstGrand.current) { firstGrand.current = false; return; }
+    const el = grandRef.current;
+    if (!el) return;
+    el.classList.remove('nl-pulse');
+    void el.offsetWidth; // restart the animation
+    el.classList.add('nl-pulse');
+  }, [totals.grandTotalPaise]);
 
   return (
     <div className="flex flex-col gap-0 bg-white lg:w-[300px] lg:shrink-0 border-l border-gray-100">
@@ -97,7 +110,7 @@ export function SummaryPanel({ totals, isInterState, lines, onSave, onSaveAndPri
 
           <div className="border-t border-gray-200 pt-2 flex justify-between font-bold text-base">
             <span>Grand Total</span>
-            <CountUp value={totals.grandTotalPaise} className="text-[#2d7a4f]" />
+            <span ref={grandRef} className="nl-grand"><CountUp value={totals.grandTotalPaise} className="text-[#2d7a4f]" /></span>
           </div>
 
           {totals.amountDuePaise < totals.grandTotalPaise && (
