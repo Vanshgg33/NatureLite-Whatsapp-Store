@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ConflictException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import { RawMaterial } from './schemas/raw-material.schema';
@@ -85,8 +85,14 @@ export class RawMaterialService {
     if (!material) throw new NotFoundException('Raw material not found');
     this.assertStoreOwnership(material as RawMaterial & { store: Types.ObjectId }, callerStoreId);
 
-    const closing = Math.max(0, dto.openingStock + dto.stockIn - dto.processed);
     const today = this.todayIST;
+    // Later entries of the day continue from the running closing (the repository ignores their opening)
+    const existing = await this.dailyEntryRepository.getEntry(objId, today);
+    const available = (existing ? existing.closing : dto.openingStock) + dto.stockIn;
+    if (dto.processed > available + 1e-9) {
+      throw new BadRequestException(`Processed ${dto.processed} ${material.unit} is more than the ${available} ${material.unit} available`);
+    }
+    const closing = Math.max(0, dto.openingStock + dto.stockIn - dto.processed);
 
     const entry = await this.dailyEntryRepository.upsertEntry(material.store, objId, today, {
       openingStock: dto.openingStock,
@@ -97,6 +103,9 @@ export class RawMaterialService {
     }, {
       loggedBy: user?.sub ? parseObjectId(user.sub, 'userId') : undefined,
       loggedByName: user?.phone ?? user?.role,
+      machine: dto.machine?.trim() || undefined,
+      operator: dto.operator?.trim() || undefined,
+      note: dto.note?.trim() || undefined,
     });
 
     await this.rawMaterialRepository.setTotalStock(objId, entry.closing);

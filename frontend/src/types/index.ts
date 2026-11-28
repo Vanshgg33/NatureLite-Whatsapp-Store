@@ -1307,6 +1307,9 @@ export interface RawMaterialEntryLog {
   processed: number;
   outputLitres: number;
   closing: number;
+  machine?: string;
+  operator?: string;
+  note?: string;
 }
 
 export interface RawMaterial {

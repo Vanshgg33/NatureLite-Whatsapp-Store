@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsNumber, Min } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsNumber, Min, MaxLength } from 'class-validator';
 
 export class CreateRawMaterialDto {
   @IsString()
@@ -36,6 +36,15 @@ export class UpsertDailyEntryDto {
   @IsString()
   @IsOptional()
   adminPassword?: string;
+
+  @IsString() @IsOptional() @MaxLength(40)
+  machine?: string;
+
+  @IsString() @IsOptional() @MaxLength(80)
+  operator?: string;
+
+  @IsString() @IsOptional() @MaxLength(500)
+  note?: string;
 }
 
 export class RawMaterialQueryDto {

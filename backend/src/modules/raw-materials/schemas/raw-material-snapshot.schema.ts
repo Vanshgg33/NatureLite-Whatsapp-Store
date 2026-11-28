@@ -30,6 +30,11 @@ export class RawMaterialEntryLog {
 
   @Prop({ default: 0 })
   closing: number;
+
+  // Machine performance view: which press ran it, who operated it, shift note
+  @Prop() machine?: string;
+  @Prop() operator?: string;
+  @Prop() note?: string;
 }
 
 export const RawMaterialEntryLogSchema = SchemaFactory.createForClass(RawMaterialEntryLog);

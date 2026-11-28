@@ -106,7 +106,7 @@ export default function RMSPage() {
       setEditMaterial(null); setPrefill(null);
       toast({ title: 'Entry saved' });
     },
-    onError: () => toast({ title: 'Failed to save entry', variant: 'destructive' }),
+    onError: (e: any) => toast({ title: e?.response?.data?.message ?? 'Failed to save entry', variant: 'destructive' }),
   });
 
   async function openEntryDialog(m: RawMaterial) {

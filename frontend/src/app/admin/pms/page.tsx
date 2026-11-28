@@ -23,6 +23,7 @@ import {
 import { useToast } from '@/components/ui/use-toast';
 import { downloadReportPdf, generateReportPdfBase64 } from '@/lib/report-pdf';
 import { EmailReportButton } from '@/components/admin/email-report-button';
+import { MachinePerformance } from '@/components/admin/pms/machine-performance';
 import type { Store, RawMaterial, RawMaterialPrefill, RawMaterialDailyItem } from '@/types';
 
 function closingBadge(val: number) {
@@ -126,6 +127,7 @@ export default function PMSPage() {
       setOilLoose(''); setOilProcessed(''); setOilGaadIn(''); setOilPacked(''); setOilGaadOut('');
       toast({ title: 'Entry saved' });
     },
+    onError: (e: any) => toast({ title: e?.response?.data?.message ?? 'Failed to save entry', variant: 'destructive' }),
   });
 
   const deleteMutation = useMutation({
@@ -279,6 +281,8 @@ export default function PMSPage() {
           />
         </div>
       </div>
+
+      {selectedStoreId && <MachinePerformance storeId={selectedStoreId} materials={materials} canLog={canEditAnalytics} />}
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-3">
@@ -677,7 +681,7 @@ export default function PMSPage() {
               <div className={`rounded-xl px-4 py-3.5 flex items-center justify-between ${closingBadge(entryClosing)}`}>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide opacity-70">= Closing Stock</p>
-                  {overdrawn && <p className="text-xs mt-0.5 opacity-70">Clamped to 0</p>}
+                  {overdrawn && <p className="text-xs mt-0.5 font-semibold">Processed is more than the stock available</p>}
                 </div>
                 <p className="text-2xl font-black">{entryClosing.toFixed(2)} <span className="text-sm font-normal opacity-70">{editMaterial?.unit}</span></p>
               </div>
@@ -691,7 +695,7 @@ export default function PMSPage() {
                 if (!editMaterial) return;
                 entryMutation.mutate({ id: editMaterial._id, openingStock: entryOpVal, stockIn: entryStVal, processed: entryPrVal, outputLitres: entryOutVal });
               }}
-              disabled={entryMutation.isPending || prefillLoading}
+              disabled={entryMutation.isPending || prefillLoading || overdrawn}
             >
               {entryMutation.isPending ? 'Saving…' : 'Save Entry'}
             </Button>

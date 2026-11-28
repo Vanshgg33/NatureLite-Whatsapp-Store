@@ -15,7 +15,7 @@ export class RawMaterialDailyEntryRepository {
     rawMaterialId: Types.ObjectId,
     date: string,
     data: { openingStock: number; stockIn: number; processed: number; closing: number; outputLitres?: number },
-    entryMeta?: { loggedBy?: Types.ObjectId; loggedByName?: string },
+    entryMeta?: { loggedBy?: Types.ObjectId; loggedByName?: string; machine?: string; operator?: string; note?: string },
   ): Promise<RawMaterialDailyEntryDocument> {
     const existing = await this.model.findOne({ store: storeId, rawMaterial: rawMaterialId, date }).exec();
     const openingStock = existing?.openingStock ?? data.openingStock;
@@ -33,6 +33,9 @@ export class RawMaterialDailyEntryRepository {
             loggedAt: new Date(),
             loggedBy: entryMeta?.loggedBy,
             loggedByName: entryMeta?.loggedByName,
+            machine: entryMeta?.machine,
+            operator: entryMeta?.operator,
+            note: entryMeta?.note,
             openingStock: data.openingStock,
             stockIn: data.stockIn,
             processed: data.processed,
