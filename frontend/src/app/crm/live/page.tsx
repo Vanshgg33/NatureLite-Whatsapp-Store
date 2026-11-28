@@ -12,7 +12,10 @@ import { useToast } from '@/components/ui/use-toast';
 import { getApiError } from '@/lib/api-error';
 import { BADGES, PRESENCE, fmtClock, istTime, useNow } from '@/lib/crm/caller';
 import { FnCountUp } from '@/components/crm/forest-night-motion';
-import { FxDigits, FxLoader, FxPresence, useFxFlip } from '@/components/crm/forest-night-pack';
+import { FxDigits, FxLoader, FxPresence, fxMode, useFxFlip } from '@/components/crm/forest-night-pack';
+
+/** chart grow / transition animations, off when the Animations setting is Reduced */
+const chartMotion = () => fxMode() !== 'reduced';
 
 const BUCKETS = [
   { key: 'untouched', label: 'Untouched', color: '#9ca3af' },
@@ -105,7 +108,7 @@ function CallerCard({ c, color, tv, modes, onAct }: { c: any; color: string; tv:
       <div className="h-10">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={d.hourly} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
-            <Area type="monotone" dataKey="calls" stroke={color} fill={color} fillOpacity={0.18} strokeWidth={2} isAnimationActive={false} />
+            <Area type="monotone" dataKey="calls" stroke={color} fill={color} fillOpacity={0.18} strokeWidth={2} isAnimationActive={chartMotion()} animationDuration={700} animationEasing="ease-out" />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -249,7 +252,7 @@ export default function LiveBoardPage() {
             <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
             <Tooltip />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            {callers.map((c) => <Bar key={c.callerId} dataKey={c.name} fill={colorOf(c.callerId)} radius={[3, 3, 0, 0]} isAnimationActive={false} />)}
+            {callers.map((c) => <Bar key={c.callerId} dataKey={c.name} fill={colorOf(c.callerId)} radius={[3, 3, 0, 0]} isAnimationActive={chartMotion()} animationDuration={800} animationEasing="ease-out" />)}
           </BarChart>
         </ResponsiveContainer>
       </div>
